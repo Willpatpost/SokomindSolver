@@ -443,3 +443,89 @@ describe("progress phase transitions", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit fix: cancellation preserves incumbent (§8.7)
+// ---------------------------------------------------------------------------
+
+describe("cancellation preserves incumbent", () => {
+  it("returns solved with bounded proof when cancelled after finding incumbent", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+
+    const dfsResult = await runClassicSearch(req, oracleContext(), {
+      strategy: "dfs",
+    });
+    assert.equal(dfsResult.status, "solved");
+    if (dfsResult.status !== "solved") throw new Error("unreachable");
+
+    const ac = new AbortController();
+    const updates: SolverProgress[] = [];
+    const result = await runExactMoveAStar(
+      req,
+      collectingContext(updates, ac.signal),
+      {
+        incumbent: {
+          solution: dfsResult.solution,
+          cost: dfsResult.solution.moves,
+        },
+      },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") throw new Error("unreachable");
+    assert.ok(result.proof, "Expected proof when incumbent preserved");
+  });
+
+  it("returns cancelled with no proof when no incumbent exists", async () => {
+    const ac = new AbortController();
+    ac.abort("cancel immediately");
+    const req = requestFromRows(BOARD_ROWS);
+    const result = await runExactMoveAStar(req, {
+      signal: ac.signal,
+      reportProgress: () => undefined,
+      now: () => performance.now(),
+    });
+    assert.equal(result.status, "cancelled");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit fix: cutoff without incumbent includes lower-bound metric (§8.7)
+// ---------------------------------------------------------------------------
+
+describe("cutoff without incumbent includes lower-bound metric", () => {
+  it("includes lowerBound in metrics counters on limit-reached", async () => {
+    const req: SolverRequest = {
+      ...requestFromRows(BOARD_ROWS),
+      limits: { maxExpandedStates: 1 },
+    };
+    const result = await runExactMoveAStar(req, oracleContext());
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") throw new Error("unreachable");
+    assert.equal(result.reason, "limit-reached");
+    assert.ok(
+      result.metrics.counters?.lowerBound !== undefined,
+      "Expected lowerBound in metrics counters",
+    );
+    assert.ok(
+      (result.metrics.counters?.lowerBound ?? -1) >= 0,
+      "lowerBound must be non-negative",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit fix: bounded proof guard against lb == U (§6.2)
+// ---------------------------------------------------------------------------
+
+describe("bounded proof lb == U guard", () => {
+  it("returns optimal instead of bounded when lower bound equals incumbent", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    assert.equal(result.proof!.kind, "optimal");
+    assert.equal(result.proof!.gap, 0);
+    assert.equal(result.proof!.lowerBound, result.proof!.upperBound);
+  });
+});

@@ -170,6 +170,10 @@ export async function runExactMoveAStar(
     maxDepth: 0,
   };
   let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
+  let incumbentSolution: SolverSolution | null =
+    options?.incumbent?.solution ?? null;
+  let U = options?.incumbent?.cost ?? Infinity;
+  let lastLowerBound = 0;
 
   try {
     throwIfSolverCancelled(context.signal);
@@ -209,11 +213,8 @@ export async function runExactMoveAStar(
       initialBoxes,
     );
     const initialH = initialPushBound + initialWalkBound;
+    lastLowerBound = initialH;
 
-    let U = options?.incumbent?.cost ?? Infinity;
-    let incumbentSolution: SolverSolution | null =
-      options?.incumbent?.solution ?? null;
-    let lastLowerBound = 0;
     let heapSize = 0;
     let uniqueStates = 0;
     let nodesLength = 0;
@@ -320,12 +321,15 @@ export async function runExactMoveAStar(
       proof: makeOptimalProof(),
     });
 
-    const finishSolvedBounded = (lb: number): SolverResult => ({
-      status: "solved",
-      solution: incumbentSolution!,
-      metrics: metrics(),
-      proof: makeBoundedProof(lb),
-    });
+    const finishSolvedBounded = (lb: number): SolverResult => {
+      if (lb >= U) return finishSolvedOptimal();
+      return {
+        status: "solved",
+        solution: incumbentSolution!,
+        metrics: metrics(),
+        proof: makeBoundedProof(lb),
+      };
+    };
 
     report("preparing", "Preparing exact A* search");
     throwIfSolverCancelled(context.signal);
@@ -571,6 +575,7 @@ export async function runExactMoveAStar(
             counters.generated >= maxGenerated
           ) {
             limitDetail = "Maximum generated-state count reached.";
+            syncState();
             break searchLoop;
           }
           counters.generated += 1;
@@ -628,6 +633,7 @@ export async function runExactMoveAStar(
             ) > maxMemoryAfterHeuristic
           ) {
             limitDetail = "Estimated solver memory limit reached.";
+            syncState();
             break searchLoop;
           }
           if (!Number.isFinite(pushLowerBound)) {
@@ -678,6 +684,7 @@ export async function runExactMoveAStar(
             );
             if (projectedMemory > maxMemory) {
               limitDetail = "Estimated solver memory limit reached.";
+              syncState();
               break searchLoop;
             }
           }
@@ -708,11 +715,18 @@ export async function runExactMoveAStar(
           peekIndex !== undefined ? (nodes[peekIndex]?.p0 ?? lastLowerBound) : lastLowerBound;
         return finishSolvedBounded(bestL);
       }
+      const m = metrics();
+      const peekIdx = heap.size > 0 ? heap.peek() : undefined;
+      const cutoffLB =
+        peekIdx !== undefined ? (nodes[peekIdx]?.p0 ?? lastLowerBound) : lastLowerBound;
       return {
         status: "unsolved",
         reason: "limit-reached",
         detail: limitDetail,
-        metrics: metrics(),
+        metrics: {
+          ...m,
+          counters: { ...m.counters, lowerBound: cutoffLB },
+        },
       };
     }
 
@@ -727,29 +741,56 @@ export async function runExactMoveAStar(
     };
   } catch (error) {
     if (isSolverCancellation(error) || context.signal.aborted) {
+      const cancelMetrics = collectCurrentMetrics?.() ?? {
+        elapsedMs: Math.max(0, context.now() - startedAt),
+        expandedStates: counters.expanded,
+        generatedStates: counters.generated,
+        peakFrontierSize: counters.peakFrontier,
+        counters: {
+          uniqueStates: 0,
+          retainedStates: 0,
+          duplicateStates: counters.duplicates,
+          deadlockPrunes: counters.deadlockPrunes,
+          infeasiblePrunes: counters.infeasiblePrunes,
+          reopens: counters.reopens,
+          reachabilityFloods: counters.reachabilityFloods,
+          avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
+          heuristicCalls: 0,
+          heuristicCacheHits: 0,
+          frontierSize: 0,
+          maxDepth: counters.maxDepth,
+          estimatedMemoryBytes: 0,
+        },
+      };
+      if (incumbentSolution && U < Infinity) {
+        const boundedProof: SolverProof =
+          lastLowerBound >= U
+            ? {
+                objective: request.objective,
+                kind: "optimal",
+                algorithm: "move-astar",
+                lowerBound: U,
+                upperBound: U,
+                gap: 0,
+              }
+            : {
+                objective: request.objective,
+                kind: "bounded",
+                algorithm: "move-astar",
+                lowerBound: lastLowerBound,
+                upperBound: U,
+                gap: U - lastLowerBound,
+              };
+        return {
+          status: "solved",
+          solution: incumbentSolution,
+          metrics: cancelMetrics,
+          proof: boundedProof,
+        };
+      }
       return {
         status: "cancelled",
-        metrics: collectCurrentMetrics?.() ?? {
-          elapsedMs: Math.max(0, context.now() - startedAt),
-          expandedStates: counters.expanded,
-          generatedStates: counters.generated,
-          peakFrontierSize: counters.peakFrontier,
-          counters: {
-            uniqueStates: 0,
-            retainedStates: 0,
-            duplicateStates: counters.duplicates,
-            deadlockPrunes: counters.deadlockPrunes,
-            infeasiblePrunes: counters.infeasiblePrunes,
-            reopens: counters.reopens,
-            reachabilityFloods: counters.reachabilityFloods,
-            avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
-            heuristicCalls: 0,
-            heuristicCacheHits: 0,
-            frontierSize: 0,
-            maxDepth: counters.maxDepth,
-            estimatedMemoryBytes: 0,
-          },
-        },
+        metrics: cancelMetrics,
       };
     }
     throw error;
