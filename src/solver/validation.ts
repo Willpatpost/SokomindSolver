@@ -19,6 +19,7 @@ import type {
   SolverRunMetrics,
   SolverSolution,
 } from "./contracts.ts";
+import { collectProofIssues } from "./proof.ts";
 
 export interface SolverValidationIssue {
   readonly path: string;
@@ -46,7 +47,7 @@ type Issues = SolverValidationIssue[];
 type UnknownRecord = Record<string, unknown>;
 
 const OBJECTIVE_KINDS = new Set(["moves"]);
-const PHASES = new Set(["preparing", "searching", "improving", "verifying"]);
+const PHASES = new Set(["preparing", "searching", "improving", "verifying", "proving"]);
 const EXECUTION_TARGETS = new Set(["main-thread", "web-worker"]);
 const RUNTIMES = new Set(["javascript", "webassembly", "hybrid"]);
 const QUALITIES = new Set(["first-found", "bounded", "optimal"]);
@@ -972,6 +973,9 @@ function collectProgressIssues(value: unknown): Issues {
       "fraction",
       "incumbent",
       "detail",
+      "lowerBound",
+      "upperBound",
+      "gap",
     ],
     "progress",
     issues,
@@ -1051,6 +1055,26 @@ function collectProgressIssues(value: unknown): Issues {
   if (value.detail !== undefined && typeof value.detail !== "string") {
     valid = issue(issues, "progress.detail", "must be a string") && valid;
   }
+  for (const key of ["lowerBound", "upperBound", "gap"] as const) {
+    if (value[key] !== undefined) {
+      valid =
+        checkFiniteNonNegative(value[key], `progress.${key}`, issues) && valid;
+    }
+  }
+  if (
+    value.lowerBound !== undefined &&
+    value.upperBound !== undefined &&
+    typeof value.lowerBound === "number" &&
+    typeof value.upperBound === "number" &&
+    value.lowerBound > value.upperBound
+  ) {
+    valid =
+      issue(
+        issues,
+        "progress.lowerBound",
+        "must not exceed progress.upperBound",
+      ) && valid;
+  }
   void valid;
   return issues;
 }
@@ -1076,19 +1100,25 @@ function collectResultIssues(value: unknown): Issues {
   if (value.status === "solved") {
     let valid = checkExactKeys(
       value,
-      ["status", "solution", "metrics"],
+      ["status", "solution", "metrics", "proof"],
       "result",
       issues,
     );
     valid = checkSolution(value.solution, "result.solution", issues) && valid;
     valid = checkMetrics(value.metrics, "result.metrics", issues) && valid;
+    if (value.proof !== undefined) {
+      const proofIssues = collectProofIssues(value.proof, value.solution);
+      for (const msg of proofIssues) {
+        valid = issue(issues, "result.proof", msg) && valid;
+      }
+    }
     void valid;
     return issues;
   }
   if (value.status === "unsolved") {
     let valid = checkExactKeys(
       value,
-      ["status", "reason", "metrics", "detail"],
+      ["status", "reason", "metrics", "detail", "proof"],
       "result",
       issues,
     );
@@ -1099,17 +1129,29 @@ function collectResultIssues(value: unknown): Issues {
     if (value.detail !== undefined && typeof value.detail !== "string") {
       valid = issue(issues, "result.detail", "must be a string") && valid;
     }
+    if (value.proof !== undefined) {
+      const proofIssues = collectProofIssues(value.proof, null);
+      for (const msg of proofIssues) {
+        valid = issue(issues, "result.proof", msg) && valid;
+      }
+    }
     void valid;
     return issues;
   }
 
   let valid = checkExactKeys(
     value,
-    ["status", "metrics"],
+    ["status", "metrics", "proof"],
     "result",
     issues,
   );
   valid = checkMetrics(value.metrics, "result.metrics", issues) && valid;
+  if (value.proof !== undefined) {
+    const proofIssues = collectProofIssues(value.proof, null);
+    for (const msg of proofIssues) {
+      valid = issue(issues, "result.proof", msg) && valid;
+    }
+  }
   void valid;
   return issues;
 }

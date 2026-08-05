@@ -28,6 +28,23 @@ export interface SolverObjective {
   readonly kind: "moves";
 }
 
+export type SolverProofKind = "bounded" | "optimal" | "unsolvable";
+
+export type SolverProofAlgorithm =
+  | "move-astar"
+  | "move-ida-star"
+  | "parallel-move-astar"
+  | "parallel-move-ida-star";
+
+export interface SolverProof {
+  readonly objective: SolverObjective;
+  readonly kind: SolverProofKind;
+  readonly lowerBound?: number;
+  readonly upperBound?: number;
+  readonly gap?: number;
+  readonly algorithm: SolverProofAlgorithm;
+}
+
 export interface SolverLimits {
   readonly maxElapsedMs?: number;
   readonly maxExpandedStates?: number;
@@ -106,7 +123,8 @@ export type SolverPhase =
   | "preparing"
   | "searching"
   | "improving"
-  | "verifying";
+  | "verifying"
+  | "proving";
 
 export interface SolverProgress {
   readonly phase: SolverPhase;
@@ -129,6 +147,9 @@ export interface SolverProgress {
     objectiveScore: number;
   }>;
   readonly detail?: string;
+  readonly lowerBound?: number;
+  readonly upperBound?: number;
+  readonly gap?: number;
 }
 
 export type SolverResult =
@@ -136,16 +157,19 @@ export type SolverResult =
       readonly status: "solved";
       readonly solution: SolverSolution;
       readonly metrics: SolverRunMetrics;
+      readonly proof?: SolverProof;
     }
   | {
       readonly status: "unsolved";
       readonly reason: "exhausted" | "limit-reached" | "unsupported";
       readonly metrics: SolverRunMetrics;
       readonly detail?: string;
+      readonly proof?: SolverProof;
     }
   | {
       readonly status: "cancelled";
       readonly metrics: SolverRunMetrics;
+      readonly proof?: SolverProof;
     };
 
 export interface SolverExecutionContext {
