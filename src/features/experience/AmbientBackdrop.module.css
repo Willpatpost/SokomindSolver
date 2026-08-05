@@ -1,0 +1,241 @@
+:global(#root) {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.backdrop::before {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgb(255 255 255 / 0.32), transparent 36%),
+    linear-gradient(125deg, rgb(86 110 89 / 0.035), transparent 45% 58%, rgb(203 130 48 / 0.04));
+  content: "";
+}
+
+.halo {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  opacity: 0.23;
+  will-change: transform;
+}
+
+.haloOne {
+  top: -18vmax;
+  left: -14vmax;
+  width: 48vmax;
+  height: 48vmax;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.92), rgb(255 255 255 / 0));
+  animation: halo-one 31s ease-in-out infinite alternate;
+}
+
+.haloTwo {
+  right: -17vmax;
+  bottom: -23vmax;
+  width: 53vmax;
+  height: 53vmax;
+  background: radial-gradient(circle, rgb(112 136 114 / 0.42), rgb(112 136 114 / 0));
+  animation: halo-two 38s ease-in-out infinite alternate;
+}
+
+.haloThree {
+  top: 22%;
+  right: 10%;
+  width: 24vmax;
+  height: 24vmax;
+  background: radial-gradient(circle, rgb(229 166 75 / 0.28), rgb(229 166 75 / 0));
+  animation: halo-three 27s ease-in-out infinite alternate;
+}
+
+.blueprint {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  background-image:
+    linear-gradient(rgb(63 87 68 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(63 87 68 / 0.12) 1px, transparent 1px);
+  background-position: center;
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 42%, black, transparent 72%);
+}
+
+.motes {
+  position: absolute;
+  inset: 0;
+}
+
+.motes > span {
+  position: absolute;
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  opacity: 0;
+  background: var(--paper-50);
+  transform: rotate(18deg);
+  animation: mote-float 24s linear infinite;
+  will-change: transform, opacity;
+}
+
+.motes > span[data-tone="amber"] {
+  background: var(--amber-400);
+}
+
+.motes > span[data-tone="sage"] {
+  background: var(--sage-500);
+}
+
+.motes > span[data-tone="coral"] {
+  background: var(--coral-500);
+}
+
+.motes > span:nth-child(1) {
+  left: 9%;
+  bottom: -3%;
+  animation-delay: -2s;
+  animation-duration: 25s;
+}
+
+.motes > span:nth-child(2) {
+  left: 26%;
+  bottom: -5%;
+  width: 5px;
+  height: 5px;
+  animation-delay: -14s;
+  animation-duration: 31s;
+}
+
+.motes > span:nth-child(3) {
+  left: 45%;
+  bottom: -4%;
+  width: 6px;
+  height: 6px;
+  animation-delay: -7s;
+  animation-duration: 28s;
+}
+
+.motes > span:nth-child(4) {
+  left: 63%;
+  bottom: -3%;
+  width: 7px;
+  height: 7px;
+  animation-delay: -19s;
+  animation-duration: 34s;
+}
+
+.motes > span:nth-child(5) {
+  left: 78%;
+  bottom: -5%;
+  width: 5px;
+  height: 5px;
+  animation-delay: -10s;
+  animation-duration: 27s;
+}
+
+.motes > span:nth-child(6) {
+  left: 91%;
+  bottom: -4%;
+  animation-delay: -23s;
+  animation-duration: 36s;
+}
+
+@keyframes halo-one {
+  to {
+    transform: translate3d(8vmax, 5vmax, 0) scale(1.08);
+  }
+}
+
+@keyframes halo-two {
+  to {
+    transform: translate3d(-7vmax, -4vmax, 0) scale(0.94);
+  }
+}
+
+@keyframes halo-three {
+  to {
+    transform: translate3d(-5vmax, 7vmax, 0) scale(1.12);
+  }
+}
+
+@keyframes mote-float {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  12% {
+    opacity: 0.2;
+  }
+
+  82% {
+    opacity: 0.14;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(5vw, -110vh, 0) rotate(260deg);
+  }
+}
+
+:global(html[data-motion="reduced"]) .halo,
+:global(html[data-motion="reduced"]) .motes > span {
+  animation: none;
+}
+
+:global(html[data-motion="reduced"]) .motes {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .halo,
+  :global(html:not([data-motion="full"])) .motes > span {
+    animation: none;
+  }
+
+  :global(html:not([data-motion="full"])) .motes {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .blueprint {
+    opacity: 0.08;
+    background-size: 34px 34px;
+  }
+
+  .halo {
+    opacity: 0.18;
+  }
+
+  .motes > span:nth-child(even) {
+    display: none;
+  }
+}
+
+:global(html[data-theme="dark"]) .backdrop::before {
+  background:
+    radial-gradient(circle at 50% 42%, rgb(40 42 38 / 0.32), transparent 36%),
+    linear-gradient(125deg, rgb(90 122 93 / 0.06), transparent 45% 58%, rgb(203 130 48 / 0.04));
+}
+
+:global(html[data-theme="dark"]) .halo {
+  opacity: 0.12;
+}
+
+:global(html[data-theme="dark"]) .haloOne {
+  background: radial-gradient(circle, rgb(90 122 93 / 0.4), rgb(90 122 93 / 0));
+}
+
+:global(html[data-theme="dark"]) .blueprint {
+  opacity: 0.06;
+}

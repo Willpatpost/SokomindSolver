@@ -1,0 +1,337 @@
+.controls {
+  position: relative;
+  z-index: 60;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.iconButton {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgb(23 25 22 / 0.12);
+  border-radius: 12px;
+  color: var(--ink-700);
+  background: rgb(251 250 245 / 0.72);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.iconButton:hover:not(:disabled) {
+  border-color: var(--sage-500);
+  color: var(--sage-700);
+  background: var(--paper-50);
+  transform: translateY(-1px);
+}
+
+.iconButton[aria-pressed="true"] {
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+.iconButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.iconButton svg {
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
+.iconButton svg path:first-child {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.iconButton:last-of-type svg path:first-child {
+  fill: none;
+}
+
+.iconButton svg circle {
+  fill: var(--paper-50);
+  stroke: currentColor;
+}
+
+.modal {
+  width: min(340px, calc(100vw - 24px));
+  overflow-y: auto;
+}
+
+.panel {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 22px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 20px;
+  color: var(--ink-950);
+  background: rgb(251 250 245 / 0.97);
+  box-shadow: 0 24px 70px rgb(23 25 22 / 0.22);
+  backdrop-filter: blur(22px);
+  animation: panel-in 180ms ease both;
+}
+
+.panelHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panelHeading p {
+  margin: 0 0 3px;
+  color: var(--sage-700);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.panelHeading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.closeButton {
+  padding: 6px 0;
+  border: 0;
+  color: var(--ink-700);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.supportNote,
+.autoplayNote {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.supportNote {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--paper-100);
+}
+
+.switches {
+  display: grid;
+  border-block: 1px solid var(--paper-200);
+}
+
+.setting,
+.motionSetting {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.setting + .setting {
+  border-top: 1px solid var(--paper-200);
+}
+
+.setting > span:first-child,
+.motionSetting > span {
+  display: grid;
+  gap: 2px;
+}
+
+.setting strong,
+.motionSetting strong {
+  font-size: 0.78rem;
+}
+
+.setting small,
+.motionSetting small {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.switchControl {
+  position: relative;
+  display: block;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+}
+
+.switchControl input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switchControl input:disabled {
+  cursor: not-allowed;
+}
+
+.switchTrack {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--paper-300);
+  transition: background 160ms ease;
+}
+
+.switchTrack::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--paper-50);
+  box-shadow: 0 2px 6px rgb(23 25 22 / 0.2);
+  content: "";
+  transition: transform 160ms ease;
+}
+
+.switchControl input:checked + .switchTrack {
+  background: var(--sage-700);
+}
+
+.switchControl input:checked + .switchTrack::after {
+  transform: translateX(18px);
+}
+
+.switchControl input:focus-visible + .switchTrack {
+  outline: 3px solid rgb(74 127 150 / 0.7);
+  outline-offset: 3px;
+}
+
+.switchControl input:disabled + .switchTrack {
+  opacity: 0.45;
+}
+
+.rangeSetting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 12px;
+  padding-top: 15px;
+}
+
+.rangeSetting label,
+.rangeSetting output {
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.rangeSetting output {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rangeSetting input {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--sage-700);
+  cursor: pointer;
+}
+
+.rangeSetting input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.motionSetting {
+  align-items: flex-start;
+  margin-top: 13px;
+  padding-top: 15px;
+  border-top: 1px solid var(--paper-200);
+}
+
+.motionSetting select {
+  max-width: 148px;
+  min-height: 36px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--paper-300);
+  border-radius: 9px;
+  color: var(--ink-950);
+  background: var(--paper-50);
+  font-size: 0.72rem;
+}
+
+.autoplayNote {
+  margin-top: 16px;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.985);
+  }
+}
+
+:global(html[data-motion="reduced"]) .iconButton,
+:global(html[data-motion="reduced"]) .switchTrack,
+:global(html[data-motion="reduced"]) .switchTrack::after {
+  transition: none;
+}
+
+:global(html[data-motion="reduced"]) .panel {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .iconButton,
+  :global(html:not([data-motion="full"])) .switchTrack,
+  :global(html:not([data-motion="full"])) .switchTrack::after {
+    transition: none;
+  }
+
+  :global(html:not([data-motion="full"])) .panel {
+    animation: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 88px);
+  }
+}
+
+:global(html[data-theme="dark"]) .iconButton {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.72);
+}
+
+:global(html[data-theme="dark"]) .iconButton:hover:not(:disabled) {
+  background: var(--paper-200);
+}
+
+:global(html[data-theme="dark"]) .panel {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(34 36 32 / 0.97);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.5);
+}

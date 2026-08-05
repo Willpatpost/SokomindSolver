@@ -1,0 +1,47 @@
+.notation {
+  --notation-bg: rgb(233 237 228 / 0.5);
+  --glyph-color: var(--ink-700);
+  --glyph-bg: var(--paper-50);
+
+  display: flex;
+  gap: 3px;
+  width: min(100%, 720px);
+  min-height: 28px;
+  margin-top: clamp(10px, 2vh, 16px);
+  padding: 6px 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--notation-bg);
+  scrollbar-width: none;
+}
+
+.notation::-webkit-scrollbar {
+  display: none;
+}
+
+.glyph {
+  flex: 0 0 auto;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--glyph-color);
+  background: var(--glyph-bg);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ellipsis {
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+:global(html[data-theme="dark"]) .notation {
+  --notation-bg: rgb(46 49 44 / 0.5);
+  --glyph-color: var(--ink-900);
+  --glyph-bg: rgb(52 55 50);
+}

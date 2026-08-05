@@ -1,0 +1,180 @@
+.toolbar {
+  display: grid;
+  gap: 14px;
+}
+
+.group {
+  display: grid;
+  gap: 3px;
+}
+
+.groupLabel {
+  margin: 0 0 4px;
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tool,
+.typedTool {
+  --tool-border-color: var(--paper-300);
+  --tool-color: var(--ink-700);
+  --tool-bg: var(--paper-50);
+  --tool-active-border: var(--sage-700);
+  --tool-active-color: var(--paper-50);
+  --tool-active-bg: var(--sage-700);
+
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--tool-border-color);
+  border-radius: 8px;
+  color: var(--tool-color);
+  background: var(--tool-bg);
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    border-color 100ms ease,
+    background 100ms ease;
+}
+
+.tool:hover,
+.typedTool:hover {
+  border-color: var(--sage-500);
+}
+
+.tool[data-active],
+.typedTool[data-active] {
+  border-color: var(--tool-active-border);
+  color: var(--tool-active-color);
+  background: var(--tool-active-bg);
+}
+
+.tool:focus-visible,
+.typedTool:focus-visible,
+.labelSelect select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--blue-500), transparent 30%);
+  outline-offset: 2px;
+}
+
+.typedGroup {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.typedGroup .groupLabel {
+  padding: 0;
+}
+
+.labelSelect {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.labelSelect select {
+  --select-border-color: var(--paper-300);
+  --select-color: var(--ink-800);
+  --select-bg: var(--paper-50);
+
+  min-width: 72px;
+  min-height: 36px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--select-border-color);
+  border-radius: 8px;
+  color: var(--select-color);
+  background: var(--select-bg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.typedTools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.typedTool {
+  grid-template-columns: auto 1fr;
+  width: auto;
+  min-width: 0;
+  gap: 7px;
+  padding: 0 9px;
+}
+
+.typedTool strong {
+  font-size: 0.75rem;
+}
+
+.typedTool span {
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.typedHint {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 960px) {
+  .toolbar {
+    grid-template-columns: auto auto minmax(190px, 1fr);
+    align-items: start;
+  }
+
+  .typedGroup {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .typedGroup .groupLabel,
+  .typedHint {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .typedGroup {
+    grid-column: 1 / -1;
+  }
+}
+
+:global(html[data-theme="dark"]) .tool,
+:global(html[data-theme="dark"]) .typedTool {
+  --tool-border-color: rgb(255 255 255 / 0.13);
+  --tool-color: var(--ink-700);
+  --tool-bg: rgb(34 36 32 / 0.9);
+  --tool-active-border: var(--sage-500);
+  --tool-active-color: var(--card-dark-text);
+  --tool-active-bg: #476b4b;
+}
+
+:global(html[data-theme="dark"]) .labelSelect select {
+  --select-border-color: rgb(255 255 255 / 0.13);
+  --select-color: var(--ink-700);
+  --select-bg: rgb(34 36 32 / 0.9);
+}

@@ -1,0 +1,67 @@
+.modal {
+  width: min(430px, calc(100vw - 32px));
+}
+
+.card {
+  padding: 30px;
+  border: 1px solid rgb(255 255 255 / 0.55);
+  border-radius: var(--radius-lg);
+  background: var(--paper-50);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 0.25);
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--sage-700);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.card h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+
+.message {
+  margin: 15px 0 24px;
+  color: var(--ink-700);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+}
+
+.actions button {
+  min-height: 46px;
+  border: 1px solid var(--paper-300);
+  border-radius: 12px;
+  background: var(--paper-50);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.actions button:last-child {
+  border-color: var(--ink-950);
+  color: var(--paper-50);
+  background: var(--ink-950);
+}
+
+.actions button[data-destructive] {
+  border-color: var(--coral-500);
+  background: var(--coral-500);
+}
+
+:global(html[data-theme="dark"]) .card {
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 0.5);
+}

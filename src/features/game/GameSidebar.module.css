@@ -1,0 +1,204 @@
+.rightRail {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.scoreCard {
+  --scorecard-border-color: rgb(23 25 22 / 0.08);
+  --scorecard-bg: rgb(251 250 245 / 0.6);
+  --stat-border-color: rgb(23 25 22 / 0.06);
+  --stat-bg: rgb(255 255 255 / 0.5);
+
+  display: grid;
+  gap: 16px;
+  padding: 22px 20px;
+  border: 1px solid var(--scorecard-border-color);
+  border-radius: var(--radius-xl);
+  background: var(--scorecard-bg);
+  backdrop-filter: blur(10px);
+}
+
+.scoreHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scoreHeading p {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scoreHeading span {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.timer {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--stat-border-color);
+  border-radius: 13px;
+  background: var(--stat-bg);
+}
+
+.stat strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.stat span {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.delta {
+  font-size: 0.62rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta[data-pace="ahead"] {
+  color: var(--sage-600);
+}
+
+.delta[data-pace="behind"] {
+  color: var(--coral-500);
+}
+
+.best {
+  display: grid;
+  gap: 4px;
+}
+
+.best span {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.best strong {
+  color: var(--ink-700);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.optimalBadge {
+  padding: 5px 10px;
+  border: 1px solid var(--amber-400);
+  border-radius: 8px;
+  color: var(--amber-600);
+  background: rgb(251 208 86 / 0.12);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.legend {
+  --legend-border-color: rgb(23 25 22 / 0.06);
+  --legend-bg: rgb(251 250 245 / 0.4);
+
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--legend-border-color);
+  border-radius: var(--radius-xl);
+  background: var(--legend-bg);
+}
+
+.legend h2 {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legendItems {
+  display: grid;
+  gap: 10px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+}
+
+.legendMark {
+  --legend-mark-border-color: rgb(23 25 22 / 0.08);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--legend-mark-border-color);
+  border-radius: 7px;
+  background: var(--amber-400);
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.legendMark[data-type="goal"] {
+  border: 2px dashed var(--sage-500);
+  background: transparent;
+  color: var(--sage-700);
+  font-size: 0.7rem;
+}
+
+.legendMark[data-type="keeper"] {
+  background: var(--ink-950);
+  color: var(--paper-50);
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+}
+
+:global(html[data-theme="dark"]) .scoreCard {
+  --scorecard-border-color: rgb(255 255 255 / 0.06);
+  --scorecard-bg: rgb(34 36 32 / 0.6);
+  --stat-border-color: rgb(255 255 255 / 0.06);
+  --stat-bg: rgb(40 42 38 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .legend {
+  --legend-border-color: rgb(255 255 255 / 0.04);
+  --legend-bg: rgb(34 36 32 / 0.4);
+}
+
+:global(html[data-theme="dark"]) .legendMark {
+  --legend-mark-border-color: rgb(255 255 255 / 0.08);
+}

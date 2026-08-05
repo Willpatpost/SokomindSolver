@@ -1,0 +1,3023 @@
+{
+  "schemaVersion": 1,
+  "captureDate": "2026-08-05T00:03:59.064Z",
+  "nodeVersion": "v22.16.0",
+  "platform": "linux",
+  "arch": "x64",
+  "cpuInfo": "AMD EPYC 7B13",
+  "totalMemoryBytes": 33379131392,
+  "hostname": "waterfield-login-1",
+  "solverVersions": {
+    "sokomind-solver": "1.1.0",
+    "classic-astar": "1.0.0",
+    "classic-ida-star": "1.0.0"
+  },
+  "fixtures": [
+    {
+      "fixtureId": "ultra-tiny",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 18,
+      "expandedStates": 1,
+      "generatedStates": 1,
+      "peakFrontierSize": 1,
+      "optimality": "unknown",
+      "moves": 1,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "ultra-tiny",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 6,
+      "expandedStates": 1,
+      "generatedStates": 4,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 3,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 3,
+        "heuristicCalls": 2,
+        "heuristicCacheHits": 0,
+        "frontierSize": 0,
+        "maxDepth": 1,
+        "estimatedMemoryBytes": 3578
+      },
+      "optimality": "proven",
+      "moves": 1,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "ultra-tiny",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 6,
+      "expandedStates": 1,
+      "generatedStates": 2,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 1,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1,
+        "identityFloods": 0,
+        "heuristicCalls": 3,
+        "heuristicCacheHits": 1,
+        "frontierSize": 0,
+        "maxDepth": 0,
+        "estimatedMemoryBytes": 7922,
+        "currentEstimatedMemoryBytes": 7922,
+        "peakEstimatedMemoryBytes": 7922,
+        "memoryStaticBytes": 4917,
+        "memoryTranspositionBytes": 540,
+        "memoryHeuristicCacheBytes": 368,
+        "memoryDfsStackBytes": 1340,
+        "memoryReachabilitySnapshotBytes": 757,
+        "idaStarIterations": 1
+      },
+      "optimality": "proven",
+      "moves": 1,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tiny",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 106,
+      "expandedStates": 6,
+      "generatedStates": 9,
+      "peakFrontierSize": 2,
+      "optimality": "unknown",
+      "moves": 22,
+      "pushes": 5
+    },
+    {
+      "fixtureId": "tiny",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 17,
+      "expandedStates": 10,
+      "generatedStates": 22,
+      "peakFrontierSize": 4,
+      "counters": {
+        "uniqueStates": 12,
+        "retainedStates": 12,
+        "duplicateStates": 4,
+        "deadlockPrunes": 7,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 26,
+        "heuristicCalls": 12,
+        "heuristicCacheHits": 3,
+        "frontierSize": 1,
+        "maxDepth": 6,
+        "estimatedMemoryBytes": 13260
+      },
+      "optimality": "proven",
+      "moves": 20,
+      "pushes": 5
+    },
+    {
+      "fixtureId": "tiny",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 86,
+      "expandedStates": 64,
+      "generatedStates": 137,
+      "peakFrontierSize": 7,
+      "counters": {
+        "uniqueStates": 10,
+        "retainedStates": 10,
+        "duplicateStates": 2,
+        "deadlockPrunes": 43,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 64,
+        "identityFloods": 0,
+        "heuristicCalls": 104,
+        "heuristicCacheHits": 95,
+        "frontierSize": 0,
+        "maxDepth": 6,
+        "estimatedMemoryBytes": 21298,
+        "currentEstimatedMemoryBytes": 21298,
+        "peakEstimatedMemoryBytes": 21298,
+        "memoryStaticBytes": 5670,
+        "memoryTranspositionBytes": 1812,
+        "memoryHeuristicCacheBytes": 1872,
+        "memoryDfsStackBytes": 6190,
+        "memoryReachabilitySnapshotBytes": 5754,
+        "idaStarIterations": 9
+      },
+      "optimality": "proven",
+      "moves": 20,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "tutorial-push",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 21,
+      "expandedStates": 1,
+      "generatedStates": 1,
+      "peakFrontierSize": 1,
+      "optimality": "unknown",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-push",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 7,
+      "expandedStates": 1,
+      "generatedStates": 2,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 1,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 3,
+        "heuristicCalls": 2,
+        "heuristicCacheHits": 0,
+        "frontierSize": 0,
+        "maxDepth": 1,
+        "estimatedMemoryBytes": 3580
+      },
+      "optimality": "proven",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-push",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 8,
+      "expandedStates": 2,
+      "generatedStates": 4,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 2,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2,
+        "identityFloods": 0,
+        "heuristicCalls": 5,
+        "heuristicCacheHits": 3,
+        "frontierSize": 0,
+        "maxDepth": 0,
+        "estimatedMemoryBytes": 7922,
+        "currentEstimatedMemoryBytes": 7922,
+        "peakEstimatedMemoryBytes": 7922,
+        "memoryStaticBytes": 4917,
+        "memoryTranspositionBytes": 540,
+        "memoryHeuristicCacheBytes": 368,
+        "memoryDfsStackBytes": 1340,
+        "memoryReachabilitySnapshotBytes": 757,
+        "idaStarIterations": 2
+      },
+      "optimality": "proven",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-corner",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 92,
+      "expandedStates": 1,
+      "generatedStates": 1,
+      "peakFrontierSize": 1,
+      "optimality": "unknown",
+      "moves": 3,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-corner",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 7,
+      "expandedStates": 1,
+      "generatedStates": 4,
+      "peakFrontierSize": 2,
+      "counters": {
+        "uniqueStates": 3,
+        "retainedStates": 3,
+        "duplicateStates": 0,
+        "deadlockPrunes": 2,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 4,
+        "heuristicCalls": 3,
+        "heuristicCacheHits": 0,
+        "frontierSize": 1,
+        "maxDepth": 1,
+        "estimatedMemoryBytes": 5116
+      },
+      "optimality": "proven",
+      "moves": 3,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-corner",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 89,
+      "expandedStates": 2,
+      "generatedStates": 6,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 3,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2,
+        "identityFloods": 0,
+        "heuristicCalls": 6,
+        "heuristicCacheHits": 3,
+        "frontierSize": 0,
+        "maxDepth": 0,
+        "estimatedMemoryBytes": 8868,
+        "currentEstimatedMemoryBytes": 8868,
+        "peakEstimatedMemoryBytes": 8868,
+        "memoryStaticBytes": 5584,
+        "memoryTranspositionBytes": 542,
+        "memoryHeuristicCacheBytes": 552,
+        "memoryDfsStackBytes": 1342,
+        "memoryReachabilitySnapshotBytes": 848,
+        "idaStarIterations": 2
+      },
+      "optimality": "proven",
+      "moves": 3,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-around",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 27,
+      "expandedStates": 1,
+      "generatedStates": 1,
+      "peakFrontierSize": 1,
+      "optimality": "unknown",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-around",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 84,
+      "expandedStates": 1,
+      "generatedStates": 2,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 1,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 3,
+        "heuristicCalls": 2,
+        "heuristicCacheHits": 0,
+        "frontierSize": 0,
+        "maxDepth": 1,
+        "estimatedMemoryBytes": 3866
+      },
+      "optimality": "proven",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "tutorial-around",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 8,
+      "expandedStates": 1,
+      "generatedStates": 2,
+      "peakFrontierSize": 1,
+      "counters": {
+        "uniqueStates": 2,
+        "retainedStates": 2,
+        "duplicateStates": 0,
+        "deadlockPrunes": 1,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1,
+        "identityFloods": 0,
+        "heuristicCalls": 3,
+        "heuristicCacheHits": 1,
+        "frontierSize": 0,
+        "maxDepth": 0,
+        "estimatedMemoryBytes": 8272,
+        "currentEstimatedMemoryBytes": 8272,
+        "peakEstimatedMemoryBytes": 8272,
+        "memoryStaticBytes": 5224,
+        "memoryTranspositionBytes": 542,
+        "memoryHeuristicCacheBytes": 368,
+        "memoryDfsStackBytes": 1342,
+        "memoryReachabilitySnapshotBytes": 796,
+        "idaStarIterations": 1
+      },
+      "optimality": "proven",
+      "moves": 4,
+      "pushes": 1
+    },
+    {
+      "fixtureId": "beginner-three",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 113,
+      "expandedStates": 6,
+      "generatedStates": 19,
+      "peakFrontierSize": 12,
+      "optimality": "unknown",
+      "moves": 7,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "beginner-three",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 9,
+      "expandedStates": 8,
+      "generatedStates": 60,
+      "peakFrontierSize": 20,
+      "counters": {
+        "uniqueStates": 28,
+        "retainedStates": 28,
+        "duplicateStates": 3,
+        "deadlockPrunes": 30,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 39,
+        "heuristicCalls": 28,
+        "heuristicCacheHits": 16,
+        "frontierSize": 19,
+        "maxDepth": 3,
+        "estimatedMemoryBytes": 30178
+      },
+      "optimality": "proven",
+      "moves": 7,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "beginner-three",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 78,
+      "expandedStates": 19,
+      "generatedStates": 126,
+      "peakFrontierSize": 3,
+      "counters": {
+        "uniqueStates": 4,
+        "retainedStates": 4,
+        "duplicateStates": 0,
+        "deadlockPrunes": 63,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 19,
+        "identityFloods": 0,
+        "heuristicCalls": 69,
+        "heuristicCacheHits": 57,
+        "frontierSize": 0,
+        "maxDepth": 2,
+        "estimatedMemoryBytes": 16640,
+        "currentEstimatedMemoryBytes": 16640,
+        "peakEstimatedMemoryBytes": 16640,
+        "memoryStaticBytes": 6790,
+        "memoryTranspositionBytes": 868,
+        "memoryHeuristicCacheBytes": 2784,
+        "memoryDfsStackBytes": 3420,
+        "memoryReachabilitySnapshotBytes": 2778,
+        "idaStarIterations": 5
+      },
+      "optimality": "proven",
+      "moves": 7,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "beginner-detour",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 216,
+      "expandedStates": 56,
+      "generatedStates": 151,
+      "peakFrontierSize": 28,
+      "optimality": "unknown",
+      "moves": 29,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "beginner-detour",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 18,
+      "expandedStates": 74,
+      "generatedStates": 265,
+      "peakFrontierSize": 61,
+      "counters": {
+        "uniqueStates": 118,
+        "retainedStates": 133,
+        "duplicateStates": 73,
+        "deadlockPrunes": 58,
+        "infeasiblePrunes": 2,
+        "reopens": 0,
+        "reachabilityFloods": 282,
+        "heuristicCalls": 135,
+        "heuristicCacheHits": 82,
+        "frontierSize": 56,
+        "maxDepth": 10,
+        "estimatedMemoryBytes": 114892
+      },
+      "optimality": "proven",
+      "moves": 24,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "beginner-detour",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 102,
+      "expandedStates": 239,
+      "generatedStates": 942,
+      "peakFrontierSize": 10,
+      "counters": {
+        "uniqueStates": 23,
+        "retainedStates": 23,
+        "duplicateStates": 29,
+        "deadlockPrunes": 239,
+        "infeasiblePrunes": 8,
+        "reopens": 0,
+        "reachabilityFloods": 239,
+        "identityFloods": 0,
+        "heuristicCalls": 714,
+        "heuristicCacheHits": 658,
+        "frontierSize": 0,
+        "maxDepth": 9,
+        "estimatedMemoryBytes": 39317,
+        "currentEstimatedMemoryBytes": 39317,
+        "peakEstimatedMemoryBytes": 39502,
+        "memoryStaticBytes": 6369,
+        "memoryTranspositionBytes": 3730,
+        "memoryHeuristicCacheBytes": 11648,
+        "memoryDfsStackBytes": 8440,
+        "memoryReachabilitySnapshotBytes": 9130,
+        "idaStarIterations": 10
+      },
+      "optimality": "proven",
+      "moves": 24,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "beginner-typed-line",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 5994,
+      "expandedStates": 2588,
+      "generatedStates": 15122,
+      "peakFrontierSize": 1851,
+      "optimality": "unknown",
+      "moves": 47,
+      "pushes": 15
+    },
+    {
+      "fixtureId": "beginner-typed-line",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 731,
+      "expandedStates": 1588,
+      "generatedStates": 13447,
+      "peakFrontierSize": 3721,
+      "counters": {
+        "uniqueStates": 4550,
+        "retainedStates": 5378,
+        "duplicateStates": 4427,
+        "deadlockPrunes": 3643,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 11393,
+        "heuristicCalls": 5378,
+        "heuristicCacheHits": 3723,
+        "frontierSize": 3720,
+        "maxDepth": 15,
+        "estimatedMemoryBytes": 4953276
+      },
+      "optimality": "proven",
+      "moves": 27,
+      "pushes": 15
+    },
+    {
+      "fixtureId": "beginner-typed-line",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 2094,
+      "expandedStates": 6400,
+      "generatedStates": 56084,
+      "peakFrontierSize": 15,
+      "counters": {
+        "uniqueStates": 1667,
+        "retainedStates": 1667,
+        "duplicateStates": 1620,
+        "deadlockPrunes": 16114,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 6400,
+        "identityFloods": 0,
+        "heuristicCalls": 39983,
+        "heuristicCacheHits": 38123,
+        "frontierSize": 0,
+        "maxDepth": 14,
+        "estimatedMemoryBytes": 752622,
+        "currentEstimatedMemoryBytes": 752622,
+        "peakEstimatedMemoryBytes": 752622,
+        "memoryStaticBytes": 7396,
+        "memoryTranspositionBytes": 284626,
+        "memoryHeuristicCacheBytes": 431520,
+        "memoryDfsStackBytes": 14020,
+        "memoryReachabilitySnapshotBytes": 15060,
+        "idaStarIterations": 12
+      },
+      "optimality": "proven",
+      "moves": 27,
+      "pushes": 15
+    },
+    {
+      "fixtureId": "garden-1",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1685,
+      "expandedStates": 207,
+      "generatedStates": 1352,
+      "peakFrontierSize": 696,
+      "optimality": "unknown",
+      "moves": 16,
+      "pushes": 6
+    },
+    {
+      "fixtureId": "garden-1",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 295,
+      "expandedStates": 201,
+      "generatedStates": 1986,
+      "peakFrontierSize": 521,
+      "counters": {
+        "uniqueStates": 636,
+        "retainedStates": 724,
+        "duplicateStates": 615,
+        "deadlockPrunes": 648,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1540,
+        "heuristicCalls": 724,
+        "heuristicCacheHits": 410,
+        "frontierSize": 520,
+        "maxDepth": 6,
+        "estimatedMemoryBytes": 694644
+      },
+      "optimality": "proven",
+      "moves": 16,
+      "pushes": 6
+    },
+    {
+      "fixtureId": "garden-1",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 591,
+      "expandedStates": 493,
+      "generatedStates": 4992,
+      "peakFrontierSize": 7,
+      "counters": {
+        "uniqueStates": 12,
+        "retainedStates": 12,
+        "duplicateStates": 56,
+        "deadlockPrunes": 1667,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 493,
+        "identityFloods": 0,
+        "heuristicCalls": 3336,
+        "heuristicCacheHits": 3029,
+        "frontierSize": 0,
+        "maxDepth": 6,
+        "estimatedMemoryBytes": 93114,
+        "currentEstimatedMemoryBytes": 93114,
+        "peakEstimatedMemoryBytes": 118550,
+        "memoryStaticBytes": 7396,
+        "memoryTranspositionBytes": 2336,
+        "memoryHeuristicCacheBytes": 71224,
+        "memoryDfsStackBytes": 6134,
+        "memoryReachabilitySnapshotBytes": 6024,
+        "idaStarIterations": 10
+      },
+      "optimality": "proven",
+      "moves": 16,
+      "pushes": 6
+    },
+    {
+      "fixtureId": "box-5x5-a",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 182,
+      "expandedStates": 4,
+      "generatedStates": 5,
+      "peakFrontierSize": 2,
+      "optimality": "unknown",
+      "moves": 6,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "box-5x5-a",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 88,
+      "expandedStates": 3,
+      "generatedStates": 10,
+      "peakFrontierSize": 3,
+      "counters": {
+        "uniqueStates": 6,
+        "retainedStates": 6,
+        "duplicateStates": 0,
+        "deadlockPrunes": 4,
+        "infeasiblePrunes": 1,
+        "reopens": 0,
+        "reachabilityFloods": 10,
+        "heuristicCalls": 7,
+        "heuristicCacheHits": 0,
+        "frontierSize": 2,
+        "maxDepth": 3,
+        "estimatedMemoryBytes": 7948
+      },
+      "optimality": "proven",
+      "moves": 6,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "box-5x5-a",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 10,
+      "expandedStates": 7,
+      "generatedStates": 19,
+      "peakFrontierSize": 3,
+      "counters": {
+        "uniqueStates": 4,
+        "retainedStates": 4,
+        "duplicateStates": 0,
+        "deadlockPrunes": 7,
+        "infeasiblePrunes": 2,
+        "reopens": 0,
+        "reachabilityFloods": 7,
+        "identityFloods": 0,
+        "heuristicCalls": 16,
+        "heuristicCacheHits": 9,
+        "frontierSize": 0,
+        "maxDepth": 2,
+        "estimatedMemoryBytes": 12776,
+        "currentEstimatedMemoryBytes": 12776,
+        "peakEstimatedMemoryBytes": 12776,
+        "memoryStaticBytes": 5161,
+        "memoryTranspositionBytes": 840,
+        "memoryHeuristicCacheBytes": 1456,
+        "memoryDfsStackBytes": 3048,
+        "memoryReachabilitySnapshotBytes": 2271,
+        "idaStarIterations": 3
+      },
+      "optimality": "proven",
+      "moves": 6,
+      "pushes": 3
+    },
+    {
+      "fixtureId": "medium",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 9414,
+      "expandedStates": 794,
+      "generatedStates": 4840,
+      "peakFrontierSize": 579,
+      "optimality": "unknown",
+      "moves": 64,
+      "pushes": 18
+    },
+    {
+      "fixtureId": "medium",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 4710,
+      "expandedStates": 11085,
+      "generatedStates": 82942,
+      "peakFrontierSize": 12066,
+      "counters": {
+        "uniqueStates": 19033,
+        "retainedStates": 25384,
+        "duplicateStates": 21719,
+        "deadlockPrunes": 34456,
+        "infeasiblePrunes": 1384,
+        "reopens": 0,
+        "reachabilityFloods": 59572,
+        "heuristicCalls": 26768,
+        "heuristicCacheHits": 19070,
+        "frontierSize": 11975,
+        "maxDepth": 20,
+        "estimatedMemoryBytes": 33869204
+      },
+      "optimality": "proven",
+      "moves": 34,
+      "pushes": 18
+    },
+    {
+      "fixtureId": "medium",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 16620,
+      "expandedStates": 74518,
+      "generatedStates": 583405,
+      "peakFrontierSize": 21,
+      "counters": {
+        "uniqueStates": 4413,
+        "retainedStates": 4413,
+        "duplicateStates": 34229,
+        "deadlockPrunes": 244410,
+        "infeasiblePrunes": 9064,
+        "reopens": 0,
+        "reachabilityFloods": 74518,
+        "identityFloods": 0,
+        "heuristicCalls": 339013,
+        "heuristicCacheHits": 331259,
+        "frontierSize": 0,
+        "maxDepth": 20,
+        "estimatedMemoryBytes": 3724363,
+        "currentEstimatedMemoryBytes": 3724363,
+        "peakEstimatedMemoryBytes": 4887022,
+        "memoryStaticBytes": 9265,
+        "memoryTranspositionBytes": 942538,
+        "memoryHeuristicCacheBytes": 2729408,
+        "memoryDfsStackBytes": 25782,
+        "memoryReachabilitySnapshotBytes": 17370,
+        "idaStarIterations": 17
+      },
+      "optimality": "proven",
+      "moves": 34,
+      "pushes": 18
+    },
+    {
+      "fixtureId": "inter-rooms",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1517,
+      "expandedStates": 368,
+      "generatedStates": 1260,
+      "peakFrontierSize": 485,
+      "optimality": "unknown",
+      "moves": 29,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "inter-rooms",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 202,
+      "expandedStates": 359,
+      "generatedStates": 1672,
+      "peakFrontierSize": 465,
+      "counters": {
+        "uniqueStates": 760,
+        "retainedStates": 840,
+        "duplicateStates": 471,
+        "deadlockPrunes": 362,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1670,
+        "heuristicCalls": 840,
+        "heuristicCacheHits": 465,
+        "frontierSize": 463,
+        "maxDepth": 11,
+        "estimatedMemoryBytes": 878578
+      },
+      "optimality": "proven",
+      "moves": 28,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "inter-rooms",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 521,
+      "expandedStates": 2890,
+      "generatedStates": 13484,
+      "peakFrontierSize": 12,
+      "counters": {
+        "uniqueStates": 373,
+        "retainedStates": 373,
+        "duplicateStates": 650,
+        "deadlockPrunes": 2439,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2890,
+        "identityFloods": 0,
+        "heuristicCalls": 11068,
+        "heuristicCacheHits": 10686,
+        "frontierSize": 0,
+        "maxDepth": 11,
+        "estimatedMemoryBytes": 181720,
+        "currentEstimatedMemoryBytes": 181720,
+        "peakEstimatedMemoryBytes": 183022,
+        "memoryStaticBytes": 8030,
+        "memoryTranspositionBytes": 61060,
+        "memoryHeuristicCacheBytes": 97792,
+        "memoryDfsStackBytes": 7628,
+        "memoryReachabilitySnapshotBytes": 7210,
+        "idaStarIterations": 22
+      },
+      "optimality": "proven",
+      "moves": 28,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "corridor-2",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 11099,
+      "expandedStates": 592,
+      "generatedStates": 10595,
+      "peakFrontierSize": 4386,
+      "optimality": "unknown",
+      "moves": 63,
+      "pushes": 23
+    },
+    {
+      "fixtureId": "corridor-2",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1899,
+      "expandedStates": 13660,
+      "generatedStates": 120840,
+      "peakFrontierSize": 10959,
+      "counters": {
+        "uniqueStates": 18717,
+        "retainedStates": 26625,
+        "duplicateStates": 68580,
+        "deadlockPrunes": 25636,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 108865,
+        "heuristicCalls": 26625,
+        "heuristicCacheHits": 23204,
+        "frontierSize": 9530,
+        "maxDepth": 18,
+        "estimatedMemoryBytes": 22538996
+      },
+      "optimality": "proven",
+      "moves": 41,
+      "pushes": 17
+    },
+    {
+      "fixtureId": "corridor-2",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 11025,
+      "expandedStates": 131383,
+      "generatedStates": 1187157,
+      "peakFrontierSize": 18,
+      "counters": {
+        "uniqueStates": 1112,
+        "retainedStates": 1112,
+        "duplicateStates": 164684,
+        "deadlockPrunes": 246835,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 131383,
+        "identityFloods": 0,
+        "heuristicCalls": 940346,
+        "heuristicCacheHits": 936939,
+        "frontierSize": 0,
+        "maxDepth": 17,
+        "estimatedMemoryBytes": 1012804,
+        "currentEstimatedMemoryBytes": 1012804,
+        "peakEstimatedMemoryBytes": 2932848,
+        "memoryStaticBytes": 9710,
+        "memoryTranspositionBytes": 175236,
+        "memoryHeuristicCacheBytes": 790424,
+        "memoryDfsStackBytes": 15504,
+        "memoryReachabilitySnapshotBytes": 21930,
+        "idaStarIterations": 23
+      },
+      "optimality": "proven",
+      "moves": 41,
+      "pushes": 17
+    },
+    {
+      "fixtureId": "garden-2",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 301,
+      "expandedStates": 3,
+      "generatedStates": 44,
+      "peakFrontierSize": 26,
+      "optimality": "unknown",
+      "moves": 77,
+      "pushes": 16
+    },
+    {
+      "fixtureId": "garden-2",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 209,
+      "expandedStates": 596,
+      "generatedStates": 2442,
+      "peakFrontierSize": 242,
+      "counters": {
+        "uniqueStates": 619,
+        "retainedStates": 741,
+        "duplicateStates": 1394,
+        "deadlockPrunes": 308,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2731,
+        "heuristicCalls": 741,
+        "heuristicCacheHits": 536,
+        "frontierSize": 26,
+        "maxDepth": 15,
+        "estimatedMemoryBytes": 589882
+      },
+      "optimality": "proven",
+      "moves": 73,
+      "pushes": 14
+    },
+    {
+      "fixtureId": "garden-2",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1331,
+      "expandedStates": 22843,
+      "generatedStates": 92305,
+      "peakFrontierSize": 19,
+      "counters": {
+        "uniqueStates": 372,
+        "retainedStates": 372,
+        "duplicateStates": 14586,
+        "deadlockPrunes": 11445,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 22843,
+        "identityFloods": 0,
+        "heuristicCalls": 80905,
+        "heuristicCacheHits": 80700,
+        "frontierSize": 0,
+        "maxDepth": 18,
+        "estimatedMemoryBytes": 140298,
+        "currentEstimatedMemoryBytes": 140298,
+        "peakEstimatedMemoryBytes": 179114,
+        "memoryStaticBytes": 8898,
+        "memoryTranspositionBytes": 59774,
+        "memoryHeuristicCacheBytes": 42640,
+        "memoryDfsStackBytes": 11654,
+        "memoryReachabilitySnapshotBytes": 17332,
+        "idaStarIterations": 44
+      },
+      "optimality": "proven",
+      "moves": 73,
+      "pushes": 14
+    },
+    {
+      "fixtureId": "workshop-1",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1409,
+      "expandedStates": 614,
+      "generatedStates": 3333,
+      "peakFrontierSize": 796,
+      "optimality": "unknown",
+      "moves": 27,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "workshop-1",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 477,
+      "expandedStates": 756,
+      "generatedStates": 5056,
+      "peakFrontierSize": 1362,
+      "counters": {
+        "uniqueStates": 1887,
+        "retainedStates": 2172,
+        "duplicateStates": 2073,
+        "deadlockPrunes": 735,
+        "infeasiblePrunes": 77,
+        "reopens": 0,
+        "reachabilityFloods": 5078,
+        "heuristicCalls": 2249,
+        "heuristicCacheHits": 1653,
+        "frontierSize": 1360,
+        "maxDepth": 11,
+        "estimatedMemoryBytes": 1982864
+      },
+      "optimality": "proven",
+      "moves": 23,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "workshop-1",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 563,
+      "expandedStates": 2819,
+      "generatedStates": 18988,
+      "peakFrontierSize": 12,
+      "counters": {
+        "uniqueStates": 38,
+        "retainedStates": 38,
+        "duplicateStates": 863,
+        "deadlockPrunes": 2570,
+        "infeasiblePrunes": 241,
+        "reopens": 0,
+        "reachabilityFloods": 2819,
+        "identityFloods": 0,
+        "heuristicCalls": 16432,
+        "heuristicCacheHits": 15844,
+        "frontierSize": 0,
+        "maxDepth": 11,
+        "estimatedMemoryBytes": 169538,
+        "currentEstimatedMemoryBytes": 169538,
+        "peakEstimatedMemoryBytes": 262394,
+        "memoryStaticBytes": 7404,
+        "memoryTranspositionBytes": 6208,
+        "memoryHeuristicCacheBytes": 136416,
+        "memoryDfsStackBytes": 9470,
+        "memoryReachabilitySnapshotBytes": 10040,
+        "idaStarIterations": 13
+      },
+      "optimality": "proven",
+      "moves": 23,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "classic-1",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 622,
+      "expandedStates": 285,
+      "generatedStates": 1133,
+      "peakFrontierSize": 196,
+      "optimality": "unknown",
+      "moves": 47,
+      "pushes": 13
+    },
+    {
+      "fixtureId": "classic-1",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 310,
+      "expandedStates": 788,
+      "generatedStates": 4663,
+      "peakFrontierSize": 408,
+      "counters": {
+        "uniqueStates": 986,
+        "retainedStates": 1220,
+        "duplicateStates": 2398,
+        "deadlockPrunes": 1046,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 4406,
+        "heuristicCalls": 1220,
+        "heuristicCacheHits": 948,
+        "frontierSize": 317,
+        "maxDepth": 14,
+        "estimatedMemoryBytes": 1068682
+      },
+      "optimality": "proven",
+      "moves": 40,
+      "pushes": 13
+    },
+    {
+      "fixtureId": "classic-1",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 880,
+      "expandedStates": 10779,
+      "generatedStates": 64364,
+      "peakFrontierSize": 15,
+      "counters": {
+        "uniqueStates": 773,
+        "retainedStates": 773,
+        "duplicateStates": 7258,
+        "deadlockPrunes": 16139,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 10779,
+        "identityFloods": 0,
+        "heuristicCalls": 48251,
+        "heuristicCacheHits": 47977,
+        "frontierSize": 0,
+        "maxDepth": 14,
+        "estimatedMemoryBytes": 220658,
+        "currentEstimatedMemoryBytes": 220658,
+        "peakEstimatedMemoryBytes": 220658,
+        "memoryStaticBytes": 7210,
+        "memoryTranspositionBytes": 121428,
+        "memoryHeuristicCacheBytes": 63568,
+        "memoryDfsStackBytes": 13782,
+        "memoryReachabilitySnapshotBytes": 14670,
+        "idaStarIterations": 25
+      },
+      "optimality": "proven",
+      "moves": 40,
+      "pushes": 15
+    },
+    {
+      "fixtureId": "theme-kitchen",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 1086,
+      "expandedStates": 396,
+      "generatedStates": 1827,
+      "peakFrontierSize": 282,
+      "optimality": "unknown",
+      "moves": 42,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "theme-kitchen",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 401,
+      "expandedStates": 904,
+      "generatedStates": 6775,
+      "peakFrontierSize": 1031,
+      "counters": {
+        "uniqueStates": 1628,
+        "retainedStates": 2005,
+        "duplicateStates": 2701,
+        "deadlockPrunes": 2070,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 5610,
+        "heuristicCalls": 2005,
+        "heuristicCacheHits": 1596,
+        "frontierSize": 1028,
+        "maxDepth": 13,
+        "estimatedMemoryBytes": 1774796
+      },
+      "optimality": "proven",
+      "moves": 34,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "theme-kitchen",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 985,
+      "expandedStates": 5840,
+      "generatedStates": 45443,
+      "peakFrontierSize": 13,
+      "counters": {
+        "uniqueStates": 530,
+        "retainedStates": 530,
+        "duplicateStates": 2136,
+        "deadlockPrunes": 13706,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 5840,
+        "identityFloods": 0,
+        "heuristicCalls": 31757,
+        "heuristicCacheHits": 31349,
+        "frontierSize": 0,
+        "maxDepth": 12,
+        "estimatedMemoryBytes": 211080,
+        "currentEstimatedMemoryBytes": 211080,
+        "peakEstimatedMemoryBytes": 253268,
+        "memoryStaticBytes": 8244,
+        "memoryTranspositionBytes": 83676,
+        "memoryHeuristicCacheBytes": 94656,
+        "memoryDfsStackBytes": 11208,
+        "memoryReachabilitySnapshotBytes": 13296,
+        "idaStarIterations": 19
+      },
+      "optimality": "proven",
+      "moves": 34,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "large",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 8790,
+      "expandedStates": 880,
+      "generatedStates": 7888,
+      "peakFrontierSize": 2601,
+      "optimality": "unknown",
+      "moves": 160,
+      "pushes": 44
+    },
+    {
+      "fixtureId": "large",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60078,
+      "expandedStates": 263691,
+      "generatedStates": 1638986,
+      "peakFrontierSize": 184872,
+      "counters": {
+        "uniqueStates": 392921,
+        "retainedStates": 507507,
+        "duplicateStates": 546636,
+        "deadlockPrunes": 584844,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1317834,
+        "heuristicCalls": 507507,
+        "heuristicCacheHits": 308469,
+        "frontierSize": 184829,
+        "maxDepth": 28,
+        "estimatedMemoryBytes": 555032632
+      }
+    },
+    {
+      "fixtureId": "large",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60001,
+      "expandedStates": 487389,
+      "generatedStates": 3158995,
+      "peakFrontierSize": 22,
+      "counters": {
+        "uniqueStates": 7639,
+        "retainedStates": 7639,
+        "duplicateStates": 318210,
+        "deadlockPrunes": 1303906,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 487389,
+        "identityFloods": 0,
+        "heuristicCalls": 1855127,
+        "heuristicCacheHits": 1835277,
+        "frontierSize": 0,
+        "maxDepth": 21,
+        "estimatedMemoryBytes": 7529476,
+        "currentEstimatedMemoryBytes": 7529476,
+        "peakEstimatedMemoryBytes": 12019332,
+        "memoryStaticBytes": 9700,
+        "memoryTranspositionBytes": 1447976,
+        "memoryHeuristicCacheBytes": 6034400,
+        "memoryDfsStackBytes": 19672,
+        "memoryReachabilitySnapshotBytes": 17728,
+        "idaStarIterations": 38
+      }
+    },
+    {
+      "fixtureId": "adv-rotary",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 413,
+      "expandedStates": 15,
+      "generatedStates": 41,
+      "peakFrontierSize": 22,
+      "optimality": "unknown",
+      "moves": 19,
+      "pushes": 4
+    },
+    {
+      "fixtureId": "adv-rotary",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 17,
+      "expandedStates": 16,
+      "generatedStates": 79,
+      "peakFrontierSize": 30,
+      "counters": {
+        "uniqueStates": 46,
+        "retainedStates": 46,
+        "duplicateStates": 7,
+        "deadlockPrunes": 27,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 69,
+        "heuristicCalls": 46,
+        "heuristicCacheHits": 16,
+        "frontierSize": 29,
+        "maxDepth": 4,
+        "estimatedMemoryBytes": 45628
+      },
+      "optimality": "proven",
+      "moves": 17,
+      "pushes": 4
+    },
+    {
+      "fixtureId": "adv-rotary",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 21,
+      "expandedStates": 42,
+      "generatedStates": 232,
+      "peakFrontierSize": 4,
+      "counters": {
+        "uniqueStates": 6,
+        "retainedStates": 6,
+        "duplicateStates": 0,
+        "deadlockPrunes": 82,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 42,
+        "identityFloods": 0,
+        "heuristicCalls": 159,
+        "heuristicCacheHits": 130,
+        "frontierSize": 0,
+        "maxDepth": 3,
+        "estimatedMemoryBytes": 21767,
+        "currentEstimatedMemoryBytes": 21767,
+        "peakEstimatedMemoryBytes": 21767,
+        "memoryStaticBytes": 6813,
+        "memoryTranspositionBytes": 1198,
+        "memoryHeuristicCacheBytes": 6032,
+        "memoryDfsStackBytes": 3864,
+        "memoryReachabilitySnapshotBytes": 3860,
+        "idaStarIterations": 8
+      },
+      "optimality": "proven",
+      "moves": 17,
+      "pushes": 4
+    },
+    {
+      "fixtureId": "adv-four-color",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 22892,
+      "expandedStates": 1105,
+      "generatedStates": 67068,
+      "peakFrontierSize": 17789,
+      "optimality": "unknown",
+      "moves": 75,
+      "pushes": 30
+    },
+    {
+      "fixtureId": "adv-four-color",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 16690,
+      "expandedStates": 51288,
+      "generatedStates": 597884,
+      "peakFrontierSize": 306522,
+      "counters": {
+        "uniqueStates": 313419,
+        "retainedStates": 359181,
+        "duplicateStates": 188704,
+        "deadlockPrunes": 50000,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 599173,
+        "heuristicCalls": 359181,
+        "heuristicCacheHits": 168451,
+        "frontierSize": 306521,
+        "maxDepth": 30,
+        "estimatedMemoryBytes": 350624294
+      },
+      "optimality": "proven",
+      "moves": 43,
+      "pushes": 30
+    },
+    {
+      "fixtureId": "adv-four-color",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 21376,
+      "expandedStates": 122274,
+      "generatedStates": 1434599,
+      "peakFrontierSize": 30,
+      "counters": {
+        "uniqueStates": 19583,
+        "retainedStates": 19583,
+        "duplicateStates": 19193,
+        "deadlockPrunes": 127028,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 122274,
+        "identityFloods": 0,
+        "heuristicCalls": 1307585,
+        "heuristicCacheHits": 980531,
+        "frontierSize": 0,
+        "maxDepth": 29,
+        "estimatedMemoryBytes": 16529903,
+        "currentEstimatedMemoryBytes": 16529903,
+        "peakEstimatedMemoryBytes": 22053754,
+        "memoryStaticBytes": 10009,
+        "memoryTranspositionBytes": 3651216,
+        "memoryHeuristicCacheBytes": 12800000,
+        "memoryDfsStackBytes": 30368,
+        "memoryReachabilitySnapshotBytes": 38310,
+        "idaStarIterations": 13
+      },
+      "optimality": "proven",
+      "moves": 43,
+      "pushes": 30
+    },
+    {
+      "fixtureId": "adv-gallery",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 6583,
+      "expandedStates": 630,
+      "generatedStates": 11639,
+      "peakFrontierSize": 4858,
+      "optimality": "unknown",
+      "moves": 94,
+      "pushes": 16
+    },
+    {
+      "fixtureId": "adv-gallery",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 497,
+      "expandedStates": 569,
+      "generatedStates": 5296,
+      "peakFrontierSize": 2206,
+      "counters": {
+        "uniqueStates": 2531,
+        "retainedStates": 2804,
+        "duplicateStates": 1292,
+        "deadlockPrunes": 1201,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 4665,
+        "heuristicCalls": 2804,
+        "heuristicCacheHits": 1582,
+        "frontierSize": 2205,
+        "maxDepth": 11,
+        "estimatedMemoryBytes": 2953796
+      },
+      "optimality": "proven",
+      "moves": 29,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "adv-gallery",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 610,
+      "expandedStates": 2385,
+      "generatedStates": 22287,
+      "peakFrontierSize": 11,
+      "counters": {
+        "uniqueStates": 454,
+        "retainedStates": 454,
+        "duplicateStates": 312,
+        "deadlockPrunes": 4891,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2385,
+        "identityFloods": 0,
+        "heuristicCalls": 17411,
+        "heuristicCacheHits": 16202,
+        "frontierSize": 0,
+        "maxDepth": 10,
+        "estimatedMemoryBytes": 417806,
+        "currentEstimatedMemoryBytes": 417806,
+        "peakEstimatedMemoryBytes": 417806,
+        "memoryStaticBytes": 10186,
+        "memoryTranspositionBytes": 74710,
+        "memoryHeuristicCacheBytes": 309504,
+        "memoryDfsStackBytes": 10506,
+        "memoryReachabilitySnapshotBytes": 12900,
+        "idaStarIterations": 14
+      },
+      "optimality": "proven",
+      "moves": 29,
+      "pushes": 10
+    },
+    {
+      "fixtureId": "box-7x7",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 4317,
+      "expandedStates": 2417,
+      "generatedStates": 14806,
+      "peakFrontierSize": 2327,
+      "optimality": "unknown",
+      "moves": 37,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "box-7x7",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 707,
+      "expandedStates": 2217,
+      "generatedStates": 15815,
+      "peakFrontierSize": 5969,
+      "counters": {
+        "uniqueStates": 6978,
+        "retainedStates": 8337,
+        "duplicateStates": 5565,
+        "deadlockPrunes": 1912,
+        "infeasiblePrunes": 2,
+        "reopens": 0,
+        "reachabilityFloods": 16121,
+        "heuristicCalls": 8339,
+        "heuristicCacheHits": 5684,
+        "frontierSize": 5968,
+        "maxDepth": 12,
+        "estimatedMemoryBytes": 8431502
+      },
+      "optimality": "proven",
+      "moves": 21,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "box-7x7",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 950,
+      "expandedStates": 5530,
+      "generatedStates": 42262,
+      "peakFrontierSize": 13,
+      "counters": {
+        "uniqueStates": 375,
+        "retainedStates": 375,
+        "duplicateStates": 1022,
+        "deadlockPrunes": 4755,
+        "infeasiblePrunes": 5,
+        "reopens": 0,
+        "reachabilityFloods": 5530,
+        "identityFloods": 0,
+        "heuristicCalls": 37518,
+        "heuristicCacheHits": 34861,
+        "frontierSize": 0,
+        "maxDepth": 12,
+        "estimatedMemoryBytes": 771910,
+        "currentEstimatedMemoryBytes": 771910,
+        "peakEstimatedMemoryBytes": 992502,
+        "memoryStaticBytes": 7356,
+        "memoryTranspositionBytes": 60546,
+        "memoryHeuristicCacheBytes": 680192,
+        "memoryDfsStackBytes": 12392,
+        "memoryReachabilitySnapshotBytes": 11424,
+        "idaStarIterations": 10
+      },
+      "optimality": "proven",
+      "moves": 21,
+      "pushes": 12
+    },
+    {
+      "fixtureId": "sym-diamond",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 80000,
+          "maxGeneratedStates": 300000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 2110,
+      "expandedStates": 786,
+      "generatedStates": 6253,
+      "peakFrontierSize": 2272,
+      "optimality": "unknown",
+      "moves": 20,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "sym-diamond",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 508,
+      "expandedStates": 784,
+      "generatedStates": 8490,
+      "peakFrontierSize": 3259,
+      "counters": {
+        "uniqueStates": 3500,
+        "retainedStates": 4084,
+        "duplicateStates": 2909,
+        "deadlockPrunes": 1498,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 7777,
+        "heuristicCalls": 4084,
+        "heuristicCacheHits": 2937,
+        "frontierSize": 3258,
+        "maxDepth": 9,
+        "estimatedMemoryBytes": 3766878
+      },
+      "optimality": "proven",
+      "moves": 16,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "sym-diamond",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 666,
+      "expandedStates": 2587,
+      "generatedStates": 27910,
+      "peakFrontierSize": 9,
+      "counters": {
+        "uniqueStates": 802,
+        "retainedStates": 802,
+        "duplicateStates": 420,
+        "deadlockPrunes": 4857,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2587,
+        "identityFloods": 0,
+        "heuristicCalls": 23064,
+        "heuristicCacheHits": 21722,
+        "frontierSize": 0,
+        "maxDepth": 8,
+        "estimatedMemoryBytes": 461718,
+        "currentEstimatedMemoryBytes": 461718,
+        "peakEstimatedMemoryBytes": 463599,
+        "memoryStaticBytes": 8925,
+        "memoryTranspositionBytes": 126362,
+        "memoryHeuristicCacheBytes": 311344,
+        "memoryDfsStackBytes": 6876,
+        "memoryReachabilitySnapshotBytes": 8211,
+        "idaStarIterations": 10
+      },
+      "optimality": "proven",
+      "moves": 16,
+      "pushes": 7
+    },
+    {
+      "fixtureId": "theme-library",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 6498,
+      "expandedStates": 562,
+      "generatedStates": 12536,
+      "peakFrontierSize": 6088,
+      "optimality": "unknown",
+      "moves": 65,
+      "pushes": 24
+    },
+    {
+      "fixtureId": "theme-library",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 6901,
+      "expandedStates": 50356,
+      "generatedStates": 420827,
+      "peakFrontierSize": 77616,
+      "counters": {
+        "uniqueStates": 98447,
+        "retainedStates": 136791,
+        "duplicateStates": 217395,
+        "deadlockPrunes": 61782,
+        "infeasiblePrunes": 4860,
+        "reopens": 0,
+        "reachabilityFloods": 409402,
+        "heuristicCalls": 141651,
+        "heuristicCacheHits": 118851,
+        "frontierSize": 77599,
+        "maxDepth": 22,
+        "estimatedMemoryBytes": 130298034
+      },
+      "optimality": "proven",
+      "moves": 45,
+      "pushes": 22
+    },
+    {
+      "fixtureId": "theme-library",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 38311,
+      "expandedStates": 403623,
+      "generatedStates": 3490573,
+      "peakFrontierSize": 22,
+      "counters": {
+        "uniqueStates": 27842,
+        "retainedStates": 27842,
+        "duplicateStates": 286362,
+        "deadlockPrunes": 506034,
+        "infeasiblePrunes": 33164,
+        "reopens": 0,
+        "reachabilityFloods": 403623,
+        "identityFloods": 0,
+        "heuristicCalls": 2984561,
+        "heuristicCacheHits": 2962053,
+        "frontierSize": 0,
+        "maxDepth": 21,
+        "estimatedMemoryBytes": 10575472,
+        "currentEstimatedMemoryBytes": 10575472,
+        "peakEstimatedMemoryBytes": 13938902,
+        "memoryStaticBytes": 9734,
+        "memoryTranspositionBytes": 4754340,
+        "memoryHeuristicCacheBytes": 5762048,
+        "memoryDfsStackBytes": 22114,
+        "memoryReachabilitySnapshotBytes": 27236,
+        "idaStarIterations": 21
+      },
+      "optimality": "proven",
+      "moves": 45,
+      "pushes": 22
+    },
+    {
+      "fixtureId": "theme-parking",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 15600,
+      "expandedStates": 1661,
+      "generatedStates": 45336,
+      "peakFrontierSize": 8923,
+      "optimality": "unknown",
+      "moves": 236,
+      "pushes": 68
+    },
+    {
+      "fixtureId": "theme-parking",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60003,
+      "expandedStates": 297968,
+      "generatedStates": 2951075,
+      "peakFrontierSize": 474277,
+      "counters": {
+        "uniqueStates": 598863,
+        "retainedStates": 850279,
+        "duplicateStates": 1467186,
+        "deadlockPrunes": 633611,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 2615433,
+        "heuristicCalls": 850279,
+        "heuristicCacheHits": 575250,
+        "frontierSize": 474261,
+        "maxDepth": 31,
+        "estimatedMemoryBytes": 853924296
+      }
+    },
+    {
+      "fixtureId": "theme-parking",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60002,
+      "expandedStates": 552302,
+      "generatedStates": 5558547,
+      "peakFrontierSize": 23,
+      "counters": {
+        "uniqueStates": 48245,
+        "retainedStates": 48245,
+        "duplicateStates": 369272,
+        "deadlockPrunes": 1247495,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 552302,
+        "identityFloods": 0,
+        "heuristicCalls": 4311086,
+        "heuristicCacheHits": 4277235,
+        "frontierSize": 0,
+        "maxDepth": 22,
+        "estimatedMemoryBytes": 18869132,
+        "currentEstimatedMemoryBytes": 18869132,
+        "peakEstimatedMemoryBytes": 18884238,
+        "memoryStaticBytes": 10896,
+        "memoryTranspositionBytes": 9359784,
+        "memoryHeuristicCacheBytes": 9478280,
+        "memoryDfsStackBytes": 9644,
+        "memoryReachabilitySnapshotBytes": 10528,
+        "idaStarIterations": 34
+      }
+    },
+    {
+      "fixtureId": "open-field",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "structural",
+        "algorithm": "plan-macro-beam",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 6000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 48226,
+      "expandedStates": 995,
+      "generatedStates": 18037,
+      "peakFrontierSize": 1229,
+      "optimality": "unknown",
+      "moves": 190,
+      "pushes": 68
+    },
+    {
+      "fixtureId": "huge",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "limits": {}
+      },
+      "status": "error",
+      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
+      "elapsedMs": 0
+    },
+    {
+      "fixtureId": "expert-maze",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 10917,
+      "expandedStates": 1145,
+      "generatedStates": 21298,
+      "peakFrontierSize": 5211,
+      "optimality": "unknown",
+      "moves": 151,
+      "pushes": 32
+    },
+    {
+      "fixtureId": "expert-maze",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 3256,
+      "expandedStates": 18261,
+      "generatedStates": 170901,
+      "peakFrontierSize": 43274,
+      "counters": {
+        "uniqueStates": 50794,
+        "retainedStates": 64311,
+        "duplicateStates": 63335,
+        "deadlockPrunes": 43163,
+        "infeasiblePrunes": 93,
+        "reopens": 0,
+        "reachabilityFloods": 146000,
+        "heuristicCalls": 64404,
+        "heuristicCacheHits": 48817,
+        "frontierSize": 43273,
+        "maxDepth": 28,
+        "estimatedMemoryBytes": 68842576
+      },
+      "optimality": "proven",
+      "moves": 65,
+      "pushes": 28
+    },
+    {
+      "fixtureId": "expert-maze",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 23462,
+      "expandedStates": 205934,
+      "generatedStates": 1937344,
+      "peakFrontierSize": 28,
+      "counters": {
+        "uniqueStates": 13541,
+        "retainedStates": 13541,
+        "duplicateStates": 125226,
+        "deadlockPrunes": 492538,
+        "infeasiblePrunes": 438,
+        "reopens": 0,
+        "reachabilityFloods": 205934,
+        "identityFloods": 0,
+        "heuristicCalls": 1444843,
+        "heuristicCacheHits": 1428776,
+        "frontierSize": 0,
+        "maxDepth": 27,
+        "estimatedMemoryBytes": 6885894,
+        "currentEstimatedMemoryBytes": 6885894,
+        "peakEstimatedMemoryBytes": 7217234,
+        "memoryStaticBytes": 12498,
+        "memoryTranspositionBytes": 2302224,
+        "memoryHeuristicCacheBytes": 4498760,
+        "memoryDfsStackBytes": 30468,
+        "memoryReachabilitySnapshotBytes": 41944,
+        "idaStarIterations": 36
+      },
+      "optimality": "proven",
+      "moves": 65,
+      "pushes": 28
+    },
+    {
+      "fixtureId": "expert-tetris",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 19992,
+      "expandedStates": 920,
+      "generatedStates": 33987,
+      "peakFrontierSize": 10561,
+      "optimality": "unknown",
+      "moves": 65,
+      "pushes": 21
+    },
+    {
+      "fixtureId": "expert-tetris",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60000,
+      "expandedStates": 179000,
+      "generatedStates": 2616623,
+      "peakFrontierSize": 532900,
+      "counters": {
+        "uniqueStates": 575797,
+        "retainedStates": 730325,
+        "duplicateStates": 1419219,
+        "deadlockPrunes": 455686,
+        "infeasiblePrunes": 11394,
+        "reopens": 0,
+        "reachabilityFloods": 2339938,
+        "heuristicCalls": 741719,
+        "heuristicCacheHits": 447575,
+        "frontierSize": 532859,
+        "maxDepth": 19,
+        "estimatedMemoryBytes": 807982898
+      }
+    },
+    {
+      "fixtureId": "expert-tetris",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60002,
+      "expandedStates": 288755,
+      "generatedStates": 4287935,
+      "peakFrontierSize": 17,
+      "counters": {
+        "uniqueStates": 68246,
+        "retainedStates": 68246,
+        "duplicateStates": 129952,
+        "deadlockPrunes": 662642,
+        "infeasiblePrunes": 11275,
+        "reopens": 0,
+        "reachabilityFloods": 288755,
+        "identityFloods": 0,
+        "heuristicCalls": 3625309,
+        "heuristicCacheHits": 3391743,
+        "frontierSize": 0,
+        "maxDepth": 16,
+        "estimatedMemoryBytes": 27199671,
+        "currentEstimatedMemoryBytes": 27199671,
+        "peakEstimatedMemoryBytes": 27202849,
+        "memoryStaticBytes": 9951,
+        "memoryTranspositionBytes": 11965700,
+        "memoryHeuristicCacheBytes": 15200000,
+        "memoryDfsStackBytes": 12550,
+        "memoryReachabilitySnapshotBytes": 11470,
+        "idaStarIterations": 16
+      }
+    },
+    {
+      "fixtureId": "theme-museum",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 55404,
+      "expandedStates": 1468,
+      "generatedStates": 112579,
+      "peakFrontierSize": 22006,
+      "optimality": "unknown",
+      "moves": 122,
+      "pushes": 37
+    },
+    {
+      "fixtureId": "theme-museum",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60002,
+      "expandedStates": 103234,
+      "generatedStates": 1565930,
+      "peakFrontierSize": 762878,
+      "counters": {
+        "uniqueStates": 759761,
+        "retainedStates": 870710,
+        "duplicateStates": 548532,
+        "deadlockPrunes": 146689,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 1522476,
+        "heuristicCalls": 870710,
+        "heuristicCacheHits": 297615,
+        "frontierSize": 762878,
+        "maxDepth": 22,
+        "estimatedMemoryBytes": 974557202
+      }
+    },
+    {
+      "fixtureId": "theme-museum",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60003,
+      "expandedStates": 234950,
+      "generatedStates": 3514637,
+      "peakFrontierSize": 22,
+      "counters": {
+        "uniqueStates": 68386,
+        "retainedStates": 68386,
+        "duplicateStates": 54338,
+        "deadlockPrunes": 312034,
+        "infeasiblePrunes": 0,
+        "reopens": 0,
+        "reachabilityFloods": 234950,
+        "identityFloods": 0,
+        "heuristicCalls": 3202621,
+        "heuristicCacheHits": 2383946,
+        "frontierSize": 0,
+        "maxDepth": 21,
+        "estimatedMemoryBytes": 28374994,
+        "currentEstimatedMemoryBytes": 28374994,
+        "peakEstimatedMemoryBytes": 28387990,
+        "memoryStaticBytes": 14834,
+        "memoryTranspositionBytes": 13130366,
+        "memoryHeuristicCacheBytes": 15200000,
+        "memoryDfsStackBytes": 12734,
+        "memoryReachabilitySnapshotBytes": 17060,
+        "idaStarIterations": 18
+      }
+    },
+    {
+      "fixtureId": "master-exchange",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 43415,
+      "expandedStates": 1242,
+      "generatedStates": 122586,
+      "peakFrontierSize": 9234,
+      "optimality": "unknown",
+      "moves": 252,
+      "pushes": 82
+    },
+    {
+      "fixtureId": "master-exchange",
+      "solver": "classic-astar",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60004,
+      "expandedStates": 35616,
+      "generatedStates": 738206,
+      "peakFrontierSize": 527088,
+      "counters": {
+        "uniqueStates": 526014,
+        "retainedStates": 563266,
+        "duplicateStates": 163683,
+        "deadlockPrunes": 11216,
+        "infeasiblePrunes": 42,
+        "reopens": 0,
+        "reachabilityFloods": 762607,
+        "heuristicCalls": 563308,
+        "heuristicCacheHits": 130500,
+        "frontierSize": 527088,
+        "maxDepth": 37,
+        "estimatedMemoryBytes": 733533080
+      }
+    },
+    {
+      "fixtureId": "master-exchange",
+      "solver": "classic-ida-star",
+      "configuration": {
+        "deterministic": true,
+        "limits": {
+          "maxElapsedMs": 60000,
+          "maxExpandedStates": 500000,
+          "maxGeneratedStates": 5000000,
+          "maxMemoryBytes": 536870912
+        }
+      },
+      "status": "cancelled",
+      "elapsedMs": 60003,
+      "expandedStates": 45499,
+      "generatedStates": 914184,
+      "peakFrontierSize": 27,
+      "counters": {
+        "uniqueStates": 23147,
+        "retainedStates": 23147,
+        "duplicateStates": 5185,
+        "deadlockPrunes": 16432,
+        "infeasiblePrunes": 24,
+        "reopens": 0,
+        "reachabilityFloods": 45499,
+        "identityFloods": 0,
+        "heuristicCalls": 897765,
+        "heuristicCacheHits": 503461,
+        "frontierSize": 0,
+        "maxDepth": 26,
+        "estimatedMemoryBytes": 22585192,
+        "currentEstimatedMemoryBytes": 22585192,
+        "peakEstimatedMemoryBytes": 22590282,
+        "memoryStaticBytes": 17363,
+        "memoryTranspositionBytes": 4906096,
+        "memoryHeuristicCacheBytes": 17600000,
+        "memoryDfsStackBytes": 27096,
+        "memoryReachabilitySnapshotBytes": 34637,
+        "idaStarIterations": 13
+      }
+    },
+    {
+      "fixtureId": "master-typed-grid",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "lane": "discovery",
+        "algorithm": "ultimate",
+        "limits": {
+          "maxElapsedMs": 180000,
+          "maxMemoryBytes": 805306368,
+          "maxExpandedStates": 180000,
+          "maxGeneratedStates": 1200000
+        }
+      },
+      "status": "solved",
+      "elapsedMs": 89998,
+      "expandedStates": 1048,
+      "generatedStates": 149693,
+      "peakFrontierSize": 12603,
+      "optimality": "unknown",
+      "moves": 170,
+      "pushes": 59
+    },
+    {
+      "fixtureId": "huge-mirrored",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "limits": {}
+      },
+      "status": "error",
+      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
+      "elapsedMs": 0
+    },
+    {
+      "fixtureId": "huge-rotated",
+      "solver": "sokomind-solver",
+      "configuration": {
+        "deterministic": false,
+        "limits": {}
+      },
+      "status": "error",
+      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
+      "elapsedMs": 0
+    }
+  ]
+}

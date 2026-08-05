@@ -1,0 +1,199 @@
+import type { PuzzleDifficulty } from "@/src/catalog/puzzle-metadata";
+import type { ProgressData } from "@/src/shared/progress";
+import { isOptimal, type OptimalCache } from "@/src/shared/optimal-cache";
+import { ExperienceControls } from "@/src/features/experience";
+import {
+  Link,
+  puzzlesHash,
+  puzzleDifficultyHash,
+  playHash,
+} from "@/src/router";
+import type { RouterValue } from "@/src/router";
+import { DIFFICULTY_LABELS } from "./selector-constants";
+import { usePuzzleListState } from "./use-puzzle-list-state";
+import { PuzzleFilters } from "./PuzzleFilters";
+import { Pagination } from "./Pagination";
+import styles from "./PuzzleSelectorPage.module.css";
+
+export interface PuzzleListViewProps {
+  readonly difficulty: PuzzleDifficulty;
+  readonly collection: string;
+  readonly completedIds: ReadonlySet<string>;
+  readonly optimalCache: OptimalCache;
+  readonly progress: ProgressData;
+  readonly navigate: RouterValue["navigate"];
+  readonly pageNumber?: number;
+  readonly directDifficultyView?: boolean;
+}
+
+export function PuzzleListView({
+  difficulty,
+  collection,
+  completedIds,
+  optimalCache,
+  progress,
+  navigate,
+  pageNumber,
+  directDifficultyView = false,
+}: PuzzleListViewProps) {
+  const {
+    boxCounts,
+    boxFilter,
+    completionFilter,
+    query,
+    filteredPuzzles,
+    visiblePuzzles,
+    nextUnsolved,
+    indexMap,
+    viewLabel,
+    pageHash,
+    pageCount,
+    currentPage,
+    firstResult,
+    lastResult,
+    pageStatusRef,
+    handleSearchChange,
+    handleBoxFilterChange,
+    handleCompletionFilterChange,
+  } = usePuzzleListState({
+    difficulty,
+    collection,
+    completedIds,
+    navigate,
+    pageNumber,
+    directDifficultyView,
+  });
+
+  return (
+    <main className={styles.page}>
+      <div className={styles.container}>
+        <div className={styles.topBar}>
+          <div className={styles.topBarLeft}>
+            <Link
+              href={
+                directDifficultyView
+                  ? puzzlesHash()
+                  : puzzleDifficultyHash(difficulty)
+              }
+              className={styles.backButton}
+              aria-label={
+                directDifficultyView
+                  ? "Back to difficulties"
+                  : "Back to collections"
+              }
+            >
+              <span aria-hidden="true">&larr;</span>
+            </Link>
+            <h1 className={styles.pageTitle}>{viewLabel}</h1>
+          </div>
+          <ExperienceControls />
+        </div>
+
+        <nav className={styles.breadcrumb}>
+          <Link href={puzzlesHash()}>Puzzles</Link>
+          <span>&rsaquo;</span>
+          {directDifficultyView ? (
+            <span className={styles.breadcrumbCurrent}>
+              {DIFFICULTY_LABELS[difficulty]}
+            </span>
+          ) : (
+            <>
+              <Link href={puzzleDifficultyHash(difficulty)}>
+                {DIFFICULTY_LABELS[difficulty]}
+              </Link>
+              <span>&rsaquo;</span>
+              <span className={styles.breadcrumbCurrent}>{collection}</span>
+            </>
+          )}
+        </nav>
+
+        {nextUnsolved && (
+          <button
+            type="button"
+            className={styles.nextButton}
+            onClick={() => navigate(playHash(nextUnsolved))}
+          >
+            Play next unsolved in {viewLabel}
+          </button>
+        )}
+
+        <PuzzleFilters
+          boxCounts={boxCounts}
+          boxFilter={boxFilter}
+          completionFilter={completionFilter}
+          query={query}
+          onBoxFilterChange={handleBoxFilterChange}
+          onCompletionFilterChange={handleCompletionFilterChange}
+          onSearchChange={handleSearchChange}
+        />
+
+        {filteredPuzzles.length > 0 ? (
+          <>
+            <p
+              className={styles.resultSummary}
+              ref={pageStatusRef}
+              role="status"
+              tabIndex={-1}
+            >
+              Showing {firstResult}&ndash;{lastResult} of{" "}
+              {filteredPuzzles.length}
+              {" puzzles"}
+            </p>
+            <div className={styles.puzzleList}>
+              {visiblePuzzles.map((puzzle) => {
+                const complete = completedIds.has(puzzle.id);
+                const record = progress.completed[puzzle.id];
+                const optimal = record
+                  ? isOptimal(optimalCache, puzzle.id, record.moves)
+                  : false;
+                const num = (indexMap.get(puzzle.id) ?? 0) + 1;
+                return (
+                  <button
+                    key={puzzle.id}
+                    type="button"
+                    className={styles.puzzleItem}
+                    data-testid="puzzle-row"
+                    onClick={() => navigate(playHash(puzzle.id))}
+                  >
+                    <span className={styles.puzzleNumber}>
+                      {String(num).padStart(2, "0")}
+                    </span>
+                    <span className={styles.puzzleCopy}>
+                      <strong>{puzzle.title}</strong>
+                      <small>
+                        {puzzle.width} &times; {puzzle.height}
+                        {" · "}
+                        {puzzle.boxes} {puzzle.boxes === 1 ? "box" : "boxes"}
+                      </small>
+                    </span>
+                    {complete && (
+                      <span
+                        className={styles.puzzleComplete}
+                        style={
+                          optimal ? { color: "var(--amber-400)" } : undefined
+                        }
+                      >
+                        {optimal ? "★" : "✓"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <Pagination
+              ariaLabel={`${viewLabel} puzzle pages`}
+              currentPage={currentPage}
+              pageCount={pageCount}
+              pageHash={pageHash}
+            />
+          </>
+        ) : (
+          <div className={styles.empty}>
+            <strong>No puzzles match</strong>
+            <span>Try adjusting your filters.</span>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

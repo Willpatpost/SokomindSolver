@@ -1,0 +1,254 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 20px;
+}
+
+.card {
+  --card-border-color: rgb(23 25 22 / 0.08);
+  --card-bg:
+    radial-gradient(circle at 50% 20%, rgb(255 255 255 / 0.9), transparent 48%),
+    rgb(251 250 245 / 0.72);
+
+  width: min(100%, 560px);
+  padding: 48px 44px;
+  border: 1px solid var(--card-border-color);
+  border-radius: var(--radius-xl);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+  text-align: center;
+}
+
+.settings {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+}
+
+.hero {
+  margin-bottom: 36px;
+}
+
+.brandMark {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 14px);
+  grid-template-rows: repeat(2, 14px);
+  gap: 3px;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--ink-950);
+  transform: rotate(-4deg);
+}
+
+.brandMark span {
+  border-radius: 3px;
+  background: var(--paper-100);
+}
+
+.brandMark span:last-child {
+  background: var(--amber-400);
+}
+
+.title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2.8rem;
+  font-weight: 500;
+  letter-spacing: -0.065em;
+  line-height: 1;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.progress {
+  --progress-border-color: rgb(23 25 22 / 0.06);
+  --progress-bg: rgb(243 240 231 / 0.5);
+
+  margin-bottom: 32px;
+  padding: 18px 20px;
+  border: 1px solid var(--progress-border-color);
+  border-radius: var(--radius-md);
+  background: var(--progress-bg);
+}
+
+.progressLabel {
+  margin: 0 0 10px;
+  color: var(--ink-700);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.progressLabel strong {
+  color: var(--sage-700);
+}
+
+.progressTrack {
+  position: relative;
+  height: 6px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--paper-200);
+}
+
+.progressTrack span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--sage-600);
+  transition: width 400ms ease;
+}
+
+.tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 12px;
+}
+
+.tier {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.tier strong {
+  color: var(--ink-700);
+}
+
+.tierDot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.primaryButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 13px;
+  color: var(--paper-50);
+  background: var(--sage-700);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.primaryButton:hover {
+  background: var(--sage-600);
+}
+
+.secondaryButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.secondaryButton {
+  --secondary-border-color: rgb(23 25 22 / 0.12);
+  --secondary-bg: rgb(251 250 245 / 0.6);
+  --secondary-hover-border: var(--sage-500);
+  --secondary-hover-bg: var(--paper-50);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--secondary-border-color);
+  border-radius: 11px;
+  background: var(--secondary-bg);
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.secondaryButton:hover {
+  border-color: var(--secondary-hover-border);
+  background: var(--secondary-hover-bg);
+}
+
+.helpLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 24px;
+  padding: 0;
+  border: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.helpLink:hover {
+  color: var(--sage-700);
+}
+
+@media (max-width: 560px) {
+  .card {
+    padding: 36px 24px;
+  }
+
+  .title {
+    font-size: 2.2rem;
+  }
+
+  .tiers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+:global(html[data-theme="dark"]) .card {
+  --card-border-color: rgb(255 255 255 / 0.06);
+  --card-bg:
+    radial-gradient(circle at 50% 20%, rgb(40 42 38 / 0.9), transparent 48%),
+    rgb(30 32 28 / 0.72);
+}
+
+:global(html[data-theme="dark"]) .progress {
+  --progress-border-color: rgb(255 255 255 / 0.06);
+  --progress-bg: rgb(34 36 32 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .secondaryButton {
+  --secondary-border-color: rgb(255 255 255 / 0.1);
+  --secondary-bg: rgb(34 36 32 / 0.6);
+  --secondary-hover-border: var(--sage-500);
+  --secondary-hover-bg: var(--paper-200);
+}

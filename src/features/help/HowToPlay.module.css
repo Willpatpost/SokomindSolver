@@ -1,0 +1,154 @@
+.modal {
+  width: min(620px, calc(100vw - 48px));
+}
+
+.sheet {
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  padding: 34px;
+  overflow-y: auto;
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: var(--radius-xl);
+  background: var(--paper-50);
+  box-shadow: 0 35px 100px rgb(0 0 0 / 0.28);
+  animation: rise-in 240ms ease both;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.heading p {
+  margin: 0 0 4px;
+  color: var(--sage-700);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.heading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 7vw, 3.4rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+}
+
+.heading button {
+  padding: 8px 0;
+  border: 0;
+  color: var(--ink-700);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.intro {
+  max-width: 50ch;
+  margin: 24px 0 30px;
+  color: var(--ink-700);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.rules {
+  display: grid;
+  border-top: 1px solid var(--paper-200);
+}
+
+.rules article {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 13px;
+  padding: 19px 0;
+  border-bottom: 1px solid var(--paper-200);
+}
+
+.ruleNumber {
+  color: var(--sage-600);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.rules h3 {
+  margin: 0 0 5px;
+  font-size: 0.9rem;
+}
+
+.rules p {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 25px 0;
+}
+
+.shortcuts span {
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--ink-700);
+  background: var(--paper-100);
+  font-size: 0.68rem;
+}
+
+.shortcuts kbd {
+  color: var(--ink-950);
+  font-family: inherit;
+  font-weight: 800;
+}
+
+.primary {
+  width: 100%;
+  padding: 14px 20px;
+  border: 0;
+  border-radius: 13px;
+  color: var(--paper-50);
+  background: var(--ink-950);
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.primary:hover {
+  background: var(--sage-700);
+  transform: translateY(-1px);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+
+@media (max-width: 600px) {
+  .modal {
+    width: 100%;
+  }
+
+  .sheet {
+    max-height: 92vh;
+    padding: 28px 22px calc(24px + env(safe-area-inset-bottom));
+    border-radius: 26px 26px 0 0;
+  }
+}
+
+:global(html[data-theme="dark"]) .sheet {
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow: 0 35px 100px rgb(0 0 0 / 0.5);
+}

@@ -1,0 +1,119 @@
+.viewport {
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  padding: 2px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-x pan-y;
+}
+
+.grid {
+  --editor-cell-size: clamp(36px, 4vw, 44px);
+  --grid-border-color: var(--paper-300);
+  --grid-bg: var(--ink-950);
+  --cell-wall-color: #747971;
+  --cell-wall-bg: #343832;
+  --cell-floor-color: #aaa494;
+  --cell-floor-bg: #e8e0cf;
+  --cell-goal-color: var(--sage-700);
+  --cell-goal-border: var(--sage-600);
+
+  display: grid;
+  grid-template-columns: repeat(var(--columns), var(--editor-cell-size));
+  grid-template-rows: repeat(var(--rows), var(--editor-cell-size));
+  width: max-content;
+  margin: auto;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--grid-border-color);
+  border-radius: var(--radius-md);
+  background: var(--grid-bg);
+  user-select: none;
+}
+
+.row {
+  display: contents;
+}
+
+.cell {
+  display: grid;
+  width: var(--editor-cell-size);
+  height: var(--editor-cell-size);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: crosshair;
+  transition:
+    filter 100ms ease,
+    outline-color 100ms ease;
+}
+
+.cell:hover {
+  filter: brightness(1.15);
+}
+
+.cell:focus-visible {
+  position: relative;
+  z-index: 2;
+  outline: 3px solid var(--blue-500);
+  outline-offset: -2px;
+}
+
+.cell[data-symbol="O"] {
+  color: var(--cell-wall-color);
+  background: var(--cell-wall-bg);
+}
+
+.cell[data-symbol=" "] {
+  color: var(--cell-floor-color);
+  background: var(--cell-floor-bg);
+}
+
+.cell[data-symbol="R"] {
+  color: var(--paper-50);
+  background: var(--blue-500);
+}
+
+.cell[data-symbol="X"] {
+  color: var(--paper-50);
+  background: var(--amber-500);
+}
+
+.cell[data-symbol="S"] {
+  border: 2px solid var(--cell-goal-border);
+  color: var(--cell-goal-color);
+  background: transparent;
+}
+
+.cell[data-labeled-box] {
+  color: #3a2a10;
+  background: var(--amber-400);
+}
+
+.cell[data-labeled-goal] {
+  border: 2px solid var(--cell-goal-border);
+  color: var(--cell-goal-color);
+  background: transparent;
+}
+
+@media (max-width: 640px) {
+  .grid {
+    --editor-cell-size: 36px;
+  }
+}
+
+:global(html[data-theme="dark"]) .grid {
+  --grid-border-color: rgb(255 255 255 / 0.12);
+  --grid-bg: #1a1c18;
+  --cell-wall-color: #a8aea4;
+  --cell-wall-bg: #4a4e48;
+  --cell-floor-color: #79766d;
+  --cell-floor-bg: #3a3830;
+  --cell-goal-color: #b6d1b8;
+  --cell-goal-border: #82a485;
+}

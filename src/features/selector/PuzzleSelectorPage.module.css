@@ -1,0 +1,436 @@
+.page {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.container {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  margin-bottom: 20px;
+}
+
+.topBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(23 25 22 / 0.12);
+  border-radius: 11px;
+  background: rgb(251 250 245 / 0.6);
+  font-size: 1rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.backButton:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-50);
+}
+
+.pageTitle {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6rem;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 24px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.breadcrumb a {
+  color: var(--sage-700);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb span {
+  color: var(--ink-muted);
+}
+
+.breadcrumbCurrent {
+  color: var(--ink-700);
+}
+
+.nextButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-bottom: 24px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 11px;
+  color: var(--paper-50);
+  background: var(--sage-700);
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.nextButton:hover {
+  background: var(--sage-600);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.difficultyCard,
+.collectionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 20px;
+  border: 1px solid rgb(23 25 22 / 0.08);
+  border-radius: var(--radius-lg);
+  background: rgb(251 250 245 / 0.72);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+
+.difficultyCard:hover,
+.collectionCard:hover {
+  border-color: var(--sage-500);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-2px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.cardDot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+}
+
+.cardName {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.08rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.cardStats {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.cardStats strong {
+  color: var(--sage-700);
+}
+
+.cardTrack {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--paper-200);
+}
+
+.cardTrack span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--sage-600);
+  transition: width 400ms ease;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.filterChip {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 8px;
+  background: rgb(251 250 245 / 0.6);
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.filterChip:hover {
+  border-color: var(--sage-500);
+}
+
+.filterChip[data-active] {
+  border-color: var(--sage-700);
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+.filterGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filterLabel {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 9px;
+  background: rgb(251 250 245 / 0.6);
+  font-size: 0.76rem;
+  backdrop-filter: blur(10px);
+}
+
+.search input {
+  width: 140px;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.puzzleList {
+  display: grid;
+  gap: 4px;
+}
+
+.resultSummary {
+  margin: 4px 0 10px;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.resultSummary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--sage-500);
+  outline-offset: 3px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 24px 0 32px;
+}
+
+.pageNumbers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pageLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 8px;
+  color: var(--ink-700);
+  background: rgb(251 250 245 / 0.6);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.pageLink:hover,
+.pageLink:focus-visible {
+  border-color: var(--sage-500);
+}
+
+.pageLink[aria-current="page"] {
+  border-color: var(--sage-700);
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+.pageLink[aria-disabled="true"] {
+  opacity: 0.45;
+}
+
+.puzzleItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.puzzleItem:hover {
+  border-color: rgb(23 25 22 / 0.08);
+  background: rgb(251 250 245 / 0.5);
+}
+
+.puzzleNumber {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.puzzleCopy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+
+.puzzleCopy strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.puzzleCopy small {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+}
+
+.puzzleComplete {
+  font-size: 0.9rem;
+}
+
+.empty {
+  padding: 48px 24px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.empty strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-700);
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 10px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pageTitle {
+    font-size: 1.3rem;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+:global(html[data-theme="dark"]) .backButton {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .backButton:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-200);
+}
+
+:global(html[data-theme="dark"]) .difficultyCard,
+:global(html[data-theme="dark"]) .collectionCard {
+  border-color: rgb(255 255 255 / 0.06);
+  background: rgb(30 32 28 / 0.72);
+}
+
+:global(html[data-theme="dark"]) .difficultyCard:hover,
+:global(html[data-theme="dark"]) .collectionCard:hover {
+  border-color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .filterChip {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .search {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .puzzleItem:hover {
+  border-color: rgb(255 255 255 / 0.06);
+  background: rgb(34 36 32 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .pageLink {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .pageLink[aria-current="page"] {
+  border-color: var(--sage-600);
+  background: var(--sage-700);
+}

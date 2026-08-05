@@ -1,0 +1,152 @@
+:root {
+  --ink-950: #171916;
+  --ink-900: #20231f;
+  --ink-800: #2c302b;
+  --ink-700: #42483f;
+  --ink-muted: #5f655b;
+  --ink-subtle: #596057;
+  --paper-50: #fbfaf5;
+  --paper-100: #f3f0e7;
+  --paper-200: #e6e0d2;
+  --paper-300: #d4ccba;
+  --sage-500: #708872;
+  --sage-600: #566e59;
+  --sage-700: #3f5744;
+  --amber-400: #e5a64b;
+  --amber-500: #cb8230;
+  --coral-500: #c8664d;
+  --blue-500: #4a7f96;
+  --shadow-soft: 0 24px 70px rgb(23 25 22 / 0.12);
+  --shadow-card: 0 10px 30px rgb(23 25 22 / 0.08);
+  --card-dark-bg: #20231f;
+  --card-dark-text: #f3f0e7;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+
+html[data-modal-open] {
+  overflow: hidden;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  color: var(--ink-950);
+  background:
+    radial-gradient(circle at 12% 8%, rgb(255 255 255 / 0.95), transparent 28rem),
+    linear-gradient(145deg, #f7f4eb 0%, #eee8da 100%);
+  font-family:
+    "Avenir Next", Avenir, "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+:focus-visible {
+  outline: 3px solid rgb(74 127 150 / 0.7);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html[data-theme="dark"] {
+  --ink-950: #e8e6e1;
+  --ink-900: #d8d5cd;
+  --ink-800: #c4c0b6;
+  --ink-700: #a8a49a;
+  --ink-muted: #9a968c;
+  --ink-subtle: #969288;
+  --paper-50: #1a1c19;
+  --paper-100: #222420;
+  --paper-200: #2e312c;
+  --paper-300: #3e413a;
+  --sage-500: #5a7a5d;
+  --sage-600: #4a6a4d;
+  --sage-700: #6a9a6d;
+  --amber-400: #d4963c;
+  --amber-500: #ba7828;
+  --coral-500: #d87a62;
+  --blue-500: #5a9ab0;
+  --shadow-soft: 0 24px 70px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 10px 30px rgb(0 0 0 / 0.3);
+}
+
+html[data-theme="dark"] body {
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 12% 8%, rgb(30 30 28 / 0.95), transparent 28rem),
+    linear-gradient(145deg, #1a1c19 0%, #222420 100%);
+}
+
+html[data-motion="reduced"] {
+  scroll-behavior: auto !important;
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  scroll-behavior: auto !important;
+  animation-delay: 0ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-delay: 0ms !important;
+  transition-duration: 0.01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) {
+    scroll-behavior: auto !important;
+  }
+
+  html:not([data-motion="full"]) *,
+  html:not([data-motion="full"]) *::before,
+  html:not([data-motion="full"]) *::after {
+    scroll-behavior: auto !important;
+    animation-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

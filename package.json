@@ -1,0 +1,60 @@
+{
+  "name": "sokomind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
+  "scripts": {
+    "prepare:sokomind-solver": "node scripts/prepare-sokomind-engine.mjs",
+    "check:sokomind-solver": "node scripts/prepare-sokomind-engine.mjs --check",
+    "prepare:catalog": "node --experimental-strip-types scripts/prepare-puzzle-metadata.mjs",
+    "check:catalog": "node --experimental-strip-types scripts/prepare-puzzle-metadata.mjs --check",
+    "predev": "npm run prepare:sokomind-solver && npm run prepare:catalog",
+    "dev": "vite",
+    "prebuild": "npm run prepare:sokomind-solver && npm run prepare:catalog",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "preview:pages": "node scripts/preview-pages.mjs",
+    "test": "npm run test:unit && npm run build && npm run test:static",
+    "test:browser": "npm run build && npm run test:browser:dist",
+    "test:browser:dist": "node scripts/run-browser-tests.mjs",
+    "pretest:unit": "npm run check:sokomind-solver && npm run check:catalog",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:coverage": "npm run test:coverage:typed && npm run test:coverage:typed:focused && npm run test:coverage:engine",
+    "test:coverage:typed": "c8 --all --extension .ts --extension .tsx --include \"src/**/*.ts\" --include \"src/**/*.tsx\" --exclude \"src/**/*.d.ts\" --exclude-after-remap --check-coverage --lines 58 --statements 58 --functions 80 --branches 78 --reporter text node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:coverage:typed:focused": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-include=src/**/*.ts --test-coverage-include=src/**/*.tsx --test-coverage-exclude=src/**/*.d.ts --test-coverage-lines=92 --test-coverage-functions=93 --test-coverage-branches=84 tests/unit/*.test.ts",
+    "test:coverage:engine": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-include=src/solver/implementations/sokomind-engine/engine.generated.js --test-coverage-lines=41 --test-coverage-functions=56 --test-coverage-branches=63 tests/unit/*.test.ts",
+    "test:unit:coverage": "npm run test:coverage",
+    "test:solver:huge": "node --experimental-strip-types --test tests/performance/sokomind-solver-huge.test.ts",
+    "test:solver:multi": "node --experimental-strip-types --test tests/performance/sokomind-solver-multi.test.ts",
+    "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
+    "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
+    "test:static": "node --test tests/static-build.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "audit": "npm audit --audit-level=high"
+  },
+  "dependencies": {
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "^1.62.0",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "c8": "11.0.0",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "16.5.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "8.1.5"
+  }
+}
