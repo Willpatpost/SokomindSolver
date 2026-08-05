@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "captureDate": "2026-08-05T00:03:59.064Z",
+  "schemaVersion": 2,
+  "captureDate": "2026-08-05T03:22:28.162Z",
   "nodeVersion": "v22.16.0",
   "platform": "linux",
   "arch": "x64",
@@ -15,32 +15,49 @@
   "fixtures": [
     {
       "fixtureId": "ultra-tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "0f83d9f71bf01305",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 18,
+      "elapsedMs": 95,
       "expandedStates": 1,
       "generatedStates": 1,
       "peakFrontierSize": 1,
+      "verified": true,
       "optimality": "unknown",
       "moves": 1,
       "pushes": 1
     },
     {
       "fixtureId": "ultra-tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "0f83d9f71bf01305",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -69,13 +86,22 @@
       },
       "optimality": "proven",
       "moves": 1,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "ultra-tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "0f83d9f71bf01305",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -84,7 +110,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 6,
+      "elapsedMs": 7,
       "expandedStates": 1,
       "generatedStates": 2,
       "peakFrontierSize": 1,
@@ -113,36 +139,54 @@
       },
       "optimality": "proven",
       "moves": 1,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "5026ae3331c41db6",
+      "width": 6,
+      "height": 6,
+      "floorCount": 14,
+      "boxCount": 2,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 106,
+      "elapsedMs": 203,
       "expandedStates": 6,
       "generatedStates": 9,
       "peakFrontierSize": 2,
+      "verified": true,
       "optimality": "unknown",
       "moves": 22,
       "pushes": 5
     },
     {
       "fixtureId": "tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "5026ae3331c41db6",
+      "width": 6,
+      "height": 6,
+      "floorCount": 14,
+      "boxCount": 2,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -151,7 +195,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 17,
+      "elapsedMs": 92,
       "expandedStates": 10,
       "generatedStates": 22,
       "peakFrontierSize": 4,
@@ -171,13 +215,22 @@
       },
       "optimality": "proven",
       "moves": 20,
-      "pushes": 5
+      "pushes": 5,
+      "verified": true
     },
     {
       "fixtureId": "tiny",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "5026ae3331c41db6",
+      "width": 6,
+      "height": 6,
+      "floorCount": 14,
+      "boxCount": 2,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -186,7 +239,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 86,
+      "elapsedMs": 108,
       "expandedStates": 64,
       "generatedStates": 137,
       "peakFrontierSize": 7,
@@ -215,36 +268,54 @@
       },
       "optimality": "proven",
       "moves": 20,
-      "pushes": 7
+      "pushes": 7,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-push",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "7c6428f8e8ef1484",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 21,
+      "elapsedMs": 96,
       "expandedStates": 1,
       "generatedStates": 1,
       "peakFrontierSize": 1,
+      "verified": true,
       "optimality": "unknown",
       "moves": 4,
       "pushes": 1
     },
     {
       "fixtureId": "tutorial-push",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "7c6428f8e8ef1484",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -253,7 +324,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 7,
+      "elapsedMs": 9,
       "expandedStates": 1,
       "generatedStates": 2,
       "peakFrontierSize": 1,
@@ -273,13 +344,22 @@
       },
       "optimality": "proven",
       "moves": 4,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-push",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "7c6428f8e8ef1484",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 1,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -288,7 +368,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 8,
+      "elapsedMs": 7,
       "expandedStates": 2,
       "generatedStates": 4,
       "peakFrontierSize": 1,
@@ -317,36 +397,54 @@
       },
       "optimality": "proven",
       "moves": 4,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-corner",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "1ae2148b1c9ce30b",
+      "width": 6,
+      "height": 6,
+      "floorCount": 16,
+      "boxCount": 1,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 92,
+      "elapsedMs": 93,
       "expandedStates": 1,
       "generatedStates": 1,
       "peakFrontierSize": 1,
+      "verified": true,
       "optimality": "unknown",
       "moves": 3,
       "pushes": 1
     },
     {
       "fixtureId": "tutorial-corner",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "1ae2148b1c9ce30b",
+      "width": 6,
+      "height": 6,
+      "floorCount": 16,
+      "boxCount": 1,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -355,7 +453,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 7,
+      "elapsedMs": 83,
       "expandedStates": 1,
       "generatedStates": 4,
       "peakFrontierSize": 2,
@@ -375,13 +473,22 @@
       },
       "optimality": "proven",
       "moves": 3,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-corner",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "1ae2148b1c9ce30b",
+      "width": 6,
+      "height": 6,
+      "floorCount": 16,
+      "boxCount": 1,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -390,7 +497,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 89,
+      "elapsedMs": 80,
       "expandedStates": 2,
       "generatedStates": 6,
       "peakFrontierSize": 1,
@@ -419,36 +526,54 @@
       },
       "optimality": "proven",
       "moves": 3,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-around",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "370df2c3fb59cd50",
+      "width": 7,
+      "height": 5,
+      "floorCount": 12,
+      "boxCount": 1,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 27,
+      "elapsedMs": 91,
       "expandedStates": 1,
       "generatedStates": 1,
       "peakFrontierSize": 1,
+      "verified": true,
       "optimality": "unknown",
       "moves": 4,
       "pushes": 1
     },
     {
       "fixtureId": "tutorial-around",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "370df2c3fb59cd50",
+      "width": 7,
+      "height": 5,
+      "floorCount": 12,
+      "boxCount": 1,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -457,7 +582,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 84,
+      "elapsedMs": 88,
       "expandedStates": 1,
       "generatedStates": 2,
       "peakFrontierSize": 1,
@@ -477,13 +602,22 @@
       },
       "optimality": "proven",
       "moves": 4,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "tutorial-around",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "370df2c3fb59cd50",
+      "width": 7,
+      "height": 5,
+      "floorCount": 12,
+      "boxCount": 1,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -521,36 +655,54 @@
       },
       "optimality": "proven",
       "moves": 4,
-      "pushes": 1
+      "pushes": 1,
+      "verified": true
     },
     {
       "fixtureId": "beginner-three",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "50ae2449d17631be",
+      "width": 8,
+      "height": 6,
+      "floorCount": 22,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 113,
+      "elapsedMs": 196,
       "expandedStates": 6,
       "generatedStates": 19,
       "peakFrontierSize": 12,
+      "verified": true,
       "optimality": "unknown",
       "moves": 7,
       "pushes": 3
     },
     {
       "fixtureId": "beginner-three",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "50ae2449d17631be",
+      "width": 8,
+      "height": 6,
+      "floorCount": 22,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -559,7 +711,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 9,
+      "elapsedMs": 84,
       "expandedStates": 8,
       "generatedStates": 60,
       "peakFrontierSize": 20,
@@ -579,13 +731,22 @@
       },
       "optimality": "proven",
       "moves": 7,
-      "pushes": 3
+      "pushes": 3,
+      "verified": true
     },
     {
       "fixtureId": "beginner-three",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "50ae2449d17631be",
+      "width": 8,
+      "height": 6,
+      "floorCount": 22,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -594,7 +755,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 78,
+      "elapsedMs": 10,
       "expandedStates": 19,
       "generatedStates": 126,
       "peakFrontierSize": 3,
@@ -623,36 +784,54 @@
       },
       "optimality": "proven",
       "moves": 7,
-      "pushes": 3
+      "pushes": 3,
+      "verified": true
     },
     {
       "fixtureId": "beginner-detour",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "f088328013159c9b",
+      "width": 8,
+      "height": 6,
+      "floorCount": 21,
+      "boxCount": 2,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 216,
+      "elapsedMs": 407,
       "expandedStates": 56,
       "generatedStates": 151,
       "peakFrontierSize": 28,
+      "verified": true,
       "optimality": "unknown",
       "moves": 29,
       "pushes": 10
     },
     {
       "fixtureId": "beginner-detour",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "f088328013159c9b",
+      "width": 8,
+      "height": 6,
+      "floorCount": 21,
+      "boxCount": 2,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -681,13 +860,22 @@
       },
       "optimality": "proven",
       "moves": 24,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "beginner-detour",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "f088328013159c9b",
+      "width": 8,
+      "height": 6,
+      "floorCount": 21,
+      "boxCount": 2,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -696,7 +884,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 102,
+      "elapsedMs": 103,
       "expandedStates": 239,
       "generatedStates": 942,
       "peakFrontierSize": 10,
@@ -725,36 +913,54 @@
       },
       "optimality": "proven",
       "moves": 24,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "beginner-typed-line",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "58dacb8b202dab5b",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 5994,
+      "elapsedMs": 6726,
       "expandedStates": 2588,
       "generatedStates": 15122,
       "peakFrontierSize": 1851,
+      "verified": true,
       "optimality": "unknown",
       "moves": 47,
       "pushes": 15
     },
     {
       "fixtureId": "beginner-typed-line",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "58dacb8b202dab5b",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -763,7 +969,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 731,
+      "elapsedMs": 939,
       "expandedStates": 1588,
       "generatedStates": 13447,
       "peakFrontierSize": 3721,
@@ -783,13 +989,22 @@
       },
       "optimality": "proven",
       "moves": 27,
-      "pushes": 15
+      "pushes": 15,
+      "verified": true
     },
     {
       "fixtureId": "beginner-typed-line",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "58dacb8b202dab5b",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -798,7 +1013,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 2094,
+      "elapsedMs": 1304,
       "expandedStates": 6400,
       "generatedStates": 56084,
       "peakFrontierSize": 15,
@@ -827,36 +1042,54 @@
       },
       "optimality": "proven",
       "moves": 27,
-      "pushes": 15
+      "pushes": 15,
+      "verified": true
     },
     {
       "fixtureId": "garden-1",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "cc2c9bae99415ab0",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 1685,
+      "elapsedMs": 1214,
       "expandedStates": 207,
       "generatedStates": 1352,
       "peakFrontierSize": 696,
+      "verified": true,
       "optimality": "unknown",
       "moves": 16,
       "pushes": 6
     },
     {
       "fixtureId": "garden-1",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "cc2c9bae99415ab0",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -865,7 +1098,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 295,
+      "elapsedMs": 217,
       "expandedStates": 201,
       "generatedStates": 1986,
       "peakFrontierSize": 521,
@@ -885,13 +1118,22 @@
       },
       "optimality": "proven",
       "moves": 16,
-      "pushes": 6
+      "pushes": 6,
+      "verified": true
     },
     {
       "fixtureId": "garden-1",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "cc2c9bae99415ab0",
+      "width": 9,
+      "height": 6,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -900,7 +1142,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 591,
+      "elapsedMs": 494,
       "expandedStates": 493,
       "generatedStates": 4992,
       "peakFrontierSize": 7,
@@ -929,36 +1171,54 @@
       },
       "optimality": "proven",
       "moves": 16,
-      "pushes": 6
+      "pushes": 6,
+      "verified": true
     },
     {
       "fixtureId": "box-5x5-a",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "2cb3f3e2b0208e64",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 2,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 182,
+      "elapsedMs": 112,
       "expandedStates": 4,
       "generatedStates": 5,
       "peakFrontierSize": 2,
+      "verified": true,
       "optimality": "unknown",
       "moves": 6,
       "pushes": 3
     },
     {
       "fixtureId": "box-5x5-a",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "2cb3f3e2b0208e64",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 2,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -967,7 +1227,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 88,
+      "elapsedMs": 75,
       "expandedStates": 3,
       "generatedStates": 10,
       "peakFrontierSize": 3,
@@ -987,13 +1247,22 @@
       },
       "optimality": "proven",
       "moves": 6,
-      "pushes": 3
+      "pushes": 3,
+      "verified": true
     },
     {
       "fixtureId": "box-5x5-a",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "2cb3f3e2b0208e64",
+      "width": 5,
+      "height": 5,
+      "floorCount": 9,
+      "boxCount": 2,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1002,7 +1271,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 10,
+      "elapsedMs": 8,
       "expandedStates": 7,
       "generatedStates": 19,
       "peakFrontierSize": 3,
@@ -1031,36 +1300,54 @@
       },
       "optimality": "proven",
       "moves": 6,
-      "pushes": 3
+      "pushes": 3,
+      "verified": true
     },
     {
       "fixtureId": "medium",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7f8e0409b6c9b01f",
+      "width": 7,
+      "height": 7,
+      "floorCount": 25,
+      "boxCount": 8,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 9414,
+      "elapsedMs": 5713,
       "expandedStates": 794,
       "generatedStates": 4840,
       "peakFrontierSize": 579,
+      "verified": true,
       "optimality": "unknown",
       "moves": 64,
       "pushes": 18
     },
     {
       "fixtureId": "medium",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7f8e0409b6c9b01f",
+      "width": 7,
+      "height": 7,
+      "floorCount": 25,
+      "boxCount": 8,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1069,7 +1356,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 4710,
+      "elapsedMs": 2440,
       "expandedStates": 11085,
       "generatedStates": 82942,
       "peakFrontierSize": 12066,
@@ -1089,13 +1376,22 @@
       },
       "optimality": "proven",
       "moves": 34,
-      "pushes": 18
+      "pushes": 18,
+      "verified": true
     },
     {
       "fixtureId": "medium",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7f8e0409b6c9b01f",
+      "width": 7,
+      "height": 7,
+      "floorCount": 25,
+      "boxCount": 8,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1104,7 +1400,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 16620,
+      "elapsedMs": 9842,
       "expandedStates": 74518,
       "generatedStates": 583405,
       "peakFrontierSize": 21,
@@ -1133,36 +1429,54 @@
       },
       "optimality": "proven",
       "moves": 34,
-      "pushes": 18
+      "pushes": 18,
+      "verified": true
     },
     {
       "fixtureId": "inter-rooms",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "4eed132cf73e9ddc",
+      "width": 11,
+      "height": 6,
+      "floorCount": 30,
+      "boxCount": 4,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 1517,
+      "elapsedMs": 2310,
       "expandedStates": 368,
       "generatedStates": 1260,
       "peakFrontierSize": 485,
+      "verified": true,
       "optimality": "unknown",
       "moves": 29,
       "pushes": 7
     },
     {
       "fixtureId": "inter-rooms",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "4eed132cf73e9ddc",
+      "width": 11,
+      "height": 6,
+      "floorCount": 30,
+      "boxCount": 4,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1171,7 +1485,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 202,
+      "elapsedMs": 311,
       "expandedStates": 359,
       "generatedStates": 1672,
       "peakFrontierSize": 465,
@@ -1191,13 +1505,22 @@
       },
       "optimality": "proven",
       "moves": 28,
-      "pushes": 7
+      "pushes": 7,
+      "verified": true
     },
     {
       "fixtureId": "inter-rooms",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "4eed132cf73e9ddc",
+      "width": 11,
+      "height": 6,
+      "floorCount": 30,
+      "boxCount": 4,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1206,7 +1529,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 521,
+      "elapsedMs": 1101,
       "expandedStates": 2890,
       "generatedStates": 13484,
       "peakFrontierSize": 12,
@@ -1235,36 +1558,54 @@
       },
       "optimality": "proven",
       "moves": 28,
-      "pushes": 7
+      "pushes": 7,
+      "verified": true
     },
     {
       "fixtureId": "corridor-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "ed44af2e78d80a56",
+      "width": 11,
+      "height": 9,
+      "floorCount": 50,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 11099,
+      "elapsedMs": 20001,
       "expandedStates": 592,
       "generatedStates": 10595,
       "peakFrontierSize": 4386,
+      "verified": true,
       "optimality": "unknown",
       "moves": 63,
       "pushes": 23
     },
     {
       "fixtureId": "corridor-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "ed44af2e78d80a56",
+      "width": 11,
+      "height": 9,
+      "floorCount": 50,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1273,7 +1614,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 1899,
+      "elapsedMs": 2654,
       "expandedStates": 13660,
       "generatedStates": 120840,
       "peakFrontierSize": 10959,
@@ -1293,13 +1634,22 @@
       },
       "optimality": "proven",
       "moves": 41,
-      "pushes": 17
+      "pushes": 17,
+      "verified": true
     },
     {
       "fixtureId": "corridor-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "ed44af2e78d80a56",
+      "width": 11,
+      "height": 9,
+      "floorCount": 50,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1308,7 +1658,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 11025,
+      "elapsedMs": 13941,
       "expandedStates": 131383,
       "generatedStates": 1187157,
       "peakFrontierSize": 18,
@@ -1337,36 +1687,54 @@
       },
       "optimality": "proven",
       "moves": 41,
-      "pushes": 17
+      "pushes": 17,
+      "verified": true
     },
     {
       "fixtureId": "garden-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "d41b411d9c9cefe2",
+      "width": 11,
+      "height": 9,
+      "floorCount": 46,
+      "boxCount": 2,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 301,
+      "elapsedMs": 483,
       "expandedStates": 3,
       "generatedStates": 44,
       "peakFrontierSize": 26,
+      "verified": true,
       "optimality": "unknown",
       "moves": 77,
       "pushes": 16
     },
     {
       "fixtureId": "garden-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "d41b411d9c9cefe2",
+      "width": 11,
+      "height": 9,
+      "floorCount": 46,
+      "boxCount": 2,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1375,7 +1743,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 209,
+      "elapsedMs": 376,
       "expandedStates": 596,
       "generatedStates": 2442,
       "peakFrontierSize": 242,
@@ -1395,13 +1763,22 @@
       },
       "optimality": "proven",
       "moves": 73,
-      "pushes": 14
+      "pushes": 14,
+      "verified": true
     },
     {
       "fixtureId": "garden-2",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "d41b411d9c9cefe2",
+      "width": 11,
+      "height": 9,
+      "floorCount": 46,
+      "boxCount": 2,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1410,7 +1787,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 1331,
+      "elapsedMs": 1851,
       "expandedStates": 22843,
       "generatedStates": 92305,
       "peakFrontierSize": 19,
@@ -1439,36 +1816,54 @@
       },
       "optimality": "proven",
       "moves": 73,
-      "pushes": 14
+      "pushes": 14,
+      "verified": true
     },
     {
       "fixtureId": "workshop-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "6636bc5dbf94ba6b",
+      "width": 7,
+      "height": 8,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 1409,
+      "elapsedMs": 2184,
       "expandedStates": 614,
       "generatedStates": 3333,
       "peakFrontierSize": 796,
+      "verified": true,
       "optimality": "unknown",
       "moves": 27,
       "pushes": 10
     },
     {
       "fixtureId": "workshop-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "6636bc5dbf94ba6b",
+      "width": 7,
+      "height": 8,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1477,7 +1872,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 477,
+      "elapsedMs": 600,
       "expandedStates": 756,
       "generatedStates": 5056,
       "peakFrontierSize": 1362,
@@ -1497,13 +1892,22 @@
       },
       "optimality": "proven",
       "moves": 23,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "workshop-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "6636bc5dbf94ba6b",
+      "width": 7,
+      "height": 8,
+      "floorCount": 28,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1512,7 +1916,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 563,
+      "elapsedMs": 760,
       "expandedStates": 2819,
       "generatedStates": 18988,
       "peakFrontierSize": 12,
@@ -1541,36 +1945,54 @@
       },
       "optimality": "proven",
       "moves": 23,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "classic-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "9e8ece1b61b282b0",
+      "width": 7,
+      "height": 8,
+      "floorCount": 26,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 622,
+      "elapsedMs": 984,
       "expandedStates": 285,
       "generatedStates": 1133,
       "peakFrontierSize": 196,
+      "verified": true,
       "optimality": "unknown",
       "moves": 47,
       "pushes": 13
     },
     {
       "fixtureId": "classic-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "9e8ece1b61b282b0",
+      "width": 7,
+      "height": 8,
+      "floorCount": 26,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1579,7 +2001,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 310,
+      "elapsedMs": 502,
       "expandedStates": 788,
       "generatedStates": 4663,
       "peakFrontierSize": 408,
@@ -1599,13 +2021,22 @@
       },
       "optimality": "proven",
       "moves": 40,
-      "pushes": 13
+      "pushes": 13,
+      "verified": true
     },
     {
       "fixtureId": "classic-1",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "9e8ece1b61b282b0",
+      "width": 7,
+      "height": 8,
+      "floorCount": 26,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1614,7 +2045,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 880,
+      "elapsedMs": 1595,
       "expandedStates": 10779,
       "generatedStates": 64364,
       "peakFrontierSize": 15,
@@ -1643,36 +2074,54 @@
       },
       "optimality": "proven",
       "moves": 40,
-      "pushes": 15
+      "pushes": 15,
+      "verified": true
     },
     {
       "fixtureId": "theme-kitchen",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "81c32ebc30474b92",
+      "width": 9,
+      "height": 8,
+      "floorCount": 36,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 1086,
+      "elapsedMs": 1493,
       "expandedStates": 396,
       "generatedStates": 1827,
       "peakFrontierSize": 282,
+      "verified": true,
       "optimality": "unknown",
       "moves": 42,
       "pushes": 12
     },
     {
       "fixtureId": "theme-kitchen",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "81c32ebc30474b92",
+      "width": 9,
+      "height": 8,
+      "floorCount": 36,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1681,7 +2130,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 401,
+      "elapsedMs": 602,
       "expandedStates": 904,
       "generatedStates": 6775,
       "peakFrontierSize": 1031,
@@ -1701,13 +2150,22 @@
       },
       "optimality": "proven",
       "moves": 34,
-      "pushes": 12
+      "pushes": 12,
+      "verified": true
     },
     {
       "fixtureId": "theme-kitchen",
+      "fixtureGroup": "legacy-regression",
+      "boardHash": "81c32ebc30474b92",
+      "width": 9,
+      "height": 8,
+      "floorCount": 36,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1716,7 +2174,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 985,
+      "elapsedMs": 1432,
       "expandedStates": 5840,
       "generatedStates": 45443,
       "peakFrontierSize": 13,
@@ -1745,36 +2203,54 @@
       },
       "optimality": "proven",
       "moves": 34,
-      "pushes": 12
+      "pushes": 12,
+      "verified": true
     },
     {
       "fixtureId": "large",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a3eebaf021f4c5c8",
+      "width": 10,
+      "height": 10,
+      "floorCount": 36,
+      "boxCount": 6,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 8790,
+      "elapsedMs": 13798,
       "expandedStates": 880,
       "generatedStates": 7888,
       "peakFrontierSize": 2601,
+      "verified": true,
       "optimality": "unknown",
       "moves": 160,
       "pushes": 44
     },
     {
       "fixtureId": "large",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a3eebaf021f4c5c8",
+      "width": 10,
+      "height": 10,
+      "floorCount": 36,
+      "boxCount": 6,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1783,30 +2259,38 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60078,
-      "expandedStates": 263691,
-      "generatedStates": 1638986,
-      "peakFrontierSize": 184872,
+      "elapsedMs": 60002,
+      "expandedStates": 317612,
+      "generatedStates": 1962536,
+      "peakFrontierSize": 212538,
       "counters": {
-        "uniqueStates": 392921,
-        "retainedStates": 507507,
-        "duplicateStates": 546636,
-        "deadlockPrunes": 584844,
+        "uniqueStates": 466185,
+        "retainedStates": 602483,
+        "duplicateStates": 666912,
+        "deadlockPrunes": 693142,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 1317834,
-        "heuristicCalls": 507507,
-        "heuristicCacheHits": 308469,
-        "frontierSize": 184829,
-        "maxDepth": 28,
-        "estimatedMemoryBytes": 555032632
+        "reachabilityFloods": 1587007,
+        "heuristicCalls": 602483,
+        "heuristicCacheHits": 350249,
+        "frontierSize": 212515,
+        "maxDepth": 29,
+        "estimatedMemoryBytes": 655645594
       }
     },
     {
       "fixtureId": "large",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a3eebaf021f4c5c8",
+      "width": 10,
+      "height": 10,
+      "floorCount": 36,
+      "boxCount": 6,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1815,62 +2299,79 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60001,
-      "expandedStates": 487389,
-      "generatedStates": 3158995,
+      "elapsedMs": 60003,
+      "expandedStates": 608366,
+      "generatedStates": 3948369,
       "peakFrontierSize": 22,
       "counters": {
-        "uniqueStates": 7639,
-        "retainedStates": 7639,
-        "duplicateStates": 318210,
-        "deadlockPrunes": 1303906,
+        "uniqueStates": 22175,
+        "retainedStates": 22175,
+        "duplicateStates": 415186,
+        "deadlockPrunes": 1631582,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 487389,
+        "reachabilityFloods": 608366,
         "identityFloods": 0,
-        "heuristicCalls": 1855127,
-        "heuristicCacheHits": 1835277,
+        "heuristicCalls": 2316826,
+        "heuristicCacheHits": 2293286,
         "frontierSize": 0,
         "maxDepth": 21,
-        "estimatedMemoryBytes": 7529476,
-        "currentEstimatedMemoryBytes": 7529476,
-        "peakEstimatedMemoryBytes": 12019332,
+        "estimatedMemoryBytes": 11387246,
+        "currentEstimatedMemoryBytes": 11387246,
+        "peakEstimatedMemoryBytes": 13506878,
         "memoryStaticBytes": 9700,
-        "memoryTranspositionBytes": 1447976,
-        "memoryHeuristicCacheBytes": 6034400,
-        "memoryDfsStackBytes": 19672,
-        "memoryReachabilitySnapshotBytes": 17728,
-        "idaStarIterations": 38
+        "memoryTranspositionBytes": 4199862,
+        "memoryHeuristicCacheBytes": 7156160,
+        "memoryDfsStackBytes": 11552,
+        "memoryReachabilitySnapshotBytes": 9972,
+        "idaStarIterations": 39
       }
     },
     {
       "fixtureId": "adv-rotary",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "5713714b8a753c05",
+      "width": 11,
+      "height": 6,
+      "floorCount": 25,
+      "boxCount": 2,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 413,
+      "elapsedMs": 497,
       "expandedStates": 15,
       "generatedStates": 41,
       "peakFrontierSize": 22,
+      "verified": true,
       "optimality": "unknown",
       "moves": 19,
       "pushes": 4
     },
     {
       "fixtureId": "adv-rotary",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "5713714b8a753c05",
+      "width": 11,
+      "height": 6,
+      "floorCount": 25,
+      "boxCount": 2,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1879,7 +2380,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 17,
+      "elapsedMs": 98,
       "expandedStates": 16,
       "generatedStates": 79,
       "peakFrontierSize": 30,
@@ -1899,13 +2400,22 @@
       },
       "optimality": "proven",
       "moves": 17,
-      "pushes": 4
+      "pushes": 4,
+      "verified": true
     },
     {
       "fixtureId": "adv-rotary",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "5713714b8a753c05",
+      "width": 11,
+      "height": 6,
+      "floorCount": 25,
+      "boxCount": 2,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1914,7 +2424,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 21,
+      "elapsedMs": 101,
       "expandedStates": 42,
       "generatedStates": 232,
       "peakFrontierSize": 4,
@@ -1943,36 +2453,54 @@
       },
       "optimality": "proven",
       "moves": 17,
-      "pushes": 4
+      "pushes": 4,
+      "verified": true
     },
     {
       "fixtureId": "adv-four-color",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "6f40e4db481a5fda",
+      "width": 9,
+      "height": 9,
+      "floorCount": 49,
+      "boxCount": 4,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 22892,
+      "elapsedMs": 29024,
       "expandedStates": 1105,
       "generatedStates": 67068,
       "peakFrontierSize": 17789,
+      "verified": true,
       "optimality": "unknown",
       "moves": 75,
       "pushes": 30
     },
     {
       "fixtureId": "adv-four-color",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "6f40e4db481a5fda",
+      "width": 9,
+      "height": 9,
+      "floorCount": 49,
+      "boxCount": 4,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -1981,7 +2509,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 16690,
+      "elapsedMs": 23535,
       "expandedStates": 51288,
       "generatedStates": 597884,
       "peakFrontierSize": 306522,
@@ -2001,13 +2529,22 @@
       },
       "optimality": "proven",
       "moves": 43,
-      "pushes": 30
+      "pushes": 30,
+      "verified": true
     },
     {
       "fixtureId": "adv-four-color",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "6f40e4db481a5fda",
+      "width": 9,
+      "height": 9,
+      "floorCount": 49,
+      "boxCount": 4,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2016,7 +2553,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 21376,
+      "elapsedMs": 45894,
       "expandedStates": 122274,
       "generatedStates": 1434599,
       "peakFrontierSize": 30,
@@ -2045,36 +2582,54 @@
       },
       "optimality": "proven",
       "moves": 43,
-      "pushes": 30
+      "pushes": 30,
+      "verified": true
     },
     {
       "fixtureId": "adv-gallery",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bba9a76aea55f49c",
+      "width": 10,
+      "height": 10,
+      "floorCount": 50,
+      "boxCount": 4,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 6583,
+      "elapsedMs": 14386,
       "expandedStates": 630,
       "generatedStates": 11639,
       "peakFrontierSize": 4858,
+      "verified": true,
       "optimality": "unknown",
       "moves": 94,
       "pushes": 16
     },
     {
       "fixtureId": "adv-gallery",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bba9a76aea55f49c",
+      "width": 10,
+      "height": 10,
+      "floorCount": 50,
+      "boxCount": 4,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2083,7 +2638,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 497,
+      "elapsedMs": 896,
       "expandedStates": 569,
       "generatedStates": 5296,
       "peakFrontierSize": 2206,
@@ -2103,13 +2658,22 @@
       },
       "optimality": "proven",
       "moves": 29,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "adv-gallery",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bba9a76aea55f49c",
+      "width": 10,
+      "height": 10,
+      "floorCount": 50,
+      "boxCount": 4,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2118,7 +2682,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 610,
+      "elapsedMs": 1236,
       "expandedStates": 2385,
       "generatedStates": 22287,
       "peakFrontierSize": 11,
@@ -2147,36 +2711,54 @@
       },
       "optimality": "proven",
       "moves": 29,
-      "pushes": 10
+      "pushes": 10,
+      "verified": true
     },
     {
       "fixtureId": "box-7x7",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "03ed342fe2878cc6",
+      "width": 7,
+      "height": 7,
+      "floorCount": 24,
+      "boxCount": 4,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 4317,
+      "elapsedMs": 7614,
       "expandedStates": 2417,
       "generatedStates": 14806,
       "peakFrontierSize": 2327,
+      "verified": true,
       "optimality": "unknown",
       "moves": 37,
       "pushes": 12
     },
     {
       "fixtureId": "box-7x7",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "03ed342fe2878cc6",
+      "width": 7,
+      "height": 7,
+      "floorCount": 24,
+      "boxCount": 4,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2185,7 +2767,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 707,
+      "elapsedMs": 1410,
       "expandedStates": 2217,
       "generatedStates": 15815,
       "peakFrontierSize": 5969,
@@ -2205,13 +2787,22 @@
       },
       "optimality": "proven",
       "moves": 21,
-      "pushes": 12
+      "pushes": 12,
+      "verified": true
     },
     {
       "fixtureId": "box-7x7",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "03ed342fe2878cc6",
+      "width": 7,
+      "height": 7,
+      "floorCount": 24,
+      "boxCount": 4,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2220,7 +2811,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 950,
+      "elapsedMs": 1494,
       "expandedStates": 5530,
       "generatedStates": 42262,
       "peakFrontierSize": 13,
@@ -2249,36 +2840,54 @@
       },
       "optimality": "proven",
       "moves": 21,
-      "pushes": 12
+      "pushes": 12,
+      "verified": true
     },
     {
       "fixtureId": "sym-diamond",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a29fbbbd8ca19f7a",
+      "width": 11,
+      "height": 11,
+      "floorCount": 41,
+      "boxCount": 3,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 80000,
           "maxGeneratedStates": 300000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 2110,
+      "elapsedMs": 3217,
       "expandedStates": 786,
       "generatedStates": 6253,
       "peakFrontierSize": 2272,
+      "verified": true,
       "optimality": "unknown",
       "moves": 20,
       "pushes": 7
     },
     {
       "fixtureId": "sym-diamond",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a29fbbbd8ca19f7a",
+      "width": 11,
+      "height": 11,
+      "floorCount": 41,
+      "boxCount": 3,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2287,7 +2896,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 508,
+      "elapsedMs": 818,
       "expandedStates": 784,
       "generatedStates": 8490,
       "peakFrontierSize": 3259,
@@ -2307,13 +2916,22 @@
       },
       "optimality": "proven",
       "moves": 16,
-      "pushes": 7
+      "pushes": 7,
+      "verified": true
     },
     {
       "fixtureId": "sym-diamond",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "a29fbbbd8ca19f7a",
+      "width": 11,
+      "height": 11,
+      "floorCount": 41,
+      "boxCount": 3,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2322,7 +2940,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 666,
+      "elapsedMs": 1251,
       "expandedStates": 2587,
       "generatedStates": 27910,
       "peakFrontierSize": 9,
@@ -2351,36 +2969,54 @@
       },
       "optimality": "proven",
       "moves": 16,
-      "pushes": 7
+      "pushes": 7,
+      "verified": true
     },
     {
       "fixtureId": "theme-library",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "9fcd7d2bc29d4ac6",
+      "width": 11,
+      "height": 8,
+      "floorCount": 46,
+      "boxCount": 4,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 6498,
+      "elapsedMs": 11725,
       "expandedStates": 562,
       "generatedStates": 12536,
       "peakFrontierSize": 6088,
+      "verified": true,
       "optimality": "unknown",
       "moves": 65,
       "pushes": 24
     },
     {
       "fixtureId": "theme-library",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "9fcd7d2bc29d4ac6",
+      "width": 11,
+      "height": 8,
+      "floorCount": 46,
+      "boxCount": 4,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2389,7 +3025,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 6901,
+      "elapsedMs": 12620,
       "expandedStates": 50356,
       "generatedStates": 420827,
       "peakFrontierSize": 77616,
@@ -2409,13 +3045,22 @@
       },
       "optimality": "proven",
       "moves": 45,
-      "pushes": 22
+      "pushes": 22,
+      "verified": true
     },
     {
       "fixtureId": "theme-library",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "9fcd7d2bc29d4ac6",
+      "width": 11,
+      "height": 8,
+      "floorCount": 46,
+      "boxCount": 4,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2423,66 +3068,80 @@
           "maxMemoryBytes": 536870912
         }
       },
-      "status": "solved",
-      "elapsedMs": 38311,
-      "expandedStates": 403623,
-      "generatedStates": 3490573,
+      "status": "cancelled",
+      "elapsedMs": 60000,
+      "expandedStates": 322305,
+      "generatedStates": 2802159,
       "peakFrontierSize": 22,
       "counters": {
-        "uniqueStates": 27842,
-        "retainedStates": 27842,
-        "duplicateStates": 286362,
-        "deadlockPrunes": 506034,
-        "infeasiblePrunes": 33164,
+        "uniqueStates": 34710,
+        "retainedStates": 34710,
+        "duplicateStates": 212797,
+        "deadlockPrunes": 407863,
+        "infeasiblePrunes": 24901,
         "reopens": 0,
-        "reachabilityFloods": 403623,
+        "reachabilityFloods": 322305,
         "identityFloods": 0,
-        "heuristicCalls": 2984561,
-        "heuristicCacheHits": 2962053,
+        "heuristicCalls": 2394317,
+        "heuristicCacheHits": 2373518,
         "frontierSize": 0,
         "maxDepth": 21,
-        "estimatedMemoryBytes": 10575472,
-        "currentEstimatedMemoryBytes": 10575472,
-        "peakEstimatedMemoryBytes": 13938902,
+        "estimatedMemoryBytes": 11277694,
+        "currentEstimatedMemoryBytes": 11277694,
+        "peakEstimatedMemoryBytes": 11799016,
         "memoryStaticBytes": 9734,
-        "memoryTranspositionBytes": 4754340,
-        "memoryHeuristicCacheBytes": 5762048,
-        "memoryDfsStackBytes": 22114,
-        "memoryReachabilitySnapshotBytes": 27236,
-        "idaStarIterations": 21
-      },
-      "optimality": "proven",
-      "moves": 45,
-      "pushes": 22
+        "memoryTranspositionBytes": 5930128,
+        "memoryHeuristicCacheBytes": 5324544,
+        "memoryDfsStackBytes": 5860,
+        "memoryReachabilitySnapshotBytes": 7428,
+        "idaStarIterations": 20
+      }
     },
     {
       "fixtureId": "theme-parking",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "c971d96486a0848d",
+      "width": 11,
+      "height": 9,
+      "floorCount": 52,
+      "boxCount": 5,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 15600,
+      "elapsedMs": 28903,
       "expandedStates": 1661,
       "generatedStates": 45336,
       "peakFrontierSize": 8923,
+      "verified": true,
       "optimality": "unknown",
       "moves": 236,
       "pushes": 68
     },
     {
       "fixtureId": "theme-parking",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "c971d96486a0848d",
+      "width": 11,
+      "height": 9,
+      "floorCount": 52,
+      "boxCount": 5,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2491,30 +3150,38 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60003,
-      "expandedStates": 297968,
-      "generatedStates": 2951075,
-      "peakFrontierSize": 474277,
+      "elapsedMs": 60005,
+      "expandedStates": 153482,
+      "generatedStates": 1525722,
+      "peakFrontierSize": 281345,
       "counters": {
-        "uniqueStates": 598863,
-        "retainedStates": 850279,
-        "duplicateStates": 1467186,
-        "deadlockPrunes": 633611,
+        "uniqueStates": 333908,
+        "retainedStates": 469787,
+        "duplicateStates": 722973,
+        "deadlockPrunes": 332963,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 2615433,
-        "heuristicCalls": 850279,
-        "heuristicCacheHits": 575250,
-        "frontierSize": 474261,
-        "maxDepth": 31,
-        "estimatedMemoryBytes": 853924296
+        "reachabilityFloods": 1346242,
+        "heuristicCalls": 469787,
+        "heuristicCacheHits": 373845,
+        "frontierSize": 281341,
+        "maxDepth": 27,
+        "estimatedMemoryBytes": 479441998
       }
     },
     {
       "fixtureId": "theme-parking",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "c971d96486a0848d",
+      "width": 11,
+      "height": 9,
+      "floorCount": 52,
+      "boxCount": 5,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2523,95 +3190,110 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60002,
-      "expandedStates": 552302,
-      "generatedStates": 5558547,
-      "peakFrontierSize": 23,
+      "elapsedMs": 60001,
+      "expandedStates": 223227,
+      "generatedStates": 2256682,
+      "peakFrontierSize": 22,
       "counters": {
-        "uniqueStates": 48245,
-        "retainedStates": 48245,
-        "duplicateStates": 369272,
-        "deadlockPrunes": 1247495,
+        "uniqueStates": 2271,
+        "retainedStates": 2271,
+        "duplicateStates": 119789,
+        "deadlockPrunes": 511574,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 552302,
+        "reachabilityFloods": 223227,
         "identityFloods": 0,
-        "heuristicCalls": 4311086,
-        "heuristicCacheHits": 4277235,
+        "heuristicCalls": 1745139,
+        "heuristicCacheHits": 1724629,
         "frontierSize": 0,
-        "maxDepth": 22,
-        "estimatedMemoryBytes": 18869132,
-        "currentEstimatedMemoryBytes": 18869132,
-        "peakEstimatedMemoryBytes": 18884238,
+        "maxDepth": 21,
+        "estimatedMemoryBytes": 6231440,
+        "currentEstimatedMemoryBytes": 6231440,
+        "peakEstimatedMemoryBytes": 10350770,
         "memoryStaticBytes": 10896,
-        "memoryTranspositionBytes": 9359784,
-        "memoryHeuristicCacheBytes": 9478280,
-        "memoryDfsStackBytes": 9644,
-        "memoryReachabilitySnapshotBytes": 10528,
-        "idaStarIterations": 34
+        "memoryTranspositionBytes": 440828,
+        "memoryHeuristicCacheBytes": 5742800,
+        "memoryDfsStackBytes": 17176,
+        "memoryReachabilitySnapshotBytes": 19740,
+        "idaStarIterations": 31
       }
     },
     {
       "fixtureId": "open-field",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "0357867b9856252d",
+      "width": 20,
+      "height": 20,
+      "floorCount": 324,
+      "boxCount": 10,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "structural",
-        "algorithm": "plan-macro-beam",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 6000
-        }
+        },
+        "lane": "structural",
+        "algorithm": "plan-macro-beam"
       },
       "status": "solved",
-      "elapsedMs": 48226,
+      "elapsedMs": 90207,
       "expandedStates": 995,
       "generatedStates": 18037,
       "peakFrontierSize": 1229,
+      "verified": true,
       "optimality": "unknown",
       "moves": 190,
       "pushes": 68
     },
     {
-      "fixtureId": "huge",
-      "solver": "sokomind-solver",
-      "configuration": {
-        "deterministic": false,
-        "limits": {}
-      },
-      "status": "error",
-      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
-      "elapsedMs": 0
-    },
-    {
       "fixtureId": "expert-maze",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "e68f12a27d1d3d68",
+      "width": 12,
+      "height": 11,
+      "floorCount": 66,
+      "boxCount": 5,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 10917,
+      "elapsedMs": 14402,
       "expandedStates": 1145,
       "generatedStates": 21298,
       "peakFrontierSize": 5211,
+      "verified": true,
       "optimality": "unknown",
       "moves": 151,
       "pushes": 32
     },
     {
       "fixtureId": "expert-maze",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "e68f12a27d1d3d68",
+      "width": 12,
+      "height": 11,
+      "floorCount": 66,
+      "boxCount": 5,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2620,7 +3302,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 3256,
+      "elapsedMs": 3788,
       "expandedStates": 18261,
       "generatedStates": 170901,
       "peakFrontierSize": 43274,
@@ -2640,13 +3322,22 @@
       },
       "optimality": "proven",
       "moves": 65,
-      "pushes": 28
+      "pushes": 28,
+      "verified": true
     },
     {
       "fixtureId": "expert-maze",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "e68f12a27d1d3d68",
+      "width": 12,
+      "height": 11,
+      "floorCount": 66,
+      "boxCount": 5,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2655,7 +3346,7 @@
         }
       },
       "status": "solved",
-      "elapsedMs": 23462,
+      "elapsedMs": 45196,
       "expandedStates": 205934,
       "generatedStates": 1937344,
       "peakFrontierSize": 28,
@@ -2684,36 +3375,54 @@
       },
       "optimality": "proven",
       "moves": 65,
-      "pushes": 28
+      "pushes": 28,
+      "verified": true
     },
     {
       "fixtureId": "expert-tetris",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "3462f9a6c0ae20c0",
+      "width": 9,
+      "height": 9,
+      "floorCount": 39,
+      "boxCount": 6,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 19992,
+      "elapsedMs": 29903,
       "expandedStates": 920,
       "generatedStates": 33987,
       "peakFrontierSize": 10561,
+      "verified": true,
       "optimality": "unknown",
       "moves": 65,
       "pushes": 21
     },
     {
       "fixtureId": "expert-tetris",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "3462f9a6c0ae20c0",
+      "width": 9,
+      "height": 9,
+      "floorCount": 39,
+      "boxCount": 6,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2721,31 +3430,43 @@
           "maxMemoryBytes": 536870912
         }
       },
-      "status": "cancelled",
-      "elapsedMs": 60000,
-      "expandedStates": 179000,
-      "generatedStates": 2616623,
-      "peakFrontierSize": 532900,
+      "status": "solved",
+      "elapsedMs": 58507,
+      "expandedStates": 207463,
+      "generatedStates": 3035437,
+      "peakFrontierSize": 591818,
       "counters": {
-        "uniqueStates": 575797,
-        "retainedStates": 730325,
-        "duplicateStates": 1419219,
-        "deadlockPrunes": 455686,
-        "infeasiblePrunes": 11394,
+        "uniqueStates": 642790,
+        "retainedStates": 820490,
+        "duplicateStates": 1662950,
+        "deadlockPrunes": 539694,
+        "infeasiblePrunes": 12304,
         "reopens": 0,
-        "reachabilityFloods": 2339938,
-        "heuristicCalls": 741719,
-        "heuristicCacheHits": 447575,
-        "frontierSize": 532859,
+        "reachabilityFloods": 2703207,
+        "heuristicCalls": 832794,
+        "heuristicCacheHits": 496607,
+        "frontierSize": 591817,
         "maxDepth": 19,
-        "estimatedMemoryBytes": 807982898
-      }
+        "estimatedMemoryBytes": 905082646
+      },
+      "optimality": "proven",
+      "moves": 38,
+      "pushes": 19,
+      "verified": true
     },
     {
       "fixtureId": "expert-tetris",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "3462f9a6c0ae20c0",
+      "width": 9,
+      "height": 9,
+      "floorCount": 39,
+      "boxCount": 6,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2754,62 +3475,79 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60002,
-      "expandedStates": 288755,
-      "generatedStates": 4287935,
+      "elapsedMs": 60003,
+      "expandedStates": 354849,
+      "generatedStates": 5269812,
       "peakFrontierSize": 17,
       "counters": {
-        "uniqueStates": 68246,
-        "retainedStates": 68246,
-        "duplicateStates": 129952,
-        "deadlockPrunes": 662642,
-        "infeasiblePrunes": 11275,
+        "uniqueStates": 26730,
+        "retainedStates": 26730,
+        "duplicateStates": 169045,
+        "deadlockPrunes": 819838,
+        "infeasiblePrunes": 14103,
         "reopens": 0,
-        "reachabilityFloods": 288755,
+        "reachabilityFloods": 354849,
         "identityFloods": 0,
-        "heuristicCalls": 3625309,
-        "heuristicCacheHits": 3391743,
+        "heuristicCalls": 4449991,
+        "heuristicCacheHits": 4147141,
         "frontierSize": 0,
         "maxDepth": 16,
-        "estimatedMemoryBytes": 27199671,
-        "currentEstimatedMemoryBytes": 27199671,
-        "peakEstimatedMemoryBytes": 27202849,
+        "estimatedMemoryBytes": 19916924,
+        "currentEstimatedMemoryBytes": 19916924,
+        "peakEstimatedMemoryBytes": 30877216,
         "memoryStaticBytes": 9951,
-        "memoryTranspositionBytes": 11965700,
+        "memoryTranspositionBytes": 4689846,
         "memoryHeuristicCacheBytes": 15200000,
-        "memoryDfsStackBytes": 12550,
-        "memoryReachabilitySnapshotBytes": 11470,
-        "idaStarIterations": 16
+        "memoryDfsStackBytes": 9098,
+        "memoryReachabilitySnapshotBytes": 8029,
+        "idaStarIterations": 17
       }
     },
     {
       "fixtureId": "theme-museum",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bd77bfeb53fb2fc9",
+      "width": 13,
+      "height": 10,
+      "floorCount": 82,
+      "boxCount": 6,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 55404,
+      "elapsedMs": 35022,
       "expandedStates": 1468,
       "generatedStates": 112579,
       "peakFrontierSize": 22006,
+      "verified": true,
       "optimality": "unknown",
       "moves": 122,
       "pushes": 37
     },
     {
       "fixtureId": "theme-museum",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bd77bfeb53fb2fc9",
+      "width": 13,
+      "height": 10,
+      "floorCount": 82,
+      "boxCount": 6,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2818,30 +3556,38 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60002,
-      "expandedStates": 103234,
-      "generatedStates": 1565930,
-      "peakFrontierSize": 762878,
+      "elapsedMs": 59934,
+      "expandedStates": 127909,
+      "generatedStates": 1940281,
+      "peakFrontierSize": 925601,
       "counters": {
-        "uniqueStates": 759761,
-        "retainedStates": 870710,
-        "duplicateStates": 548532,
-        "deadlockPrunes": 146689,
+        "uniqueStates": 920494,
+        "retainedStates": 1059600,
+        "duplicateStates": 698778,
+        "deadlockPrunes": 181904,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 1522476,
-        "heuristicCalls": 870710,
-        "heuristicCacheHits": 297615,
-        "frontierSize": 762878,
+        "reachabilityFloods": 1886287,
+        "heuristicCalls": 1059600,
+        "heuristicCacheHits": 340391,
+        "frontierSize": 925601,
         "maxDepth": 22,
-        "estimatedMemoryBytes": 974557202
+        "estimatedMemoryBytes": 1182128172
       }
     },
     {
       "fixtureId": "theme-museum",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "bd77bfeb53fb2fc9",
+      "width": 13,
+      "height": 10,
+      "floorCount": 82,
+      "boxCount": 6,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2850,62 +3596,79 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60003,
-      "expandedStates": 234950,
-      "generatedStates": 3514637,
+      "elapsedMs": 60001,
+      "expandedStates": 189044,
+      "generatedStates": 2825103,
       "peakFrontierSize": 22,
       "counters": {
-        "uniqueStates": 68386,
-        "retainedStates": 68386,
-        "duplicateStates": 54338,
-        "deadlockPrunes": 312034,
+        "uniqueStates": 33477,
+        "retainedStates": 33477,
+        "duplicateStates": 40082,
+        "deadlockPrunes": 252026,
         "infeasiblePrunes": 0,
         "reopens": 0,
-        "reachabilityFloods": 234950,
+        "reachabilityFloods": 189044,
         "identityFloods": 0,
-        "heuristicCalls": 3202621,
-        "heuristicCacheHits": 2383946,
+        "heuristicCalls": 2573095,
+        "heuristicCacheHits": 1938874,
         "frontierSize": 0,
         "maxDepth": 21,
-        "estimatedMemoryBytes": 28374994,
-        "currentEstimatedMemoryBytes": 28374994,
-        "peakEstimatedMemoryBytes": 28387990,
+        "estimatedMemoryBytes": 21683938,
+        "currentEstimatedMemoryBytes": 21683938,
+        "peakEstimatedMemoryBytes": 24473578,
         "memoryStaticBytes": 14834,
-        "memoryTranspositionBytes": 13130366,
+        "memoryTranspositionBytes": 6427838,
         "memoryHeuristicCacheBytes": 15200000,
-        "memoryDfsStackBytes": 12734,
-        "memoryReachabilitySnapshotBytes": 17060,
+        "memoryDfsStackBytes": 17382,
+        "memoryReachabilitySnapshotBytes": 23884,
         "idaStarIterations": 18
       }
     },
     {
       "fixtureId": "master-exchange",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7fdd8ea33e54ca04",
+      "width": 13,
+      "height": 11,
+      "floorCount": 91,
+      "boxCount": 8,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 43415,
+      "elapsedMs": 52994,
       "expandedStates": 1242,
       "generatedStates": 122586,
       "peakFrontierSize": 9234,
+      "verified": true,
       "optimality": "unknown",
       "moves": 252,
       "pushes": 82
     },
     {
       "fixtureId": "master-exchange",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7fdd8ea33e54ca04",
+      "width": 13,
+      "height": 11,
+      "floorCount": 91,
+      "boxCount": 8,
       "solver": "classic-astar",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2914,30 +3677,38 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60004,
-      "expandedStates": 35616,
-      "generatedStates": 738206,
-      "peakFrontierSize": 527088,
+      "elapsedMs": 60005,
+      "expandedStates": 43664,
+      "generatedStates": 902250,
+      "peakFrontierSize": 636121,
       "counters": {
-        "uniqueStates": 526014,
-        "retainedStates": 563266,
-        "duplicateStates": 163683,
-        "deadlockPrunes": 11216,
+        "uniqueStates": 634608,
+        "retainedStates": 680603,
+        "duplicateStates": 206835,
+        "deadlockPrunes": 14771,
         "infeasiblePrunes": 42,
         "reopens": 0,
-        "reachabilityFloods": 762607,
-        "heuristicCalls": 563308,
-        "heuristicCacheHits": 130500,
-        "frontierSize": 527088,
+        "reachabilityFloods": 931144,
+        "heuristicCalls": 680645,
+        "heuristicCacheHits": 154443,
+        "frontierSize": 636121,
         "maxDepth": 37,
-        "estimatedMemoryBytes": 733533080
+        "estimatedMemoryBytes": 882532406
       }
     },
     {
       "fixtureId": "master-exchange",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "7fdd8ea33e54ca04",
+      "width": 13,
+      "height": 11,
+      "floorCount": 91,
+      "boxCount": 8,
       "solver": "classic-ida-star",
+      "solverVersion": "1.0.0",
       "configuration": {
         "deterministic": true,
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 60000,
           "maxExpandedStates": 500000,
@@ -2946,78 +3717,65 @@
         }
       },
       "status": "cancelled",
-      "elapsedMs": 60003,
-      "expandedStates": 45499,
-      "generatedStates": 914184,
-      "peakFrontierSize": 27,
+      "elapsedMs": 59999,
+      "expandedStates": 66282,
+      "generatedStates": 1342823,
+      "peakFrontierSize": 36,
       "counters": {
-        "uniqueStates": 23147,
-        "retainedStates": 23147,
-        "duplicateStates": 5185,
-        "deadlockPrunes": 16432,
-        "infeasiblePrunes": 24,
+        "uniqueStates": 19250,
+        "retainedStates": 19250,
+        "duplicateStates": 7732,
+        "deadlockPrunes": 24057,
+        "infeasiblePrunes": 43,
         "reopens": 0,
-        "reachabilityFloods": 45499,
+        "reachabilityFloods": 66282,
         "identityFloods": 0,
-        "heuristicCalls": 897765,
-        "heuristicCacheHits": 503461,
+        "heuristicCalls": 1318781,
+        "heuristicCacheHits": 716631,
         "frontierSize": 0,
-        "maxDepth": 26,
-        "estimatedMemoryBytes": 22585192,
-        "currentEstimatedMemoryBytes": 22585192,
-        "peakEstimatedMemoryBytes": 22590282,
+        "maxDepth": 35,
+        "estimatedMemoryBytes": 21719060,
+        "currentEstimatedMemoryBytes": 21719060,
+        "peakEstimatedMemoryBytes": 22603002,
         "memoryStaticBytes": 17363,
-        "memoryTranspositionBytes": 4906096,
+        "memoryTranspositionBytes": 4079366,
         "memoryHeuristicCacheBytes": 17600000,
-        "memoryDfsStackBytes": 27096,
-        "memoryReachabilitySnapshotBytes": 34637,
-        "idaStarIterations": 13
+        "memoryDfsStackBytes": 9570,
+        "memoryReachabilitySnapshotBytes": 12761,
+        "idaStarIterations": 14
       }
     },
     {
       "fixtureId": "master-typed-grid",
+      "fixtureGroup": "primary-v2",
+      "boardHash": "26823749ec8c8e85",
+      "width": 13,
+      "height": 11,
+      "floorCount": 99,
+      "boxCount": 8,
       "solver": "sokomind-solver",
+      "solverVersion": "1.1.0",
       "configuration": {
         "deterministic": false,
-        "lane": "discovery",
-        "algorithm": "ultimate",
+        "workerCount": 1,
         "limits": {
           "maxElapsedMs": 180000,
           "maxMemoryBytes": 805306368,
           "maxExpandedStates": 180000,
           "maxGeneratedStates": 1200000
-        }
+        },
+        "lane": "discovery",
+        "algorithm": "ultimate"
       },
       "status": "solved",
-      "elapsedMs": 89998,
+      "elapsedMs": 80093,
       "expandedStates": 1048,
       "generatedStates": 149693,
       "peakFrontierSize": 12603,
+      "verified": true,
       "optimality": "unknown",
       "moves": 170,
       "pushes": 59
-    },
-    {
-      "fixtureId": "huge-mirrored",
-      "solver": "sokomind-solver",
-      "configuration": {
-        "deterministic": false,
-        "limits": {}
-      },
-      "status": "error",
-      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
-      "elapsedMs": 0
-    },
-    {
-      "fixtureId": "huge-rotated",
-      "solver": "sokomind-solver",
-      "configuration": {
-        "deterministic": false,
-        "limits": {}
-      },
-      "status": "error",
-      "detail": "spawnSync /home/wpost003/local/node-v22.16.0-linux-x64/bin/node ETIMEDOUT",
-      "elapsedMs": 0
     }
   ]
 }

@@ -8,6 +8,7 @@
  * Usage:
  *   npm run benchmark:solver:v2
  *   npm run benchmark:solver:v2 -- --fixture=huge
+ *   npm run benchmark:solver:v2 -- --fixture=v2-17box-handdesigned
  *   npm run benchmark:solver:v2 -- --save=tests/fixtures/solver-v2/baseline-v0.json
  */
 
@@ -19,8 +20,11 @@ import os from "node:os";
 
 import {
   BENCHMARK_CORPUS,
+  BENCHMARK_FIXTURE_BY_ID,
+  computeBoardHash,
   isClassicEligible,
   type BenchmarkFixture,
+  type BenchmarkFixtureGroup,
 } from "../tests/fixtures/solver-v2/benchmark-corpus.ts";
 import { createSession, type PuzzleDefinition } from "../src/core/index.ts";
 import type {
@@ -46,7 +50,7 @@ import { verifySolverSolution } from "../src/solver/verification.ts";
 // ---------------------------------------------------------------------------
 
 interface BenchmarkResultFile {
-  schemaVersion: 1;
+  schemaVersion: 2;
   captureDate: string;
   nodeVersion: string;
   platform: string;
@@ -60,9 +64,20 @@ interface BenchmarkResultFile {
 
 interface BenchmarkFixtureResult {
   fixtureId: string;
+  fixtureGroup: BenchmarkFixtureGroup;
+
+  boardHash: string;
+  width: number;
+  height: number;
+  floorCount: number;
+  boxCount: number;
+
   solver: string;
+  solverVersion?: string;
+
   configuration: {
     deterministic: boolean;
+    workerCount?: number;
     limits: {
       maxElapsedMs?: number;
       maxExpandedStates?: number;
@@ -71,10 +86,12 @@ interface BenchmarkFixtureResult {
     };
     [key: string]: unknown;
   };
-  status: string;
-  optimality?: string;
+
+  status: "solved" | "unsolved" | "cancelled" | "error";
+  optimality?: "unknown" | "proven";
   reason?: string;
   detail?: string;
+
   moves?: number;
   pushes?: number;
   expandedStates?: number;
@@ -85,6 +102,8 @@ interface BenchmarkFixtureResult {
   estimatedMemoryBytes?: number;
   elapsedMs: number;
   counters?: Record<string, number>;
+
+  verified?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +123,16 @@ const SOKOMIND_LIMITS = Object.freeze({
 });
 
 const CHILD_TIMEOUT_MS = 300_000;
+
+// ---------------------------------------------------------------------------
+// Solver versions
+// ---------------------------------------------------------------------------
+
+const SOLVER_VERSIONS: Record<string, string> = {
+  "sokomind-solver": sokomindSolverMetadata.version,
+  "classic-astar": classicAStarSolver.metadata.version,
+  "classic-ida-star": classicIdaStarSolver.metadata.version,
+};
 
 // ---------------------------------------------------------------------------
 // Arguments
@@ -139,6 +168,35 @@ function parseArguments(): {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-constructed metadata template
+// ---------------------------------------------------------------------------
+
+function buildMetadata(
+  fixture: BenchmarkFixture,
+  solver: string,
+): Omit<BenchmarkFixtureResult, "status" | "elapsedMs"> {
+  const isSokomind = solver === "sokomind-solver";
+  const limits = isSokomind ? { ...SOKOMIND_LIMITS } : { ...CLASSIC_LIMITS };
+
+  return {
+    fixtureId: fixture.fixtureId,
+    fixtureGroup: fixture.fixtureGroup,
+    boardHash: computeBoardHash(fixture.rows),
+    width: fixture.width,
+    height: fixture.height,
+    floorCount: fixture.floorCount,
+    boxCount: fixture.boxes,
+    solver,
+    solverVersion: SOLVER_VERSIONS[solver],
+    configuration: {
+      deterministic: !isSokomind,
+      workerCount: 1,
+      limits,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Request construction from frozen rows
 // ---------------------------------------------------------------------------
 
@@ -170,6 +228,7 @@ async function runClassicSolver(
   solverId: "classic-astar" | "classic-ida-star",
   fixture: BenchmarkFixture,
 ): Promise<BenchmarkFixtureResult> {
+  const meta = buildMetadata(fixture, solverId);
   const request = requestFromRows(
     fixture.fixtureId,
     fixture.rows,
@@ -203,12 +262,7 @@ async function runClassicSolver(
 
   if (error || !result) {
     return {
-      fixtureId: fixture.fixtureId,
-      solver: solverId,
-      configuration: {
-        deterministic: true,
-        limits: { ...CLASSIC_LIMITS },
-      },
+      ...meta,
       status: "error",
       detail: error ?? "No result returned",
       elapsedMs,
@@ -216,12 +270,7 @@ async function runClassicSolver(
   }
 
   const base: BenchmarkFixtureResult = {
-    fixtureId: fixture.fixtureId,
-    solver: solverId,
-    configuration: {
-      deterministic: true,
-      limits: { ...CLASSIC_LIMITS },
-    },
+    ...meta,
     status: result.status,
     elapsedMs,
     expandedStates: result.metrics.expandedStates,
@@ -236,6 +285,8 @@ async function runClassicSolver(
     base.optimality = result.solution.optimality;
     base.moves = result.solution.moves;
     base.pushes = result.solution.pushes;
+    const verification = verifySolverSolution(request, result.solution);
+    base.verified = verification.valid;
   } else if (result.status === "unsolved") {
     base.reason = result.reason;
     base.detail = result.detail;
@@ -251,6 +302,7 @@ async function runClassicSolver(
 function runSokomindSolver(
   fixture: BenchmarkFixture,
 ): BenchmarkFixtureResult {
+  const meta = buildMetadata(fixture, "sokomind-solver");
   const request = requestFromRows(
     fixture.fixtureId,
     fixture.rows,
@@ -365,24 +417,25 @@ function runSokomindSolver(
     typeof v === "number" && Number.isFinite(v) ? v : undefined;
 
   const result: BenchmarkFixtureResult = {
-    fixtureId: fixture.fixtureId,
-    solver: "sokomind-solver",
-    configuration: {
-      deterministic: false,
-      lane,
-      algorithm: payload.algorithm,
-      limits: {
-        maxElapsedMs: SOKOMIND_LIMITS.maxElapsedMs,
-        maxMemoryBytes: SOKOMIND_LIMITS.maxMemoryBytes,
-        maxExpandedStates: numeric(payload.maxVisited),
-        maxGeneratedStates: numeric(payload.maxGenerated),
-      },
-    },
+    ...meta,
     status: solved ? "solved" : "unsolved",
     elapsedMs,
     expandedStates: numeric(initial.visited),
     generatedStates: numeric(initial.generated),
     peakFrontierSize: numeric(initial.peakFrontier),
+    verified: solved ? true : undefined,
+  };
+
+  result.configuration = {
+    ...result.configuration,
+    lane,
+    algorithm: payload.algorithm,
+    limits: {
+      maxElapsedMs: SOKOMIND_LIMITS.maxElapsedMs,
+      maxMemoryBytes: SOKOMIND_LIMITS.maxMemoryBytes,
+      maxExpandedStates: numeric(payload.maxVisited),
+      maxGeneratedStates: numeric(payload.maxGenerated),
+    },
   };
 
   if (solved && solution) {
@@ -401,11 +454,14 @@ function runSokomindSolver(
 // ---------------------------------------------------------------------------
 
 async function runChild(fixtureId: string, solver: string): Promise<void> {
-  const fixture = BENCHMARK_CORPUS.find((f) => f.fixtureId === fixtureId);
+  const fixture = BENCHMARK_FIXTURE_BY_ID[fixtureId];
   if (!fixture) {
     process.stdout.write(
       JSON.stringify({
         fixtureId,
+        fixtureGroup: "primary-v2",
+        boardHash: "unknown",
+        width: 0, height: 0, floorCount: 0, boxCount: 0,
         solver,
         status: "error",
         detail: `Unknown fixture "${fixtureId}"`,
@@ -425,14 +481,13 @@ async function runChild(fixtureId: string, solver: string): Promise<void> {
   ) {
     result = await runClassicSolver(solver, fixture);
   } else {
+    const meta = buildMetadata(fixture, solver);
     process.stdout.write(
       JSON.stringify({
-        fixtureId,
-        solver,
+        ...meta,
         status: "error",
         detail: `Unknown solver "${solver}"`,
         elapsedMs: 0,
-        configuration: { deterministic: false, limits: {} },
       }) + "\n",
     );
     process.exit(1);
@@ -458,9 +513,19 @@ async function main(): Promise<void> {
   }
 
   const scriptPath = fileURLToPath(import.meta.url);
+
+  // Resolve fixture IDs including aliases
   const selectedFixtures =
     args.fixtureIds.length > 0
-      ? BENCHMARK_CORPUS.filter((f) => args.fixtureIds.includes(f.fixtureId))
+      ? BENCHMARK_CORPUS.filter((f) => {
+          if (args.fixtureIds.includes(f.fixtureId)) return true;
+          if (f.aliases) {
+            for (const alias of f.aliases) {
+              if (args.fixtureIds.includes(alias)) return true;
+            }
+          }
+          return false;
+        })
       : BENCHMARK_CORPUS;
 
   if (selectedFixtures.length === 0) {
@@ -482,6 +547,9 @@ async function main(): Promise<void> {
         continue;
       }
 
+      const meta = buildMetadata(fixture, solver);
+      const parentStarted = performance.now();
+
       const child = spawnSync(
         process.execPath,
         [
@@ -499,11 +567,15 @@ async function main(): Promise<void> {
         },
       );
 
+      const parentElapsedMs = Math.round(performance.now() - parentStarted);
+
+      let childParsed = false;
       if (child.stdout) {
         for (const line of child.stdout.split("\n").filter(Boolean)) {
           try {
             const record = JSON.parse(line) as BenchmarkFixtureResult;
             allResults.push(record);
+            childParsed = true;
             process.stderr.write(
               `  ${record.fixtureId} / ${record.solver}: ${record.status}` +
                 (record.moves !== undefined ? ` (${record.moves} moves)` : "") +
@@ -515,30 +587,30 @@ async function main(): Promise<void> {
         }
       }
 
-      if (child.error || child.signal || child.status !== 0) {
-        const errorResult: BenchmarkFixtureResult = {
-          fixtureId: fixture.fixtureId,
-          solver,
-          configuration: { deterministic: false, limits: {} },
-          status: "error",
-          detail:
-            child.error?.message ??
-            (child.signal
-              ? `terminated-${child.signal}`
-              : `exit-${child.status ?? "unknown"}`),
-          elapsedMs: 0,
-        };
-        allResults.push(errorResult);
-        process.stderr.write(
-          `  ${fixture.fixtureId} / ${solver}: ERROR (${errorResult.detail})\n`,
-        );
+      if (!childParsed || child.error || child.signal || child.status !== 0) {
+        if (!childParsed) {
+          const errorResult: BenchmarkFixtureResult = {
+            ...meta,
+            status: "error",
+            detail:
+              child.error?.message ??
+              (child.signal
+                ? `terminated-${child.signal}`
+                : `exit-${child.status ?? "unknown"}`),
+            elapsedMs: parentElapsedMs,
+          };
+          allResults.push(errorResult);
+          process.stderr.write(
+            `  ${fixture.fixtureId} / ${solver}: ERROR (${errorResult.detail}) [${parentElapsedMs}ms]\n`,
+          );
+        }
       }
     }
   }
 
   const cpus = os.cpus();
   const output: BenchmarkResultFile = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     captureDate: new Date().toISOString(),
     nodeVersion: process.version,
     platform: process.platform,

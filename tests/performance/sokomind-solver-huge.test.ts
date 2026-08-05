@@ -19,10 +19,15 @@ import {
   runPerformanceTestModule,
 } from "../support/child-process-gate.ts";
 
+// Wall-clock timing gates are sanity checks, not correctness proofs.
+// State-count and deterministic-result assertions are the real gates.
+// Set SOKOMIND_TIMING_SCALE=2 on slower hardware (e.g. shared server CPUs).
+const TIMING_SCALE = Math.max(1, Number(process.env.SOKOMIND_TIMING_SCALE) || 1);
+
 const MAXIMUMS = Object.freeze({
-  searchElapsedMs: 60_000,
-  rewriteElapsedMs: 90_000,
-  totalElapsedMs: 180_000,
+  searchElapsedMs: 60_000 * TIMING_SCALE,
+  rewriteElapsedMs: 90_000 * TIMING_SCALE,
+  totalElapsedMs: 180_000 * TIMING_SCALE,
   moves: 1_300,
   pushes: 350,
   visited: 2_500,
@@ -47,7 +52,7 @@ const REVIEWED_REWRITE_RESULT = Object.freeze({
   moveVisited: 25_000,
 });
 
-const HARD_PROCESS_TIMEOUT_MS = MAXIMUMS.totalElapsedMs + 30_000;
+const HARD_PROCESS_TIMEOUT_MS = MAXIMUMS.totalElapsedMs + 30_000 * TIMING_SCALE;
 
 function mirrorRows(rows: readonly string[]): readonly string[] {
   return rows.map((row) => [...row].reverse().join(""));
