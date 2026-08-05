@@ -241,3 +241,24 @@ single puzzle should determine the architecture or algorithm choice.
 Work in progress. See [`solver-v2-spec.md`](solver-v2-spec.md) for the full
 specification and [`solver-v2-progress.md`](solver-v2-progress.md) for sprint
 status.
+
+### Proof metadata
+
+Every `SolverResult` may carry an optional `proof` field (`SolverProof`)
+describing the quality guarantee of the solution:
+
+- **`bounded`**: a solution exists with `lowerBound <= optimal <= upperBound`.
+  `gap = upperBound - lowerBound`. `upperBound` equals `solution.moves`.
+- **`optimal`**: `lowerBound = upperBound = solution.moves`, `gap = 0`.
+  `solution.optimality` must be `"proven"`.
+- **`unsolvable`**: exhaustive exact search proved no solution exists. No
+  `upperBound` or `gap`. Result status must be `"unsolved"`.
+
+Progress events may include `lowerBound`, `upperBound`, and `gap` fields
+during the `"proving"` phase. Bounds tighten monotonically.
+
+The `proof.algorithm` field records which search produced the proof
+(`"move-astar"`, `"move-ida-star"`, or their parallel variants).
+
+Backward compatibility: results without a `proof` field remain valid.
+`solution.optimality` is preserved and can be derived from `proof.kind`.

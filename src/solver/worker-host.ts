@@ -244,6 +244,39 @@ export class SolverWorkerHost {
       if (!this.#isActive(run) || run.cancellation.signal.aborted) return;
       try {
         assertValidSolverProgress(progress);
+        if (run.lastProgress) {
+          const prev = run.lastProgress;
+          if (
+            prev.lowerBound !== undefined &&
+            progress.lowerBound !== undefined &&
+            progress.lowerBound < prev.lowerBound
+          ) {
+            throw new SolverWorkerRuntimeError(
+              `Progress lowerBound decreased from ${prev.lowerBound} to ${progress.lowerBound}`,
+              "ERR_SOLVER_MONOTONICITY",
+            );
+          }
+          if (
+            prev.upperBound !== undefined &&
+            progress.upperBound !== undefined &&
+            progress.upperBound > prev.upperBound
+          ) {
+            throw new SolverWorkerRuntimeError(
+              `Progress upperBound increased from ${prev.upperBound} to ${progress.upperBound}`,
+              "ERR_SOLVER_MONOTONICITY",
+            );
+          }
+          if (
+            prev.gap !== undefined &&
+            progress.gap !== undefined &&
+            progress.gap > prev.gap
+          ) {
+            throw new SolverWorkerRuntimeError(
+              `Progress gap increased from ${prev.gap} to ${progress.gap}`,
+              "ERR_SOLVER_MONOTONICITY",
+            );
+          }
+        }
       } catch (error) {
         invalidProgress = error;
         run.cancellation.cancel("Solver emitted invalid progress");

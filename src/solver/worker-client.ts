@@ -14,7 +14,7 @@ import {
   type SolverWorkerCommand,
   type SolverWorkerEvent,
 } from "./protocol.ts";
-import { assertValidSolverRequest } from "./validation.ts";
+import { assertValidSolverRequest, assertValidSolverResult } from "./validation.ts";
 import { assertVerifiedSolverSolution } from "./verification.ts";
 
 export interface SolverClientMessageEvent {
@@ -375,6 +375,7 @@ export class SolverWorkerClient {
     const active = this.#active;
     if (!active || active.jobId !== event.jobId) return;
     try {
+      assertValidSolverResult(event.result);
       if (event.result.status === "solved") {
         assertVerifiedSolverSolution(active.request, event.result.solution);
       }

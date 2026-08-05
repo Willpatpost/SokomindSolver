@@ -382,3 +382,79 @@ Grand Hall (test:solver:huge) deterministic results unchanged:
 - `npm run build` — pass
 - `npm run test:solver:multi` — 4/4 pass
 - `npm run test:solver:huge` — pass (deterministic results identical)
+
+## Sprint 3 — Proof Contract and Protocol
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+Pure types/validation/protocol sprint — no search algorithm changes. Added
+`SolverProof` metadata contract (bounded, optimal, unsolvable proof kinds),
+extended `SolverProgress` with proof-tracking fields, threaded proof validation
+through the worker protocol, and maintained full backward compatibility.
+
+### Deliverables
+
+**New files:**
+
+- `src/solver/proof.ts` — proof invariant validation: `collectProofIssues`,
+  `assertValidProof`, `isProofCompatibleOptimality`
+- `tests/unit/solver-proof-contract.test.ts` — 39 tests across 10 suites
+
+**Updated files:**
+
+- `src/solver/contracts.ts` — added `SolverProofKind`, `SolverProofAlgorithm`,
+  `SolverProof` types; extended `SolverPhase` with `"proving"`; extended
+  `SolverProgress` with `lowerBound`, `upperBound`, `gap`; added optional
+  `proof` field to all three `SolverResult` variants (solved, unsolved, cancelled)
+- `src/solver/validation.ts` — added `"proving"` to PHASES set; added
+  `lowerBound`/`upperBound`/`gap` keys to progress allowed-keys and structural
+  validation; expanded result allowed-keys to include `"proof"`; delegated
+  proof validation to `collectProofIssues`
+- `src/solver/worker-client.ts` — added `assertValidSolverResult` call on
+  received results (defense-in-depth, client-side proof validation)
+- `docs/solver-integration.md` — added "Proof metadata" subsection
+
+- `src/solver/worker-host.ts` — added progress monotonicity enforcement
+  (lowerBound only increases, upperBound only decreases, gap only decreases);
+  violations throw `SolverWorkerRuntimeError` with code `ERR_SOLVER_MONOTONICITY`
+
+**Unchanged files (verified):**
+
+- `src/solver/protocol.ts` — no changes needed; delegates to `validation.ts`
+- `src/solver/verification.ts` — replay is unconditional, no proof reference
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| AC1: Old result payloads remain valid | PASS |
+| AC2: Invalid proof combinations rejected | PASS — 10 rejection tests |
+| AC3: Optimal result requires equal bounds | PASS |
+| AC4: Bounded result requires valid gap | PASS |
+| AC5: Worker host and client both validate proof metadata | PASS |
+
+### Test results
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 722 tests, 105 suites, all pass (+41 new tests, +11 new suites)
+- `npm run test:solver:multi` — 4/4 pass
+- Grand Hall deterministic results unchanged (no search code modified)
+
+### Post-audit corrections
+
+Self-audit against spec §6 identified two gaps, both fixed:
+
+1. **Progress monotonicity (spec §6.4)**: `worker-host.ts` now enforces that
+   `lowerBound` only increases, `upperBound` only decreases, and `gap` only
+   decreases across successive progress reports. Violations cancel the run with
+   `ERR_SOLVER_MONOTONICITY`.
+
+2. **Cancelled variant proof field**: `contracts.ts` and `validation.ts` updated
+   so the cancelled `SolverResult` variant includes `readonly proof?: SolverProof`
+   and validates it when present. Two new tests added to
+   `solver-proof-contract.test.ts` for this variant.
