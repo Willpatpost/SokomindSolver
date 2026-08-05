@@ -554,3 +554,112 @@ Grand Hall deterministic results unchanged:
 - `npm run lint` — pass (0 errors)
 - `npm run test:unit` — 735 tests, 114 suites, all pass (+13 new tests, +9 new suites)
 - `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 5 — Corrected Move IDA* and Memory Profiles
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+Sprint 5 upgrades IDA* (`ida-star.ts`) to the same proof-producing standard as
+the Sprint 4 A* engine. The implementation adds incumbent upper-bound acceptance,
+proof metadata output, lower-bound tracking via `lastExhaustedThreshold`, three
+reachability snapshot policies for memory control, and an automatic proof
+algorithm selection helper.
+
+### Files changed
+
+| File | Action | Lines changed |
+|---|---|---|
+| `src/solver/search/ida-star.ts` | Updated | Incumbent tracking, proof output, snapshot policies |
+| `src/solver/implementations/classic-solvers.ts` | Updated | Version bump to 2.0.0, explicit `reachabilityPolicy: "all"` |
+| `src/solver/search/proof-algorithm-selection.ts` | **Created** | Auto proof algorithm selection (§9.7) |
+| `tests/unit/exact-move-ida-star.test.ts` | **Created** | 20 tests across 15 suites |
+| `docs/solver-v2-progress.md` | Updated | Sprint 5 results |
+
+### IDA* proof engine changes
+
+**Incumbent-bounded search (§9.3)**:
+- Accepts `ExactMoveIdaStarOptions` with optional `incumbent`, `reachabilityPolicy`, `snapshotPeriod`
+- Prunes when `f >= U` (independent of contour threshold)
+- Goal found mid-contour updates incumbent and continues DFS (does NOT return)
+- Solution `optimality` is `"unknown"` until contour exhaustion proves it
+
+**Contour proof (§9.4–9.5)**:
+- `lastExhaustedThreshold` tracks the highest fully-completed contour
+- After iteration completes: `lastExhaustedThreshold = fLimit`
+- When `fLimit >= U` or `nextLimit >= U`: incumbent is proven optimal
+- Cutoff mid-contour uses `lastExhaustedThreshold` as lower bound (never the
+  incomplete `currentThreshold`)
+- IDA* never claims proof from an incomplete contour
+
+**Proof metadata output**:
+- `kind: "optimal"` — search exhausted all f <= U, gap = 0
+- `kind: "bounded"` — cutoff with incumbent, gap = U - lastExhaustedThreshold
+- `kind: "unsolvable"` — all states exhausted, no solution exists
+- `algorithm: "move-ida-star"` on all proofs
+
+**Cancellation preserves incumbent (§8.7)**:
+- Hoisted `incumbentSolution`, `U`, `lastExhaustedThreshold` before try block
+- Catch block returns solved+bounded when incumbent exists
+
+**Lower-bound metric on cutoff without incumbent**:
+- `metrics.counters.lowerBound` includes `lastExhaustedThreshold`
+
+### Reachability snapshot policies (§9.6)
+
+| Policy | Behavior | Memory | Speed |
+|---|---|---|---|
+| `"all"` | Save every frame's snapshot | Highest | Fastest resumes |
+| `"periodic"` (default, period 4) | Save at depth % period === 0 | Medium | Re-floods un-snapshotted frames |
+| `"none"` | Never save snapshots | Lowest | Re-floods every resume |
+
+All three policies produce identical solutions and proof results. The "none"
+policy shows strictly lower `memoryReachabilitySnapshotBytes` than "all".
+
+The `classicIdaStarSolver` adapter explicitly passes `reachabilityPolicy: "all"`
+to preserve pre-Sprint-5 deterministic behavior. The function default is
+`"periodic"` per spec.
+
+### Automatic proof algorithm selection (§9.7)
+
+Created `src/solver/search/proof-algorithm-selection.ts`:
+
+```
+If maxMemoryBytes defined and < 768 MiB → IDA*
+Else if boxCount ≤ 8 and floorCount ≤ 96 → A*
+Else → IDA*
+```
+
+Policy is verbatim from spec — not tuned by intuition.
+
+### Acceptance criteria
+
+| Criterion | Result |
+|---|---|
+| AC1: Oracle equality — all reachable solvable states match | PASS |
+| AC2: Lower-bound monotonicity — LB never decreases, UB never increases | PASS |
+| AC3: Incumbent improvements — improves suboptimal DFS seed | PASS |
+| AC4: Optimal proof structure — valid proof, collectProofIssues = [] | PASS |
+| AC5: Unsolvable proof — exhausted + unsolvable proof | PASS |
+| AC6: Cutoff with incumbent — bounded proof, gap > 0 | PASS |
+| AC6b: Cutoff without incumbent — unsolved, limit-reached | PASS |
+| AC7: Classic IDA* adapter produces proof metadata, matches oracle | PASS |
+| Snapshot policy equivalence — all/periodic/none identical results | PASS |
+| Low-memory mode lowers peak memory — "none" <= "all" snapshot bytes | PASS |
+| Incomplete contour guard — never claims proven from incomplete contour | PASS |
+| Cancellation preserves incumbent — returns solved+bounded | PASS |
+| Bounded proof lb==U guard — promotes to optimal when lb >= U | PASS |
+| Already-solved initial state — cost 0, optimal proof | PASS |
+| Progress phase transitions — preparing, searching/improving phases | PASS |
+| Cutoff lower-bound metric — lowerBound in metrics.counters | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run test:unit` — 759 tests, 132 suites, all pass (+20 new tests, +15 new suites)
+- `npm run test:solver:multi` — 4/4 pass

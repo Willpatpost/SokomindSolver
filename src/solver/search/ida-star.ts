@@ -3,11 +3,15 @@ import type {
   SolutionStep,
   SolverExecutionContext,
   SolverProgress,
+  SolverProof,
   SolverRequest,
   SolverResult,
   SolverRunMetrics,
+  SolverSolution,
 } from "../contracts.ts";
 import { verifySolverSolution } from "../verification.ts";
+import type { ExactIncumbent } from "./exact-move-astar.ts";
+export type { ExactIncumbent } from "./exact-move-astar.ts";
 import {
   compileSearchBoard,
   SEARCH_DIRECTIONS,
@@ -34,6 +38,19 @@ import {
   YIELD_INTERVAL_MS,
   YIELD_WORK_INTERVAL,
 } from "./engine.ts";
+import { objectiveScore } from "./exact-search-types.ts";
+
+// ---------------------------------------------------------------------------
+// Public options
+// ---------------------------------------------------------------------------
+
+export type IdaReachabilityPolicy = "all" | "periodic" | "none";
+
+export interface ExactMoveIdaStarOptions {
+  readonly incumbent?: ExactIncumbent;
+  readonly reachabilityPolicy?: IdaReachabilityPolicy;
+  readonly snapshotPeriod?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -376,6 +393,7 @@ function reconstructSolution(
 export async function runIdaStarSearch(
   request: SolverRequest,
   context: SolverExecutionContext,
+  options?: ExactMoveIdaStarOptions,
 ): Promise<SolverResult> {
   const startedAt = context.now();
   const counters: SearchCounters = {
@@ -391,6 +409,10 @@ export async function runIdaStarSearch(
   };
   let transpositionSize = 0;
   let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
+  let incumbentSolution: SolverSolution | null =
+    options?.incumbent?.solution ?? null;
+  let U = options?.incumbent?.cost ?? Infinity;
+  let lastExhaustedThreshold = 0;
 
   try {
     throwIfSolverCancelled(context.signal);
@@ -482,16 +504,82 @@ export async function runIdaStarSearch(
       );
     collectCurrentMetrics = metrics;
 
+    const snapshotPolicy: IdaReachabilityPolicy =
+      options?.reachabilityPolicy ?? "periodic";
+    const snapshotPeriod = options?.snapshotPeriod ?? 4;
+
+    const incumbentInfo = () =>
+      incumbentSolution
+        ? {
+            moves: incumbentSolution.moves,
+            pushes: incumbentSolution.pushes,
+            objectiveScore: incumbentSolution.objectiveScore,
+          }
+        : undefined;
+
     const report = (phase: SolverProgress["phase"], detail: string) => {
+      const m = metrics();
       context.reportProgress({
         phase,
-        elapsedMs: Math.max(0, context.now() - startedAt),
-        expandedStates: counters.expanded,
-        generatedStates: counters.generated,
+        elapsedMs: m.elapsedMs,
+        expandedStates: m.expandedStates,
+        generatedStates: m.generatedStates,
         frontierSize: 0,
-        counters: metrics().counters,
+        counters: m.counters,
         detail,
+        ...(incumbentInfo() ? { incumbent: incumbentInfo() } : {}),
+        ...(incumbentSolution
+          ? {
+              lowerBound: lastExhaustedThreshold,
+              upperBound: U,
+              gap: U - lastExhaustedThreshold,
+            }
+          : {}),
       });
+    };
+
+    const makeOptimalProof = (): SolverProof => ({
+      objective: request.objective,
+      kind: "optimal",
+      algorithm: "move-ida-star",
+      lowerBound: U,
+      upperBound: U,
+      gap: 0,
+    });
+
+    const makeBoundedProof = (lb: number): SolverProof => ({
+      objective: request.objective,
+      kind: "bounded",
+      algorithm: "move-ida-star",
+      lowerBound: lb,
+      upperBound: U,
+      gap: U - lb,
+    });
+
+    const makeUnsolvableProof = (): SolverProof => ({
+      objective: request.objective,
+      kind: "unsolvable",
+      algorithm: "move-ida-star",
+    });
+
+    const finishSolvedOptimal = (): SolverResult => ({
+      status: "solved",
+      solution: {
+        ...incumbentSolution!,
+        optimality: "proven",
+      },
+      metrics: metrics(),
+      proof: makeOptimalProof(),
+    });
+
+    const finishSolvedBounded = (lb: number): SolverResult => {
+      if (lb >= U) return finishSolvedOptimal();
+      return {
+        status: "solved",
+        solution: incumbentSolution!,
+        metrics: metrics(),
+        proof: makeBoundedProof(lb),
+      };
     };
 
     report("preparing", "Preparing IDA* push search");
@@ -510,7 +598,7 @@ export async function runIdaStarSearch(
     if (isSolved(board, initialBoxes)) {
       report("verifying", "Verifying candidate solution");
       throwIfSolverCancelled(context.signal);
-      const solution = {
+      const solution: SolverSolution = {
         steps: [] as readonly SolutionStep[],
         moves: 0,
         pushes: 0,
@@ -524,7 +612,14 @@ export async function runIdaStarSearch(
           `IDA* solver verification failed: ${verification.message}`,
         );
       }
-      return { status: "solved", solution, metrics: metrics() };
+      U = 0;
+      incumbentSolution = solution;
+      return {
+        status: "solved",
+        solution,
+        metrics: metrics(),
+        proof: makeOptimalProof(),
+      };
     }
 
     // Initial heuristic (push-only lower bound + walk augmentation)
@@ -545,6 +640,7 @@ export async function runIdaStarSearch(
         reason: "exhausted",
         detail: "No label-compatible goal assignment is reachable.",
         metrics: metrics(),
+        proof: makeUnsolvableProof(),
       };
     }
     const initialHWalk = minimumManhattanWalkToPotentialPush(
@@ -553,6 +649,7 @@ export async function runIdaStarSearch(
       initialBoxes,
     );
     const initialH = initialHPush + initialHWalk;
+    lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
     const initialG = 0;
@@ -575,20 +672,7 @@ export async function runIdaStarSearch(
     let fLimit = initialG + initialH;
     let limitDetail: string | undefined;
 
-    // Persistent transposition table: retained across IDA* iterations.
-    //
-    // Entries are only inserted for states that pass the f-bound check
-    // (f <= fLimit), so every stored (key → g) pair represents a state
-    // that was fully explored at that g-cost under some prior threshold.
-    // When a later iteration with a higher f-limit revisits the same
-    // state, the g-cost dominance check (previousG <= frame.g) correctly
-    // prunes paths that are no better than what was already explored.
-    // States reached via a strictly better path (lower g) will update
-    // the entry and be re-explored, preserving optimality.
-    //
-    // A size limit prevents unbounded memory growth: if the table exceeds
-    // the memory budget, it is cleared and rebuilt from scratch in the
-    // current iteration.
+    // Transposition table: cleared at the start of each iteration (§9.4).
     let transposition = new Map<bigint, number>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
@@ -723,6 +807,10 @@ export async function runIdaStarSearch(
             popFrame();
             continue;
           }
+          if (f >= U) {
+            popFrame();
+            continue;
+          }
 
           // Transposition check (collision-free bigint identity)
           const previousG = transposition.get(frame.exactKey);
@@ -741,11 +829,11 @@ export async function runIdaStarSearch(
             break idaLoop;
           }
 
-          // Solved?
-          if (isSolved(board, frame.boxes)) {
+          // Solved? Update incumbent if this path is better, then continue DFS.
+          if (isSolved(board, frame.boxes) && frame.g < U) {
             report(
-              "verifying",
-              "Reconstructing and verifying IDA* solution",
+              "improving",
+              "Reconstructing and verifying IDA* incumbent",
             );
             throwIfSolverCancelled(context.signal);
             transpositionSize = transposition.size;
@@ -760,13 +848,13 @@ export async function runIdaStarSearch(
               (total, step) => total + (step.kind === "push" ? 1 : 0),
               0,
             );
-            const solution = {
+            const solution: SolverSolution = {
               steps,
               moves: steps.length,
               pushes: pushCount,
               objective: request.objective,
-              objectiveScore: steps.length,
-              optimality: "proven" as const,
+              objectiveScore: objectiveScore(steps.length),
+              optimality: "unknown" as const,
             };
             const verification = verifySolverSolution(request, solution);
             if (!verification.valid) {
@@ -774,8 +862,11 @@ export async function runIdaStarSearch(
                 `IDA* solver verification failed: ${verification.message}`,
               );
             }
+            U = frame.g;
+            incumbentSolution = solution;
             throwIfSolverCancelled(context.signal);
-            return { status: "solved", solution, metrics: metrics() };
+            popFrame();
+            continue;
           }
 
           // Expansion limit
@@ -822,8 +913,6 @@ export async function runIdaStarSearch(
         }
 
         // ----- Generate the next valid child -----
-        // Restore saved BFS state when resuming after a child subtree,
-        // avoiding a full re-flood of the reachability workspace.
         fillOccupancy(occupancyBuffer, frame.boxes);
         let reachable: KeeperReachabilityResult;
         if (frame.reachabilitySnapshot !== null) {
@@ -832,16 +921,22 @@ export async function runIdaStarSearch(
         } else {
           reachable = reachability.flood(frame.robot, occupancyBuffer);
           counters.reachabilityFloods += 1;
-          frame.reachabilitySnapshot = reachability.saveState();
-          frame.cachedReachable = reachable;
-          const snapshotBytes = estimateReachabilitySnapshotBytes(
-            board.cellCount,
-          );
-          frame.estimatedReachabilityBytes += snapshotBytes;
-          reachabilitySnapshotMemoryBytes += snapshotBytes;
-          if (memoryLimitReached()) {
-            limitDetail = "Estimated solver memory limit reached.";
-            break idaLoop;
+          const shouldSnapshot =
+            snapshotPolicy === "all" ||
+            (snapshotPolicy === "periodic" &&
+              (pathStack.length - 1) % snapshotPeriod === 0);
+          if (shouldSnapshot) {
+            frame.reachabilitySnapshot = reachability.saveState();
+            frame.cachedReachable = reachable;
+            const snapshotBytes = estimateReachabilitySnapshotBytes(
+              board.cellCount,
+            );
+            frame.estimatedReachabilityBytes += snapshotBytes;
+            reachabilitySnapshotMemoryBytes += snapshotBytes;
+            if (memoryLimitReached()) {
+              limitDetail = "Estimated solver memory limit reached.";
+              break idaLoop;
+            }
           }
         }
 
@@ -966,12 +1061,21 @@ export async function runIdaStarSearch(
       }
 
       transpositionSize = transposition.size;
+      lastExhaustedThreshold = fLimit;
+
+      if (fLimit >= U || nextLimit >= U) {
+        return finishSolvedOptimal();
+      }
 
       if (nextLimit === Number.POSITIVE_INFINITY) {
+        if (incumbentSolution) {
+          return finishSolvedOptimal();
+        }
         return {
           status: "unsolved",
           reason: "exhausted",
           metrics: metrics(),
+          proof: makeUnsolvableProof(),
         };
       }
 
@@ -979,18 +1083,29 @@ export async function runIdaStarSearch(
     }
 
     if (limitDetail) {
+      if (incumbentSolution) {
+        return finishSolvedBounded(lastExhaustedThreshold);
+      }
+      const m = metrics();
       return {
         status: "unsolved",
         reason: "limit-reached",
         detail: limitDetail,
-        metrics: metrics(),
+        metrics: {
+          ...m,
+          counters: { ...m.counters, lowerBound: lastExhaustedThreshold },
+        },
       };
     }
 
+    if (incumbentSolution) {
+      return finishSolvedOptimal();
+    }
     return {
       status: "unsolved",
       reason: "exhausted",
       metrics: metrics(),
+      proof: makeUnsolvableProof(),
     };
   } catch (error) {
     if (isSolverCancellation(error) || context.signal.aborted) {
@@ -1021,6 +1136,21 @@ export async function runIdaStarSearch(
             peakBytes: fallbackBreakdown.currentBytes,
           }),
         );
+      }
+      if (incumbentSolution) {
+        return {
+          status: "solved",
+          solution: incumbentSolution,
+          metrics: cancellationMetrics,
+          proof: {
+            objective: request.objective,
+            kind: "bounded",
+            algorithm: "move-ida-star",
+            lowerBound: lastExhaustedThreshold,
+            upperBound: U,
+            gap: U - lastExhaustedThreshold,
+          },
+        };
       }
       return {
         status: "cancelled",
