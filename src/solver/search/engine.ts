@@ -3,7 +3,6 @@ import {
   throwIfSolverCancelled,
 } from "../cancellation.ts";
 import type {
-  SolutionStep,
   SolverExecutionContext,
   SolverProgress,
   SolverRequest,
@@ -21,6 +20,22 @@ import {
   hasFreezeDeadlock,
   isStaticDeadCell,
 } from "./deadlocks.ts";
+import {
+  compareBoxes,
+  comparePriority,
+  estimatedMemoryBytes,
+  estimateNodeBytes,
+  fillDeadlockOccupancy,
+  fillOccupancy,
+  isSolved,
+  objectiveScore,
+  OPPOSITE_DIRECTION,
+  reconstructSolution,
+  type Frontier,
+  type SearchCounters,
+  type SearchNode,
+  type StateKey,
+} from "./exact-search-types.ts";
 import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
 import {
   toDenseBoxes,
@@ -39,49 +54,8 @@ export interface ClassicSearchConfiguration {
   readonly strategy: ClassicSearchStrategy;
 }
 
-interface PushRecord {
-  readonly boxCell: number;
-  readonly directionIndex: number;
-}
-
-type StateKey = string | bigint;
-
-interface SearchNode {
-  readonly robot: number;
-  readonly boxes: readonly DenseBox[];
-  readonly key: StateKey;
-  readonly parentIndex: number;
-  readonly push?: PushRecord;
-  readonly moves: number;
-  readonly pushes: number;
-  readonly depth: number;
-  readonly p0: number;
-  readonly p1: number;
-  readonly p2: number;
-  readonly estimatedBytes: number;
-}
-
-interface SearchCounters {
-  expanded: number;
-  generated: number;
-  duplicates: number;
-  deadlockPrunes: number;
-  infeasiblePrunes: number;
-  reopens: number;
-  reachabilityFloods: number;
-  avoidedReachabilityFloods: number;
-  retainedBytes: number;
-  peakFrontier: number;
-  maxDepth: number;
-}
-
-interface Frontier {
-  readonly size: number;
-  push(nodeIndex: number): void;
-  pop(): number | undefined;
-}
-
-export const OPPOSITE_DIRECTION = [1, 0, 3, 2] as const;
+export { OPPOSITE_DIRECTION } from "./exact-search-types.ts";
+export type { Frontier, PushRecord, SearchCounters, SearchNode, StateKey } from "./exact-search-types.ts";
 export const PROGRESS_INTERVAL_MS = 100;
 export const YIELD_INTERVAL_MS = 10;
 export const YIELD_WORK_INTERVAL = 256;
@@ -155,10 +129,6 @@ export function stateKey(robot: number, boxSignature: string): string {
   return `${String(robot)}|${boxSignature}`;
 }
 
-function objectiveScore(moves: number): number {
-  return moves;
-}
-
 function nodePriority(
   strategy: ClassicSearchStrategy,
   moves: number,
@@ -173,19 +143,6 @@ function nodePriority(
   return [0, 0, 0];
 }
 
-function comparePriority(left: SearchNode, right: SearchNode): number {
-  return (left.p0 - right.p0) || (left.p1 - right.p1) || (left.p2 - right.p2);
-}
-
-function isSolved(
-  board: CompiledSearchBoard,
-  boxes: readonly DenseBox[],
-): boolean {
-  return boxes.every(
-    (box) => board.goalLabelByCell[box.cell] === box.label,
-  );
-}
-
 function occupancyFor(
   cellCount: number,
   boxes: readonly DenseBox[],
@@ -195,26 +152,7 @@ function occupancyFor(
   return occupied;
 }
 
-/** Clear and refill a pre-existing occupancy buffer (avoids per-call allocation). */
-export function fillOccupancy(buffer: Uint8Array, boxes: readonly DenseBox[]): void {
-  buffer.fill(0);
-  for (const box of boxes) buffer[box.cell] = 1;
-}
-
-/** Clear and refill a pre-existing deadlock occupancy buffer (stores box indices, -1 = empty). */
-export function fillDeadlockOccupancy(buffer: Int32Array, boxes: readonly DenseBox[]): void {
-  buffer.fill(-1);
-  for (let i = 0; i < boxes.length; i++) buffer[boxes[i].cell] = i;
-}
-
-function compareBoxes(a: DenseBox, b: DenseBox): number {
-  return (
-    a.label.charCodeAt(0) - b.label.charCodeAt(0) ||
-    a.cell - b.cell ||
-    a.id.charCodeAt(0) - b.id.charCodeAt(0) ||
-    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  );
-}
+export { fillOccupancy, fillDeadlockOccupancy } from "./exact-search-types.ts";
 
 export function movedBoxes(
   boxes: readonly DenseBox[],
@@ -250,31 +188,6 @@ export function estimateStaticSearchBytes(board: CompiledSearchBoard): number {
     1_024 +
     board.cellCount * (80 + goalCount * Int32Array.BYTES_PER_ELEMENT) +
     board.cellByOffset.byteLength
-  );
-}
-
-// nodes[] retains all nodes (including superseded A* entries) because reconstructSolution() walks parent indices.
-function estimateNodeBytes(boxCount: number, key: StateKey): number {
-  // SearchNode + V8 object/array overhead + canonical box records + key/map entry.
-  // Deliberately biased upward: limits are promises, not heap profiler guesses.
-  const keyBytes = typeof key === "string" ? key.length * 2 : 64;
-  return 448 + boxCount * 80 + keyBytes;
-}
-
-function estimatedMemoryBytes(
-  staticBytes: number,
-  counters: SearchCounters,
-  uniqueStates: number,
-  frontierSize: number,
-  heuristicCacheEntries: number,
-  boxCount: number,
-): number {
-  return Math.ceil(
-    staticBytes +
-      counters.retainedBytes +
-      uniqueStates * 96 +
-      frontierSize * 56 +
-      heuristicCacheEntries * (160 + boxCount * 24),
   );
 }
 
@@ -360,51 +273,6 @@ function createProgress(
     counters: metrics.counters,
     detail,
   };
-}
-
-function reconstructSolution(
-  board: CompiledSearchBoard,
-  nodes: readonly SearchNode[],
-  goalIndex: number,
-  reachability: KeeperReachability,
-): readonly SolutionStep[] {
-  const chain: number[] = [];
-  let cursor = goalIndex;
-  while (cursor >= 0) {
-    chain.push(cursor);
-    const node = nodes[cursor];
-    if (!node || node.parentIndex < 0) break;
-    cursor = node.parentIndex;
-  }
-  chain.reverse();
-
-  const occupancyBuffer = new Uint8Array(board.cellCount);
-  const steps: SolutionStep[] = [];
-  for (let index = 1; index < chain.length; index += 1) {
-    const parent = nodes[chain[index - 1] ?? -1];
-    const child = nodes[chain[index] ?? -1];
-    const push = child?.push;
-    if (!parent || !child || !push) {
-      throw new Error("Search parent chain is incomplete.");
-    }
-
-    const support =
-      board.neighbors[push.boxCell]?.[
-        OPPOSITE_DIRECTION[push.directionIndex] ?? -1
-      ] ?? -1;
-    fillOccupancy(occupancyBuffer, parent.boxes);
-    const reachable = reachability.flood(parent.robot, occupancyBuffer);
-    const walk = reachable.pathTo(support);
-    const pushDirection = SEARCH_DIRECTIONS[push.directionIndex]?.direction;
-    if (!walk || !pushDirection) {
-      throw new Error("Search parent chain contains an unreachable push.");
-    }
-    for (const direction of walk) {
-      steps.push({ direction, kind: "walk" });
-    }
-    steps.push({ direction: pushDirection, kind: "push" });
-  }
-  return steps;
 }
 
 /**

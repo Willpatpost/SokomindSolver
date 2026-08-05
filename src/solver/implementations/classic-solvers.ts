@@ -9,6 +9,7 @@ import {
   runClassicSearch,
   type ClassicSearchStrategy,
 } from "../search/engine.ts";
+import { runExactMoveAStar } from "../search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../search/ida-star.ts";
 
 function capabilities(
@@ -62,13 +63,18 @@ export const classicGreedySolver = classicSolver("greedy", {
   capabilities: capabilities(["moves"], "first-found"),
 });
 
-export const classicAStarSolver = classicSolver("astar", {
-  id: "classic-astar",
-  displayName: "A* Search",
-  description:
-    "Move-optimal A* with label-aware reverse-push assignment bounds.",
-  version: "1.0.0",
-  capabilities: capabilities(["moves"], "optimal"),
+export const classicAStarSolver: SolverAdapter = Object.freeze({
+  metadata: Object.freeze({
+    id: "classic-astar",
+    displayName: "A* Search",
+    description:
+      "Move-optimal A* with label-aware reverse-push assignment bounds.",
+    version: "2.0.0",
+    capabilities: capabilities(["moves"], "optimal"),
+  } satisfies SolverMetadata),
+  solve(request: SolverRequest, context: SolverExecutionContext) {
+    return runExactMoveAStar(request, context);
+  },
 });
 
 export const classicIdaStarSolver: SolverAdapter = Object.freeze({

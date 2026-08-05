@@ -1,0 +1,757 @@
+import {
+  isSolverCancellation,
+  throwIfSolverCancelled,
+} from "../cancellation.ts";
+import type {
+  SolverExecutionContext,
+  SolverProgress,
+  SolverProof,
+  SolverRequest,
+  SolverResult,
+  SolverRunMetrics,
+  SolverSolution,
+} from "../contracts.ts";
+import { verifySolverSolution } from "../verification.ts";
+import {
+  compileSearchBoard,
+  SEARCH_DIRECTIONS,
+} from "./compiled-board.ts";
+import {
+  createsFullyBlockedTwoByTwoDeadlock,
+  hasFreezeDeadlock,
+  isStaticDeadCell,
+} from "./deadlocks.ts";
+import {
+  comparePriority,
+  estimatedMemoryBytes,
+  estimateNodeBytes,
+  fillDeadlockOccupancy,
+  fillOccupancy,
+  isSolved,
+  objectiveScore,
+  OPPOSITE_DIRECTION,
+  reconstructSolution,
+  type SearchCounters,
+  type SearchNode,
+} from "./exact-search-types.ts";
+import {
+  AssignmentHeuristic,
+  minimumManhattanWalkToPotentialPush,
+} from "./heuristic.ts";
+import { toDenseBoxes, type DenseBox } from "./model.ts";
+import { createExactStateCodec } from "./exact-state.ts";
+import { StablePriorityQueue } from "./priority-queue.ts";
+import { KeeperReachability } from "./reachability.ts";
+import {
+  sortedBoxes,
+  estimateStaticSearchBytes,
+  delayForEventLoop,
+  movedBoxes,
+} from "./engine.ts";
+
+export interface ExactIncumbent {
+  readonly solution: SolverSolution;
+  readonly cost: number;
+}
+
+export interface ExactMoveAStarOptions {
+  readonly incumbent?: ExactIncumbent;
+}
+
+const PROGRESS_INTERVAL_MS = 100;
+const YIELD_INTERVAL_MS = 10;
+const YIELD_WORK_INTERVAL = 256;
+
+function createMetrics(
+  context: SolverExecutionContext,
+  startedAt: number,
+  counters: SearchCounters,
+  frontierSize: number,
+  uniqueStates: number,
+  retainedStates: number,
+  heuristic: AssignmentHeuristic,
+  staticBytes: number,
+  boxCount: number,
+): SolverRunMetrics {
+  const heuristicStats = heuristic.stats;
+  const memoryBytes = estimatedMemoryBytes(
+    staticBytes,
+    counters,
+    uniqueStates,
+    frontierSize,
+    heuristicStats.cacheEntries,
+    boxCount,
+  );
+  return {
+    elapsedMs: Math.max(0, context.now() - startedAt),
+    expandedStates: counters.expanded,
+    generatedStates: counters.generated,
+    peakFrontierSize: counters.peakFrontier,
+    counters: {
+      uniqueStates,
+      retainedStates,
+      duplicateStates: counters.duplicates,
+      deadlockPrunes: counters.deadlockPrunes,
+      infeasiblePrunes: counters.infeasiblePrunes,
+      reopens: counters.reopens,
+      reachabilityFloods: counters.reachabilityFloods,
+      avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
+      heuristicCalls: heuristicStats.calls,
+      heuristicCacheHits: heuristicStats.cacheHits,
+      frontierSize,
+      maxDepth: counters.maxDepth,
+      estimatedMemoryBytes: memoryBytes,
+    },
+  };
+}
+
+function createProgress(
+  phase: SolverProgress["phase"],
+  detail: string,
+  context: SolverExecutionContext,
+  startedAt: number,
+  counters: SearchCounters,
+  frontierSize: number,
+  uniqueStates: number,
+  retainedStates: number,
+  heuristic: AssignmentHeuristic,
+  staticBytes: number,
+  boxCount: number,
+  incumbentInfo: { moves: number; pushes: number; objectiveScore: number } | undefined,
+  lowerBound: number | undefined,
+  upperBound: number | undefined,
+): SolverProgress {
+  const metrics = createMetrics(
+    context,
+    startedAt,
+    counters,
+    frontierSize,
+    uniqueStates,
+    retainedStates,
+    heuristic,
+    staticBytes,
+    boxCount,
+  );
+  return {
+    phase,
+    elapsedMs: metrics.elapsedMs,
+    expandedStates: metrics.expandedStates,
+    generatedStates: metrics.generatedStates,
+    frontierSize,
+    counters: metrics.counters,
+    detail,
+    ...(incumbentInfo ? { incumbent: incumbentInfo } : {}),
+    ...(lowerBound !== undefined ? { lowerBound } : {}),
+    ...(upperBound !== undefined ? { upperBound } : {}),
+    ...(lowerBound !== undefined && upperBound !== undefined
+      ? { gap: upperBound - lowerBound }
+      : {}),
+  };
+}
+
+export async function runExactMoveAStar(
+  request: SolverRequest,
+  context: SolverExecutionContext,
+  options?: ExactMoveAStarOptions,
+): Promise<SolverResult> {
+  const startedAt = context.now();
+
+  const counters: SearchCounters = {
+    expanded: 0,
+    generated: 0,
+    duplicates: 0,
+    deadlockPrunes: 0,
+    infeasiblePrunes: 0,
+    reopens: 0,
+    reachabilityFloods: 0,
+    avoidedReachabilityFloods: 0,
+    retainedBytes: 0,
+    peakFrontier: 0,
+    maxDepth: 0,
+  };
+  let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
+
+  try {
+    throwIfSolverCancelled(context.signal);
+    const board = compileSearchBoard(request.board);
+    const labels = [...board.goalCellsByLabel.keys()].sort();
+    const heuristic = new AssignmentHeuristic(board);
+    const reachability = new KeeperReachability(board);
+    const exactCodec = createExactStateCodec(board.cellCount, labels);
+    const staticBytes = estimateStaticSearchBytes(board);
+
+    const initialRobot = board.cellAt(
+      request.snapshot.robot.row,
+      request.snapshot.robot.column,
+    );
+    if (initialRobot < 0) {
+      throw new Error("Solver snapshot robot is not on a compiled floor cell.");
+    }
+    const initialBoxes = sortedBoxes(
+      toDenseBoxes(board, request.snapshot.boxes),
+    );
+
+    const initialOccupancy = new Uint8Array(board.cellCount);
+    for (const box of initialBoxes) initialOccupancy[box.cell] = 1;
+    reachability.flood(initialRobot, initialOccupancy);
+    counters.reachabilityFloods += 1;
+
+    function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
+      const tokens = exactCodec.tokensFromBoxes(boxes);
+      return exactCodec.packMoveState(robotCell, tokens);
+    }
+
+    const initialKey = exactKey(initialRobot, initialBoxes);
+    const initialPushBound = heuristic.evaluate(initialBoxes);
+    const initialWalkBound = minimumManhattanWalkToPotentialPush(
+      board,
+      initialRobot,
+      initialBoxes,
+    );
+    const initialH = initialPushBound + initialWalkBound;
+
+    let U = options?.incumbent?.cost ?? Infinity;
+    let incumbentSolution: SolverSolution | null =
+      options?.incumbent?.solution ?? null;
+    let lastLowerBound = 0;
+    let heapSize = 0;
+    let uniqueStates = 0;
+    let nodesLength = 0;
+
+    const metrics = () =>
+      createMetrics(
+        context,
+        startedAt,
+        counters,
+        heapSize,
+        uniqueStates,
+        nodesLength,
+        heuristic,
+        staticBytes,
+        initialBoxes.length,
+      );
+    collectCurrentMetrics = metrics;
+
+    const incumbentInfo = () =>
+      incumbentSolution
+        ? {
+            moves: incumbentSolution.moves,
+            pushes: incumbentSolution.pushes,
+            objectiveScore: incumbentSolution.objectiveScore,
+          }
+        : undefined;
+
+    const report = (phase: SolverProgress["phase"], detail: string) => {
+      context.reportProgress(
+        createProgress(
+          phase,
+          detail,
+          context,
+          startedAt,
+          counters,
+          heapSize,
+          uniqueStates,
+          nodesLength,
+          heuristic,
+          staticBytes,
+          initialBoxes.length,
+          incumbentInfo(),
+          incumbentSolution ? lastLowerBound : undefined,
+          incumbentSolution ? U : undefined,
+        ),
+      );
+    };
+
+    const elapsedLimitReached = () => {
+      const maximum = request.limits?.maxElapsedMs;
+      return (
+        maximum !== undefined &&
+        Math.max(0, context.now() - startedAt) >= maximum
+      );
+    };
+
+    const memoryLimitReached = () => {
+      const maximum = request.limits?.maxMemoryBytes;
+      if (maximum === undefined) return false;
+      const stats = heuristic.stats;
+      return (
+        estimatedMemoryBytes(
+          staticBytes,
+          counters,
+          uniqueStates,
+          heapSize,
+          stats.cacheEntries,
+          initialBoxes.length,
+        ) > maximum
+      );
+    };
+
+    const makeOptimalProof = (): SolverProof => ({
+      objective: request.objective,
+      kind: "optimal",
+      algorithm: "move-astar",
+      lowerBound: U,
+      upperBound: U,
+      gap: 0,
+    });
+
+    const makeBoundedProof = (lb: number): SolverProof => ({
+      objective: request.objective,
+      kind: "bounded",
+      algorithm: "move-astar",
+      lowerBound: lb,
+      upperBound: U,
+      gap: U - lb,
+    });
+
+    const makeUnsolvableProof = (): SolverProof => ({
+      objective: request.objective,
+      kind: "unsolvable",
+      algorithm: "move-astar",
+    });
+
+    const finishSolvedOptimal = (): SolverResult => ({
+      status: "solved",
+      solution: {
+        ...incumbentSolution!,
+        optimality: "proven",
+      },
+      metrics: metrics(),
+      proof: makeOptimalProof(),
+    });
+
+    const finishSolvedBounded = (lb: number): SolverResult => ({
+      status: "solved",
+      solution: incumbentSolution!,
+      metrics: metrics(),
+      proof: makeBoundedProof(lb),
+    });
+
+    report("preparing", "Preparing exact A* search");
+    throwIfSolverCancelled(context.signal);
+
+    if (elapsedLimitReached()) {
+      if (incumbentSolution) {
+        return finishSolvedBounded(0);
+      }
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: "Maximum elapsed time reached during preparation.",
+        metrics: metrics(),
+      };
+    }
+    if (memoryLimitReached()) {
+      if (incumbentSolution) {
+        return finishSolvedBounded(0);
+      }
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: "Estimated solver memory limit reached during preparation.",
+        metrics: metrics(),
+      };
+    }
+
+    if (isSolved(board, initialBoxes)) {
+      if (0 < U) {
+        const solution: SolverSolution = {
+          steps: [],
+          moves: 0,
+          pushes: 0,
+          objective: request.objective,
+          objectiveScore: 0,
+          optimality: "proven",
+        };
+        const verification = verifySolverSolution(request, solution);
+        if (!verification.valid) {
+          throw new Error(
+            `Exact A* verification failed: ${verification.message}`,
+          );
+        }
+        U = 0;
+        incumbentSolution = solution;
+      }
+      return finishSolvedOptimal();
+    }
+
+    if (!Number.isFinite(initialH)) {
+      counters.infeasiblePrunes += 1;
+      return {
+        status: "unsolved",
+        reason: "exhausted",
+        detail: "No label-compatible goal assignment is reachable.",
+        metrics: metrics(),
+        proof: makeUnsolvableProof(),
+      };
+    }
+
+    if (initialH >= U) {
+      return finishSolvedOptimal();
+    }
+
+    const initialNode: SearchNode = {
+      robot: initialRobot,
+      boxes: initialBoxes,
+      key: initialKey,
+      parentIndex: -1,
+      moves: 0,
+      pushes: 0,
+      depth: 0,
+      p0: initialH,
+      p1: initialH,
+      p2: 0,
+      estimatedBytes: estimateNodeBytes(initialBoxes.length, initialKey),
+    };
+    const nodes: SearchNode[] = [initialNode];
+    nodesLength = 1;
+    counters.retainedBytes = initialNode.estimatedBytes;
+
+    const heap = new StablePriorityQueue<number>(
+      (leftIndex, rightIndex) => {
+        const left = nodes[leftIndex];
+        const right = nodes[rightIndex];
+        if (!left || !right) return leftIndex - rightIndex;
+        return comparePriority(left, right);
+      },
+    );
+    heap.enqueue(0);
+    heapSize = 1;
+    counters.peakFrontier = 1;
+
+    const bestG = new Map<bigint, number>([[initialKey, 0]]);
+    uniqueStates = 1;
+    let lastProgressAt = context.now();
+    let lastYieldAt = lastProgressAt;
+    let workSinceYield = 0;
+
+    const occupancyBuffer = new Uint8Array(board.cellCount);
+    const deadlockOccupancyBuffer = new Int32Array(board.cellCount);
+
+    report(
+      incumbentSolution ? "proving" : "searching",
+      incumbentSolution ? "Proving optimality" : "Searching for solution",
+    );
+    throwIfSolverCancelled(context.signal);
+
+    let limitDetail: string | undefined;
+
+    const syncState = () => { heapSize = heap.size; nodesLength = nodes.length; };
+
+    searchLoop: while (heap.size > 0) {
+      throwIfSolverCancelled(context.signal);
+      if (elapsedLimitReached()) {
+        limitDetail = "Maximum elapsed time reached.";
+        break;
+      }
+
+      const now = context.now();
+      if (now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+        report(
+          incumbentSolution ? "proving" : "searching",
+          incumbentSolution ? "Proving optimality" : "Searching for solution",
+        );
+        lastProgressAt = now;
+      }
+      if (
+        now - lastYieldAt >= YIELD_INTERVAL_MS ||
+        workSinceYield >= YIELD_WORK_INTERVAL
+      ) {
+        await delayForEventLoop();
+        throwIfSolverCancelled(context.signal);
+        lastYieldAt = context.now();
+        workSinceYield = 0;
+        if (elapsedLimitReached()) {
+          limitDetail = "Maximum elapsed time reached.";
+          break;
+        }
+      }
+
+      const nodeIndex = heap.dequeue();
+      if (nodeIndex === undefined) break;
+      syncState();
+      const node = nodes[nodeIndex];
+      if (!node) continue;
+
+      if (bestG.get(node.key as bigint) !== node.moves) continue;
+
+      const L = node.p0;
+      lastLowerBound = L;
+
+      if (L >= U) {
+        return finishSolvedOptimal();
+      }
+
+      if (isSolved(board, node.boxes)) {
+        if (node.moves < U) {
+          report("improving", "Found improved incumbent, verifying");
+          throwIfSolverCancelled(context.signal);
+          const steps = reconstructSolution(
+            board,
+            nodes,
+            nodeIndex,
+            reachability,
+          );
+          const pushes = steps.reduce(
+            (total, step) => total + (step.kind === "push" ? 1 : 0),
+            0,
+          );
+          if (steps.length !== node.moves || pushes !== node.pushes) {
+            throw new Error(
+              "Reconstructed path counters disagree with the selected search node.",
+            );
+          }
+          const solution: SolverSolution = {
+            steps,
+            moves: steps.length,
+            pushes,
+            objective: request.objective,
+            objectiveScore: objectiveScore(steps.length),
+            optimality: "unknown",
+          };
+          const verification = verifySolverSolution(request, solution);
+          if (!verification.valid) {
+            throw new Error(
+              `Exact A* verification failed: ${verification.message}`,
+            );
+          }
+          U = node.moves;
+          incumbentSolution = solution;
+          throwIfSolverCancelled(context.signal);
+
+          if (L >= U) {
+            return finishSolvedOptimal();
+          }
+          report("proving", "Proving optimality of incumbent");
+        }
+        continue;
+      }
+
+      const maxExpanded = request.limits?.maxExpandedStates;
+      if (maxExpanded !== undefined && counters.expanded >= maxExpanded) {
+        limitDetail = "Maximum expanded-state count reached.";
+        break;
+      }
+
+      counters.expanded += 1;
+      workSinceYield += 1;
+
+      fillOccupancy(occupancyBuffer, node.boxes);
+      const occupied = occupancyBuffer;
+      const reachable = reachability.flood(node.robot, occupied);
+      counters.reachabilityFloods += 1;
+
+      for (let boxIndex = 0; boxIndex < node.boxes.length; boxIndex += 1) {
+        const box = node.boxes[boxIndex];
+        if (!box) continue;
+        const neighbors = board.neighbors[box.cell];
+        if (!neighbors) continue;
+
+        for (
+          let directionIndex = 0;
+          directionIndex < SEARCH_DIRECTIONS.length;
+          directionIndex += 1
+        ) {
+          const destination = neighbors[directionIndex] ?? -1;
+          const opposite = OPPOSITE_DIRECTION[directionIndex];
+          const support =
+            opposite === undefined ? -1 : (neighbors[opposite] ?? -1);
+          if (
+            destination < 0 ||
+            support < 0 ||
+            occupied[destination] !== 0 ||
+            !reachable.isReachable(support)
+          ) {
+            continue;
+          }
+
+          const maxGenerated = request.limits?.maxGeneratedStates;
+          if (
+            maxGenerated !== undefined &&
+            counters.generated >= maxGenerated
+          ) {
+            limitDetail = "Maximum generated-state count reached.";
+            break searchLoop;
+          }
+          counters.generated += 1;
+          workSinceYield += 1;
+
+          if (isStaticDeadCell(board, destination, box.label)) {
+            counters.deadlockPrunes += 1;
+            continue;
+          }
+
+          const boxes = movedBoxes(node.boxes, boxIndex, destination);
+          fillDeadlockOccupancy(deadlockOccupancyBuffer, boxes);
+          if (
+            createsFullyBlockedTwoByTwoDeadlock(
+              board,
+              boxes,
+              destination,
+              deadlockOccupancyBuffer,
+            )
+          ) {
+            counters.deadlockPrunes += 1;
+            continue;
+          }
+
+          if (hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer)) {
+            counters.deadlockPrunes += 1;
+            continue;
+          }
+
+          const distance = reachable.distanceTo(support);
+          if (distance < 0) {
+            throw new Error("Reachable support cell has no keeper distance.");
+          }
+          const childMoves = node.moves + distance + 1;
+          const childPushes = node.pushes + 1;
+
+          const childKey = exactKey(box.cell, boxes);
+          const prevBestG = bestG.get(childKey);
+          if (prevBestG !== undefined && childMoves >= prevBestG) {
+            counters.duplicates += 1;
+            continue;
+          }
+
+          const pushLowerBound = heuristic.evaluate(boxes);
+          const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
+          if (
+            maxMemoryAfterHeuristic !== undefined &&
+            estimatedMemoryBytes(
+              staticBytes,
+              counters,
+              uniqueStates,
+              heap.size,
+              heuristic.stats.cacheEntries,
+              initialBoxes.length,
+            ) > maxMemoryAfterHeuristic
+          ) {
+            limitDetail = "Estimated solver memory limit reached.";
+            break searchLoop;
+          }
+          if (!Number.isFinite(pushLowerBound)) {
+            counters.infeasiblePrunes += 1;
+            continue;
+          }
+
+          counters.avoidedReachabilityFloods += 1;
+
+          const walkBound = minimumManhattanWalkToPotentialPush(
+            board,
+            box.cell,
+            boxes,
+          );
+          const h = pushLowerBound + walkBound;
+          const f = childMoves + h;
+
+          if (f >= U) {
+            continue;
+          }
+
+          const candidate: SearchNode = {
+            robot: box.cell,
+            boxes,
+            key: childKey,
+            parentIndex: nodeIndex,
+            push: { boxCell: box.cell, directionIndex },
+            moves: childMoves,
+            pushes: childPushes,
+            depth: node.depth + 1,
+            p0: f,
+            p1: h,
+            p2: childMoves,
+            estimatedBytes: estimateNodeBytes(boxes.length, childKey),
+          };
+
+          const projectedBytes =
+            counters.retainedBytes + candidate.estimatedBytes;
+          const maxMemory = request.limits?.maxMemoryBytes;
+          if (maxMemory !== undefined) {
+            const stats = heuristic.stats;
+            const projectedMemory = Math.ceil(
+              staticBytes +
+                projectedBytes +
+                (uniqueStates + 1) * 96 +
+                (heap.size + 1) * 56 +
+                stats.cacheEntries * (160 + initialBoxes.length * 24),
+            );
+            if (projectedMemory > maxMemory) {
+              limitDetail = "Estimated solver memory limit reached.";
+              break searchLoop;
+            }
+          }
+
+          const childIndex = nodes.length;
+          nodes.push(candidate);
+          counters.retainedBytes = projectedBytes;
+          counters.maxDepth = Math.max(counters.maxDepth, candidate.depth);
+
+          if (prevBestG === undefined) {
+            uniqueStates += 1;
+          } else {
+            counters.reopens += 1;
+          }
+          bestG.set(childKey, childMoves);
+          heap.enqueue(childIndex);
+          syncState();
+          counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
+        }
+      }
+    }
+
+    syncState();
+    if (limitDetail) {
+      if (incumbentSolution) {
+        const peekIndex = heap.size > 0 ? heap.peek() : undefined;
+        const bestL =
+          peekIndex !== undefined ? (nodes[peekIndex]?.p0 ?? lastLowerBound) : lastLowerBound;
+        return finishSolvedBounded(bestL);
+      }
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: limitDetail,
+        metrics: metrics(),
+      };
+    }
+
+    if (incumbentSolution) {
+      return finishSolvedOptimal();
+    }
+    return {
+      status: "unsolved",
+      reason: "exhausted",
+      metrics: metrics(),
+      proof: makeUnsolvableProof(),
+    };
+  } catch (error) {
+    if (isSolverCancellation(error) || context.signal.aborted) {
+      return {
+        status: "cancelled",
+        metrics: collectCurrentMetrics?.() ?? {
+          elapsedMs: Math.max(0, context.now() - startedAt),
+          expandedStates: counters.expanded,
+          generatedStates: counters.generated,
+          peakFrontierSize: counters.peakFrontier,
+          counters: {
+            uniqueStates: 0,
+            retainedStates: 0,
+            duplicateStates: counters.duplicates,
+            deadlockPrunes: counters.deadlockPrunes,
+            infeasiblePrunes: counters.infeasiblePrunes,
+            reopens: counters.reopens,
+            reachabilityFloods: counters.reachabilityFloods,
+            avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
+            heuristicCalls: 0,
+            heuristicCacheHits: 0,
+            frontierSize: 0,
+            maxDepth: counters.maxDepth,
+            estimatedMemoryBytes: 0,
+          },
+        },
+      };
+    }
+    throw error;
+  }
+}

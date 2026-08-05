@@ -111,7 +111,7 @@ describe("classic search control plane", () => {
     assert.equal(result.status, "solved");
     assert.deepEqual(
       updates.map(({ phase }) => phase),
-      ["preparing", "searching", "verifying"],
+      ["preparing", "searching", "improving"],
     );
 
     let previousExpanded = 0;

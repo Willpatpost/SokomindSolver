@@ -458,3 +458,99 @@ Self-audit against spec §6 identified two gaps, both fixed:
    so the cancelled `SolverResult` variant includes `readonly proof?: SolverProof`
    and validates it when present. Two new tests added to
    `solver-proof-contract.test.ts` for this variant.
+
+---
+
+## Sprint 4 — Incumbent-Bounded Exact Move A*
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+First sprint to **produce proof metadata**. Implements spec §8: an A* search
+that continues past the first solution, tracks an incumbent upper bound U, and
+terminates with a mathematical proof of optimality when the minimum f in OPEN
+reaches U (`L >= U`). Returns bounded gap on cutoff, unsolvable proof when OPEN
+empties with no incumbent. The `classicAStarSolver` adapter now delegates to the
+new exact A* engine.
+
+### Algorithm
+
+The exact move A* maintains an incumbent solution with cost U (initially ∞ or
+a provided initial incumbent). When a goal state is popped with g < U, the
+incumbent is replaced and search continues. The search proves optimality when
+`L >= U` (the minimum f-value in OPEN meets or exceeds the incumbent cost).
+
+Termination cases:
+
+| Condition | Result | Proof |
+|---|---|---|
+| `L >= U` | solved, `optimality: "proven"` | `kind: "optimal"`, gap=0 |
+| OPEN empty + incumbent | solved, `optimality: "proven"` | `kind: "optimal"`, gap=0 |
+| OPEN empty + no incumbent | unsolved, `reason: "exhausted"` | `kind: "unsolvable"` |
+| Cutoff + incumbent | solved, `optimality: "unknown"` | `kind: "bounded"`, gap=U−L |
+| Cutoff + no incumbent | unsolved, `reason: "limit-reached"` | no proof |
+| Cancellation | cancelled | partial metrics |
+
+### Deliverables
+
+**New files:**
+
+- `src/solver/search/exact-search-types.ts` — shared types and pure functions
+  extracted from `engine.ts` (`PushRecord`, `SearchNode`, `SearchCounters`,
+  `Frontier`, `objectiveScore`, `compareBoxes`, `comparePriority`, `isSolved`,
+  `estimateNodeBytes`, `estimatedMemoryBytes`, `reconstructSolution`,
+  `OPPOSITE_DIRECTION`, `fillOccupancy`, `fillDeadlockOccupancy`)
+- `src/solver/search/exact-move-astar.ts` — incumbent-bounded exact A* with
+  proof output (`runExactMoveAStar`, `ExactIncumbent`, `ExactMoveAStarOptions`)
+- `tests/unit/exact-move-astar.test.ts` — 13 tests across 9 suites covering
+  all 7 acceptance criteria plus edge cases
+
+**Updated files:**
+
+- `src/solver/search/engine.ts` — replaced local definitions of extracted items
+  with imports from `exact-search-types.ts`; re-exports for backward compatibility
+- `src/solver/implementations/classic-solvers.ts` — `classicAStarSolver` now
+  delegates to `runExactMoveAStar` (version bumped to 2.0.0)
+- `tests/unit/search-limits.test.ts` — updated expected phase sequence from
+  `["preparing", "searching", "verifying"]` to `["preparing", "searching", "improving"]`
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| AC1: Oracle equality — matches oracle on all 60+ solvable states | PASS |
+| AC2: Lower-bound monotonicity across progress reports | PASS |
+| AC3: Incumbent improvements (DFS → exact A*) | PASS |
+| AC4: Optimal proof structure with collectProofIssues validation | PASS |
+| AC5: Unsolvable proof on geometrically impossible puzzle | PASS |
+| AC6: Cutoff with incumbent returns bounded proof + gap | PASS |
+| AC7: Classic A* adapter produces proof metadata, matches oracle | PASS |
+
+### Deterministic regression
+
+The exact A* produces identical solutions to the previous A* on all test
+fixtures. With an admissible heuristic, when the first goal is popped from the
+min-heap, `L = f_goal = g_goal = U`, so `L >= U` is immediately satisfied — the
+search terminates at the same point, producing identical results plus proof
+metadata.
+
+Grand Hall deterministic results unchanged:
+
+| Metric | Value |
+|---|---|
+| Moves | 1,010 |
+| Pushes | 316 |
+| Visited | 1,843 |
+| Generated | 13,844 |
+| Retained | 3,471 |
+| Peak frontier | 387 |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 735 tests, 114 suites, all pass (+13 new tests, +9 new suites)
+- `npm run test:solver:multi` — 4/4 pass
