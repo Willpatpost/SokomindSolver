@@ -18,7 +18,7 @@ import {
   hasFreezeDeadlock,
   isStaticDeadCell,
 } from "./deadlocks.ts";
-import { AssignmentHeuristic, minimumWalkToFirstPush } from "./heuristic.ts";
+import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
 import { canonicalBoxSignature, toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
 import {
@@ -540,7 +540,7 @@ export async function runIdaStarSearch(
         metrics: metrics(),
       };
     }
-    const initialHWalk = minimumWalkToFirstPush(
+    const initialHWalk = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
@@ -704,12 +704,7 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          // Augment the push-only heuristic with a walk-cost lower bound.
-          // The player must walk to a support cell before the first push;
-          // Manhattan distance to the nearest such cell is a safe (admissible)
-          // lower bound on that walk cost. Since walk moves and push moves are
-          // disjoint, h = hPush + hWalk <= h* is guaranteed.
-          const hWalk = minimumWalkToFirstPush(
+          const hWalk = minimumManhattanWalkToPotentialPush(
             board,
             frame.robot,
             frame.boxes,

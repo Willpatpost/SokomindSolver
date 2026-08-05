@@ -27,6 +27,7 @@ import {
   ZobristTable,
   type DenseBox,
 } from "./model.ts";
+import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import {
   StablePriorityQueue,
 } from "./priority-queue.ts";
@@ -43,10 +44,12 @@ interface PushRecord {
   readonly directionIndex: number;
 }
 
+type StateKey = string | bigint;
+
 interface SearchNode {
   readonly robot: number;
   readonly boxes: readonly DenseBox[];
-  readonly key: string;
+  readonly key: StateKey;
   readonly parentIndex: number;
   readonly push?: PushRecord;
   readonly moves: number;
@@ -250,10 +253,11 @@ export function estimateStaticSearchBytes(board: CompiledSearchBoard): number {
 }
 
 // nodes[] retains all nodes (including superseded A* entries) because reconstructSolution() walks parent indices.
-function estimateNodeBytes(boxCount: number, key: string): number {
+function estimateNodeBytes(boxCount: number, key: StateKey): number {
   // SearchNode + V8 object/array overhead + canonical box records + key/map entry.
   // Deliberately biased upward: limits are promises, not heap profiler guesses.
-  return 448 + boxCount * 80 + key.length * 2;
+  const keyBytes = typeof key === "string" ? key.length * 2 : 64;
+  return 448 + boxCount * 80 + keyBytes;
 }
 
 function estimatedMemoryBytes(
@@ -372,6 +376,7 @@ function reconstructSolution(
   }
   chain.reverse();
 
+  const occupancyBuffer = new Uint8Array(board.cellCount);
   const steps: SolutionStep[] = [];
   for (let index = 1; index < chain.length; index += 1) {
     const parent = nodes[chain[index - 1] ?? -1];
@@ -385,8 +390,8 @@ function reconstructSolution(
       board.neighbors[push.boxCell]?.[
         OPPOSITE_DIRECTION[push.directionIndex] ?? -1
       ] ?? -1;
-    const occupied = occupancyFor(board.cellCount, parent.boxes);
-    const reachable = reachability.flood(parent.robot, occupied);
+    fillOccupancy(occupancyBuffer, parent.boxes);
+    const reachable = reachability.flood(parent.robot, occupancyBuffer);
     const walk = reachable.pathTo(support);
     const pushDirection = SEARCH_DIRECTIONS[push.directionIndex]?.direction;
     if (!walk || !pushDirection) {
@@ -447,6 +452,10 @@ export async function runClassicSearch(
     );
     const labels = [...board.goalCellsByLabel.keys()].sort();
     const zobrist = new ZobristTable(board.cellCount, labels);
+    const exactCodec: ExactStateCodec | null =
+      configuration.strategy === "astar"
+        ? createExactStateCodec(board.cellCount, labels)
+        : null;
 
     context.reportProgress(
       createProgress(
@@ -468,14 +477,20 @@ export async function runClassicSearch(
     const initialOccupancy = occupancyFor(board.cellCount, initialBoxes);
     const initialReachable = reachability.flood(initialRobot, initialOccupancy);
     counters.reachabilityFloods += 1;
-    // A* minimizes keeper movement as well as pushes, so two states with the
-    // same boxes but different exact keeper cells are not interchangeable:
-    // their costs to the next support cell can differ. First-found searches do
-    // not make that optimality claim and may still collapse a reachable region.
+
+    function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
+      const tokens = exactCodec!.tokensFromBoxes(boxes);
+      return exactCodec!.packMoveState(robotCell, tokens);
+    }
+
+    // A* uses collision-free bigint identity via ExactStateCodec.
+    // DFS/Greedy use Zobrist string keys (no proof-level optimality claim).
     const initialIdentityRobot = configuration.strategy === "astar"
       ? initialRobot
       : initialReachable.canonicalCell;
-    const initialKey = zobrist.stateKey(initialIdentityRobot, initialBoxes);
+    const initialKey: StateKey = exactCodec
+      ? exactKey(initialRobot, initialBoxes)
+      : zobrist.stateKey(initialIdentityRobot, initialBoxes);
     const initialHeuristic = heuristic.evaluate(initialBoxes);
     const [ip0, ip1, ip2] = nodePriority(
       configuration.strategy,
@@ -525,9 +540,11 @@ export async function runClassicSearch(
     frontier.push(0);
     counters.peakFrontier = 1;
 
-    const discovered = new Set<string>([initialKey]);
-    const bestNodeByKey = new Map<string, number>([[initialKey, 0]]);
-    const closed = new Set<string>();
+    // A* uses collision-free bigint keys; DFS/Greedy use Zobrist string keys.
+    // Both paths flow through the same Map/Set typed by StateKey.
+    const discovered = new Set<StateKey>([initialKey]);
+    const bestNodeByKey = new Map<StateKey, number>([[initialKey, 0]]);
+    const closed = new Set<StateKey>();
     let uniqueStates = 1;
     let lastProgressAt = context.now();
     let lastYieldAt = lastProgressAt;
@@ -793,24 +810,21 @@ export async function runClassicSearch(
           }
           const moves = node.moves + distance + 1;
           const pushes = node.pushes + 1;
-          fillOccupancy(childOccupancyBuffer, boxes);
-          const childReachable = childReachability.flood(box.cell, childOccupancyBuffer);
-          counters.reachabilityFloods += 1;
-          const identityRobot = configuration.strategy === "astar"
-            ? box.cell
-            : childReachable.canonicalCell;
-          const key = zobrist.stateKey(identityRobot, boxes);
 
-          if (configuration.strategy === "astar") {
-            const bestIndex = bestNodeByKey.get(key);
+          // A* uses collision-free ExactStateCodec bigint identity.
+          // DFS/Greedy use Zobrist string keys (no optimality proof).
+          // Both defer expensive work until after cheap pruning checks.
+          let childKey: StateKey;
+          if (exactCodec) {
+            childKey = exactKey(box.cell, boxes);
+            const bestIndex = bestNodeByKey.get(childKey);
             const best = bestIndex === undefined ? undefined : nodes[bestIndex];
             if (best && moves >= best.moves) {
               counters.duplicates += 1;
               continue;
             }
-          } else if (discovered.has(key)) {
-            counters.duplicates += 1;
-            continue;
+          } else {
+            childKey = zobrist.stateKey(box.cell, boxes);
           }
 
           const pushLowerBound = heuristic.evaluate(boxes);
@@ -834,6 +848,20 @@ export async function runClassicSearch(
             continue;
           }
 
+          // For DFS/Greedy, compute canonical-cell key via flood after
+          // pruning. A* key is already final (collision-free bigint).
+          if (!exactCodec) {
+            fillOccupancy(childOccupancyBuffer, boxes);
+            const childReachable = childReachability.flood(box.cell, childOccupancyBuffer);
+            counters.reachabilityFloods += 1;
+            const canonicalRobot = childReachable.canonicalCell;
+            childKey = zobrist.stateKey(canonicalRobot, boxes);
+            if (discovered.has(childKey)) {
+              counters.duplicates += 1;
+              continue;
+            }
+          }
+
           const [cp0, cp1, cp2] = nodePriority(
             configuration.strategy,
             moves,
@@ -842,7 +870,7 @@ export async function runClassicSearch(
           const candidate: SearchNode = {
             robot: box.cell,
             boxes,
-            key,
+            key: childKey,
             parentIndex: nodeIndex,
             push: { boxCell: box.cell, directionIndex },
             moves,
@@ -851,7 +879,7 @@ export async function runClassicSearch(
             p0: cp0,
             p1: cp1,
             p2: cp2,
-            estimatedBytes: estimateNodeBytes(boxes.length, key),
+            estimatedBytes: estimateNodeBytes(boxes.length, childKey),
           };
 
           const projectedBytes = counters.retainedBytes + candidate.estimatedBytes;
@@ -877,15 +905,15 @@ export async function runClassicSearch(
           counters.maxDepth = Math.max(counters.maxDepth, candidate.depth);
 
           if (configuration.strategy === "astar") {
-            const previous = bestNodeByKey.get(key);
+            const previous = bestNodeByKey.get(childKey);
             if (previous === undefined) {
               uniqueStates += 1;
-            } else if (closed.delete(key)) {
+            } else if (closed.delete(childKey)) {
               counters.reopens += 1;
             }
-            bestNodeByKey.set(key, childIndex);
+            bestNodeByKey.set(childKey, childIndex);
           } else {
-            discovered.add(key);
+            discovered.add(childKey);
             uniqueStates += 1;
           }
           children.push(childIndex);

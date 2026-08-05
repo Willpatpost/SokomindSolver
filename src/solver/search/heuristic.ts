@@ -134,6 +134,116 @@ export function minimumWalkToFirstPush(
 }
 
 /**
+ * Safe admissible walk lower bound that considers ALL boxes, including
+ * those already on matching goals.
+ *
+ * This corrects the unsound exclusion in `minimumWalkToFirstPush` where
+ * boxes on their matching goal were skipped. An optimal solution can
+ * require moving a correctly placed box first (e.g., to make room for
+ * another box to pass through).
+ *
+ * For each box (regardless of goal status), considers each direction
+ * where both the support cell and destination cell exist as floor.
+ * Optionally rejects a destination currently occupied by another box.
+ *
+ * Returns zero for a solved state. Returns zero rather than an unsafe
+ * positive value when uncertain.
+ */
+export function minimumManhattanWalkToPotentialPush(
+  board: CompiledSearchBoard,
+  playerCell: number,
+  boxes: readonly DenseBox[],
+  occupancy?: ArrayLike<number>,
+): number {
+  if (boxes.every((box) => board.goalLabelByCell[box.cell] === box.label)) {
+    return 0;
+  }
+  const playerPos = board.positions[playerCell];
+  if (!playerPos) return 0;
+
+  let minDist = Number.POSITIVE_INFINITY;
+
+  for (const box of boxes) {
+    const neighbors = board.neighbors[box.cell];
+    if (!neighbors) continue;
+
+    for (let d = 0; d < 4; d++) {
+      const supportCell = neighbors[d];
+      if (supportCell === undefined || supportCell < 0) continue;
+
+      const oppositeD = d ^ 1;
+      const destCell = neighbors[oppositeD];
+      if (destCell === undefined || destCell < 0) continue;
+
+      if (occupancy && occupancy[destCell] !== 0) continue;
+
+      const supportPos = board.positions[supportCell];
+      if (!supportPos) continue;
+
+      const manhattan =
+        Math.abs(playerPos.row - supportPos.row) +
+        Math.abs(playerPos.column - supportPos.column);
+      if (manhattan < minDist) {
+        minDist = manhattan;
+        if (manhattan === 0) return 0;
+      }
+    }
+  }
+
+  return Number.isFinite(minDist) ? minDist : 0;
+}
+
+/**
+ * Exact walk lower bound using keeper BFS reachability.
+ *
+ * Considers every legal push (including pushes of boxes currently on
+ * matching goals). Returns the minimum exact keeper distance to a legal
+ * push support cell.
+ *
+ * Returns Infinity when the state is unsolved and has no legal push.
+ * Must not perform a second keeper flood — reuses the one already
+ * calculated for node expansion.
+ */
+export function minimumReachableWalkToLegalPush(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+  occupancy: ArrayLike<number>,
+  reachability: { distanceTo(cell: number): number; isReachable(cell: number): boolean },
+): number {
+  if (boxes.every((box) => board.goalLabelByCell[box.cell] === box.label)) {
+    return 0;
+  }
+
+  let minDist = Number.POSITIVE_INFINITY;
+
+  for (const box of boxes) {
+    const neighbors = board.neighbors[box.cell];
+    if (!neighbors) continue;
+
+    for (let d = 0; d < 4; d++) {
+      const supportCell = neighbors[d];
+      if (supportCell === undefined || supportCell < 0) continue;
+
+      const oppositeD = d ^ 1;
+      const destCell = neighbors[oppositeD];
+      if (destCell === undefined || destCell < 0) continue;
+
+      if (occupancy[destCell] !== 0) continue;
+
+      if (!reachability.isReachable(supportCell)) continue;
+
+      const dist = reachability.distanceTo(supportCell);
+      if (dist >= 0 && dist < minDist) {
+        minDist = dist;
+        if (dist === 0) return 0;
+      }
+    }
+  }
+
+  return minDist;
+}
+
+/**
  * Bounded LRU wrapper around the admissible assignment lower bound.
  *
  * Cache identity ignores same-label box ids through canonicalBoxSignature.

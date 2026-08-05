@@ -44,6 +44,11 @@
 - npm run test:solver:multi
 - npm run test:solver:huge
 - npm run benchmark:solver
+- npm run benchmark:solver:v2
+
+## Environment variables
+
+- SOKOMIND_TIMING_SCALE: multiplier for wall-clock timing gates in performance tests (default 1). Set to 2 on slower hardware (e.g. Waterfield login node). State-count and deterministic-result assertions are unaffected.
 
 ## Sprint rules
 
