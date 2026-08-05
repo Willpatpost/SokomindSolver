@@ -19,14 +19,14 @@ import {
   isStaticDeadCell,
 } from "./deadlocks.ts";
 import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
-import { canonicalBoxSignature, toDenseBoxes, type DenseBox } from "./model.ts";
+import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
+import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import {
   sortedBoxes,
   movedBoxes,
   fillOccupancy,
   fillDeadlockOccupancy,
-  stateKey,
   delayForEventLoop,
   estimateStaticSearchBytes,
   OPPOSITE_DIRECTION,
@@ -56,7 +56,7 @@ interface PushRecord {
 interface StackFrame {
   readonly robot: number;
   readonly boxes: readonly DenseBox[];
-  readonly boxSignature: string;
+  readonly exactKey: bigint;
   readonly moves: number;
   readonly pushes: number;
   readonly g: number;
@@ -209,21 +209,20 @@ function estimateHeuristicCacheBytes(
   return cacheEntries * (160 + boxCount * 24);
 }
 
-function estimateTranspositionEntryBytes(key: string): number {
-  // Map entry, numeric g-cost, and the retained UTF-16 state key.
-  return 128 + key.length * 2;
+function estimateTranspositionEntryBytes(): number {
+  // Map entry, numeric g-cost, and the retained bigint identity key.
+  return 128 + 64;
 }
 
 function estimateStackFrameBytes(
   boxes: readonly DenseBox[],
-  boxSignature: string,
   hasPush: boolean,
 ): number {
-  // Frame/array overhead, canonical box records, signature, and push record.
+  // Frame/array overhead, canonical box records, bigint key, and push record.
   return (
     448 +
     boxes.length * 80 +
-    boxSignature.length * 2 +
+    64 +
     (hasPush ? 64 : 0)
   );
 }
@@ -335,6 +334,7 @@ function reconstructSolution(
 ): readonly SolutionStep[] {
   const steps: SolutionStep[] = [];
   let currentRobot = initialRobot;
+  const occupancyBuffer = new Uint8Array(board.cellCount);
 
   for (let i = 1; i < stack.length; i++) {
     const frame = stack[i];
@@ -349,10 +349,9 @@ function reconstructSolution(
         OPPOSITE_DIRECTION[push.directionIndex] ?? -1
       ] ?? -1;
 
-    const occupancy = new Uint8Array(board.cellCount);
-    for (const box of parentFrame.boxes) occupancy[box.cell] = 1;
+    fillOccupancy(occupancyBuffer, parentFrame.boxes);
 
-    const reachable = reachability.flood(currentRobot, occupancy);
+    const reachable = reachability.flood(currentRobot, occupancyBuffer);
     const walk = reachable.pathTo(support);
     const pushDirection = SEARCH_DIRECTIONS[push.directionIndex]?.direction;
     if (!walk || !pushDirection) {
@@ -411,6 +410,14 @@ export async function runIdaStarSearch(
     const initialBoxes = sortedBoxes(
       toDenseBoxes(board, request.snapshot.boxes),
     );
+    const labels = [...board.goalCellsByLabel.keys()].sort();
+    const exactCodec: ExactStateCodec = createExactStateCodec(board.cellCount, labels);
+
+    function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
+      const tokens = exactCodec.tokensFromBoxes(boxes);
+      return exactCodec.packMoveState(robotCell, tokens);
+    }
+
     const staticMemoryBytes = estimateIdaStaticBytes(
       board,
       initialBoxes.length,
@@ -547,7 +554,7 @@ export async function runIdaStarSearch(
     );
     const initialH = initialHPush + initialHWalk;
 
-    const initialBoxSignature = canonicalBoxSignature(initialBoxes);
+    const initialExactKey = exactKey(initialRobot, initialBoxes);
     const initialG = 0;
 
     // Pre-allocate reusable buffers
@@ -582,7 +589,7 @@ export async function runIdaStarSearch(
     // A size limit prevents unbounded memory growth: if the table exceeds
     // the memory budget, it is cleared and rebuilt from scratch in the
     // current iteration.
-    let transposition = new Map<string, number>();
+    let transposition = new Map<bigint, number>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
     idaLoop: while (true) {
@@ -593,7 +600,7 @@ export async function runIdaStarSearch(
       // at g-cost G in iteration N were f-pruned at f > fLimit(N).
       // In iteration N+1 with a higher fLimit, the same states need
       // re-exploration because their children may now pass the f-bound.
-      transposition = new Map<string, number>();
+      transposition = new Map<bigint, number>();
       transpositionSize = 0;
       transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
@@ -631,7 +638,7 @@ export async function runIdaStarSearch(
       const rootFrame: StackFrame = {
         robot: initialRobot,
         boxes: initialBoxes,
-        boxSignature: initialBoxSignature,
+        exactKey: initialExactKey,
         moves: 0,
         pushes: 0,
         g: initialG,
@@ -642,7 +649,6 @@ export async function runIdaStarSearch(
         cachedReachable: null,
         estimatedStackBytes: estimateStackFrameBytes(
           initialBoxes,
-          initialBoxSignature,
           false,
         ),
         estimatedReachabilityBytes: 0,
@@ -718,18 +724,17 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          // Transposition check
-          const key = stateKey(frame.robot, frame.boxSignature);
-          const previousG = transposition.get(key);
+          // Transposition check (collision-free bigint identity)
+          const previousG = transposition.get(frame.exactKey);
           if (previousG !== undefined && previousG <= frame.g) {
             counters.duplicates += 1;
             popFrame();
             continue;
           }
-          transposition.set(key, frame.g);
+          transposition.set(frame.exactKey, frame.g);
           if (previousG === undefined) {
             transpositionSize += 1;
-            transpositionMemoryBytes += estimateTranspositionEntryBytes(key);
+            transpositionMemoryBytes += estimateTranspositionEntryBytes();
           }
           if (memoryLimitReached()) {
             limitDetail = "Estimated solver memory limit reached.";
@@ -923,12 +928,12 @@ export async function runIdaStarSearch(
           const newMoves = frame.moves + distance + 1;
           const newPushes = frame.pushes + 1;
           const newG = newMoves;
-          const newBoxSignature = canonicalBoxSignature(newBoxes);
+          const newExactKey = exactKey(box.cell, newBoxes);
 
           const childFrame: StackFrame = {
             robot: box.cell,
             boxes: newBoxes,
-            boxSignature: newBoxSignature,
+            exactKey: newExactKey,
             moves: newMoves,
             pushes: newPushes,
             g: newG,
@@ -940,7 +945,6 @@ export async function runIdaStarSearch(
             cachedReachable: null,
             estimatedStackBytes: estimateStackFrameBytes(
               newBoxes,
-              newBoxSignature,
               true,
             ),
             estimatedReachabilityBytes: 0,

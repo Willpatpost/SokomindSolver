@@ -69,6 +69,7 @@ interface SearchCounters {
   infeasiblePrunes: number;
   reopens: number;
   reachabilityFloods: number;
+  avoidedReachabilityFloods: number;
   retainedBytes: number;
   peakFrontier: number;
   maxDepth: number;
@@ -316,6 +317,7 @@ function createMetrics(
       infeasiblePrunes: counters.infeasiblePrunes,
       reopens: counters.reopens,
       reachabilityFloods: counters.reachabilityFloods,
+      avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
       heuristicCalls: heuristicStats.calls,
       heuristicCacheHits: heuristicStats.cacheHits,
       frontierSize,
@@ -427,6 +429,7 @@ export async function runClassicSearch(
     infeasiblePrunes: 0,
     reopens: 0,
     reachabilityFloods: 0,
+    avoidedReachabilityFloods: 0,
     retainedBytes: 0,
     peakFrontier: 0,
     maxDepth: 0,
@@ -860,6 +863,8 @@ export async function runClassicSearch(
               counters.duplicates += 1;
               continue;
             }
+          } else {
+            counters.avoidedReachabilityFloods += 1;
           }
 
           const [cp0, cp1, cp2] = nodePriority(
@@ -958,6 +963,7 @@ export async function runClassicSearch(
             infeasiblePrunes: counters.infeasiblePrunes,
             reopens: counters.reopens,
             reachabilityFloods: counters.reachabilityFloods,
+            avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
             heuristicCalls: 0,
             heuristicCacheHits: 0,
             frontierSize: 0,

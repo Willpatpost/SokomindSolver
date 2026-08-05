@@ -263,3 +263,122 @@ Grand Hall (test:solver:huge) deterministic results unchanged:
 - `npm run build` — pass
 - `npm run test:solver:multi` — 4/4 pass
 - `npm run test:solver:huge` — pass (deterministic results identical)
+
+---
+
+## Sprint 1–2 Compliance Correction
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Objective
+
+Resolve six specification-compliance deficiencies identified by post-Sprint-2 audit against `docs/solver-v2-spec.md`. No new solver features or Sprint 3 behavior introduced.
+
+### Deliverables
+
+#### New files
+
+- `tests/unit/sprint12-compliance.test.ts` — 14 tests across 4 suites: IDA* BigInt identity (4), avoided-flood counter (3), sorted-box invariants (6), reconstruction buffer (1)
+- `tests/support/sprint2-benchmark.ts` — Median-of-5 timing benchmark with warm-up phase
+
+#### Modified files
+
+- `src/solver/search/ida-star.ts` — Three changes:
+  1. Replaced `canonicalBoxSignature` string transposition with `ExactStateCodec.packMoveState()` BigInt identity
+  2. Transposition table type: `Map<string, number>` → `Map<bigint, number>`
+  3. Reconstruction buffer: single `Uint8Array` allocation reused via `fillOccupancy()`
+- `src/solver/search/engine.ts` — Added `avoidedReachabilityFloods` counter to `SearchCounters`, initialized to 0, incremented when A* skips a child flood
+
+### Correction 1: IDA* collision-free BigInt identity (spec §3.1)
+
+**Issue**: IDA* used `canonicalBoxSignature` (a collision-free string) for its transposition table, but the spec requires the shared `ExactStateCodec` BigInt codec for all proof paths.
+
+**Fix**: IDA* now imports `createExactStateCodec` and uses `packMoveState()` for transposition keys. The `StackFrame.boxSignature` field was replaced with `StackFrame.exactKey: bigint`. Memory estimation updated for BigInt keys (128 + 64 bytes per entry).
+
+**Verification**: IDA* and A* produce identical optimal solutions on all solvable fixtures (4 moves/2 pushes on two-generic-boxes, 18 moves/6 pushes on exact-keeper-regression). IDA* correctly identifies the typed-2box fixture as exhausted (geometrically unsolvable).
+
+### Correction 2: Explicit `avoidedReachabilityFloods` counter (spec §11.1)
+
+**Issue**: The Sprint 2 A* flood optimization skipped child floods but did not instrument the savings.
+
+**Fix**: New `avoidedReachabilityFloods` field in `SearchCounters`, incremented at the exact point where A* skips a child flood (line 867 of engine.ts). Reported in both solved and cancelled metrics.
+
+**Verification**: Counter is > 0 for all A* solved fixtures. `reachabilityFloods <= expanded + 1` confirmed on all fixtures.
+
+### Correction 3: IDA* reconstruction buffer reuse
+
+**Issue**: IDA* allocated a new `Uint8Array(cellCount)` per reconstruction step.
+
+**Fix**: Single `occupancyBuffer` allocated before the reconstruction loop, reused via `fillOccupancy()`.
+
+**Verification**: IDA* produces correct solutions (4 moves, 2 pushes on two-generic-boxes).
+
+### Correction 4: Sorted-box invariant (spec §2.2)
+
+**Issue**: The `sortedBoxes` and `movedBoxes` functions maintained sorted order but this was not tested.
+
+**Fix**: Six explicit tests verifying:
+- `sortedBoxes` produces canonical cell order
+- `movedBoxes` preserves sorted order when moving forward or backward
+- Typed labels maintain cross-label sort order
+- Repeated same-label boxes remain interchangeable
+- `ExactStateCodec` receives tokens in sorted order from sorted boxes
+
+### Correction 5: Median-of-5 timing benchmark (spec §20.3)
+
+**Methodology**: 1 warm-up run (discarded) + 5 measured runs per fixture. Median reported.
+
+| Fixture | Median (ms) | Moves | Pushes | Optimality |
+|---|---|---|---|---|
+| two-generic-boxes | 1.25 | 4 | 2 | proven |
+| exact-keeper-regression | 4.07 | 18 | 6 | proven |
+| medium-4box | 131.90 | 28 | 13 | proven |
+| typed-2box | 0.10 | — | — | unsolved (exhausted) |
+
+Detailed counters per fixture:
+
+| Fixture | Expanded | Generated | Floods | Avoided floods | Duplicates | Deadlock prunes | Infeasible | Peak frontier |
+|---|---|---|---|---|---|---|---|---|
+| two-generic-boxes | 3 | 16 | 4 | 14 | 0 | 2 | 0 | 12 |
+| exact-keeper-regression | 39 | 133 | 40 | 74 | 23 | 33 | 3 | 38 |
+| medium-4box | 1,519 | 11,615 | 1,520 | 3,498 | 4,542 | 3,373 | 202 | 1,822 |
+| typed-2box | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 1 |
+
+### Correction 6: Sprint 2-only flood comparison (same BigInt identity both sides)
+
+The previous Sprint 2 baseline comparison mixed two changes: Sprint 1 identity upgrade (Zobrist → BigInt) and Sprint 2 flood optimization. This section isolates the Sprint 2 flood optimization using the same BigInt identity on both sides.
+
+**Methodology**: Sprint 1 equivalent flood count = generated − deadlockPrunes (every non-deadlock child was flooded before Sprint 2 optimization). Sprint 2 actual flood count = `reachabilityFloods` counter (parent expansions only; A* children never flooded).
+
+| Fixture | Sprint 1 est. floods | Sprint 2 floods | Reduction |
+|---|---|---|---|
+| two-generic-boxes | 14 | 4 | −71% |
+| exact-keeper-regression | 100 | 40 | −60% |
+| medium-4box | 8,242 | 1,520 | −82% |
+
+Estimated solver memory (node/frontier/closed-set storage) is identical between Sprint 1 and Sprint 2. The flood optimization saves CPU work (avoided BFS traversals), not data-structure memory. Process RSS on medium-4box: 165.9 MB.
+
+### Deterministic result verification
+
+Grand Hall (test:solver:huge) deterministic results unchanged:
+
+| Metric | Value |
+|---|---|
+| Moves | 1,010 |
+| Pushes | 316 |
+| Visited | 1,843 |
+| Generated | 13,844 |
+| Retained | 3,471 |
+| Peak frontier | 387 |
+
+### Test regression
+
+- `npm run check:sokomind-solver` — pass
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 681 tests, 94 suites, all pass (+14 new tests, +4 new suites)
+- `npm run build` — pass
+- `npm run test:solver:multi` — 4/4 pass
+- `npm run test:solver:huge` — pass (deterministic results identical)
