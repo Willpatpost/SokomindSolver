@@ -21,7 +21,7 @@ import {
   hasFreezeDeadlock,
   isStaticDeadCell,
 } from "./deadlocks.ts";
-import { AssignmentHeuristic } from "./heuristic.ts";
+import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
 import {
   toDenseBoxes,
   ZobristTable,
@@ -494,7 +494,13 @@ export async function runClassicSearch(
     const initialKey: StateKey = exactCodec
       ? exactKey(initialRobot, initialBoxes)
       : zobrist.stateKey(initialIdentityRobot, initialBoxes);
-    const initialHeuristic = heuristic.evaluate(initialBoxes);
+    const initialPushBound = heuristic.evaluate(initialBoxes);
+    // A* walk augmentation: spec 8.3 requires h = push lower bound + walk lower bound.
+    // Walk augmentation is only added for A* (exact proof); DFS/Greedy don't need it.
+    const initialWalkBound = exactCodec
+      ? minimumManhattanWalkToPotentialPush(board, initialRobot, initialBoxes)
+      : 0;
+    const initialHeuristic = initialPushBound + initialWalkBound;
     const [ip0, ip1, ip2] = nodePriority(
       configuration.strategy,
       0,
@@ -867,10 +873,19 @@ export async function runClassicSearch(
             counters.avoidedReachabilityFloods += 1;
           }
 
+          // A* walk augmentation (spec 8.3): h = push lower bound + walk lower bound.
+          // The walk bound is admissible and disjoint from push cost, so adding
+          // it preserves admissibility. Only applied for A* (exact proof mode).
+          // After pushing, the robot is at box.cell (the cell the box vacated).
+          const walkBound = exactCodec
+            ? minimumManhattanWalkToPotentialPush(board, box.cell, boxes)
+            : 0;
+          const heuristic_h = pushLowerBound + walkBound;
+
           const [cp0, cp1, cp2] = nodePriority(
             configuration.strategy,
             moves,
-            pushLowerBound,
+            heuristic_h,
           );
           const candidate: SearchNode = {
             robot: box.cell,

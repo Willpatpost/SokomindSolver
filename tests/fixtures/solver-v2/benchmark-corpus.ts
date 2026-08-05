@@ -389,6 +389,196 @@ export const MASTER_TYPED_GRID = freeze({
 });
 
 // ---------------------------------------------------------------------------
+// Spec §20.1 supplemental fixtures (items 6–16)
+// ---------------------------------------------------------------------------
+
+// Microban 145 (David W. Skinner) — compact 3-box generic puzzle with
+// indirect push paths that stress basic search ordering.
+export const V2_MICROBAN_145 = freeze({
+  fixtureId: "v2-microban-145",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 3, floorCount: 19, width: 6, height: 7,
+  rows: [
+    "OOOOOO",
+    "O    O",
+    "O XX O",
+    "O  X O",
+    "O R  O",
+    "OSSSOO",
+    "OOOOOO",
+  ],
+});
+
+// Microban 146 (David W. Skinner) — compact 3-box puzzle requiring
+// boxes to navigate through a narrow central gap.
+export const V2_MICROBAN_146 = freeze({
+  fixtureId: "v2-microban-146",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 3, floorCount: 23, width: 7, height: 8,
+  rows: [
+    "OOOOOOO",
+    "OS R SO",
+    "O  XX O",
+    "OO O OO",
+    "O     O",
+    "OO X OO",
+    "OO S OO",
+    "OOOOOOO",
+  ],
+});
+
+// Caleb 022 — 4-box puzzle with room partitions and a corridor;
+// exercises the solver's room-decomposition and macro-push logic.
+export const V2_CALEB_022 = freeze({
+  fixtureId: "v2-caleb-022",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 4, floorCount: 31, width: 8, height: 8,
+  rows: [
+    "OOOOOOOO",
+    "O R    O",
+    "O  OX  O",
+    "O    X O",
+    "OOX  OOO",
+    "OSS    O",
+    "OSS X OO",
+    "OOOOOOOO",
+  ],
+});
+
+// Solved-box-must-move-first — the optimal solution pushes a box through
+// its own goal, then later returns it.  Regression guard for solvers that
+// prune "already-solved" boxes from the search.
+export const V2_SOLVED_BOX_MUST_MOVE = freeze({
+  fixtureId: "v2-solved-box-must-move",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 2, floorCount: 24, width: 7, height: 7,
+  rows: [
+    "OOOOOOO",
+    "O     O",
+    "OOS R O",
+    "O X   O",
+    "O X   O",
+    "O S   O",
+    "OOOOOOO",
+  ],
+});
+
+// Assignment-infeasible state — a solvable puzzle that contains tempting
+// pushes (box into a corner) which produce assignment-infeasible deadlocks.
+// The solver's assignment heuristic must return infinity for those states.
+export const V2_ASSIGNMENT_INFEASIBLE = freeze({
+  fixtureId: "v2-assignment-infeasible",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 2, floorCount: 23, width: 7, height: 7,
+  rows: [
+    "OOOOOOO",
+    "O   R O",
+    "O X   O",
+    "OOO   O",
+    "O S X O",
+    "O S   O",
+    "OOOOOOO",
+  ],
+});
+
+// Sealed-corral proof — pushing boxes into the narrow doorway seals goals
+// below in an unreachable corral.  Tests corral-based dead-state detection.
+export const V2_SEALED_CORRAL = freeze({
+  fixtureId: "v2-sealed-corral",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 2, floorCount: 21, width: 7, height: 7,
+  rows: [
+    "OOOOOOO",
+    "O R   O",
+    "O X X O",
+    "OOO OOO",
+    "O  S  O",
+    "O  S  O",
+    "OOOOOOO",
+  ],
+});
+
+// Wide multi-entry room — a large room on the right connected to small
+// left-side alcoves through three separate doorways.  Exercises room
+// analysis, macro-push generation, and multi-entry handling.
+export const V2_WIDE_MULTI_ENTRY = freeze({
+  fixtureId: "v2-wide-multi-entry",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 3, floorCount: 63, width: 13, height: 9,
+  rows: [
+    "OOOOOOOOOOOOO",
+    "O    O      O",
+    "OR X   S    O",
+    "O    OOOOO OO",
+    "O  X   S    O",
+    "O    OOOOO OO",
+    "O  X   S    O",
+    "O    O      O",
+    "OOOOOOOOOOOOO",
+  ],
+});
+
+// Loop-heavy — pillar grid creates many independent floor-graph cycles.
+// Stresses reachability flood performance and duplicate-state detection
+// in the presence of a high branching factor.
+export const V2_LOOP_HEAVY = freeze({
+  fixtureId: "v2-loop-heavy",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  boxes: 2, floorCount: 79, width: 13, height: 11,
+  rows: [
+    "OOOOOOOOOOOOO",
+    "O   R       O",
+    "O O O O O O O",
+    "O     X     O",
+    "O O O O O O O",
+    "O           O",
+    "O O O O O O O",
+    "O     X     O",
+    "O O O O O O O",
+    "O  S     S  O",
+    "OOOOOOOOOOOOO",
+  ],
+});
+
+// 27-box memory stress test — large warehouse with 27 boxes in the upper
+// half and 27 goals in the lower half.  Not expected to solve within
+// time limits; exists to measure peak memory and state-encoding capacity.
+export const V2_27BOX_MEMORY = freeze({
+  fixtureId: "v2-27box-memory",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  aliases: ["memory-stress"],
+  boxes: 27, floorCount: 285, width: 21, height: 17,
+  rows: [
+    "OOOOOOOOOOOOOOOOOOOOO",
+    "O X X X X X X       O",
+    "O  X X X X X X      O",
+    "O X X X X X         O",
+    "O  X X X X X        O",
+    "O X X X X X         O",
+    "O                   O",
+    "O                   O",
+    "O         R         O",
+    "O                   O",
+    "O                   O",
+    "O       S S S S S   O",
+    "O      S S S S S    O",
+    "O       S S S S S   O",
+    "O      S S S S S S  O",
+    "O       S S S S S S O",
+    "OOOOOOOOOOOOOOOOOOOOO",
+  ],
+});
+
+// ---------------------------------------------------------------------------
 // Grand Hall variants (computed at runtime from HUGE rows)
 // ---------------------------------------------------------------------------
 
@@ -459,6 +649,15 @@ export const BENCHMARK_CORPUS: readonly BenchmarkFixture[] = Object.freeze([
   MASTER_TYPED_GRID,
   HUGE_MIRRORED,
   HUGE_ROTATED,
+  V2_MICROBAN_145,
+  V2_MICROBAN_146,
+  V2_CALEB_022,
+  V2_SOLVED_BOX_MUST_MOVE,
+  V2_ASSIGNMENT_INFEASIBLE,
+  V2_SEALED_CORRAL,
+  V2_WIDE_MULTI_ENTRY,
+  V2_LOOP_HEAVY,
+  V2_27BOX_MEMORY,
 ]);
 
 export const BENCHMARK_FIXTURE_BY_ID: Readonly<

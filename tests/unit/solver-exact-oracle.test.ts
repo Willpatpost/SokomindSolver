@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parsePuzzleRows } from "../../src/core/index.ts";
+import {
+  parsePuzzleRows,
+  type ParsedBoard,
+  type Box,
+  type GameSnapshot,
+} from "../../src/core/index.ts";
+import type {
+  SolverExecutionContext,
+  SolverRequest,
+  SolverResult,
+} from "../../src/solver/contracts.ts";
 import {
   compileSearchBoard,
   type CompiledSearchBoard,
 } from "../../src/solver/search/compiled-board.ts";
+import {
+  runClassicSearch,
+} from "../../src/solver/search/engine.ts";
+import {
+  runIdaStarSearch,
+} from "../../src/solver/search/ida-star.ts";
 import {
   assignmentLowerBound,
   minimumManhattanWalkToPotentialPush,
@@ -270,6 +286,179 @@ describe("ExactStateCodec collision-free on oracle states", () => {
 
     assert.equal(identities.size, states.size);
     assert.ok(states.size > 10, `Expected many reachable states; got ${states.size}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers for exhaustive search-vs-oracle tests
+// ---------------------------------------------------------------------------
+
+function oracleExecutionContext(): SolverExecutionContext {
+  return {
+    signal: new AbortController().signal,
+    reportProgress: () => undefined,
+    now: () => performance.now(),
+  };
+}
+
+/**
+ * Build a SolverRequest for an arbitrary (robot, boxes) state on a compiled
+ * board. The ParsedBoard and puzzle geometry are reused; only the dynamic
+ * snapshot differs.
+ */
+function requestForOracleState(
+  parsed: ParsedBoard,
+  board: CompiledSearchBoard,
+  robot: number,
+  boxes: readonly DenseBox[],
+): SolverRequest {
+  const robotPos = board.positions[robot];
+  const snapshotBoxes: Box[] = boxes.map((box) => {
+    const pos = board.positions[box.cell];
+    return {
+      id: box.id,
+      label: box.label,
+      position: { row: pos.row, column: pos.column },
+    };
+  });
+
+  const isSolved = boxes.every(
+    (box) => board.goalLabelByCell[box.cell] === box.label,
+  );
+
+  const snapshot: GameSnapshot = {
+    puzzleId: "oracle-test",
+    robot: { row: robotPos.row, column: robotPos.column },
+    boxes: snapshotBoxes,
+    moves: 0,
+    pushes: 0,
+    solved: isSolved,
+  };
+
+  return {
+    board: parsed,
+    snapshot,
+    objective: { kind: "moves" },
+  };
+}
+
+function assertSolved(
+  result: SolverResult,
+): Extract<SolverResult, { readonly status: "solved" }> {
+  assert.equal(
+    result.status,
+    "solved",
+    `Expected solved, got ${result.status}${result.status === "unsolved" ? `: ${result.detail ?? result.reason}` : ""}`,
+  );
+  if (result.status !== "solved") throw new Error("Expected a solved result.");
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Exhaustive search-vs-oracle tests (spec section 21.3)
+// ---------------------------------------------------------------------------
+
+describe("exact search matches oracle on all reachable states", () => {
+  const BOARD_ROWS = [
+    "OOOOOO",
+    "OR   O",
+    "O XX O",
+    "O SS O",
+    "OOOOOO",
+  ];
+
+  it("exact A* matches oracle on all reachable solvable states", async () => {
+    const parsed = parsePuzzleRows(BOARD_ROWS);
+    const board = compileSearchBoard(parsed);
+    const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+    const initialRobot = board.cellAt(
+      parsed.initialRobot.row,
+      parsed.initialRobot.column,
+    );
+
+    const oracleStates = allReachableStates(board, initialRobot, initialBoxes);
+    let solvableChecked = 0;
+
+    for (const [, state] of oracleStates) {
+      if (state.exactMoves === null) continue;
+
+      const request = requestForOracleState(
+        parsed,
+        board,
+        state.robot,
+        state.boxes,
+      );
+
+      const result = assertSolved(
+        await runClassicSearch(request, oracleExecutionContext(), {
+          strategy: "astar",
+        }),
+      );
+
+      assert.equal(
+        result.solution.moves,
+        state.exactMoves,
+        `A* moves=${result.solution.moves} !== oracle=${state.exactMoves} ` +
+          `at robot=${state.robot} boxes=[${state.boxes.map((b) => `${b.label}@${b.cell}`).join(",")}]`,
+      );
+      assert.equal(
+        result.solution.optimality,
+        "proven",
+        "A* must claim proven optimality",
+      );
+      solvableChecked++;
+    }
+
+    assert.ok(
+      solvableChecked > 30,
+      `Expected >30 solvable states; got ${solvableChecked}`,
+    );
+  });
+
+  it("exact IDA* matches oracle on all reachable solvable states", async () => {
+    const parsed = parsePuzzleRows(BOARD_ROWS);
+    const board = compileSearchBoard(parsed);
+    const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+    const initialRobot = board.cellAt(
+      parsed.initialRobot.row,
+      parsed.initialRobot.column,
+    );
+
+    const oracleStates = allReachableStates(board, initialRobot, initialBoxes);
+    let solvableChecked = 0;
+
+    for (const [, state] of oracleStates) {
+      if (state.exactMoves === null) continue;
+
+      const request = requestForOracleState(
+        parsed,
+        board,
+        state.robot,
+        state.boxes,
+      );
+
+      const result = assertSolved(
+        await runIdaStarSearch(request, oracleExecutionContext()),
+      );
+
+      assert.equal(
+        result.solution.moves,
+        state.exactMoves,
+        `IDA* moves=${result.solution.moves} !== oracle=${state.exactMoves} ` +
+          `at robot=${state.robot} boxes=[${state.boxes.map((b) => `${b.label}@${b.cell}`).join(",")}]`,
+      );
+      assert.equal(
+        result.solution.optimality,
+        "proven",
+        "IDA* must claim proven optimality",
+      );
+      solvableChecked++;
+    }
+
+    assert.ok(
+      solvableChecked > 30,
+      `Expected >30 solvable states; got ${solvableChecked}`,
+    );
   });
 });
 
