@@ -677,12 +677,16 @@ export async function runIdaStarSearch(
         proof: makeUnsolvableProof(),
       };
     }
+    const initialLabelCosts = heuristic.lastLabelCosts;
+    const initialBoost = initialLabelCosts
+      ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
+      : 0;
     const initialHWalk = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialHPush + initialHWalk;
+    const initialH = initialHPush + initialBoost + initialHWalk;
     lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);

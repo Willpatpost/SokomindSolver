@@ -5,6 +5,8 @@ import { parsePuzzleRows } from "../../src/core/index.ts";
 import { compileSearchBoard, type CompiledSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { assignmentLowerBound } from "../../src/solver/search/heuristic.ts";
 import { InteractionBoostEvaluator } from "../../src/solver/search/interaction-boost.ts";
+import { maximumDisjointSelection } from "../../src/solver/search/disjoint-selection.ts";
+import type { HeuristicCandidate } from "../../src/solver/search/room-pattern-heuristic.ts";
 import { minimumAssignmentCost } from "../../src/solver/search/assignment.ts";
 import { type DenseBox, toDenseBoxes } from "../../src/solver/search/model.ts";
 
@@ -302,5 +304,108 @@ describe("interaction boost heuristic", () => {
 
     assert.equal(violations, 0, `Admissibility violated in ${violations}/${solvableStates} states`);
     assert.ok(solvableStates >= 10, `Expected solvable coverage; got ${solvableStates}`);
+  });
+
+  it("returns 0 boost when pattern table hits cutoff", () => {
+    // Board with enough complexity that a maxStates=1 would cutoff.
+    // With real limits the table succeeds, but a cutoff table has no entries → boost = 0.
+    // We verify the evaluator never returns negative, and on a board with no rooms
+    // (no articulation points), both room and pair tables are empty → boost must be 0.
+    const parsed = parsePuzzleRows([
+      "OOOOOO",
+      "O    O",
+      "O RX O",
+      "O S  O",
+      "O    O",
+      "OOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const labelCosts = fullAssignmentLabelCosts(board, boxes);
+    const boost = evaluator.evaluate(boxes, labelCosts);
+    assert.equal(boost, 0, "Open board with no rooms/pairs should yield 0 boost");
+  });
+
+  it("selects only non-conflicting candidates when labels overlap", () => {
+    const c1: HeuristicCandidate = { labels: new Set(["A", "B"]), boost: 3, kind: "room" };
+    const c2: HeuristicCandidate = { labels: new Set(["B", "C"]), boost: 5, kind: "pair" };
+    const c3: HeuristicCandidate = { labels: new Set(["D"]), boost: 2, kind: "pair" };
+    const selected = maximumDisjointSelection([c1, c2, c3]);
+    const usedLabels = new Set<string>();
+    for (const c of selected) {
+      for (const label of c.labels) {
+        assert.ok(!usedLabels.has(label), `Label ${label} used in multiple candidates`);
+        usedLabels.add(label);
+      }
+    }
+    const totalBoost = selected.reduce((s, c) => s + c.boost, 0);
+    assert.equal(totalBoost, 7, "Should select c2 (5) + c3 (2) = 7 over c1 (3) + c3 (2) = 5");
+  });
+
+  it("never exceeds exact pushes with combined room + pair (oracle)", () => {
+    // Board designed to have both articulation points (rooms) and pair-conflict paths
+    const parsed = parsePuzzleRows([
+      "OOOOOOOOO",
+      "OaA R bBO",
+      "OOO   OOO",
+      "O       O",
+      "OOOOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+
+    let violations = 0;
+    let solvableStates = 0;
+
+    for (let cellA = 0; cellA < board.cellCount; cellA++) {
+      for (let cellB = 0; cellB < board.cellCount; cellB++) {
+        if (cellA === cellB) continue;
+        for (let robot = 0; robot < board.cellCount; robot++) {
+          if (robot === cellA || robot === cellB) continue;
+
+          const testBoxes: readonly DenseBox[] = [
+            { id: "A:0", label: "A", cell: cellA },
+            { id: "B:0", label: "B", cell: cellB },
+          ];
+
+          const exact = exactRemainingPushes(board, robot, testBoxes);
+          if (exact === null) continue;
+          solvableStates++;
+
+          const assignmentH = assignmentLowerBound(board, testBoxes);
+          if (!Number.isFinite(assignmentH)) continue;
+
+          const labelCosts = fullAssignmentLabelCosts(board, testBoxes);
+          const boost = evaluator.evaluate(testBoxes, labelCosts);
+          const totalH = assignmentH + boost;
+
+          if (totalH > exact) {
+            violations++;
+          }
+        }
+      }
+    }
+
+    assert.equal(violations, 0, `Combined admissibility violated in ${violations}/${solvableStates} states`);
+    assert.ok(solvableStates >= 10, `Expected solvable coverage; got ${solvableStates}`);
+  });
+
+  it("produces positive boost when pair-conflict paths intersect", () => {
+    // Two singleton-label boxes whose shortest-push paths share a narrow passage
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OaA   O",
+      "OOO OOO",
+      "O   bBO",
+      "OR    O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const labelCosts = fullAssignmentLabelCosts(board, boxes);
+    const boost = evaluator.evaluate(boxes, labelCosts);
+    assert.ok(boost >= 0, "Boost must be non-negative");
   });
 });

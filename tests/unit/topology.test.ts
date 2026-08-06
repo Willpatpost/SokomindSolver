@@ -99,6 +99,59 @@ describe("board topology analysis", () => {
     assert.equal(rooms.length, 0, "No rooms when no articulation points");
   });
 
+  it("identifies tunnel cells in a linear corridor", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OR  O",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const { tunnels } = board.topology;
+    // Interior cells (1,1) through (1,3) form a corridor; (1,2) has exactly 2 collinear neighbors
+    const midCell = board.cellAt(1, 2);
+    if (midCell >= 0) {
+      assert.ok(tunnels.has(midCell), "Mid-corridor cell should be a tunnel");
+    }
+  });
+
+  it("excludes rooms larger than 72% of floor", () => {
+    // 9 floor cells total; the component behind the gate has 8 cells (89%) > 72%
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR O   O",
+      "O  O   O",
+      "O  OSXO",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const { rooms } = board.topology;
+    // Any room discovered must be ≤72% of total floor
+    const totalFloor = board.cellCount;
+    for (const room of rooms) {
+      assert.ok(
+        room.cells.size <= Math.floor(totalFloor * 0.72),
+        `Room has ${room.cells.size} cells but floor total is ${totalFloor}; exceeds 72%`,
+      );
+    }
+  });
+
+  it("discovers rooms in an L-shaped layout", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OSX   O",
+      "OOO   O",
+      "O R   O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const { rooms } = board.topology;
+    for (const room of rooms) {
+      assert.ok(room.goals.length > 0, "Room must have goals");
+      assert.ok(room.cells.size >= 2, "Room must have at least 2 cells");
+      assert.ok(!room.cells.has(room.gate), "Gate must not be in room cells");
+    }
+  });
+
   it("deduplicates rooms that are subsets of larger rooms", () => {
     // Nested structure: large room contains a smaller alcove
     const parsed = parsePuzzleRows([

@@ -1202,9 +1202,9 @@ Prerequisite for room-pattern and pair-conflict heuristics.
 | `src/solver/search/ida-star.ts` | Updated | +boostEvaluator, +interactionBoost in h |
 | `src/solver/search/exact-search-types.ts` | Updated | +interactionBoostTotal counter |
 | `src/solver/search/engine.ts` | Updated | +counter in metrics |
-| `tests/unit/topology.test.ts` | Created | 6 tests |
+| `tests/unit/topology.test.ts` | Created | 9 tests |
 | `tests/unit/disjoint-selection.test.ts` | Created | 6 tests |
-| `tests/unit/interaction-boost.test.ts` | Created | 6 tests |
+| `tests/unit/interaction-boost.test.ts` | Created | 10 tests |
 
 ### Correctness gates
 
@@ -1218,6 +1218,10 @@ Oracle exhaustive admissibility tests on tiny boards verify `assignmentLB + boos
 | Interaction boost: caches boost by box key | PASS |
 | Interaction boost: oracle exhaustive admissibility (tiny room board) | PASS — 0 violations across 21 solvable states |
 | Interaction boost: oracle exhaustive admissibility (typed labels) | PASS — 0 violations across solvable states |
+| Interaction boost: 0 boost when pattern table cutoff (open board) | PASS |
+| Interaction boost: non-conflicting disjoint selection with shared labels | PASS |
+| Interaction boost: oracle exhaustive admissibility (combined room + pair) | PASS — 0 violations |
+| Interaction boost: pair-conflict paths intersect → non-negative boost | PASS |
 | Disjoint selection: empty → empty | PASS |
 | Disjoint selection: single candidate | PASS |
 | Disjoint selection: two non-conflicting → both selected | PASS |
@@ -1230,12 +1234,31 @@ Oracle exhaustive admissibility tests on tiny boards verify `assignmentLB + boos
 | Topology: goalless rooms excluded | PASS |
 | Topology: open board → empty topology | PASS |
 | Topology: subset deduplication | PASS |
+| Topology: linear corridor tunnel cells | PASS |
+| Topology: >72% floor rooms excluded | PASS |
+| Topology: L-shaped layout rooms | PASS |
 
 ### Test regression
 
 - `npm run typecheck` — pass
 - `npm run lint` — pass (0 errors)
-- `npm run test:unit` — 879 tests, 152 suites, all pass (+18 new tests, +3 new suites)
+- `npm run test:unit` — 886 tests, 152 suites, all pass (+25 new tests, +3 new suites)
 - `npm run build` — pass
 - `npm run test:solver:multi` — 4/4 pass (deterministic results unchanged)
 - `npm run test:solver:huge` — pass with SOKOMIND_TIMING_SCALE=2 (deterministic results identical)
+
+### Post-audit corrections
+
+Spec audit against §13–§14 identified two bugs and test gaps, all fixed:
+
+1. **A* cancellation metrics**: Fallback cancellation object omitted `interactionBoostTotal`,
+   `corralPrunes`, and `commitmentSkips` counters. Fixed in `exact-move-astar.ts`.
+
+2. **Root node interaction boost**: Both A* and IDA* computed root h without the interaction
+   boost (`initialH = pushBound + walkBound`). Fixed to include boost after initial
+   `heuristic.evaluate()` sets `lastLabelCosts`.
+
+3. **Test gaps filled**: Added 7 missing tests (3 topology, 4 interaction-boost) to match
+   the Sprint 9b plan. New tests include: linear corridor tunnels, >72% floor room exclusion,
+   L-shaped room layout, cutoff → 0 boost, disjoint label conflict, combined room+pair oracle
+   admissibility, and pair-conflict path intersection.

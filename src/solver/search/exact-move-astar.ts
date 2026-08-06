@@ -274,12 +274,16 @@ export async function runExactMoveAStar(
     const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
     const initialKey = exactCodec.packMoveState(initialRobot, initialTokens);
     const initialPushBound = heuristic.evaluate(initialBoxes);
+    const initialLabelCosts = heuristic.lastLabelCosts;
+    const initialBoost = initialLabelCosts
+      ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
+      : 0;
     const initialWalkBound = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialPushBound + initialWalkBound;
+    const initialH = initialPushBound + initialBoost + initialWalkBound;
     lastLowerBound = initialH;
 
     let heapSize = 0;
@@ -864,6 +868,9 @@ export async function runExactMoveAStar(
           deadlockPrunes: counters.deadlockPrunes,
           patternDeadlockPrunes: counters.patternDeadlockPrunes,
           infeasiblePrunes: counters.infeasiblePrunes,
+          corralPrunes: counters.corralPrunes,
+          commitmentSkips: counters.commitmentSkips,
+          interactionBoostTotal: counters.interactionBoostTotal,
           reopens: counters.reopens,
           reachabilityFloods: counters.reachabilityFloods,
           avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
