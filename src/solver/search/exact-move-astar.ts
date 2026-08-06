@@ -34,6 +34,7 @@ import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
@@ -105,6 +106,7 @@ function createMetrics(
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
       commitmentSkips: counters.commitmentSkips,
+      interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
       reopens: counters.reopens,
       reachabilityFloods: counters.reachabilityFloods,
@@ -199,6 +201,7 @@ export async function runExactMoveAStar(
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
     commitmentSkips: 0,
+    interactionBoostTotal: 0,
     infeasiblePrunes: 0,
     reopens: 0,
     reachabilityFloods: 0,
@@ -222,6 +225,7 @@ export async function runExactMoveAStar(
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new SealedCorralDetector(cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
+    const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const exactCodec = createExactStateCodec(cellCount, labels);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
@@ -746,12 +750,18 @@ export async function runExactMoveAStar(
 
           counters.avoidedReachabilityFloods += 1;
 
+          const labelCosts = heuristic.lastLabelCosts;
+          const interactionBoost = labelCosts
+            ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
+            : 0;
+          if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
+
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
             savedCell,
             expansionBoxes,
           );
-          const h = pushLowerBound + walkBound;
+          const h = pushLowerBound + interactionBoost + walkBound;
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

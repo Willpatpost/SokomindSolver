@@ -3,6 +3,7 @@ import type {
   ParsedBoard,
   Position,
 } from "../../core/model.ts";
+import { analyzeTopology, type BoardTopology } from "./topology.ts";
 
 /**
  * Search direction order is part of the compiled-board contract.
@@ -66,6 +67,7 @@ export interface CompiledSearchBoard {
   readonly goalLabelByCell: readonly (string | null)[];
   /** Goal cell id -> relaxed, wall-aware reverse-push distances. */
   readonly reversePushDistancesByGoal: ReadonlyMap<number, Int32Array>;
+  readonly topology: BoardTopology;
 }
 
 function positionOrder(left: Position, right: Position): number {
@@ -242,7 +244,7 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
     }
   }
 
-  return Object.freeze({
+  const compiled: CompiledSearchBoard = {
     source: board,
     width: board.width,
     height: board.height,
@@ -254,5 +256,8 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
     goalCellsByLabel,
     goalLabelByCell: Object.freeze(goalLabelByCell),
     reversePushDistancesByGoal,
-  });
+    topology: undefined!,
+  };
+  (compiled as { topology: BoardTopology }).topology = analyzeTopology(compiled);
+  return Object.freeze(compiled);
 }

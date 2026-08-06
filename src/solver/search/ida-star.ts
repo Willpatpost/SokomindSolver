@@ -34,6 +34,7 @@ import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -116,6 +117,7 @@ interface SearchCounters {
   patternDeadlockPrunes: number;
   corralPrunes: number;
   commitmentSkips: number;
+  interactionBoostTotal: number;
   infeasiblePrunes: number;
   reachabilityFloods: number;
   peakStackDepth: number;
@@ -337,6 +339,7 @@ function createMetrics(
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
       commitmentSkips: counters.commitmentSkips,
+      interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
       reopens: 0,
       reachabilityFloods: counters.reachabilityFloods,
@@ -424,6 +427,7 @@ export async function runIdaStarSearch(
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
     commitmentSkips: 0,
+    interactionBoostTotal: 0,
     infeasiblePrunes: 0,
     reachabilityFloods: 0,
     peakStackDepth: 0,
@@ -444,6 +448,7 @@ export async function runIdaStarSearch(
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new SealedCorralDetector(board.cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
+    const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -841,12 +846,22 @@ export async function runIdaStarSearch(
             continue;
           }
 
+          const labelCosts = heuristic.lastLabelCosts;
+          const interactionBoost = labelCosts
+            ? boostEvaluator.evaluate(
+                frame.boxes,
+                labelCosts,
+                packBoxKeyFromBoxes(frame.boxes),
+              )
+            : 0;
+          if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
+
           const hWalk = minimumManhattanWalkToPotentialPush(
             board,
             frame.robot,
             frame.boxes,
           );
-          const h = hPush + hWalk;
+          const h = hPush + interactionBoost + hWalk;
 
           const f = frame.g + h;
           if (f > fLimit) {

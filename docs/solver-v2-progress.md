@@ -1121,3 +1121,121 @@ All three families include oracle exhaustive tests on tiny boards: for every sol
 - `npm run build` — pass
 - `npm run test:solver:multi` — 4/4 pass (deterministic results unchanged)
 - `npm run test:solver:huge` — pass with SOKOMIND_TIMING_SCALE=2 (timing gate only; pruning does not affect legacy engine)
+
+## Sprint 9b — Admissible Interaction Boost Heuristics (Families 4–5)
+
+**Date**: 2026-08-06
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Overview
+
+Ported the production sokomind-engine interaction boost (room-pattern + pair-conflict pattern databases) to the exact proof pipeline. The boost is additive to the per-label Hungarian assignment lower bound and admissible when combined via label-disjoint selection.
+
+**Heuristic composition**: `h_push = assignmentLB + interactionBoost`
+
+**Admissibility argument**: Each pattern table gives a relaxed lower bound (player position and outside boxes ignored, only pattern-box collisions enforced). The boost = (pattern replacement cost) − (same labels' assignment cost). Disjoint selection ensures each label contributes to at most one candidate. No box is double-counted.
+
+### Family 4: Room-Pattern Lower Bounds
+
+**File**: `src/solver/search/room-pattern-heuristic.ts` (~230 lines)
+
+Precomputes relaxed reverse-push tables for each topological room's goal partitions (≤4 goals per partition). At each search node, enumerates compatible box selections (guarded by ROOM_PATTERN_SELECTION_LIMIT=512), looks up the local box signature in the pattern table, adds outside-box Hungarian cost, and reports candidates with positive boost over the assignment lower bound.
+
+- **Goal partitioning**: Bin-packing by label, bins of ≤4 goals
+- **Table building**: One `relaxedReversePushTable()` call per partition, max 12,000 states
+- **Replacement cost**: C(n,k) selection enumeration with product guard
+
+### Family 5: Pair-Conflict Lower Bounds
+
+**File**: `src/solver/search/pair-conflict-heuristic.ts` (~175 lines)
+
+For singleton-label box pairs whose shortest-push critical cells (articulation points or tunnels on reverse-push paths) overlap, builds a 2-box relaxed reverse-push table. Reports candidates with positive boost.
+
+- **Eligibility**: Labels with exactly 1 box and 1 goal, not already covered by room patterns
+- **Critical-cell filter**: Traces reverse-push distances backward, marks articulation/tunnel cells
+- **Distance limit**: Combined assignment cost ≤ 18 (PAIR_CONFLICT_DISTANCE_LIMIT)
+- **Table building**: Lazy, cached by sorted label pair key, max 4,000 states
+
+### Board Topology Analysis
+
+**File**: `src/solver/search/topology.ts` (~150 lines)
+
+Prerequisite for room-pattern and pair-conflict heuristics.
+
+- **Articulation points**: Iterative Tarjan's DFS on dense cell graph (avoids stack overflow)
+- **Room discovery**: BFS connected components of floor \ {gate}. Filter: ≥2 cells, ≤72% of floor, contains ≥1 goal. Deduplicate subsets
+- **Tunnel identification**: Cells with exactly 2 floor neighbors on the same axis
+
+### Supporting Modules
+
+| File | Purpose |
+|---|---|
+| `src/solver/search/relaxed-reverse-push.ts` | Shared BFS: relaxed multi-box reverse-push table builder |
+| `src/solver/search/disjoint-selection.ts` | Maximum-weight label-disjoint selection (bitmask DP ≤20 labels, greedy >20) |
+| `src/solver/search/interaction-boost.ts` | Top-level evaluator combining room + pair candidates with LRU cache (50K entries) |
+| `src/solver/search/proof-heuristic-registry.ts` | Proof heuristic registration per spec §13.3 |
+
+### Integration
+
+- `heuristic.ts`: Added `lastLabelCosts` getter exposing per-label Hungarian costs from most recently evaluated state
+- `exact-move-astar.ts`: After `pushLowerBound`, computes `interactionBoost = boostEvaluator.evaluate(...)`, adds to h
+- `ida-star.ts`: Same integration pattern
+- `exact-search-types.ts`: Added `interactionBoostTotal` counter
+- `engine.ts`: Added counter to metrics initialization and reporting
+- `compiled-board.ts`: Added `topology: BoardTopology` field, computed on board compile
+
+### Files changed
+
+| File | Action | Lines |
+|---|---|---|
+| `src/solver/search/topology.ts` | Created | ~150 |
+| `src/solver/search/relaxed-reverse-push.ts` | Created | ~75 |
+| `src/solver/search/room-pattern-heuristic.ts` | Created | ~230 |
+| `src/solver/search/pair-conflict-heuristic.ts` | Created | ~175 |
+| `src/solver/search/disjoint-selection.ts` | Created | ~80 |
+| `src/solver/search/interaction-boost.ts` | Created | ~90 |
+| `src/solver/search/proof-heuristic-registry.ts` | Created | ~20 |
+| `src/solver/search/heuristic.ts` | Updated | +lastLabelCosts getter, #lastLabelStates storage |
+| `src/solver/search/compiled-board.ts` | Updated | +topology field and import |
+| `src/solver/search/exact-move-astar.ts` | Updated | +boostEvaluator, +interactionBoost in h |
+| `src/solver/search/ida-star.ts` | Updated | +boostEvaluator, +interactionBoost in h |
+| `src/solver/search/exact-search-types.ts` | Updated | +interactionBoostTotal counter |
+| `src/solver/search/engine.ts` | Updated | +counter in metrics |
+| `tests/unit/topology.test.ts` | Created | 6 tests |
+| `tests/unit/disjoint-selection.test.ts` | Created | 6 tests |
+| `tests/unit/interaction-boost.test.ts` | Created | 6 tests |
+
+### Correctness gates
+
+Oracle exhaustive admissibility tests on tiny boards verify `assignmentLB + boost ≤ exactRemainingPushes` for every solvable (robot, boxes) state. Zero violations across both test boards.
+
+| Test | Result |
+|---|---|
+| Interaction boost: produces non-negative boost | PASS |
+| Interaction boost: returns 0 when all boxes on goals | PASS |
+| Interaction boost: reports statistics | PASS |
+| Interaction boost: caches boost by box key | PASS |
+| Interaction boost: oracle exhaustive admissibility (tiny room board) | PASS — 0 violations across 21 solvable states |
+| Interaction boost: oracle exhaustive admissibility (typed labels) | PASS — 0 violations across solvable states |
+| Disjoint selection: empty → empty | PASS |
+| Disjoint selection: single candidate | PASS |
+| Disjoint selection: two non-conflicting → both selected | PASS |
+| Disjoint selection: conflicting → higher boost wins | PASS |
+| Disjoint selection: DP beats greedy (partial conflict) | PASS |
+| Disjoint selection: greedy fallback (>20 labels) valid | PASS |
+| Topology: T-junction articulation point | PASS |
+| Topology: rooms behind articulation gates with goals | PASS |
+| Topology: tunnel cells identified | PASS |
+| Topology: goalless rooms excluded | PASS |
+| Topology: open board → empty topology | PASS |
+| Topology: subset deduplication | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 879 tests, 152 suites, all pass (+18 new tests, +3 new suites)
+- `npm run build` — pass
+- `npm run test:solver:multi` — 4/4 pass (deterministic results unchanged)
+- `npm run test:solver:huge` — pass with SOKOMIND_TIMING_SCALE=2 (deterministic results identical)

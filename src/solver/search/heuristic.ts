@@ -311,6 +311,7 @@ export class AssignmentHeuristic {
   #calls = 0;
   #cacheHits = 0;
   #incrementalRepairs = 0;
+  #lastLabelStates: ReadonlyMap<string, LabelAssignmentState> | null = null;
 
   constructor(
     board: CompiledSearchBoard,
@@ -334,6 +335,15 @@ export class AssignmentHeuristic {
     });
   }
 
+  get lastLabelCosts(): ReadonlyMap<string, number> | null {
+    if (!this.#lastLabelStates) return null;
+    const costs = new Map<string, number>();
+    for (const [label, state] of this.#lastLabelStates) {
+      costs.set(label, state.cost);
+    }
+    return costs;
+  }
+
   #evictIfNeeded(): void {
     while (this.#cache.size >= this.#maxCacheEntries) {
       const oldest = this.#cache.keys().next().value as bigint | undefined;
@@ -352,6 +362,7 @@ export class AssignmentHeuristic {
   #fullEvaluateAndStore(boxes: readonly DenseBox[], key: bigint): number {
     const result = fullAssignmentWithState(this.#board, boxes);
     this.#storeEntry(key, result);
+    this.#lastLabelStates = result.labelStates;
     return result.totalCost;
   }
 
@@ -366,6 +377,7 @@ export class AssignmentHeuristic {
       this.#cacheHits += 1;
       this.#cache.delete(key);
       this.#cache.set(key, cached);
+      this.#lastLabelStates = cached.labelStates;
       return cached.totalCost;
     }
     return this.#fullEvaluateAndStore(boxes, key);
@@ -405,6 +417,7 @@ export class AssignmentHeuristic {
       this.#cacheHits += 1;
       this.#cache.delete(childBoxKey);
       this.#cache.set(childBoxKey, childCached);
+      this.#lastLabelStates = childCached.labelStates;
       return childCached.totalCost;
     }
 
@@ -548,6 +561,7 @@ export class AssignmentHeuristic {
     }
 
     this.#storeEntry(childBoxKey, { totalCost: total, labelStates });
+    this.#lastLabelStates = labelStates;
     return total;
   }
 

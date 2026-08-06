@@ -37,6 +37,7 @@ export interface SearchCounters {
   patternDeadlockPrunes: number;
   corralPrunes: number;
   commitmentSkips: number;
+  interactionBoostTotal: number;
   infeasiblePrunes: number;
   reopens: number;
   reachabilityFloods: number;
