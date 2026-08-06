@@ -1262,3 +1262,75 @@ Spec audit against §13–§14 identified two bugs and test gaps, all fixed:
    the Sprint 9b plan. New tests include: linear corridor tunnels, >72% floor room exclusion,
    L-shaped room layout, cutoff → 0 boost, disjoint label conflict, combined room+pair oracle
    admissibility, and pair-conflict path intersection.
+
+---
+
+## Sprint 10 — Quality-Mode Incumbent Harvesting
+
+**Spec sections:** §4.2, §5, §16.1–16.4
+
+**Objective:** After first solution in quality/optimal mode, continue searching for
+`harvestElapsedMs` to collect diverse alternative routes, rewrite the best 3, then
+run global bounded re-search with the best upper bound.
+
+### Implementation
+
+**New module: `src/solver/implementations/sokomind-incumbents.ts`**
+
+- `DiversitySignature` — push-chain hash (ordered push sequence) + box-goal hash
+  (walk-path-between-pushes fingerprint) for deduplicating structurally similar solutions.
+- `computeDiversitySignature()` — extracts push-chain hash from ordered push steps,
+  box-goal hash from walk-path segments between pushes.
+- `isDiverse()` — checks if a signature differs from all existing on pushChainHash or boxGoalHash.
+- `computeHarvestMs()` — `max(min(configured, floor(requestTime * 0.1)), 500)`.
+- `selectForRewrite()` — returns up to 3 best incumbents (already sorted by the collector).
+- `selectBest()` — picks by lowest moves, then pushes, then discoveryOrder.
+- `IncumbentCollector` class — offer/evict/sort with capacity limit and diversity-based
+  duplicate rejection.
+
+**Updated: `src/solver/implementations/sokomind-solver.ts`**
+
+- `solvedWithImprovement()` now branches: fast mode → existing single-rewrite path;
+  quality/optimal mode → `harvestAndImprove()`.
+- `harvestAndImprove()` orchestrates: harvest → multi-rewrite → proof.
+  1. Computes harvest budget via `computeHarvestMs()`.
+  2. Creates `IncumbentCollector` and offers first incumbent.
+  3. Harvest loop: launches additional discovery phases within budget, offers solutions
+     to collector.
+  4. Selects up to 3 best diverse incumbents via `selectForRewrite()`.
+  5. Rewrites each with divided budget (1/N of visited states, elapsed time, 1 pass each).
+  6. Selects final best via `selectBest()`.
+  7. Runs global bounded re-search / proof via `runSequentialProof()`.
+
+**Updated: `src/solver/contracts.ts`**
+
+- Added `"harvesting"` to `SolverPhase` union type.
+
+**New tests: `tests/unit/sokomind-incumbents.test.ts`** (20 tests)
+
+- 6 diversity signature tests (same sig, different push seqs, walk-path independence,
+  boxGoalHash sensitivity, isDiverse true/false).
+- 7 IncumbentCollector tests (empty, single, duplicate, capacity, eviction, rejection, sorting).
+- 5 harvest budget tests (min of config/10%, 500ms floor, undefined/Infinity request time, zero config).
+- 2 rewrite selection tests (cap at 3, selectBest comparison).
+
+### Test results
+
+```
+typecheck:   clean
+lint:        clean
+test:unit:   906 pass, 0 fail
+build:       clean (4.42s)
+solver:multi: 4/4 pass
+solver:huge:  1/1 pass (227s)
+```
+
+### Invariants verified
+
+1. **Fast mode unchanged**: No harvesting, no multi-incumbent rewrite — fast path returns
+   without proof, identical to pre-Sprint 10 behavior.
+2. **Resource ceiling preserved**: Harvest uses `withRemainingLimits()` to check global budget;
+   rewrite divides per-incumbent budget; proof uses remaining budget.
+3. **Monotonic improvement**: `selectBest()` picks lowest moves → pushes → discoveryOrder.
+4. **Harvest is bounded**: Never exceeds `min(configured, 10% of request time)`, minimum 500ms.
+5. **Rewrite budget divided**: N incumbents each get 1/N of the configured rewrite budget.

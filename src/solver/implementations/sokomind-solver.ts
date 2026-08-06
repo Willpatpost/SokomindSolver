@@ -33,6 +33,12 @@ import {
   type SokomindRequestOptions,
 } from "./sokomind-options.ts";
 import { runSequentialProof } from "./sokomind-proof.ts";
+import {
+  IncumbentCollector,
+  computeHarvestMs,
+  selectForRewrite,
+  selectBest,
+} from "./sokomind-incumbents.ts";
 
 const LEGACY_DIRECTIONS = Object.freeze({
   Up: "up",
@@ -225,7 +231,7 @@ interface SearchRunState {
   coordinatorEstimatedMemoryBytes: number;
   preparedBoardEstimatedMemoryBytes: number;
   lastProgressAt: number;
-  progressPhase: "searching" | "improving";
+  progressPhase: "searching" | "harvesting" | "improving";
   initialSolutionMoves: number;
   bestSolutionMoves: number;
   solutionImprovements: number;
@@ -1837,7 +1843,15 @@ async function solvedWithImprovement(
   createWorker: () => SokomindEngineWorker,
   options: SokomindSolverAdapterOptions,
   sokomindOptions?: SokomindRequestOptions,
+  tuning?: Readonly<Record<string, number>>,
+  maxWorkers?: number,
 ): Promise<SolverResult> {
+  if (sokomindOptions && sokomindOptions.mode !== "fast" && tuning && maxWorkers !== undefined) {
+    return harvestAndImprove(
+      run, state, incumbent, createWorker, options, sokomindOptions, tuning, maxWorkers,
+    );
+  }
+
   const improved = await improveIncumbent(
     run,
     state,
@@ -1853,18 +1867,142 @@ async function solvedWithImprovement(
     solution: improved.solution,
     metrics: metrics(run),
   });
-  if (
-    sokomindOptions &&
-    sokomindOptions.mode !== "fast"
-  ) {
-    return runSequentialProof(
-      run.request,
-      run.context,
-      sokomindOptions,
-      discoveryResult,
-    );
-  }
   return discoveryResult;
+}
+
+async function harvestAndImprove(
+  run: SearchRunState,
+  state: LegacyState,
+  firstIncumbent: SolverSolution,
+  createWorker: () => SokomindEngineWorker,
+  options: SokomindSolverAdapterOptions,
+  sokomindOptions: SokomindRequestOptions,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
+): Promise<SolverResult> {
+  const requestTimeMs = run.request.limits?.maxElapsedMs;
+  const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
+
+  const collector = new IncumbentCollector(sokomindOptions.maximumIncumbents);
+  collector.offer(firstIncumbent);
+
+  run.progressPhase = "harvesting";
+  report(run, `Harvesting diverse incumbents (${harvestMs}ms budget).`, true);
+
+  const harvestDeadline = run.context.now() + harvestMs;
+  while (
+    collector.incumbents.length < sokomindOptions.maximumIncumbents &&
+    run.context.now() < harvestDeadline &&
+    !run.context.signal.aborted
+  ) {
+    const remaining = harvestDeadline - run.context.now();
+    if (remaining < 200) break;
+
+    const harvestRequest = withRemainingLimits(run);
+    if (!harvestRequest) break;
+
+    const harvestWorkers = sokomindOptions.deterministic ? 1 : Math.max(1, maxWorkers);
+    const planCount = harvestWorkers >= 3 ? 3 : 1;
+    try {
+      const outcome = await runPhase(
+        run,
+        discoveryPlans(state, harvestRequest, harvestWorkers, tuning, planCount),
+        createWorker,
+        harvestWorkers,
+        remaining,
+      );
+      if (outcome.solution) {
+        collector.offer(outcome.solution);
+        report(
+          run,
+          `Harvested ${collector.incumbents.length} incumbent(s) (${collector.stats.duplicatesRejected} duplicates rejected).`,
+          true,
+        );
+      }
+      if (outcome.stopReason === "cancelled" || run.context.signal.aborted) break;
+    } catch {
+      break;
+    }
+  }
+
+  if (run.context.signal.aborted) {
+    return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+  }
+
+  const rewriteCandidates = selectForRewrite(collector.incumbents);
+  const rewriteCount = rewriteCandidates.length;
+
+  run.progressPhase = "improving";
+  report(
+    run,
+    `Rewriting ${rewriteCount} diverse incumbent(s) with divided budget.`,
+    true,
+  );
+
+  const dividedOptions: SokomindSolverAdapterOptions = rewriteCount > 1
+    ? {
+        ...options,
+        improvementMaxVisited:
+          options.improvementMaxVisited !== undefined
+            ? Math.max(1, Math.floor(options.improvementMaxVisited / rewriteCount))
+            : Math.floor(DEFAULT_IMPROVEMENT_MAX_VISITED / rewriteCount),
+        improvementMaxElapsedMs:
+          options.improvementMaxElapsedMs !== undefined
+            ? Math.max(1, Math.floor(options.improvementMaxElapsedMs / rewriteCount))
+            : Math.floor(DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS / rewriteCount),
+        improvementMaxPasses: 1,
+      }
+    : options;
+
+  const rewrittenCandidates: { solution: SolverSolution; discoveryOrder: number }[] = [];
+  for (const incumbent of rewriteCandidates) {
+    if (run.context.signal.aborted) break;
+
+    const improved = await improveIncumbent(
+      run,
+      state,
+      incumbent.solution,
+      createWorker,
+      dividedOptions,
+    );
+    if (improved.cancelled) {
+      rewrittenCandidates.push({
+        solution: improved.solution,
+        discoveryOrder: incumbent.discoveryOrder,
+      });
+      break;
+    }
+    rewrittenCandidates.push({
+      solution: improved.solution,
+      discoveryOrder: incumbent.discoveryOrder,
+    });
+  }
+
+  if (rewrittenCandidates.length === 0) {
+    rewrittenCandidates.push({
+      solution: firstIncumbent,
+      discoveryOrder: 0,
+    });
+  }
+
+  const bestSolution = selectBest(rewrittenCandidates);
+  run.bestSolutionMoves = bestSolution.moves;
+
+  if (run.context.signal.aborted) {
+    return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+  }
+
+  const discoveryResult: SolverResult = Object.freeze({
+    status: "solved" as const,
+    solution: bestSolution,
+    metrics: metrics(run),
+  });
+  return runSequentialProof(
+    run.request,
+    run.context,
+    sokomindOptions,
+    discoveryResult,
+  );
 }
 
 function isStructuralPuzzle(request: SolverRequest): boolean {
@@ -2288,6 +2426,8 @@ export function createSokomindSolverAdapter(
                 createWorker,
                 options,
                 sokomindOptions,
+                tuning,
+                maxWorkers,
               );
             }
             if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2344,6 +2484,8 @@ export function createSokomindSolverAdapter(
               createWorker,
               options,
               sokomindOptions,
+              tuning,
+              maxWorkers,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2379,6 +2521,8 @@ export function createSokomindSolverAdapter(
               createWorker,
               options,
               sokomindOptions,
+              tuning,
+              maxWorkers,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;

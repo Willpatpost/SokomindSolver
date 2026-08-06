@@ -122,6 +122,7 @@ export interface SolverRunMetrics {
 export type SolverPhase =
   | "preparing"
   | "searching"
+  | "harvesting"
   | "improving"
   | "verifying"
   | "proving";
