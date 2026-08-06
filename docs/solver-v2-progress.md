@@ -764,3 +764,131 @@ Minimal changes at three well-defined points in the ~2400-line orchestrator:
 - `npm run lint` — pass (0 errors)
 - `npm run test:unit` — 790 tests, 136 suites, all pass (+31 new tests, +4 new suites)
 - `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 7 — Compact Exact-Search Arena (spec §10, §24)
+
+### Goal
+
+Replace per-node JS object storage (`SearchNode`) and JS-array priority queue
+(`StablePriorityQueue`) with chunked typed-array structures, eliminating GC
+pressure and cutting retained bytes per node by ≥50%.
+
+### Implementation
+
+#### CompactNodeArena (`src/solver/search/compact-node-arena.ts`)
+
+Chunked typed-array arena storing 8 scalar fields per node plus flattened box
+tokens. Each field uses a separate array of fixed-size chunks (CHUNK_SIZE=8192).
+
+| Field | TypedArray | Bytes |
+|---|---|---|
+| robotCell | Uint16Array | 2 |
+| gMoves | Uint32Array | 4 |
+| pushes | Uint16Array | 2 |
+| parentNode | Int32Array | 4 |
+| pushedFromCell | Uint16Array | 2 |
+| pushDirection | Uint8Array | 1 |
+| heuristic | Uint16Array | 2 |
+| **Scalar total** | | **17** |
+
+Box tokens stored as flattened `Uint16Array` (or `Uint32Array` when
+`labelCount × cellCount > 65535`). Per-node total for 3 boxes with Uint16
+tokens: **23 bytes** vs legacy **752 bytes** = **97% reduction**.
+
+Note: `insertionSequence` was removed from the arena — the
+`NumericPriorityQueue` handles FIFO tie-breaking internally via its own
+sequence counter, making the arena field dead data.
+
+Factory: `createCompactNodeArena(boxCount, maxToken?)`.
+
+#### NumericPriorityQueue (`src/solver/search/numeric-priority-queue.ts`)
+
+Typed-array binary min-heap specialized for unsigned 32-bit integer values
+(node indices) with stable FIFO tie-breaking via insertion sequence.
+
+- `Uint32Array` for values and sequences (initial capacity 1024, doubles on fill)
+- Standard sift-up/sift-down with `#compareAt` delegating to caller-supplied compare
+- Per-entry: **8 bytes** vs legacy **56 bytes** = **86% reduction**
+
+#### Exact A* Integration (`src/solver/search/exact-move-astar.ts`)
+
+Complete rewrite of the inner search loop:
+
+- Node creation: `arena.allocate()` + field setters instead of `SearchNode` object
+- Priority: arena-based compare `(f_a - f_b) || (h_a - h_b)` via `NumericPriorityQueue`
+- Key recomputation: `exactCodec.packMoveState(robotCell, tokenBuf)` at expansion
+  (no stored key per node)
+- Child generation: `sortedInsertToken()` on parent tokens — removes moved box,
+  binary-inserts new token in sorted position
+- Deadlock/heuristic: mutable `DenseBox[]` buffer, mutate `cell` for child state,
+  restore after each direction
+- Reconstruction: `reconstructFromArena()` walks arena parent chain
+- Memory estimation: `estimatedArenaMemoryBytes()` with arena `estimatedRetainedBytes()`
+- `depth` field dropped (depth === pushes always)
+
+#### Support functions (`src/solver/search/exact-search-types.ts`)
+
+- `reconstructFromArena(board, arena, goalIndex, reachability)` — walks parent
+  chain via arena field reads, decodes tokens to cells for occupancy and BFS flood
+- `estimateArenaNodeBytes(boxCount)` — returns `21 + boxCount * 2`
+- `estimatedArenaMemoryBytes(...)` — uses `frontierSize * 8` (was 56) for queue overhead
+- Original `SearchNode`, `comparePriority`, `estimateNodeBytes`, `reconstructSolution`
+  kept for backward compatibility with engine.ts DFS/Greedy strategies
+
+### Per-node byte comparison
+
+| Component | Legacy (3 boxes) | Arena (3 boxes) | Reduction |
+|---|---|---|---|
+| Node storage | 752 bytes | 23 bytes | 97% |
+| Frontier entry | 56 bytes | 8 bytes | 86% |
+
+Performance gate (§24): ≥50% lower retained bytes — **met at 97%**.
+
+### Files changed
+
+| File | Action |
+|---|---|
+| `src/solver/search/compact-node-arena.ts` | Created |
+| `src/solver/search/numeric-priority-queue.ts` | Created |
+| `src/solver/search/exact-move-astar.ts` | Rewritten for arena + queue |
+| `src/solver/search/exact-search-types.ts` | Updated (arena reconstruction + estimators) |
+| `tests/unit/compact-node-arena.test.ts` | Created |
+| `docs/solver-v2-progress.md` | Updated |
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| Arena allocate/read/write round-trip all fields | PASS |
+| Arena crosses chunk boundary (>8192 nodes) correctly | PASS |
+| Arena wide tokens (maxToken > 65535) | PASS |
+| Queue dequeues in priority order | PASS |
+| Queue stable FIFO tie-breaking | PASS |
+| Queue handles capacity doubling (>1024 entries) | PASS |
+| estimateArenaNodeBytes matches arena estimatedBytesPerNode | PASS |
+| Arena node bytes ≤50% of legacy estimate | PASS |
+| estimatedArenaMemoryBytes uses reduced frontier cost | PASS |
+| Exact A* oracle equality (AC1: all reachable solvable states) | PASS |
+| Lower-bound monotonicity (AC2) | PASS |
+| Incumbent improvements (AC3) | PASS |
+| Optimal proof structure (AC4) | PASS |
+| Unsolvable proof (AC5) | PASS |
+| Cutoff with incumbent returns bounded proof (AC6) | PASS |
+| Classic A* adapter matches oracle (AC7) | PASS |
+| Already-solved initial state | PASS |
+| Progress phase transitions | PASS |
+| Cancellation preserves incumbent | PASS |
+| Cutoff lower-bound metric | PASS |
+| Bounded proof lb==U guard | PASS |
+| 1-box arena integration | PASS |
+| 2-box arena integration | PASS |
+| Reconstruction replays correctly | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 816 tests, 140 suites, all pass (+26 new tests, +4 new suites)
+- `npm run test:solver:multi` — 4/4 pass

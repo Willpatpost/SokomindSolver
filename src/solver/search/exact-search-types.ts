@@ -3,6 +3,7 @@ import {
   SEARCH_DIRECTIONS,
   type CompiledSearchBoard,
 } from "./compiled-board.ts";
+import type { CompactNodeArena } from "./compact-node-arena.ts";
 import type { DenseBox } from "./model.ts";
 import { KeeperReachability } from "./reachability.ts";
 
@@ -151,4 +152,74 @@ export function reconstructSolution(
     steps.push({ direction: pushDirection, kind: "push" });
   }
   return steps;
+}
+
+export function reconstructFromArena(
+  board: CompiledSearchBoard,
+  arena: CompactNodeArena,
+  goalIndex: number,
+  reachability: KeeperReachability,
+): readonly SolutionStep[] {
+  const { cellCount } = board;
+  const { boxCount } = arena;
+  const chain: number[] = [];
+  let cursor = goalIndex;
+  while (cursor >= 0) {
+    chain.push(cursor);
+    const parent = arena.parentNode(cursor);
+    if (parent < 0) break;
+    cursor = parent;
+  }
+  chain.reverse();
+
+  const occupancyBuffer = new Uint8Array(cellCount);
+  const tokenBuf = new Uint32Array(boxCount);
+  const steps: SolutionStep[] = [];
+  for (let i = 1; i < chain.length; i++) {
+    const parentIdx = chain[i - 1]!;
+    const childIdx = chain[i]!;
+
+    occupancyBuffer.fill(0);
+    arena.readBoxTokens(parentIdx, tokenBuf);
+    for (let b = 0; b < boxCount; b++) {
+      occupancyBuffer[tokenBuf[b]! % cellCount] = 1;
+    }
+
+    const reachable = reachability.flood(arena.robotCell(parentIdx), occupancyBuffer);
+    const pushCell = arena.pushedFromCell(childIdx);
+    const dirIdx = arena.pushDirection(childIdx);
+    const support =
+      board.neighbors[pushCell]?.[OPPOSITE_DIRECTION[dirIdx]! ?? -1] ?? -1;
+    const walk = reachable.pathTo(support);
+    const pushDirection = SEARCH_DIRECTIONS[dirIdx]?.direction;
+    if (!walk || !pushDirection) {
+      throw new Error("Arena parent chain contains an unreachable push.");
+    }
+    for (const direction of walk) {
+      steps.push({ direction, kind: "walk" });
+    }
+    steps.push({ direction: pushDirection, kind: "push" });
+  }
+  return steps;
+}
+
+export function estimateArenaNodeBytes(boxCount: number, bytesPerToken = 2): number {
+  return 17 + boxCount * bytesPerToken;
+}
+
+export function estimatedArenaMemoryBytes(
+  staticBytes: number,
+  arenaRetainedBytes: number,
+  uniqueStates: number,
+  frontierSize: number,
+  heuristicCacheEntries: number,
+  boxCount: number,
+): number {
+  return Math.ceil(
+    staticBytes +
+      arenaRetainedBytes +
+      uniqueStates * 96 +
+      frontierSize * 8 +
+      heuristicCacheEntries * (160 + boxCount * 24),
+  );
 }
