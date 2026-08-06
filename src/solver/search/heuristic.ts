@@ -1,5 +1,7 @@
 import {
-  minimumAssignmentCost,
+  minimumAssignmentWithState,
+  repairAssignment,
+  type AssignmentState,
 } from "./assignment.ts";
 import type {
   CompiledSearchBoard,
@@ -9,14 +11,32 @@ import {
   type DenseBox,
 } from "./model.ts";
 
+const INCREMENTAL_ASSIGNMENT_CROSSOVER = 3;
+
 export interface AssignmentHeuristicOptions {
   readonly maxCacheEntries?: number;
+  readonly packBoxKey?: (boxes: readonly DenseBox[]) => bigint;
 }
 
 export interface AssignmentHeuristicStats {
   readonly calls: number;
   readonly cacheHits: number;
   readonly cacheEntries: number;
+  readonly incrementalRepairs: number;
+}
+
+interface LabelAssignmentState {
+  readonly cost: number;
+  readonly columns: readonly number[];
+  readonly rowPotentials: Float64Array;
+  readonly columnPotentials: Float64Array;
+  readonly boxCells: readonly number[];
+  readonly goalCells: readonly number[];
+}
+
+interface AssignmentCacheEntry {
+  readonly totalCost: number;
+  readonly labelStates: ReadonlyMap<string, LabelAssignmentState>;
 }
 
 function boxesByLabel(
@@ -34,6 +54,63 @@ function boxesByLabel(
   return grouped;
 }
 
+function buildCostMatrix(
+  board: CompiledSearchBoard,
+  boxCells: readonly number[],
+  goalCells: readonly number[],
+): number[][] {
+  return boxCells.map((boxCell) =>
+    goalCells.map((goalCell) => {
+      const distance = board.reversePushDistancesByGoal.get(goalCell)?.[boxCell] ?? -1;
+      return distance < 0 ? Number.POSITIVE_INFINITY : distance;
+    }),
+  );
+}
+
+interface FullAssignmentResult {
+  readonly totalCost: number;
+  readonly labelStates: ReadonlyMap<string, LabelAssignmentState>;
+}
+
+function fullAssignmentWithState(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+): FullAssignmentResult {
+  const groupedBoxes = boxesByLabel(boxes);
+  const labels = new Set([
+    ...groupedBoxes.keys(),
+    ...board.goalCellsByLabel.keys(),
+  ]);
+  let total = 0;
+  const labelStates = new Map<string, LabelAssignmentState>();
+
+  for (const label of [...labels].sort((left, right) => left.localeCompare(right))) {
+    const boxCells = groupedBoxes.get(label) ?? [];
+    const goalCells = board.goalCellsByLabel.get(label) ?? [];
+    if (boxCells.length !== goalCells.length) {
+      return { totalCost: Number.POSITIVE_INFINITY, labelStates };
+    }
+    if (boxCells.length === 0) continue;
+
+    const costs = buildCostMatrix(board, boxCells, goalCells);
+    const state = minimumAssignmentWithState(costs);
+    if (!Number.isFinite(state.cost)) {
+      return { totalCost: Number.POSITIVE_INFINITY, labelStates };
+    }
+    total += state.cost;
+    labelStates.set(label, {
+      cost: state.cost,
+      columns: state.columns,
+      rowPotentials: state.rowPotentials,
+      columnPotentials: state.columnPotentials,
+      boxCells: [...boxCells],
+      goalCells: [...goalCells],
+    });
+  }
+
+  return { totalCost: total, labelStates };
+}
+
 /**
  * Label-aware minimum assignment of boxes to goals using relaxed push distance.
  *
@@ -46,33 +123,7 @@ export function assignmentLowerBound(
   board: CompiledSearchBoard,
   boxes: readonly DenseBox[],
 ): number {
-  const groupedBoxes = boxesByLabel(boxes);
-  const labels = new Set([
-    ...groupedBoxes.keys(),
-    ...board.goalCellsByLabel.keys(),
-  ]);
-  let total = 0;
-
-  for (const label of [...labels].sort((left, right) => left.localeCompare(right))) {
-    const boxCells = groupedBoxes.get(label) ?? [];
-    const goalCells = board.goalCellsByLabel.get(label) ?? [];
-    if (boxCells.length !== goalCells.length) {
-      return Number.POSITIVE_INFINITY;
-    }
-    if (boxCells.length === 0) continue;
-
-    const costs = boxCells.map((boxCell) =>
-      goalCells.map((goalCell) => {
-        const distance = board.reversePushDistancesByGoal.get(goalCell)?.[boxCell] ?? -1;
-        return distance < 0 ? Number.POSITIVE_INFINITY : distance;
-      }),
-    );
-    const labelCost = minimumAssignmentCost(costs);
-    if (!Number.isFinite(labelCost)) return Number.POSITIVE_INFINITY;
-    total += labelCost;
-  }
-
-  return total;
+  return fullAssignmentWithState(board, boxes).totalCost;
 }
 
 /**
@@ -246,14 +297,20 @@ export function minimumReachableWalkToLegalPush(
 /**
  * Bounded LRU wrapper around the admissible assignment lower bound.
  *
- * Cache identity ignores same-label box ids through canonicalBoxSignature.
+ * When a `packBoxKey` function is provided, the cache uses collision-free
+ * BigInt keys and stores per-label assignment state for incremental repair.
+ * Otherwise falls back to full-recompute-only mode (used by engine.ts
+ * non-proof paths that don't have an ExactStateCodec).
  */
 export class AssignmentHeuristic {
   readonly #board: CompiledSearchBoard;
   readonly #maxCacheEntries: number;
-  readonly #cache = new Map<string, number>();
+  readonly #packBoxKey: ((boxes: readonly DenseBox[]) => bigint) | null;
+  readonly #cache = new Map<bigint, AssignmentCacheEntry>();
+  readonly #fallbackCache = new Map<string, number>();
   #calls = 0;
   #cacheHits = 0;
+  #incrementalRepairs = 0;
 
   constructor(
     board: CompiledSearchBoard,
@@ -265,46 +322,243 @@ export class AssignmentHeuristic {
     }
     this.#board = board;
     this.#maxCacheEntries = maxCacheEntries;
+    this.#packBoxKey = options.packBoxKey ?? null;
   }
 
   get stats(): AssignmentHeuristicStats {
     return Object.freeze({
       calls: this.#calls,
       cacheHits: this.#cacheHits,
-      cacheEntries: this.#cache.size,
+      cacheEntries: this.#cache.size + this.#fallbackCache.size,
+      incrementalRepairs: this.#incrementalRepairs,
     });
+  }
+
+  #evictIfNeeded(): void {
+    while (this.#cache.size >= this.#maxCacheEntries) {
+      const oldest = this.#cache.keys().next().value as bigint | undefined;
+      if (oldest === undefined) break;
+      this.#cache.delete(oldest);
+    }
+  }
+
+  #storeEntry(key: bigint, entry: AssignmentCacheEntry): void {
+    if (this.#maxCacheEntries > 0) {
+      this.#evictIfNeeded();
+      this.#cache.set(key, entry);
+    }
+  }
+
+  #fullEvaluateAndStore(boxes: readonly DenseBox[], key: bigint): number {
+    const result = fullAssignmentWithState(this.#board, boxes);
+    this.#storeEntry(key, result);
+    return result.totalCost;
   }
 
   evaluate(boxes: readonly DenseBox[]): number {
     this.#calls += 1;
-    const signature = canonicalBoxSignature(boxes);
-    const cached = this.#cache.get(signature);
+    if (this.#packBoxKey === null) {
+      return this.#evaluateFallback(boxes);
+    }
+    const key = this.#packBoxKey(boxes);
+    const cached = this.#cache.get(key);
     if (cached !== undefined) {
       this.#cacheHits += 1;
-      // Refresh insertion order for bounded LRU eviction.
-      this.#cache.delete(signature);
-      this.#cache.set(signature, cached);
+      this.#cache.delete(key);
+      this.#cache.set(key, cached);
+      return cached.totalCost;
+    }
+    return this.#fullEvaluateAndStore(boxes, key);
+  }
+
+  #evaluateFallback(boxes: readonly DenseBox[]): number {
+    const signature = canonicalBoxSignature(boxes);
+    const cached = this.#fallbackCache.get(signature);
+    if (cached !== undefined) {
+      this.#cacheHits += 1;
+      this.#fallbackCache.delete(signature);
+      this.#fallbackCache.set(signature, cached);
       return cached;
     }
-
     const value = assignmentLowerBound(this.#board, boxes);
     if (this.#maxCacheEntries > 0) {
-      while (this.#cache.size >= this.#maxCacheEntries) {
-        const oldest = this.#cache.keys().next().value as string | undefined;
+      while (this.#fallbackCache.size >= this.#maxCacheEntries) {
+        const oldest = this.#fallbackCache.keys().next().value as string | undefined;
         if (oldest === undefined) break;
-        this.#cache.delete(oldest);
+        this.#fallbackCache.delete(oldest);
       }
-      this.#cache.set(signature, value);
+      this.#fallbackCache.set(signature, value);
     }
     return value;
   }
 
+  evaluateIncremental(
+    boxes: readonly DenseBox[],
+    childBoxKey: bigint,
+    parentBoxKey: bigint,
+    movedLabel: string,
+  ): number {
+    this.#calls += 1;
+
+    const childCached = this.#cache.get(childBoxKey);
+    if (childCached !== undefined) {
+      this.#cacheHits += 1;
+      this.#cache.delete(childBoxKey);
+      this.#cache.set(childBoxKey, childCached);
+      return childCached.totalCost;
+    }
+
+    const parentEntry = this.#cache.get(parentBoxKey);
+    if (parentEntry === undefined) {
+      return this.#fullEvaluateAndStore(boxes, childBoxKey);
+    }
+
+    const groupedBoxes = boxesByLabel(boxes);
+    const labels = new Set([
+      ...groupedBoxes.keys(),
+      ...this.#board.goalCellsByLabel.keys(),
+    ]);
+    let total = 0;
+    const labelStates = new Map<string, LabelAssignmentState>();
+
+    for (const label of [...labels].sort((a, b) => a.localeCompare(b))) {
+      const boxCells = groupedBoxes.get(label) ?? [];
+      const goalCells = this.#board.goalCellsByLabel.get(label) ?? [];
+      if (boxCells.length !== goalCells.length) {
+        this.#storeEntry(childBoxKey, {
+          totalCost: Number.POSITIVE_INFINITY,
+          labelStates,
+        });
+        return Number.POSITIVE_INFINITY;
+      }
+      if (boxCells.length === 0) continue;
+
+      if (label !== movedLabel) {
+        const parentLabelState = parentEntry.labelStates.get(label);
+        if (parentLabelState !== undefined) {
+          total += parentLabelState.cost;
+          labelStates.set(label, parentLabelState);
+          continue;
+        }
+      }
+
+      if (label === movedLabel && boxCells.length >= INCREMENTAL_ASSIGNMENT_CROSSOVER) {
+        const parentLabelState = parentEntry.labelStates.get(label);
+        if (parentLabelState !== undefined) {
+          const parentCells = parentLabelState.boxCells;
+          const n = boxCells.length;
+
+          let removedCell = -1;
+          let addedCell = -1;
+          let pi = 0;
+          let ci = 0;
+          while (pi < n && ci < n) {
+            if (parentCells[pi] === boxCells[ci]) {
+              pi++;
+              ci++;
+            } else if (parentCells[pi] < boxCells[ci]) {
+              if (removedCell >= 0) { removedCell = -2; break; }
+              removedCell = parentCells[pi];
+              pi++;
+            } else {
+              if (addedCell >= 0) { addedCell = -2; break; }
+              addedCell = boxCells[ci];
+              ci++;
+            }
+          }
+          while (pi < n) {
+            if (removedCell >= 0) { removedCell = -2; break; }
+            removedCell = parentCells[pi++];
+          }
+          while (ci < n) {
+            if (addedCell >= 0) { addedCell = -2; break; }
+            addedCell = boxCells[ci++];
+          }
+
+          if (removedCell >= 0 && addedCell >= 0) {
+            const parentCellToIdx = new Map<number, number>();
+            for (let i = 0; i < n; i++) parentCellToIdx.set(parentCells[i], i);
+
+            const remappedColumns = new Array<number>(n);
+            const remappedRowPotentials = new Float64Array(n);
+            let childChangedRow = -1;
+
+            for (let i = 0; i < n; i++) {
+              const pIdx = parentCellToIdx.get(boxCells[i]);
+              if (pIdx !== undefined) {
+                remappedColumns[i] = parentLabelState.columns[pIdx];
+                remappedRowPotentials[i] = parentLabelState.rowPotentials[pIdx];
+              } else {
+                childChangedRow = i;
+                remappedColumns[i] = -1;
+                remappedRowPotentials[i] = 0;
+              }
+            }
+
+            if (childChangedRow >= 0) {
+              const costs = buildCostMatrix(this.#board, boxCells, goalCells);
+              const prevState: AssignmentState = {
+                cost: parentLabelState.cost,
+                columns: remappedColumns,
+                rowPotentials: remappedRowPotentials,
+                columnPotentials: parentLabelState.columnPotentials,
+              };
+              const repaired = repairAssignment(costs, prevState, childChangedRow);
+              if (!Number.isFinite(repaired.cost)) {
+                this.#storeEntry(childBoxKey, {
+                  totalCost: Number.POSITIVE_INFINITY,
+                  labelStates,
+                });
+                return Number.POSITIVE_INFINITY;
+              }
+              total += repaired.cost;
+              labelStates.set(label, {
+                cost: repaired.cost,
+                columns: repaired.columns,
+                rowPotentials: repaired.rowPotentials,
+                columnPotentials: repaired.columnPotentials,
+                boxCells: [...boxCells],
+                goalCells: [...goalCells],
+              });
+              this.#incrementalRepairs += 1;
+              continue;
+            }
+          }
+        }
+      }
+
+      const costs = buildCostMatrix(this.#board, boxCells, goalCells);
+      const state = minimumAssignmentWithState(costs);
+      if (!Number.isFinite(state.cost)) {
+        this.#storeEntry(childBoxKey, {
+          totalCost: Number.POSITIVE_INFINITY,
+          labelStates,
+        });
+        return Number.POSITIVE_INFINITY;
+      }
+      total += state.cost;
+      labelStates.set(label, {
+        cost: state.cost,
+        columns: state.columns,
+        rowPotentials: state.rowPotentials,
+        columnPotentials: state.columnPotentials,
+        boxCells: [...boxCells],
+        goalCells: [...goalCells],
+      });
+    }
+
+    this.#storeEntry(childBoxKey, { totalCost: total, labelStates });
+    return total;
+  }
+
   clearCache(): void {
     this.#cache.clear();
+    this.#fallbackCache.clear();
   }
 
   resetStats(): void {
     this.#calls = 0;
     this.#cacheHits = 0;
+    this.#incrementalRepairs = 0;
   }
 }

@@ -290,6 +290,7 @@ describe("assignment heuristic", () => {
       calls: 2,
       cacheHits: 1,
       cacheEntries: 1,
+      incrementalRepairs: 0,
     });
 
     heuristic.evaluate([
