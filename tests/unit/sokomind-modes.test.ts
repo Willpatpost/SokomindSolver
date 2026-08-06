@@ -111,6 +111,18 @@ describe("parseSokomindOptions", () => {
     assert.throws(() => parseSokomindOptions({ proofParallelism: 0 }), /proofParallelism/);
   });
 
+  it("proofParallelism = 33 throws (max is 32)", () => {
+    assert.throws(() => parseSokomindOptions({ proofParallelism: 33 }), /proofParallelism/);
+  });
+
+  it("invalid proofAlgorithm throws", () => {
+    assert.throws(() => parseSokomindOptions({ proofAlgorithm: "dijkstra" }), /proofAlgorithm/);
+  });
+
+  it("invalid idaReachabilitySnapshots throws", () => {
+    assert.throws(() => parseSokomindOptions({ idaReachabilitySnapshots: "always" }), /idaReachabilitySnapshots/);
+  });
+
   it("idaSnapshotPeriod = 0 throws (min is 1)", () => {
     assert.throws(() => parseSokomindOptions({ idaSnapshotPeriod: 0 }), /idaSnapshotPeriod/);
   });
@@ -310,6 +322,11 @@ describe("runSequentialProof", () => {
       expiredDiscovery,
       "should return discovery unchanged when time budget exhausted",
     );
+
+    if (result.status === "solved") {
+      const verification = verifySolverSolution(req, result.solution);
+      assert.ok(verification.valid, "returned solution must replay even when proof skipped");
+    }
   });
 
   it("greedy solution replays after proof", async () => {
