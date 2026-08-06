@@ -892,3 +892,130 @@ Performance gate (§24): ≥50% lower retained bytes — **met at 97%**.
 - `npm run lint` — pass (0 errors)
 - `npm run test:unit` — 816 tests, 140 suites, all pass (+26 new tests, +4 new suites)
 - `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 8 — Incremental Typed Assignment Repair (spec §12)
+
+**Date**: 2026-08-06
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+When one box moves during search, the assignment heuristic previously rebuilt the
+full O(N²M) Hungarian cost matrix and solved from scratch. Sprint 8 adds
+incremental assignment repair: unchanged label groups reuse their cached
+cost/matching/potentials, and the moved label's group uses a single-row
+O(NM) Hungarian repair when the group size meets the crossover threshold (≥3).
+
+### Algorithm
+
+The `evaluateIncremental(boxes, childBoxKey, parentBoxKey, movedLabel)` method:
+
+1. Cache hit on `childBoxKey` → return cached cost
+2. Cache miss on `parentBoxKey` → fall back to full evaluation
+3. For each label group:
+   - **Unchanged label** (not `movedLabel`): reuse parent's cached cost
+   - **Moved label, group < 3**: full recompute (below crossover)
+   - **Moved label, group ≥ 3**: identify removed/added cell via sorted
+     set-difference, remap parent's matching and potentials to child's row
+     order, build full child cost matrix, call `repairAssignment` on the
+     changed row
+
+The repair uses set-difference (not position-by-position comparison) to correctly
+handle cases where a box move changes the sorted order within a label group. The
+parent's per-row potentials and column assignments are remapped to the child's
+sorted cell order before calling the single-row augmenting-path repair.
+
+### Files changed
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/solver/search/assignment.ts` | Updated | `AssignmentState` type, `minimumAssignmentWithState`, `repairAssignment` |
+| `src/solver/search/heuristic.ts` | Updated | BigInt cache, per-label state, `evaluateIncremental`, set-difference repair |
+| `src/solver/search/exact-move-astar.ts` | Updated | Wire `evaluateIncremental` with `parentBoxKey`/`childBoxKey`/`movedLabel` |
+| `src/solver/search/ida-star.ts` | Updated | Wire `evaluateIncremental` for IDA* search frames |
+| `tests/unit/incremental-assignment.test.ts` | Created | 20 tests across 6 suites |
+| `tests/unit/search-heuristic.test.ts` | Updated | Add `incrementalRepairs` to stats assertion |
+| `docs/solver-v2-progress.md` | Updated | Sprint 8 results |
+
+### New types
+
+**`AssignmentState`** (`assignment.ts`):
+```typescript
+interface AssignmentState {
+  readonly cost: number;
+  readonly columns: readonly number[];
+  readonly rowPotentials: Float64Array;
+  readonly columnPotentials: Float64Array;
+}
+```
+
+**`LabelAssignmentState`** (`heuristic.ts`): per-label cache entry storing cost,
+matching, dual potentials, and the sorted box/goal cells used to build the matrix.
+
+**`AssignmentCacheEntry`** (`heuristic.ts`): `totalCost` + `Map<string, LabelAssignmentState>`.
+
+### Cache architecture
+
+The `AssignmentHeuristic` now has a dual cache:
+- **BigInt-keyed** (`Map<bigint, AssignmentCacheEntry>`): used when `packBoxKey`
+  is provided (exact-move-astar, ida-star). Stores full per-label state for repair.
+- **String-keyed** (`Map<string, number>`): fallback for engine.ts non-proof paths
+  that don't have an `ExactStateCodec`. Stores cost only.
+
+Both use LRU eviction with a 50K entry limit.
+
+### Crossover policy
+
+`INCREMENTAL_ASSIGNMENT_CROSSOVER = 3` (spec §12.3, not tuned). Label groups with
+fewer than 3 boxes use full Hungarian recompute. Groups with ≥3 use the single-row
+repair path when a parent cache entry exists.
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| `repairAssignment` matches full Hungarian on 3×3 matrix | PASS |
+| `repairAssignment` matches full on 4×4 with Infinity | PASS |
+| `repairAssignment` handles optimal matching shift | PASS |
+| `repairAssignment` detects infeasibility | PASS |
+| Identity change returns same result | PASS |
+| Rectangular matrix (3×5) repair matches full | PASS |
+| Label A move reuses label B cached cost | PASS |
+| 3-box generic group uses incremental repair | PASS |
+| 2-box group uses full recompute (below crossover) | PASS |
+| 3-box group uses incremental repair (at crossover) | PASS |
+| 1-box group uses full recompute | PASS |
+| 100 random single-box moves: incremental == full | PASS |
+| Same box configuration → same BigInt key | PASS |
+| Different configurations → different keys | PASS |
+| Robot position does not affect box key | PASS |
+| Box moving onto matching goal: incremental == full | PASS |
+| Box moving off matching goal: incremental == full | PASS |
+| Typed + generic mixed labels: incremental == full | PASS |
+| Exact A* produces correct solution on 2-box puzzle | PASS |
+| Exact A* solves 3-box puzzle | PASS |
+
+### Deterministic result verification
+
+Grand Hall (test:solver:huge) deterministic results unchanged:
+
+| Metric | Value |
+|---|---|
+| Moves | 1,010 |
+| Pushes | 316 |
+| Visited | 1,843 |
+| Generated | 13,844 |
+| Retained | 3,471 |
+| Peak frontier | 387 |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 836 tests, 146 suites, all pass (+20 new tests, +6 new suites)
+- `npm run build` — pass
+- `npm run test:solver:multi` — 4/4 pass
+- `npm run test:solver:huge` — pass (deterministic results identical)

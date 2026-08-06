@@ -200,9 +200,11 @@ export async function runExactMoveAStar(
     const board = compileSearchBoard(request.board);
     const { cellCount } = board;
     const labels = [...board.goalCellsByLabel.keys()].sort();
-    const heuristic = new AssignmentHeuristic(board);
     const reachability = new KeeperReachability(board);
     const exactCodec = createExactStateCodec(cellCount, labels);
+    const packBoxKey = (boxes: readonly DenseBox[]) =>
+      exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
+    const heuristic = new AssignmentHeuristic(board, { packBoxKey });
     const staticBytes = estimateStaticSearchBytes(board);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();
@@ -590,6 +592,8 @@ export async function runExactMoveAStar(
       const reachable = reachability.flood(robotCell, occupied);
       counters.reachabilityFloods += 1;
 
+      const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
+
       for (let boxIndex = 0; boxIndex < boxCount; boxIndex += 1) {
         const box = expansionBoxes[boxIndex];
         const neighbors = board.neighbors[box.cell];
@@ -674,7 +678,11 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const pushLowerBound = heuristic.evaluate(expansionBoxes);
+          const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+          const movedLabel = labels[newLabelId];
+          const pushLowerBound = heuristic.evaluateIncremental(
+            expansionBoxes, childBoxKey, parentBoxKey, movedLabel,
+          );
           const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
           if (
             maxMemoryAfterHeuristic !== undefined &&

@@ -417,7 +417,6 @@ export async function runIdaStarSearch(
   try {
     throwIfSolverCancelled(context.signal);
     const board = compileSearchBoard(request.board);
-    const heuristic = new AssignmentHeuristic(board);
     const reachability = new KeeperReachability(board);
 
     const initialRobot = board.cellAt(
@@ -434,6 +433,10 @@ export async function runIdaStarSearch(
     );
     const labels = [...board.goalCellsByLabel.keys()].sort();
     const exactCodec: ExactStateCodec = createExactStateCodec(board.cellCount, labels);
+
+    const packBoxKeyFromBoxes = (boxes: readonly DenseBox[]) =>
+      exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
+    const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
 
     function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
       const tokens = exactCodec.tokensFromBoxes(boxes);
@@ -782,7 +785,24 @@ export async function runIdaStarSearch(
 
         // ----- First visit: f-bound, TT, solved check, mark expanded -----
         if (!frame.expanded) {
-          const hPush = heuristic.evaluate(frame.boxes);
+          let hPush: number;
+          if (pathStack.length >= 2 && frame.push) {
+            const parentFrame = pathStack[pathStack.length - 2];
+            const parentBoxKey = packBoxKeyFromBoxes(parentFrame.boxes);
+            const childBoxKey = packBoxKeyFromBoxes(frame.boxes);
+            const movedBox = parentFrame.boxes.find(
+              (b) => b.cell === frame.push!.boxCell,
+            );
+            if (movedBox) {
+              hPush = heuristic.evaluateIncremental(
+                frame.boxes, childBoxKey, parentBoxKey, movedBox.label,
+              );
+            } else {
+              hPush = heuristic.evaluate(frame.boxes);
+            }
+          } else {
+            hPush = heuristic.evaluate(frame.boxes);
+          }
           heuristicCacheEntries = heuristic.stats.cacheEntries;
           if (memoryLimitReached()) {
             limitDetail = "Estimated solver memory limit reached.";
