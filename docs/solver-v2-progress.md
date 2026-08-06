@@ -663,3 +663,232 @@ Policy is verbatim from spec — not tuned by intuition.
 - `npm run typecheck` — pass
 - `npm run test:unit` — 759 tests, 132 suites, all pass (+20 new tests, +15 new suites)
 - `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 6 — Sokomind Modes and Sequential Proof Integration
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+Integration sprint — wires the proof engines from Sprints 4–5 into the
+production sokomind solver via three user-facing modes (fast/quality/optimal),
+a typed options parser for `request.options?.["sokomind-solver"]`, and a
+sequential proof orchestrator. No new search algorithms; no UI changes.
+
+### Files changed
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/solver/implementations/sokomind-options.ts` | **Created** | Typed options parser (spec §5) |
+| `src/solver/implementations/sokomind-proof.ts` | **Created** | Sequential proof orchestration for quality/optimal modes |
+| `src/solver/implementations/sokomind-solver.ts` | Updated | Wire modes, parse options, call proof after discovery |
+| `tests/unit/sokomind-modes.test.ts` | **Created** | 31 tests across 4 suites |
+| `docs/solver-v2-progress.md` | Updated | Sprint 6 results |
+
+### Options parser (`sokomind-options.ts`)
+
+Implements spec §5 request options model.
+
+**Exports**: `SokomindMode`, `SokomindRequestOptions`, `DEFAULT_SOKOMIND_REQUEST_OPTIONS`,
+`parseSokomindOptions()`, `extractSokomindOptions()`
+
+**Validated fields**:
+
+| Field | Type | Range | Default |
+|---|---|---|---|
+| `mode` | enum | `"fast"` \| `"quality"` \| `"optimal"` | `"fast"` |
+| `proofAlgorithm` | enum | `"auto"` \| `"astar"` \| `"ida-star"` | `"auto"` |
+| `deterministic` | boolean | — | `false` |
+| `maximumIncumbents` | integer | 1–8 | 4 |
+| `harvestElapsedMs` | integer | 0–30,000 | 5,000 |
+| `proofParallelism` | integer | 1–32 | 1 |
+| `idaReachabilitySnapshots` | enum | `"all"` \| `"periodic"` \| `"none"` | `"periodic"` |
+| `idaSnapshotPeriod` | integer | 1–64 | 4 |
+
+Unknown properties are rejected. Nullish input returns defaults. Non-object
+input throws. Missing fields inherit defaults. Returned object is frozen.
+
+### Sequential proof orchestrator (`sokomind-proof.ts`)
+
+`runSequentialProof(request, context, options, discoveryResult)`:
+
+1. Non-solved discovery passes through unchanged
+2. Computes remaining time budget from discovery elapsed
+3. Selects proof algorithm via `selectProofAlgorithm()` or explicit option
+4. Routes to `runExactMoveAStar` or `runIdaStarSearch` with incumbent
+5. Returns proof result if solved, otherwise falls back to discovery result
+
+**Quality vs optimal**: quality mode passes remaining time budget to proof;
+optimal mode passes original limits unchanged.
+
+### Solver wiring (`sokomind-solver.ts`)
+
+Minimal changes at three well-defined points in the ~2400-line orchestrator:
+
+1. **Top of `solve()`**: `extractSokomindOptions(request)` parses options
+2. **Deterministic mode**: `sokomindOptions.deterministic ? 1 : configuredWorkerCount()`
+3. **Post-discovery**: `solvedWithImprovement()` calls `runSequentialProof()`
+   when `mode !== "fast"` at all three existing call sites (rewrite path,
+   classic fallback, and direct solve)
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| Options parser: null/undefined/empty returns defaults | PASS |
+| Options parser: valid overrides merge with defaults | PASS |
+| Options parser: unknown keys rejected | PASS |
+| Options parser: out-of-range values rejected | PASS |
+| Options parser: non-object input rejected | PASS |
+| Extract from request: no options returns defaults | PASS |
+| Extract from request: mode override works | PASS |
+| Quality mode: proof improves or matches DFS solution | PASS |
+| Optimal mode: proves small puzzle with optimal proof | PASS |
+| Optimal cutoff: preserves incumbent with bounded proof | PASS |
+| Non-solved discovery: passes through unchanged | PASS |
+| Expired time budget: skips proof, returns discovery | PASS |
+| Post-proof replay: all solutions verify | PASS |
+| proofAlgorithm astar: produces move-astar | PASS |
+| proofAlgorithm ida-star: produces move-ida-star | PASS |
+| proofAlgorithm auto: selects astar or ida-star | PASS |
+| Deterministic parser: accepts true/false, rejects string | PASS |
+| Deterministic extract: passes through from request | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 790 tests, 136 suites, all pass (+31 new tests, +4 new suites)
+- `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 7 — Compact Exact-Search Arena (spec §10, §24)
+
+### Goal
+
+Replace per-node JS object storage (`SearchNode`) and JS-array priority queue
+(`StablePriorityQueue`) with chunked typed-array structures, eliminating GC
+pressure and cutting retained bytes per node by ≥50%.
+
+### Implementation
+
+#### CompactNodeArena (`src/solver/search/compact-node-arena.ts`)
+
+Chunked typed-array arena storing 8 scalar fields per node plus flattened box
+tokens. Each field uses a separate array of fixed-size chunks (CHUNK_SIZE=8192).
+
+| Field | TypedArray | Bytes |
+|---|---|---|
+| robotCell | Uint16Array | 2 |
+| gMoves | Uint32Array | 4 |
+| pushes | Uint16Array | 2 |
+| parentNode | Int32Array | 4 |
+| pushedFromCell | Uint16Array | 2 |
+| pushDirection | Uint8Array | 1 |
+| heuristic | Uint16Array | 2 |
+| **Scalar total** | | **17** |
+
+Box tokens stored as flattened `Uint16Array` (or `Uint32Array` when
+`labelCount × cellCount > 65535`). Per-node total for 3 boxes with Uint16
+tokens: **23 bytes** vs legacy **752 bytes** = **97% reduction**.
+
+Note: `insertionSequence` was removed from the arena — the
+`NumericPriorityQueue` handles FIFO tie-breaking internally via its own
+sequence counter, making the arena field dead data.
+
+Factory: `createCompactNodeArena(boxCount, maxToken?)`.
+
+#### NumericPriorityQueue (`src/solver/search/numeric-priority-queue.ts`)
+
+Typed-array binary min-heap specialized for unsigned 32-bit integer values
+(node indices) with stable FIFO tie-breaking via insertion sequence.
+
+- `Uint32Array` for values and sequences (initial capacity 1024, doubles on fill)
+- Standard sift-up/sift-down with `#compareAt` delegating to caller-supplied compare
+- Per-entry: **8 bytes** vs legacy **56 bytes** = **86% reduction**
+
+#### Exact A* Integration (`src/solver/search/exact-move-astar.ts`)
+
+Complete rewrite of the inner search loop:
+
+- Node creation: `arena.allocate()` + field setters instead of `SearchNode` object
+- Priority: arena-based compare `(f_a - f_b) || (h_a - h_b)` via `NumericPriorityQueue`
+- Key recomputation: `exactCodec.packMoveState(robotCell, tokenBuf)` at expansion
+  (no stored key per node)
+- Child generation: `sortedInsertToken()` on parent tokens — removes moved box,
+  binary-inserts new token in sorted position
+- Deadlock/heuristic: mutable `DenseBox[]` buffer, mutate `cell` for child state,
+  restore after each direction
+- Reconstruction: `reconstructFromArena()` walks arena parent chain
+- Memory estimation: `estimatedArenaMemoryBytes()` with arena `estimatedRetainedBytes()`
+- `depth` field dropped (depth === pushes always)
+
+#### Support functions (`src/solver/search/exact-search-types.ts`)
+
+- `reconstructFromArena(board, arena, goalIndex, reachability)` — walks parent
+  chain via arena field reads, decodes tokens to cells for occupancy and BFS flood
+- `estimateArenaNodeBytes(boxCount)` — returns `21 + boxCount * 2`
+- `estimatedArenaMemoryBytes(...)` — uses `frontierSize * 8` (was 56) for queue overhead
+- Original `SearchNode`, `comparePriority`, `estimateNodeBytes`, `reconstructSolution`
+  kept for backward compatibility with engine.ts DFS/Greedy strategies
+
+### Per-node byte comparison
+
+| Component | Legacy (3 boxes) | Arena (3 boxes) | Reduction |
+|---|---|---|---|
+| Node storage | 752 bytes | 23 bytes | 97% |
+| Frontier entry | 56 bytes | 8 bytes | 86% |
+
+Performance gate (§24): ≥50% lower retained bytes — **met at 97%**.
+
+### Files changed
+
+| File | Action |
+|---|---|
+| `src/solver/search/compact-node-arena.ts` | Created |
+| `src/solver/search/numeric-priority-queue.ts` | Created |
+| `src/solver/search/exact-move-astar.ts` | Rewritten for arena + queue |
+| `src/solver/search/exact-search-types.ts` | Updated (arena reconstruction + estimators) |
+| `tests/unit/compact-node-arena.test.ts` | Created |
+| `docs/solver-v2-progress.md` | Updated |
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| Arena allocate/read/write round-trip all fields | PASS |
+| Arena crosses chunk boundary (>8192 nodes) correctly | PASS |
+| Arena wide tokens (maxToken > 65535) | PASS |
+| Queue dequeues in priority order | PASS |
+| Queue stable FIFO tie-breaking | PASS |
+| Queue handles capacity doubling (>1024 entries) | PASS |
+| estimateArenaNodeBytes matches arena estimatedBytesPerNode | PASS |
+| Arena node bytes ≤50% of legacy estimate | PASS |
+| estimatedArenaMemoryBytes uses reduced frontier cost | PASS |
+| Exact A* oracle equality (AC1: all reachable solvable states) | PASS |
+| Lower-bound monotonicity (AC2) | PASS |
+| Incumbent improvements (AC3) | PASS |
+| Optimal proof structure (AC4) | PASS |
+| Unsolvable proof (AC5) | PASS |
+| Cutoff with incumbent returns bounded proof (AC6) | PASS |
+| Classic A* adapter matches oracle (AC7) | PASS |
+| Already-solved initial state | PASS |
+| Progress phase transitions | PASS |
+| Cancellation preserves incumbent | PASS |
+| Cutoff lower-bound metric | PASS |
+| Bounded proof lb==U guard | PASS |
+| 1-box arena integration | PASS |
+| 2-box arena integration | PASS |
+| Reconstruction replays correctly | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 816 tests, 140 suites, all pass (+26 new tests, +4 new suites)
+- `npm run test:solver:multi` — 4/4 pass

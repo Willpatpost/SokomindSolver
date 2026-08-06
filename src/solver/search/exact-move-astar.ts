@@ -16,23 +16,21 @@ import {
   compileSearchBoard,
   SEARCH_DIRECTIONS,
 } from "./compiled-board.ts";
+import { createCompactNodeArena } from "./compact-node-arena.ts";
 import {
   createsFullyBlockedTwoByTwoDeadlock,
   hasFreezeDeadlock,
   isStaticDeadCell,
 } from "./deadlocks.ts";
 import {
-  comparePriority,
-  estimatedMemoryBytes,
-  estimateNodeBytes,
+  estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
   fillOccupancy,
   isSolved,
   objectiveScore,
   OPPOSITE_DIRECTION,
-  reconstructSolution,
+  reconstructFromArena,
   type SearchCounters,
-  type SearchNode,
 } from "./exact-search-types.ts";
 import {
   AssignmentHeuristic,
@@ -40,13 +38,12 @@ import {
 } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { createExactStateCodec } from "./exact-state.ts";
-import { StablePriorityQueue } from "./priority-queue.ts";
+import { NumericPriorityQueue } from "./numeric-priority-queue.ts";
 import { KeeperReachability } from "./reachability.ts";
 import {
   sortedBoxes,
   estimateStaticSearchBytes,
   delayForEventLoop,
-  movedBoxes,
 } from "./engine.ts";
 
 export interface ExactIncumbent {
@@ -68,15 +65,16 @@ function createMetrics(
   counters: SearchCounters,
   frontierSize: number,
   uniqueStates: number,
-  retainedStates: number,
+  arenaSize: number,
   heuristic: AssignmentHeuristic,
   staticBytes: number,
   boxCount: number,
+  arenaRetainedBytes: number,
 ): SolverRunMetrics {
   const heuristicStats = heuristic.stats;
-  const memoryBytes = estimatedMemoryBytes(
+  const memoryBytes = estimatedArenaMemoryBytes(
     staticBytes,
-    counters,
+    arenaRetainedBytes,
     uniqueStates,
     frontierSize,
     heuristicStats.cacheEntries,
@@ -89,7 +87,7 @@ function createMetrics(
     peakFrontierSize: counters.peakFrontier,
     counters: {
       uniqueStates,
-      retainedStates,
+      retainedStates: arenaSize,
       duplicateStates: counters.duplicates,
       deadlockPrunes: counters.deadlockPrunes,
       infeasiblePrunes: counters.infeasiblePrunes,
@@ -113,10 +111,11 @@ function createProgress(
   counters: SearchCounters,
   frontierSize: number,
   uniqueStates: number,
-  retainedStates: number,
+  arenaSize: number,
   heuristic: AssignmentHeuristic,
   staticBytes: number,
   boxCount: number,
+  arenaRetainedBytes: number,
   incumbentInfo: { moves: number; pushes: number; objectiveScore: number } | undefined,
   lowerBound: number | undefined,
   upperBound: number | undefined,
@@ -127,10 +126,11 @@ function createProgress(
     counters,
     frontierSize,
     uniqueStates,
-    retainedStates,
+    arenaSize,
     heuristic,
     staticBytes,
     boxCount,
+    arenaRetainedBytes,
   );
   return {
     phase,
@@ -147,6 +147,26 @@ function createProgress(
       ? { gap: upperBound - lowerBound }
       : {}),
   };
+}
+
+function sortedInsertToken(
+  src: Uint32Array,
+  count: number,
+  removeIndex: number,
+  newToken: number,
+  out: Uint32Array,
+): void {
+  let j = 0;
+  let inserted = false;
+  for (let i = 0; i < count; i++) {
+    if (i === removeIndex) continue;
+    if (!inserted && newToken <= src[i]) {
+      out[j++] = newToken;
+      inserted = true;
+    }
+    out[j++] = src[i];
+  }
+  if (!inserted) out[j] = newToken;
 }
 
 export async function runExactMoveAStar(
@@ -178,11 +198,15 @@ export async function runExactMoveAStar(
   try {
     throwIfSolverCancelled(context.signal);
     const board = compileSearchBoard(request.board);
+    const { cellCount } = board;
     const labels = [...board.goalCellsByLabel.keys()].sort();
     const heuristic = new AssignmentHeuristic(board);
     const reachability = new KeeperReachability(board);
-    const exactCodec = createExactStateCodec(board.cellCount, labels);
+    const exactCodec = createExactStateCodec(cellCount, labels);
     const staticBytes = estimateStaticSearchBytes(board);
+    const labelCount = labels.length;
+    const labelToId = new Map<string, number>();
+    for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -194,18 +218,34 @@ export async function runExactMoveAStar(
     const initialBoxes = sortedBoxes(
       toDenseBoxes(board, request.snapshot.boxes),
     );
+    const boxCount = initialBoxes.length;
 
-    const initialOccupancy = new Uint8Array(board.cellCount);
+    const initialOccupancy = new Uint8Array(cellCount);
     for (const box of initialBoxes) initialOccupancy[box.cell] = 1;
     reachability.flood(initialRobot, initialOccupancy);
     counters.reachabilityFloods += 1;
 
-    function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
-      const tokens = exactCodec.tokensFromBoxes(boxes);
-      return exactCodec.packMoveState(robotCell, tokens);
+    const maxToken = labelCount * cellCount - 1;
+    const arena = createCompactNodeArena(boxCount, maxToken);
+
+    const parentTokenBuf = new Uint32Array(boxCount);
+    const childTokenBuf = new Uint32Array(boxCount);
+
+    const expansionBoxes: DenseBox[] = new Array(boxCount);
+    for (let i = 0; i < boxCount; i++) {
+      expansionBoxes[i] = { id: initialBoxes[i].id, label: initialBoxes[i].label, cell: initialBoxes[i].cell };
     }
 
-    const initialKey = exactKey(initialRobot, initialBoxes);
+    function tokenToCell(token: number): number {
+      return token % cellCount;
+    }
+
+    function tokenToLabelId(token: number): number {
+      return (token / cellCount) | 0;
+    }
+
+    const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
+    const initialKey = exactCodec.packMoveState(initialRobot, initialTokens);
     const initialPushBound = heuristic.evaluate(initialBoxes);
     const initialWalkBound = minimumManhattanWalkToPotentialPush(
       board,
@@ -217,7 +257,6 @@ export async function runExactMoveAStar(
 
     let heapSize = 0;
     let uniqueStates = 0;
-    let nodesLength = 0;
 
     const metrics = () =>
       createMetrics(
@@ -226,10 +265,11 @@ export async function runExactMoveAStar(
         counters,
         heapSize,
         uniqueStates,
-        nodesLength,
+        arena.size,
         heuristic,
         staticBytes,
-        initialBoxes.length,
+        boxCount,
+        arena.estimatedRetainedBytes(),
       );
     collectCurrentMetrics = metrics;
 
@@ -252,10 +292,11 @@ export async function runExactMoveAStar(
           counters,
           heapSize,
           uniqueStates,
-          nodesLength,
+          arena.size,
           heuristic,
           staticBytes,
-          initialBoxes.length,
+          boxCount,
+          arena.estimatedRetainedBytes(),
           incumbentInfo(),
           incumbentSolution ? lastLowerBound : undefined,
           incumbentSolution ? U : undefined,
@@ -276,13 +317,13 @@ export async function runExactMoveAStar(
       if (maximum === undefined) return false;
       const stats = heuristic.stats;
       return (
-        estimatedMemoryBytes(
+        estimatedArenaMemoryBytes(
           staticBytes,
-          counters,
+          arena.estimatedRetainedBytes(),
           uniqueStates,
           heapSize,
           stats.cacheEntries,
-          initialBoxes.length,
+          boxCount,
         ) > maximum
       );
     };
@@ -394,32 +435,26 @@ export async function runExactMoveAStar(
       return finishSolvedOptimal();
     }
 
-    const initialNode: SearchNode = {
-      robot: initialRobot,
-      boxes: initialBoxes,
-      key: initialKey,
-      parentIndex: -1,
-      moves: 0,
-      pushes: 0,
-      depth: 0,
-      p0: initialH,
-      p1: initialH,
-      p2: 0,
-      estimatedBytes: estimateNodeBytes(initialBoxes.length, initialKey),
-    };
-    const nodes: SearchNode[] = [initialNode];
-    nodesLength = 1;
-    counters.retainedBytes = initialNode.estimatedBytes;
+    const rootIndex = arena.allocate();
+    arena.setRobotCell(rootIndex, initialRobot);
+    arena.setGMoves(rootIndex, 0);
+    arena.setPushes(rootIndex, 0);
+    arena.setParentNode(rootIndex, -1);
+    arena.setPushedFromCell(rootIndex, 0);
+    arena.setPushDirection(rootIndex, 0);
+    arena.setHeuristic(rootIndex, initialH);
+    arena.writeBoxTokens(rootIndex, initialTokens);
+    counters.retainedBytes = arena.estimatedRetainedBytes();
 
-    const heap = new StablePriorityQueue<number>(
-      (leftIndex, rightIndex) => {
-        const left = nodes[leftIndex];
-        const right = nodes[rightIndex];
-        if (!left || !right) return leftIndex - rightIndex;
-        return comparePriority(left, right);
+    const heap = new NumericPriorityQueue(
+      (a: number, b: number) => {
+        const fa = arena.gMoves(a) + arena.heuristic(a);
+        const fb = arena.gMoves(b) + arena.heuristic(b);
+        if (fa !== fb) return fa - fb;
+        return arena.heuristic(a) - arena.heuristic(b);
       },
     );
-    heap.enqueue(0);
+    heap.enqueue(rootIndex);
     heapSize = 1;
     counters.peakFrontier = 1;
 
@@ -429,8 +464,8 @@ export async function runExactMoveAStar(
     let lastYieldAt = lastProgressAt;
     let workSinceYield = 0;
 
-    const occupancyBuffer = new Uint8Array(board.cellCount);
-    const deadlockOccupancyBuffer = new Int32Array(board.cellCount);
+    const occupancyBuffer = new Uint8Array(cellCount);
+    const deadlockOccupancyBuffer = new Int32Array(cellCount);
 
     report(
       incumbentSolution ? "proving" : "searching",
@@ -440,7 +475,7 @@ export async function runExactMoveAStar(
 
     let limitDetail: string | undefined;
 
-    const syncState = () => { heapSize = heap.size; nodesLength = nodes.length; };
+    const syncState = () => { heapSize = heap.size; };
 
     searchLoop: while (heap.size > 0) {
       throwIfSolverCancelled(context.signal);
@@ -474,25 +509,34 @@ export async function runExactMoveAStar(
       const nodeIndex = heap.dequeue();
       if (nodeIndex === undefined) break;
       syncState();
-      const node = nodes[nodeIndex];
-      if (!node) continue;
 
-      if (bestG.get(node.key as bigint) !== node.moves) continue;
+      arena.readBoxTokens(nodeIndex, parentTokenBuf);
+      const nodeKey = exactCodec.packMoveState(arena.robotCell(nodeIndex), parentTokenBuf);
+      const nodeMoves = arena.gMoves(nodeIndex);
 
-      const L = node.p0;
+      if (bestG.get(nodeKey) !== nodeMoves) continue;
+
+      const L = nodeMoves + arena.heuristic(nodeIndex);
       lastLowerBound = L;
 
       if (L >= U) {
         return finishSolvedOptimal();
       }
 
-      if (isSolved(board, node.boxes)) {
-        if (node.moves < U) {
+      for (let b = 0; b < boxCount; b++) {
+        const token = parentTokenBuf[b];
+        const mbox = expansionBoxes[b] as { label: string; cell: number };
+        mbox.label = labels[tokenToLabelId(token)];
+        mbox.cell = tokenToCell(token);
+      }
+
+      if (isSolved(board, expansionBoxes)) {
+        if (nodeMoves < U) {
           report("improving", "Found improved incumbent, verifying");
           throwIfSolverCancelled(context.signal);
-          const steps = reconstructSolution(
+          const steps = reconstructFromArena(
             board,
-            nodes,
+            arena,
             nodeIndex,
             reachability,
           );
@@ -500,7 +544,7 @@ export async function runExactMoveAStar(
             (total, step) => total + (step.kind === "push" ? 1 : 0),
             0,
           );
-          if (steps.length !== node.moves || pushes !== node.pushes) {
+          if (steps.length !== nodeMoves || pushes !== arena.pushes(nodeIndex)) {
             throw new Error(
               "Reconstructed path counters disagree with the selected search node.",
             );
@@ -519,7 +563,7 @@ export async function runExactMoveAStar(
               `Exact A* verification failed: ${verification.message}`,
             );
           }
-          U = node.moves;
+          U = nodeMoves;
           incumbentSolution = solution;
           throwIfSolverCancelled(context.signal);
 
@@ -540,14 +584,14 @@ export async function runExactMoveAStar(
       counters.expanded += 1;
       workSinceYield += 1;
 
-      fillOccupancy(occupancyBuffer, node.boxes);
+      fillOccupancy(occupancyBuffer, expansionBoxes);
       const occupied = occupancyBuffer;
-      const reachable = reachability.flood(node.robot, occupied);
+      const robotCell = arena.robotCell(nodeIndex);
+      const reachable = reachability.flood(robotCell, occupied);
       counters.reachabilityFloods += 1;
 
-      for (let boxIndex = 0; boxIndex < node.boxes.length; boxIndex += 1) {
-        const box = node.boxes[boxIndex];
-        if (!box) continue;
+      for (let boxIndex = 0; boxIndex < boxCount; boxIndex += 1) {
+        const box = expansionBoxes[boxIndex];
         const neighbors = board.neighbors[box.cell];
         if (!neighbors) continue;
 
@@ -586,57 +630,70 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const boxes = movedBoxes(node.boxes, boxIndex, destination);
-          fillDeadlockOccupancy(deadlockOccupancyBuffer, boxes);
+          const savedCell = expansionBoxes[boxIndex].cell;
+          (expansionBoxes[boxIndex] as { cell: number }).cell = destination;
+
+          fillDeadlockOccupancy(deadlockOccupancyBuffer, expansionBoxes);
           if (
             createsFullyBlockedTwoByTwoDeadlock(
               board,
-              boxes,
+              expansionBoxes,
               destination,
               deadlockOccupancyBuffer,
             )
           ) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.deadlockPrunes += 1;
             continue;
           }
 
-          if (hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer)) {
+          if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer)) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.deadlockPrunes += 1;
             continue;
           }
 
           const distance = reachable.distanceTo(support);
           if (distance < 0) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             throw new Error("Reachable support cell has no keeper distance.");
           }
-          const childMoves = node.moves + distance + 1;
-          const childPushes = node.pushes + 1;
+          const childMoves = nodeMoves + distance + 1;
+          const childPushes = arena.pushes(nodeIndex) + 1;
 
-          const childKey = exactKey(box.cell, boxes);
+          const oldToken = parentTokenBuf[boxIndex];
+          const newLabelId = tokenToLabelId(oldToken);
+          const newToken = newLabelId * cellCount + destination;
+          sortedInsertToken(parentTokenBuf, boxCount, boxIndex, newToken, childTokenBuf);
+
+          const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
           const prevBestG = bestG.get(childKey);
           if (prevBestG !== undefined && childMoves >= prevBestG) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.duplicates += 1;
             continue;
           }
 
-          const pushLowerBound = heuristic.evaluate(boxes);
+          const pushLowerBound = heuristic.evaluate(expansionBoxes);
           const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
           if (
             maxMemoryAfterHeuristic !== undefined &&
-            estimatedMemoryBytes(
+            estimatedArenaMemoryBytes(
               staticBytes,
-              counters,
+              arena.estimatedRetainedBytes(),
               uniqueStates,
               heap.size,
               heuristic.stats.cacheEntries,
-              initialBoxes.length,
+              boxCount,
             ) > maxMemoryAfterHeuristic
           ) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             limitDetail = "Estimated solver memory limit reached.";
             syncState();
             break searchLoop;
           }
           if (!Number.isFinite(pushLowerBound)) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.infeasiblePrunes += 1;
             continue;
           }
@@ -645,42 +702,29 @@ export async function runExactMoveAStar(
 
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
-            box.cell,
-            boxes,
+            savedCell,
+            expansionBoxes,
           );
           const h = pushLowerBound + walkBound;
           const f = childMoves + h;
+
+          (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
 
           if (f >= U) {
             continue;
           }
 
-          const candidate: SearchNode = {
-            robot: box.cell,
-            boxes,
-            key: childKey,
-            parentIndex: nodeIndex,
-            push: { boxCell: box.cell, directionIndex },
-            moves: childMoves,
-            pushes: childPushes,
-            depth: node.depth + 1,
-            p0: f,
-            p1: h,
-            p2: childMoves,
-            estimatedBytes: estimateNodeBytes(boxes.length, childKey),
-          };
-
-          const projectedBytes =
-            counters.retainedBytes + candidate.estimatedBytes;
+          const projectedArenaBytes = arena.estimatedRetainedBytes() + arena.estimatedBytesPerNode();
           const maxMemory = request.limits?.maxMemoryBytes;
           if (maxMemory !== undefined) {
             const stats = heuristic.stats;
-            const projectedMemory = Math.ceil(
-              staticBytes +
-                projectedBytes +
-                (uniqueStates + 1) * 96 +
-                (heap.size + 1) * 56 +
-                stats.cacheEntries * (160 + initialBoxes.length * 24),
+            const projectedMemory = estimatedArenaMemoryBytes(
+              staticBytes,
+              projectedArenaBytes,
+              uniqueStates + 1,
+              heap.size + 1,
+              stats.cacheEntries,
+              boxCount,
             );
             if (projectedMemory > maxMemory) {
               limitDetail = "Estimated solver memory limit reached.";
@@ -689,10 +733,17 @@ export async function runExactMoveAStar(
             }
           }
 
-          const childIndex = nodes.length;
-          nodes.push(candidate);
-          counters.retainedBytes = projectedBytes;
-          counters.maxDepth = Math.max(counters.maxDepth, candidate.depth);
+          const childIndex = arena.allocate();
+          arena.setRobotCell(childIndex, box.cell);
+          arena.setGMoves(childIndex, childMoves);
+          arena.setPushes(childIndex, childPushes);
+          arena.setParentNode(childIndex, nodeIndex);
+          arena.setPushedFromCell(childIndex, box.cell);
+          arena.setPushDirection(childIndex, directionIndex);
+          arena.setHeuristic(childIndex, h);
+          arena.writeBoxTokens(childIndex, childTokenBuf);
+          counters.retainedBytes = arena.estimatedRetainedBytes();
+          counters.maxDepth = Math.max(counters.maxDepth, childPushes);
 
           if (prevBestG === undefined) {
             uniqueStates += 1;
@@ -711,14 +762,18 @@ export async function runExactMoveAStar(
     if (limitDetail) {
       if (incumbentSolution) {
         const peekIndex = heap.size > 0 ? heap.peek() : undefined;
-        const bestL =
-          peekIndex !== undefined ? (nodes[peekIndex]?.p0 ?? lastLowerBound) : lastLowerBound;
+        let bestL = lastLowerBound;
+        if (peekIndex !== undefined) {
+          bestL = arena.gMoves(peekIndex) + arena.heuristic(peekIndex);
+        }
         return finishSolvedBounded(bestL);
       }
       const m = metrics();
+      let cutoffLB = lastLowerBound;
       const peekIdx = heap.size > 0 ? heap.peek() : undefined;
-      const cutoffLB =
-        peekIdx !== undefined ? (nodes[peekIdx]?.p0 ?? lastLowerBound) : lastLowerBound;
+      if (peekIdx !== undefined) {
+        cutoffLB = arena.gMoves(peekIdx) + arena.heuristic(peekIdx);
+      }
       return {
         status: "unsolved",
         reason: "limit-reached",

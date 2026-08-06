@@ -28,6 +28,11 @@ import {
   type SokomindTuningOverrides,
   type SokomindTuningProfile,
 } from "./sokomind-tuning.ts";
+import {
+  extractSokomindOptions,
+  type SokomindRequestOptions,
+} from "./sokomind-options.ts";
+import { runSequentialProof } from "./sokomind-proof.ts";
 
 const LEGACY_DIRECTIONS = Object.freeze({
   Up: "up",
@@ -1831,6 +1836,7 @@ async function solvedWithImprovement(
   incumbent: SolverSolution,
   createWorker: () => SokomindEngineWorker,
   options: SokomindSolverAdapterOptions,
+  sokomindOptions?: SokomindRequestOptions,
 ): Promise<SolverResult> {
   const improved = await improveIncumbent(
     run,
@@ -1842,11 +1848,23 @@ async function solvedWithImprovement(
   if (improved.cancelled) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
-  return Object.freeze({
-    status: "solved",
+  const discoveryResult: SolverResult = Object.freeze({
+    status: "solved" as const,
     solution: improved.solution,
     metrics: metrics(run),
   });
+  if (
+    sokomindOptions &&
+    sokomindOptions.mode !== "fast"
+  ) {
+    return runSequentialProof(
+      run.request,
+      run.context,
+      sokomindOptions,
+      discoveryResult,
+    );
+  }
+  return discoveryResult;
 }
 
 function isStructuralPuzzle(request: SolverRequest): boolean {
@@ -2162,6 +2180,7 @@ export function createSokomindSolverAdapter(
       request: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
+      const sokomindOptions = extractSokomindOptions(request);
       const startedAt = context.now();
       const maxElapsed = request.limits?.maxElapsedMs;
       const run: SearchRunState = {
@@ -2213,7 +2232,9 @@ export function createSokomindSolverAdapter(
       });
 
       let state = toLegacyState(request);
-      const maxWorkers = configuredWorkerCount(options, request);
+      const maxWorkers = sokomindOptions.deterministic
+        ? 1
+        : configuredWorkerCount(options, request);
       let cutoff = false;
       let errors: string[] = [];
       let stopReason: PhaseStopReason | undefined;
@@ -2266,6 +2287,7 @@ export function createSokomindSolverAdapter(
                 outcome.solution,
                 createWorker,
                 options,
+                sokomindOptions,
               );
             }
             if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2321,6 +2343,7 @@ export function createSokomindSolverAdapter(
               outcome.solution,
               createWorker,
               options,
+              sokomindOptions,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2355,6 +2378,7 @@ export function createSokomindSolverAdapter(
               outcome.solution,
               createWorker,
               options,
+              sokomindOptions,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2377,7 +2401,17 @@ export function createSokomindSolverAdapter(
       // The existing cooperative engine remains a useful compatibility lane,
       // and also broadens the portfolio when all first-found lanes exhaust.
       const fallback = await runClassicFallback(run);
-      if (fallback) return fallback;
+      if (fallback) {
+        if (sokomindOptions.mode !== "fast" && fallback.status === "solved") {
+          return runSequentialProof(
+            run.request,
+            run.context,
+            sokomindOptions,
+            fallback,
+          );
+        }
+        return fallback;
+      }
 
       const allWorkersFailed =
         engineWorkersStarted === 0 ||
