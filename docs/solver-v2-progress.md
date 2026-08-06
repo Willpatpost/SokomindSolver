@@ -663,3 +663,104 @@ Policy is verbatim from spec — not tuned by intuition.
 - `npm run typecheck` — pass
 - `npm run test:unit` — 759 tests, 132 suites, all pass (+20 new tests, +15 new suites)
 - `npm run test:solver:multi` — 4/4 pass
+
+---
+
+## Sprint 6 — Sokomind Modes and Sequential Proof Integration
+
+**Date**: 2026-08-05
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+Integration sprint — wires the proof engines from Sprints 4–5 into the
+production sokomind solver via three user-facing modes (fast/quality/optimal),
+a typed options parser for `request.options?.["sokomind-solver"]`, and a
+sequential proof orchestrator. No new search algorithms; no UI changes.
+
+### Files changed
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/solver/implementations/sokomind-options.ts` | **Created** | Typed options parser (spec §5) |
+| `src/solver/implementations/sokomind-proof.ts` | **Created** | Sequential proof orchestration for quality/optimal modes |
+| `src/solver/implementations/sokomind-solver.ts` | Updated | Wire modes, parse options, call proof after discovery |
+| `tests/unit/sokomind-modes.test.ts` | **Created** | 31 tests across 4 suites |
+| `docs/solver-v2-progress.md` | Updated | Sprint 6 results |
+
+### Options parser (`sokomind-options.ts`)
+
+Implements spec §5 request options model.
+
+**Exports**: `SokomindMode`, `SokomindRequestOptions`, `DEFAULT_SOKOMIND_REQUEST_OPTIONS`,
+`parseSokomindOptions()`, `extractSokomindOptions()`
+
+**Validated fields**:
+
+| Field | Type | Range | Default |
+|---|---|---|---|
+| `mode` | enum | `"fast"` \| `"quality"` \| `"optimal"` | `"fast"` |
+| `proofAlgorithm` | enum | `"auto"` \| `"astar"` \| `"ida-star"` | `"auto"` |
+| `deterministic` | boolean | — | `false` |
+| `maximumIncumbents` | integer | 1–8 | 4 |
+| `harvestElapsedMs` | integer | 0–30,000 | 5,000 |
+| `proofParallelism` | integer | 1–32 | 1 |
+| `idaReachabilitySnapshots` | enum | `"all"` \| `"periodic"` \| `"none"` | `"periodic"` |
+| `idaSnapshotPeriod` | integer | 1–64 | 4 |
+
+Unknown properties are rejected. Nullish input returns defaults. Non-object
+input throws. Missing fields inherit defaults. Returned object is frozen.
+
+### Sequential proof orchestrator (`sokomind-proof.ts`)
+
+`runSequentialProof(request, context, options, discoveryResult)`:
+
+1. Non-solved discovery passes through unchanged
+2. Computes remaining time budget from discovery elapsed
+3. Selects proof algorithm via `selectProofAlgorithm()` or explicit option
+4. Routes to `runExactMoveAStar` or `runIdaStarSearch` with incumbent
+5. Returns proof result if solved, otherwise falls back to discovery result
+
+**Quality vs optimal**: quality mode passes remaining time budget to proof;
+optimal mode passes original limits unchanged.
+
+### Solver wiring (`sokomind-solver.ts`)
+
+Minimal changes at three well-defined points in the ~2400-line orchestrator:
+
+1. **Top of `solve()`**: `extractSokomindOptions(request)` parses options
+2. **Deterministic mode**: `sokomindOptions.deterministic ? 1 : configuredWorkerCount()`
+3. **Post-discovery**: `solvedWithImprovement()` calls `runSequentialProof()`
+   when `mode !== "fast"` at all three existing call sites (rewrite path,
+   classic fallback, and direct solve)
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| Options parser: null/undefined/empty returns defaults | PASS |
+| Options parser: valid overrides merge with defaults | PASS |
+| Options parser: unknown keys rejected | PASS |
+| Options parser: out-of-range values rejected | PASS |
+| Options parser: non-object input rejected | PASS |
+| Extract from request: no options returns defaults | PASS |
+| Extract from request: mode override works | PASS |
+| Quality mode: proof improves or matches DFS solution | PASS |
+| Optimal mode: proves small puzzle with optimal proof | PASS |
+| Optimal cutoff: preserves incumbent with bounded proof | PASS |
+| Non-solved discovery: passes through unchanged | PASS |
+| Expired time budget: skips proof, returns discovery | PASS |
+| Post-proof replay: all solutions verify | PASS |
+| proofAlgorithm astar: produces move-astar | PASS |
+| proofAlgorithm ida-star: produces move-ida-star | PASS |
+| proofAlgorithm auto: selects astar or ida-star | PASS |
+| Deterministic parser: accepts true/false, rejects string | PASS |
+| Deterministic extract: passes through from request | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 790 tests, 136 suites, all pass (+31 new tests, +4 new suites)
+- `npm run test:solver:multi` — 4/4 pass
