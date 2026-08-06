@@ -1019,3 +1019,105 @@ Grand Hall (test:solver:huge) deterministic results unchanged:
 - `npm run build` — pass
 - `npm run test:solver:multi` — 4/4 pass
 - `npm run test:solver:huge` — pass (deterministic results identical)
+
+## Sprint 9a — Proof-Safe Pruning (Families 1–3)
+
+**Date**: 2026-08-06
+
+### Overview
+
+Ported three hard-prune families from the production sokomind-engine to the exact proof pipeline. Each prune is unconditionally sound: exhaustive local analysis or structural impossibility ensures no solvable state is ever pruned.
+
+### Family 1: Exact Bounded Pattern Deadlocks
+
+**File**: `src/solver/search/pattern-deadlock.ts` (392 lines)
+
+Bounded BFS on a 9×9 Chebyshev window around a moved box. Tests all local box configurations reachable by pushes (ignoring player reachability and outside boxes). If BFS exhausts the state space with no solution found, the pattern is deadlocked.
+
+- **Eligibility gates**: ≤18 floor cells, ≤2 floor neighbors per cell, 2–4 boxes, ≤512 combinatorial states
+- **Canonical pattern key**: 8 symmetry transforms (D4 dihedral group), lexicographic minimum
+- **LRU cache**: 50,000 entries with FIFO eviction
+- **Soundness**: BFS over-approximates legal moves → conservative. Box escape treated as success. Cutoff returns false.
+
+### Family 2: Exact Sealed Corrals
+
+**File**: `src/solver/search/sealed-corral.ts` (114 lines)
+
+After keeper reachability flood (already computed per-node), finds connected components of unreachable floor cells. For each component containing a misplaced box, checks if any boundary box can be pushed in. If no box is openable → sealed corral deadlock.
+
+- **Per-node check**: Runs after reachability, before child generation (reuses existing BFS — no redundant flood)
+- **Soundness**: Keeper cannot reach sealed component, no push can open it → boxes permanently stuck. If any is misplaced, puzzle is unsolvable.
+
+### Family 3: Proven Goal Commitments
+
+**File**: `src/solver/search/goal-commitment.ts` (100 lines)
+
+A box is "proven committed" when: (1) it sits on a cell whose goal label matches, (2) it is statically immovable (no axis has floor on both sides), and (3) the residual Hungarian assignment (excluding this box and its goal) still has finite cost. Committed boxes are excluded from push generation.
+
+- **Soundness**: Corner-locked box on correct goal genuinely never needs to move. Residual matching check prevents false commitments where committing would strand another same-label box.
+- **CONDITIONAL tier not ported**: Per spec §14, only the PROVEN tier is implemented.
+
+### Integration
+
+All three families wired into both `exact-move-astar.ts` and `ida-star.ts`:
+- Deadlock chain: `isStaticDeadCell` → `createsFullyBlockedTwoByTwoDeadlock` → `hasFreezeDeadlock` → `createsPatternDeadlock` (per-child)
+- Corral check: after reachability flood, before child generation (per-node)
+- Commitment skip: before push generation loop (per-node)
+
+New counters in `SearchCounters`: `patternDeadlockPrunes`, `corralPrunes`, `commitmentSkips`
+
+### Files changed
+
+| File | Action | Lines |
+|---|---|---|
+| `src/solver/search/pattern-deadlock.ts` | Created | 392 |
+| `src/solver/search/sealed-corral.ts` | Created | 114 |
+| `src/solver/search/goal-commitment.ts` | Created | 100 |
+| `src/solver/search/exact-search-types.ts` | Updated | +3 counter fields |
+| `src/solver/search/exact-move-astar.ts` | Updated | +imports, +cache/detector init, +3 check sites |
+| `src/solver/search/ida-star.ts` | Updated | +imports, +cache/detector init, +3 check sites, +committedBoxes frame field |
+| `src/solver/search/engine.ts` | Updated | +3 counter fields in init and reporting |
+| `tests/unit/pattern-deadlock.test.ts` | Created | 10 tests |
+| `tests/unit/sealed-corral.test.ts` | Created | 7 tests |
+| `tests/unit/goal-commitment.test.ts` | Created | 7 tests |
+
+### Correctness gates
+
+All three families include oracle exhaustive tests on tiny boards: for every solvable (robot, boxes) configuration, verify no hard prune fires. Zero false positives across all families.
+
+| Test | Result |
+|---|---|
+| Pattern deadlock: known deadlock detected | PASS |
+| Pattern deadlock: known solvable → false | PASS |
+| Pattern deadlock: single box (< 2) → false | PASS |
+| Pattern deadlock: cutoff (stateLimit=1) → false | PASS |
+| Pattern deadlock: label-aware matching | PASS |
+| Pattern deadlock: statistics reported | PASS |
+| Pattern deadlock: cache limit respected | PASS |
+| Pattern deadlock: oracle exhaustive, 0 false positives | PASS |
+| Pattern deadlock: boxes on goals → false | PASS |
+| Pattern deadlock: box count > boxLimit → false | PASS |
+| Sealed corral: trivially sealed with misplaced box | PASS |
+| Sealed corral: keeper reaches all boxes → false | PASS |
+| Sealed corral: sealed but all on goals → false | PASS |
+| Sealed corral: no reachable support → deadlock | PASS |
+| Sealed corral: openable → false | PASS |
+| Sealed corral: statistics reported | PASS |
+| Sealed corral: oracle exhaustive, 0 false positives | PASS |
+| Goal commitment: corner-locked on goal → committed | PASS |
+| Goal commitment: not on goal → not committed | PASS |
+| Goal commitment: movable on goal → not committed | PASS |
+| Goal commitment: residual feasible → both committed | PASS |
+| Goal commitment: residual infeasible → not committed | PASS |
+| Goal commitment: statistics reported | PASS |
+| Goal commitment: multiple corners → both committed | PASS |
+| Goal commitment: oracle exhaustive, 0 false reductions | PASS |
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 861 tests, 149 suites, all pass (+25 new tests, +3 new suites)
+- `npm run build` — pass
+- `npm run test:solver:multi` — 4/4 pass (deterministic results unchanged)
+- `npm run test:solver:huge` — pass with SOKOMIND_TIMING_SCALE=2 (timing gate only; pruning does not affect legacy engine)

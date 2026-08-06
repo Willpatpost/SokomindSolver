@@ -34,6 +34,9 @@ export interface SearchCounters {
   generated: number;
   duplicates: number;
   deadlockPrunes: number;
+  patternDeadlockPrunes: number;
+  corralPrunes: number;
+  commitmentSkips: number;
   infeasiblePrunes: number;
   reopens: number;
   reachabilityFloods: number;

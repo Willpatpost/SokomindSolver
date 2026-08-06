@@ -23,6 +23,18 @@ import {
   isStaticDeadCell,
 } from "./deadlocks.ts";
 import {
+  createsPatternDeadlock,
+  PatternDeadlockCache,
+} from "./pattern-deadlock.ts";
+import {
+  hasSealedCorralDeadlock,
+  SealedCorralDetector,
+} from "./sealed-corral.ts";
+import {
+  findProvenCommitments,
+  GoalCommitmentDetector,
+} from "./goal-commitment.ts";
+import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
   fillOccupancy,
@@ -90,6 +102,9 @@ function createMetrics(
       retainedStates: arenaSize,
       duplicateStates: counters.duplicates,
       deadlockPrunes: counters.deadlockPrunes,
+      patternDeadlockPrunes: counters.patternDeadlockPrunes,
+      corralPrunes: counters.corralPrunes,
+      commitmentSkips: counters.commitmentSkips,
       infeasiblePrunes: counters.infeasiblePrunes,
       reopens: counters.reopens,
       reachabilityFloods: counters.reachabilityFloods,
@@ -181,6 +196,9 @@ export async function runExactMoveAStar(
     generated: 0,
     duplicates: 0,
     deadlockPrunes: 0,
+    patternDeadlockPrunes: 0,
+    corralPrunes: 0,
+    commitmentSkips: 0,
     infeasiblePrunes: 0,
     reopens: 0,
     reachabilityFloods: 0,
@@ -201,6 +219,9 @@ export async function runExactMoveAStar(
     const { cellCount } = board;
     const labels = [...board.goalCellsByLabel.keys()].sort();
     const reachability = new KeeperReachability(board);
+    const patternCache = new PatternDeadlockCache();
+    const corralDetector = new SealedCorralDetector(cellCount);
+    const commitmentDetector = new GoalCommitmentDetector();
     const exactCodec = createExactStateCodec(cellCount, labels);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
@@ -592,9 +613,20 @@ export async function runExactMoveAStar(
       const reachable = reachability.flood(robotCell, occupied);
       counters.reachabilityFloods += 1;
 
+      if (hasSealedCorralDeadlock(board, expansionBoxes, occupied, reachable, corralDetector)) {
+        counters.corralPrunes += 1;
+        continue;
+      }
+
+      const committedBoxes = findProvenCommitments(board, expansionBoxes, commitmentDetector);
+
       const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
 
       for (let boxIndex = 0; boxIndex < boxCount; boxIndex += 1) {
+        if (committedBoxes.has(boxIndex)) {
+          counters.commitmentSkips += 1;
+          continue;
+        }
         const box = expansionBoxes[boxIndex];
         const neighbors = board.neighbors[box.cell];
         if (!neighbors) continue;
@@ -654,6 +686,12 @@ export async function runExactMoveAStar(
           if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer)) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.deadlockPrunes += 1;
+            continue;
+          }
+
+          if (createsPatternDeadlock(board, expansionBoxes, destination, patternCache)) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+            counters.patternDeadlockPrunes += 1;
             continue;
           }
 
@@ -814,6 +852,7 @@ export async function runExactMoveAStar(
           retainedStates: 0,
           duplicateStates: counters.duplicates,
           deadlockPrunes: counters.deadlockPrunes,
+          patternDeadlockPrunes: counters.patternDeadlockPrunes,
           infeasiblePrunes: counters.infeasiblePrunes,
           reopens: counters.reopens,
           reachabilityFloods: counters.reachabilityFloods,

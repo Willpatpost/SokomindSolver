@@ -22,6 +22,18 @@ import {
   hasFreezeDeadlock,
   isStaticDeadCell,
 } from "./deadlocks.ts";
+import {
+  createsPatternDeadlock,
+  PatternDeadlockCache,
+} from "./pattern-deadlock.ts";
+import {
+  hasSealedCorralDeadlock,
+  SealedCorralDetector,
+} from "./sealed-corral.ts";
+import {
+  findProvenCommitments,
+  GoalCommitmentDetector,
+} from "./goal-commitment.ts";
 import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -80,6 +92,8 @@ interface StackFrame {
   readonly push?: PushRecord;
   /** Frozen box flags (computed once at expansion, stable across resumes). */
   frozenBoxes: boolean[] | null;
+  /** Proven committed box indices (computed once at first child generation). */
+  committedBoxes: ReadonlySet<number> | null;
   /** Which (boxIndex * 4 + directionIndex) to try next. */
   childCursor: number;
   /** Whether this node has been expanded (passed f-bound, TT, solved checks). */
@@ -99,6 +113,9 @@ interface SearchCounters {
   generated: number;
   duplicates: number;
   deadlockPrunes: number;
+  patternDeadlockPrunes: number;
+  corralPrunes: number;
+  commitmentSkips: number;
   infeasiblePrunes: number;
   reachabilityFloods: number;
   peakStackDepth: number;
@@ -317,6 +334,9 @@ function createMetrics(
       retainedStates: transpositionSize,
       duplicateStates: counters.duplicates,
       deadlockPrunes: counters.deadlockPrunes,
+      patternDeadlockPrunes: counters.patternDeadlockPrunes,
+      corralPrunes: counters.corralPrunes,
+      commitmentSkips: counters.commitmentSkips,
       infeasiblePrunes: counters.infeasiblePrunes,
       reopens: 0,
       reachabilityFloods: counters.reachabilityFloods,
@@ -401,6 +421,9 @@ export async function runIdaStarSearch(
     generated: 0,
     duplicates: 0,
     deadlockPrunes: 0,
+    patternDeadlockPrunes: 0,
+    corralPrunes: 0,
+    commitmentSkips: 0,
     infeasiblePrunes: 0,
     reachabilityFloods: 0,
     peakStackDepth: 0,
@@ -418,6 +441,9 @@ export async function runIdaStarSearch(
     throwIfSolverCancelled(context.signal);
     const board = compileSearchBoard(request.board);
     const reachability = new KeeperReachability(board);
+    const patternCache = new PatternDeadlockCache();
+    const corralDetector = new SealedCorralDetector(board.cellCount);
+    const commitmentDetector = new GoalCommitmentDetector();
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -730,6 +756,7 @@ export async function runIdaStarSearch(
         pushes: 0,
         g: initialG,
         frozenBoxes: null,
+        committedBoxes: null,
         childCursor: 0,
         expanded: false,
         reachabilitySnapshot: null,
@@ -960,7 +987,17 @@ export async function runIdaStarSearch(
           }
         }
 
+        if (frame.childCursor === 0 && hasSealedCorralDeadlock(board, frame.boxes, occupancyBuffer, reachable, corralDetector)) {
+          counters.corralPrunes += 1;
+          popFrame();
+          continue;
+        }
+
         const frozenBoxes = frame.frozenBoxes!;
+        if (frame.committedBoxes === null) {
+          frame.committedBoxes = findProvenCommitments(board, frame.boxes, commitmentDetector);
+        }
+        const committedBoxes = frame.committedBoxes;
         const boxCount = frame.boxes.length;
         const totalChildren = boxCount * SEARCH_DIRECTIONS.length;
         let foundChild = false;
@@ -973,6 +1010,10 @@ export async function runIdaStarSearch(
           const directionIndex = cursor % SEARCH_DIRECTIONS.length;
 
           if (frozenBoxes[boxIndex]) continue;
+          if (committedBoxes.has(boxIndex)) {
+            if (directionIndex === 0) counters.commitmentSkips += 1;
+            continue;
+          }
 
           const box = frame.boxes[boxIndex];
           if (!box) continue;
@@ -1033,6 +1074,11 @@ export async function runIdaStarSearch(
             continue;
           }
 
+          if (createsPatternDeadlock(board, newBoxes, destination, patternCache)) {
+            counters.patternDeadlockPrunes += 1;
+            continue;
+          }
+
           const distance = reachable.distanceTo(support);
           if (distance < 0) {
             throw new Error(
@@ -1054,6 +1100,7 @@ export async function runIdaStarSearch(
             g: newG,
             push: { boxCell: box.cell, directionIndex },
             frozenBoxes: null,
+            committedBoxes: null,
             childCursor: 0,
             expanded: false,
             reachabilitySnapshot: null,
