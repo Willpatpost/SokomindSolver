@@ -69,9 +69,6 @@ function packedIdentityIncremental(parentPacked, oldToken, newToken, board) {
     else { removePos = mid; break; }
   }
 
-  let insertPos = 0;
-  const len = parentSorted.length - 1;
-  lo = 0; hi = len - 1;
   let tempIdx = 0;
   for (let i = 0; i < parentSorted.length; i++) {
     if (i === removePos) continue;
@@ -84,7 +81,7 @@ function packedIdentityIncremental(parentPacked, oldToken, newToken, board) {
     if (sorted[mid] < newToken) lo = mid + 1;
     else hi = mid - 1;
   }
-  insertPos = lo;
+  const insertPos = lo;
 
   for (let i = tempIdx; i > insertPos; i--) sorted[i] = sorted[i - 1];
   sorted[insertPos] = newToken;

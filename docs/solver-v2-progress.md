@@ -1399,7 +1399,7 @@ correctness semantics changed.
 check:sokomind-solver: pass
 typecheck:   clean
 lint:        clean
-test:unit:   915 pass, 0 fail
+test:unit:   937 pass, 0 fail
 build:       clean (4.55s)
 solver:multi: 4/4 pass
 solver:huge:  1/1 pass (169s)
