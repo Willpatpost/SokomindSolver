@@ -19,6 +19,8 @@ import {
 import {
   AssignmentHeuristic,
   assignmentLowerBound,
+  minimumWalkToFirstPush,
+  minimumReachableWalkToLegalPush,
 } from "../../src/solver/search/heuristic.ts";
 import {
   canonicalBoxSignature,
@@ -402,5 +404,125 @@ describe("conservative deadlocks", () => {
 
     assert.equal(goalCells.length, 4);
     assert.equal(createsFullyBlockedTwoByTwoDeadlock(board, boxes), false);
+  });
+});
+
+describe("minimumWalkToFirstPush", () => {
+  it("returns 0 when player is adjacent to an off-goal box", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "ORX O",
+      "O  SO",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+    assert.equal(minimumWalkToFirstPush(board, playerCell, boxes), 0);
+  });
+
+  it("returns non-negative distance when player is far from boxes", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR    O",
+      "O     O",
+      "O   X O",
+      "O   S O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+    const dist = minimumWalkToFirstPush(board, playerCell, boxes);
+    assert.ok(dist >= 0, "Walk distance must be non-negative");
+    assert.ok(Number.isFinite(dist), "Walk distance must be finite");
+  });
+
+  it("returns 0 when all boxes are on goals", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OR  O",
+      "O  XO",
+      "O  SO",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const goalCells = [...(board.goalCellsByLabel.get("X") ?? [])];
+    const boxes: readonly DenseBox[] = goalCells.map((cell, i) => ({
+      id: `X:${i}`,
+      label: "X",
+      cell,
+    }));
+    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+    assert.equal(minimumWalkToFirstPush(board, playerCell, boxes), 0);
+  });
+});
+
+describe("minimumReachableWalkToLegalPush", () => {
+  it("returns 0 when all boxes are on goals", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OR  O",
+      "O  XO",
+      "O  SO",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const goalCells = [...(board.goalCellsByLabel.get("X") ?? [])];
+    const boxes: readonly DenseBox[] = goalCells.map((cell, i) => ({
+      id: `X:${i}`,
+      label: "X",
+      cell,
+    }));
+    const occupancy = new Uint8Array(board.cellCount);
+    for (const box of boxes) occupancy[box.cell] = 1;
+    const reachability = {
+      distanceTo: () => 0,
+      isReachable: () => true,
+    };
+    assert.equal(
+      minimumReachableWalkToLegalPush(board, boxes, occupancy, reachability),
+      0,
+    );
+  });
+
+  it("returns finite distance for reachable off-goal box", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR    O",
+      "O  X  O",
+      "O  S  O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const occupancy = new Uint8Array(board.cellCount);
+    for (const box of boxes) occupancy[box.cell] = 1;
+    const reachability = {
+      distanceTo: (cell: number) => cell >= 0 ? 2 : -1,
+      isReachable: () => true,
+    };
+    const result = minimumReachableWalkToLegalPush(board, boxes, occupancy, reachability);
+    assert.ok(Number.isFinite(result));
+    assert.ok(result >= 0);
+  });
+});
+
+describe("AssignmentHeuristic.resetStats", () => {
+  it("resets all stat counters to zero", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "ORX O",
+      "O  SO",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const heuristic = new AssignmentHeuristic(board, {});
+    heuristic.evaluate(boxes);
+    assert.ok(heuristic.stats.calls > 0);
+    heuristic.resetStats();
+    assert.equal(heuristic.stats.calls, 0);
+    assert.equal(heuristic.stats.cacheHits, 0);
   });
 });

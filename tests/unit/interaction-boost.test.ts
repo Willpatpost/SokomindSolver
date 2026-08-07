@@ -408,4 +408,34 @@ describe("interaction boost heuristic", () => {
     const boost = evaluator.evaluate(boxes, labelCosts);
     assert.ok(boost >= 0, "Boost must be non-negative");
   });
+
+  it("exposes roomPatternStats", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OSX   O",
+      "OOO OOO",
+      "O  SX O",
+      "OR    O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const stats = evaluator.roomPatternStats;
+    assert.ok(stats !== null && typeof stats === "object");
+  });
+
+  it("exposes pairConflictStats", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OSX   O",
+      "OOO OOO",
+      "O  SX O",
+      "OR    O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const stats = evaluator.pairConflictStats;
+    assert.ok(stats !== null && typeof stats === "object");
+  });
 });

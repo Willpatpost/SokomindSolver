@@ -402,4 +402,94 @@ describe("pattern deadlock detection", () => {
       false,
     );
   });
+
+  it("runs BFS on an eligible 1-wide corridor and detects a deadlock", () => {
+    // 1-cell-wide corridor: every cell has ≤2 floor neighbors → eligible.
+    // Boxes adjacent with goals far away → BFS finds no solution.
+    const parsed = parsePuzzleRows([
+      "OOO",
+      "O O",
+      "OXO",
+      "OXO",
+      "O O",
+      "OSO",
+      "OSO",
+      "ORO",
+      "OOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const cache = new PatternDeadlockCache();
+
+    const result = createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.equal(result, true, "Adjacent boxes in corridor cannot reach distant goals");
+  });
+
+  it("runs BFS on an eligible corridor and accepts a solvable configuration", () => {
+    // 1-cell-wide corridor with boxes spread apart and goals at each end.
+    // BFS can push each box to a nearby goal independently.
+    const parsed = parsePuzzleRows([
+      "OOO",
+      "OSO",
+      "OXO",
+      "O O",
+      "O O",
+      "OXO",
+      "OSO",
+      "ORO",
+      "OOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const cache = new PatternDeadlockCache();
+
+    const result = createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.equal(result, false, "Spread boxes can each reach a goal");
+  });
+
+  it("cache hit path returns stored BFS result", () => {
+    const parsed = parsePuzzleRows([
+      "OOO",
+      "O O",
+      "OXO",
+      "OXO",
+      "O O",
+      "OSO",
+      "OSO",
+      "ORO",
+      "OOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const cache = new PatternDeadlockCache();
+
+    const first = createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    const second = createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.equal(second, first, "Cache hit should return same result");
+    assert.ok(cache.stats.cacheHits >= 1, "Should register at least one cache hit");
+  });
+
+  it("clear() resets both window and pattern caches", () => {
+    const parsed = parsePuzzleRows([
+      "OOO",
+      "O O",
+      "OXO",
+      "OXO",
+      "O O",
+      "OSO",
+      "OSO",
+      "ORO",
+      "OOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const cache = new PatternDeadlockCache();
+
+    createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.ok(cache.stats.checks >= 1);
+    cache.clear();
+    // After clear, cache should miss (no pattern cache entries)
+    createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.equal(cache.stats.cacheHits, 0, "Cache should be empty after clear");
+  });
 });
