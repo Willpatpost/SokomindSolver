@@ -56,12 +56,37 @@ export function phaseLabel(phase: SolverPhase | undefined): string {
       return "Preparing search";
     case "searching":
       return "Searching states";
+    case "harvesting":
+      return "Harvesting alternatives";
     case "improving":
       return "Improving solution";
     case "verifying":
       return "Verifying solution";
+    case "proving":
+      return "Proving optimality";
     default:
       return "Waiting";
+  }
+}
+
+export function formatGap(gap: number | undefined): string {
+  if (gap === undefined) return "—";
+  if (gap === 0) return "0 (optimal)";
+  return String(gap);
+}
+
+export function formatProofAlgorithm(algorithm: string): string {
+  switch (algorithm) {
+    case "move-astar":
+      return "A* (exact moves)";
+    case "move-ida-star":
+      return "IDA* (exact moves)";
+    case "parallel-move-astar":
+      return "Parallel A* (exact moves)";
+    case "parallel-move-ida-star":
+      return "Parallel IDA* (exact moves)";
+    default:
+      return algorithm;
   }
 }
 

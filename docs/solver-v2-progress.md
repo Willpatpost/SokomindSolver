@@ -1660,3 +1660,73 @@ JSONL record fields: `schemaVersion`, `puzzleId`, `rows`, `solution`, `verified`
 5. **Checkpoint resume safety**: `lastExhaustedThreshold` preserved on resume (audit fix).
 6. **No browser emulation**: Uses `worker_threads` for parallelism (§19.1).
 7. **No new dependencies**: Node built-ins only.
+
+## Sprint 14 — UI, Rollout, and Final Verification
+
+**Date**: 2026-08-07
+**Spec sections**: §22 Sprint Plan (Sprint 14)
+
+### Summary
+
+Exposed Fast, Quality, and Optimal solver modes in the browser UI. Added proof metadata
+display (lower/upper bounds, gap, proof algorithm) to the solver dialog diagnostics. Reviewed
+all optimality wording to ensure "optimal" never appears without proof metadata backing it.
+
+### Modified files
+
+| File | Change |
+|---|---|
+| `src/features/solver/SolverDialog.tsx` | Added mode dropdown, proof-aware Guarantee field, proof details in diagnostics |
+| `src/features/solver/useSolverController.ts` | Added mode/setMode state, proof/liveProof surfacing |
+| `src/features/solver/use-solver-progress.ts` | Threads mode into `SolverRequest.options["sokomind-solver"]` |
+| `src/features/solver/solver-format.ts` | Added `formatGap`, `formatProofAlgorithm`, `harvesting`/`proving` phase labels |
+
+### Features
+
+1. **Mode selector**: Dropdown in solver dialog with Fast (default), Quality, and Optimal options.
+   Mode is passed through `SolverRequest.options["sokomind-solver"]` to `extractSokomindOptions`.
+2. **Proof-aware Guarantee field**: Shows "Proven optimal" (proof.kind === "optimal"), "Best found
+   (gap: N)" (bounded with gap), "Proven unsolvable", "Best found" (no proof, bounded solver),
+   or "First found" (fallback).
+3. **Proof details in diagnostics**: Lower bound, upper bound, gap, and proof algorithm shown in
+   the collapsible diagnostics section. Live bounds update during the proving phase.
+4. **Phase labels**: Added "Harvesting alternatives" and "Proving optimality" to the phase label
+   formatter for quality/optimal mode phases.
+
+### Optimality wording audit
+
+| Location | Verdict |
+|---|---|
+| `SolverDialog.tsx` Guarantee | Changed from bare "Optimal" to proof-metadata-gated "Proven optimal" |
+| `SolverDialog.tsx` Save button | Already gated on `optimality === "proven"` — no change |
+| `GameSidebar.tsx` Optimal badge | Sourced from persisted proven-optimal records — safe |
+| `CompletionDialog.tsx` "★ Optimal solution" | Only shown when player matches a proven-optimal record — safe |
+| `PuzzleListView.tsx` star icon | Sourced from puzzle data — safe |
+
+### Audit fixes (post-implementation)
+
+1. **MEDIUM — Missing parallel proof algorithm labels**: `formatProofAlgorithm` now handles
+   `parallel-move-astar` and `parallel-move-ida-star` with friendly labels instead of raw strings.
+2. **MEDIUM — Cancelled results with proof silently dropped**: Controller now extracts proof from
+   any result status (`run.result?.proof ?? null`) instead of only solved/unsolved.
+3. **LOW — E2e assertion too loose**: `toContainText("Optimal")` tightened to
+   `toContainText("Proven optimal")` and added assertions for proof details (Lower bound, Gap).
+4. **LOW — No e2e test for mode dropdown**: Added mode dropdown assertions (default value, option
+   count and labels) to the existing configuration accessibility test.
+
+### Test results
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- `npm run test:unit` — 1022 tests, all pass
+- `npm run build` — clean
+- `npm run test:solver:multi` — 4/4 pass
+
+### Invariants verified
+
+1. **Fast is default**: No behavior change for users who don't touch the mode selector.
+2. **No false optimality claims**: "Proven optimal" requires `proof.kind === "optimal"`.
+3. **Hint system untouched**: Independent worker, independent code path.
+4. **Proof details in diagnostics**: Keeps the simple case clean for ordinary users.
+5. **E2e tests updated**: "Proven optimal" assertion, proof detail assertions, mode dropdown
+   assertions added.

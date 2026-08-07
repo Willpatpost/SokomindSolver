@@ -55,6 +55,7 @@ export function useSolverController({
 }: UseSolverControllerOptions) {
   const [timeLimitMs, setTimeLimitMs] = useState(60_000);
   const [memoryLimitMiB, setMemoryLimitMiB] = useState(0);
+  const [mode, setMode] = useState<"fast" | "quality" | "optimal">("fast");
   const [uiPhase, setUiPhase] = useState<SolverUiPhase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] =
@@ -92,6 +93,7 @@ export function useSolverController({
     selectedSolverId: worker.selectedSolverId,
     timeLimitMs,
     memoryLimitMiB,
+    mode,
     solvers: worker.solvers,
   });
 
@@ -121,6 +123,14 @@ export function useSolverController({
   const frontierSize =
     run.progress?.frontierSize ?? (run.result ? 0 : undefined);
   const peakFrontierSize = terminalMetrics?.peakFrontierSize;
+  const proof = run.result?.proof ?? null;
+  const liveProof = run.progress
+    ? {
+        lowerBound: run.progress.lowerBound,
+        upperBound: run.progress.upperBound,
+        gap: run.progress.gap,
+      }
+    : null;
   const running = uiPhase === "running" || uiPhase === "cancelling";
   const currentFingerprint = fingerprintFor(session);
   const canPlay =
@@ -138,8 +148,12 @@ export function useSolverController({
     setTimeLimitMs,
     memoryLimitMiB,
     setMemoryLimitMiB,
+    mode,
+    setMode,
     uiPhase,
     running,
+    proof,
+    liveProof,
     progress: run.progress,
     result: run.result,
     resultSolver,

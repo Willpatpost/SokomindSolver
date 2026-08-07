@@ -76,6 +76,14 @@ test("discovers five move-search algorithms and exposes an accessible configurat
   await expect(algorithm.locator("option")).toHaveCount(5);
   await expect(dialog.getByLabel("Objective")).toHaveCount(0);
   await expect(dialog.getByLabel("Time limit")).toHaveValue("60000");
+
+  const mode = dialog.getByLabel("Mode");
+  await expect(mode).toHaveValue("fast");
+  await expect(mode.locator("option")).toHaveCount(3);
+  await expect(mode.locator("option").nth(0)).toHaveText("Fast");
+  await expect(mode.locator("option").nth(1)).toHaveText("Quality");
+  await expect(mode.locator("option").nth(2)).toHaveText("Optimal");
+
   await expect(dialog.getByRole("button", { name: "Start search" })).toBeEnabled();
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await expect(dialog.getByRole("heading", { name: "Status log" })).toBeVisible();
@@ -118,10 +126,12 @@ test("solves First Steps with A* and plays the verified route", async ({
   ).toBeVisible();
   await expect(dialog).toContainText("Found 1 moves and 1 pushes.");
   await expect(dialog).toContainText("Found by A* Search.");
-  await expect(dialog).toContainText("Optimal");
+  await expect(dialog).toContainText("Proven optimal");
   await dialog.getByText("Search diagnostics").click();
   await expect(dialog).toContainText("Unique states");
   await expect(dialog).toContainText("Estimated memory");
+  await expect(dialog).toContainText("Lower bound");
+  await expect(dialog).toContainText("Gap");
 
   await dialog.getByRole("button", { name: "Play solution" }).click();
   await expect(dialog).toBeHidden();

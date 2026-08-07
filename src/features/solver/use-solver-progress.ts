@@ -20,6 +20,7 @@ export interface UseSolverProgressOptions extends SolverSharedState {
   runRef: React.RefObject<SolverRunHandle | null>;
   runTokenRef: React.RefObject<number>;
   selectedSolverId: string; timeLimitMs: number; memoryLimitMiB: number;
+  mode: "fast" | "quality" | "optimal";
   solvers: readonly SolverMetadata[];
 }
 
@@ -27,7 +28,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
   const {
     session, open, uiPhase, setUiPhase, setStatusMessage, setError, appendLog,
     resetLog, setLiveElapsedMs, elapsedRef, startedAtRef, clientRef, runRef,
-    runTokenRef, selectedSolverId, timeLimitMs, memoryLimitMiB, solvers,
+    runTokenRef, selectedSolverId, timeLimitMs, memoryLimitMiB, mode, solvers,
   } = opts;
   const [progress, setProgress] = useState<SolverProgress | null>(null);
   const [result, setResult] = useState<SolverResult | null>(null);
@@ -94,6 +95,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
       handle = client.run(md.id, {
         board: session.board, snapshot: session.snapshot, objective: { kind: "moves" },
         limits: { maxMemoryBytes: maxMem, ...(timeLimitMs > 0 ? { maxElapsedMs: timeLimitMs } : {}) },
+        options: { "sokomind-solver": { mode } },
       }, {
         onProgress(u) {
           if (runTokenRef.current !== token) return;
@@ -134,7 +136,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
       const msg = errorMessage(caught); setUiPhase("error"); setError(msg);
       setStatusMessage(`Search failed: ${msg}`); appendLog(msg, "error", elapsedRef.current);
     });
-  }, [appendLog, memoryLimitMiB, selectedSolver, session, timeLimitMs, uiPhase,
+  }, [appendLog, memoryLimitMiB, mode, selectedSolver, session, timeLimitMs, uiPhase,
     clientRef, runTokenRef, runRef, startedAtRef, setLiveElapsedMs, resetLog,
     setUiPhase, setStatusMessage, setError, elapsedRef, resetRunState]);
 

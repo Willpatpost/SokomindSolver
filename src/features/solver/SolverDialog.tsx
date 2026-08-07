@@ -7,6 +7,8 @@ import {
   formatBytes,
   formatCount,
   formatDuration,
+  formatGap,
+  formatProofAlgorithm,
   formatRate,
   phaseLabel,
   resultSummary,
@@ -184,6 +186,26 @@ export function SolverDialog({
                     ))}
                   </select>
                 </label>
+
+                <label>
+                  <span>Mode</span>
+                  <select
+                    disabled={solver.running}
+                    onChange={(event) =>
+                      solver.setMode(
+                        event.currentTarget.value as
+                          | "fast"
+                          | "quality"
+                          | "optimal",
+                      )
+                    }
+                    value={solver.mode}
+                  >
+                    <option value="fast">Fast</option>
+                    <option value="quality">Quality</option>
+                    <option value="optimal">Optimal</option>
+                  </select>
+                </label>
               </div>
 
               {solver.selectedSolver ? (
@@ -326,6 +348,44 @@ export function SolverDialog({
                         {formatBytes(solver.counters.estimatedMemoryBytes)}
                       </dd>
                     </div>
+                    {solver.proof || solver.liveProof ? (
+                      <>
+                        <div>
+                          <dt>Lower bound</dt>
+                          <dd>
+                            {formatCount(
+                              solver.proof?.lowerBound ??
+                                solver.liveProof?.lowerBound,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Upper bound</dt>
+                          <dd>
+                            {formatCount(
+                              solver.proof?.upperBound ??
+                                solver.liveProof?.upperBound,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Gap</dt>
+                          <dd>
+                            {formatGap(
+                              solver.proof?.gap ?? solver.liveProof?.gap,
+                            )}
+                          </dd>
+                        </div>
+                        {solver.proof?.algorithm ? (
+                          <div>
+                            <dt>Proof algorithm</dt>
+                            <dd>
+                              {formatProofAlgorithm(solver.proof.algorithm)}
+                            </dd>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                   </dl>
                 </details>
               ) : null}
@@ -368,12 +428,16 @@ export function SolverDialog({
                       <div>
                         <dt>Guarantee</dt>
                         <dd>
-                          {solvedResult.solution.optimality === "proven"
-                            ? "Optimal"
-                            : solver.resultSolver?.capabilities.quality ===
-                                "bounded"
-                              ? "Best found"
-                              : "First found"}
+                          {solver.proof?.kind === "optimal"
+                            ? "Proven optimal"
+                            : solver.proof?.kind === "bounded"
+                              ? `Best found (gap: ${formatGap(solver.proof.gap)})`
+                              : solver.proof?.kind === "unsolvable"
+                                ? "Proven unsolvable"
+                                : solver.resultSolver?.capabilities.quality ===
+                                    "bounded"
+                                  ? "Best found"
+                                  : "First found"}
                         </dd>
                       </div>
                     </dl>
