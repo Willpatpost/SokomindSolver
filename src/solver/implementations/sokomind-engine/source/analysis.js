@@ -451,14 +451,14 @@ function reachablePathsReference(state, board) {
 }
 
 function denseOccupancy(state, board) {
-  return denseBoxLayout(state.boxes, board).indexByCell;
+  return ensureIndexByCell(denseBoxLayout(state.boxes, board), board);
 }
 
 function reachablePaths(state, board) {
   const started = now();
   board.metrics.reachabilityCalls++;
   const {dense} = board, layout = denseBoxLayout(state.boxes, board);
-  const occupied = layout.indexByCell;
+  const occupied = ensureIndexByCell(layout, board);
   const start = cellId(state.robot[0], state.robot[1], dense);
   // Reachability geometry is permutation-invariant, but occupied cell values are
   // box indices consumed by push generation. Keep the order-sensitive layout key.
@@ -1945,7 +1945,7 @@ function createsSealedCorralDeadlock(state, board, reachable) {
         ];
         const destination = dense.neighbors[box * DIRECTION_ENTRIES.length + direction];
         return reachable.hasId(support) && destination >= 0 &&
-          layout.indexByCell[destination] < 0;
+          ensureIndexByCell(layout, board)[destination] < 0;
       });
     });
     if (!canOpen) return true;

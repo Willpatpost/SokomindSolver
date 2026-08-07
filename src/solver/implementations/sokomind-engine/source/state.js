@@ -19,20 +19,74 @@ function boxSignatureReference(boxes) {
 function packedIdentityFromTokens(tokens, board) {
   const sorted = Uint32Array.from(tokens);
   sorted.sort();
+  board.metrics.tokenFullSorts++;
   const shift = BigInt(board.dense.tokenBits);
   let identity = BigInt(tokens.length);
   for (const value of sorted) identity = (identity << shift) | BigInt(value);
-  // Pre-compute Zobrist hash for O(1) incremental identity derivation.
   const {zobristHi, zobristLo} = board.dense;
   let zHi = 0, zLo = 0;
   for (let i = 0; i < tokens.length; i++) {
     zHi = (zHi ^ zobristHi[tokens[i]]) >>> 0;
     zLo = (zLo ^ zobristLo[tokens[i]]) >>> 0;
   }
+  board.metrics.zobristFullRecomputations++;
   return {
     identity,
     zobristHi: zHi,
     zobristLo: zLo,
+    sortedTokens: sorted,
+    signature: [...sorted].map(value => value.toString(36)).join("."),
+  };
+}
+
+function packedIdentityIncremental(parentPacked, oldToken, newToken, board) {
+  const parentSorted = parentPacked.sortedTokens;
+  const sorted = new Uint32Array(parentSorted.length);
+  board.metrics.tokenIncrementalInsertions++;
+
+  let removePos = 0;
+  let lo = 0, hi = parentSorted.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (parentSorted[mid] < oldToken) lo = mid + 1;
+    else if (parentSorted[mid] > oldToken) hi = mid - 1;
+    else { removePos = mid; break; }
+  }
+
+  let insertPos = 0;
+  const len = parentSorted.length - 1;
+  lo = 0; hi = len - 1;
+  let tempIdx = 0;
+  for (let i = 0; i < parentSorted.length; i++) {
+    if (i === removePos) continue;
+    sorted[tempIdx++] = parentSorted[i];
+  }
+
+  lo = 0; hi = tempIdx - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] < newToken) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  insertPos = lo;
+
+  for (let i = tempIdx; i > insertPos; i--) sorted[i] = sorted[i - 1];
+  sorted[insertPos] = newToken;
+
+  const shift = BigInt(board.dense.tokenBits);
+  let identity = BigInt(sorted.length);
+  for (const value of sorted) identity = (identity << shift) | BigInt(value);
+
+  const {zobristHi, zobristLo} = board.dense;
+  const zHi = (parentPacked.zobristHi ^ zobristHi[oldToken] ^ zobristHi[newToken]) >>> 0;
+  const zLo = (parentPacked.zobristLo ^ zobristLo[oldToken] ^ zobristLo[newToken]) >>> 0;
+  board.metrics.zobristIncrementalUpdates++;
+
+  return {
+    identity,
+    zobristHi: zHi,
+    zobristLo: zLo,
+    sortedTokens: sorted,
     signature: [...sorted].map(value => value.toString(36)).join("."),
   };
 }
@@ -63,7 +117,7 @@ function denseBoxLayout(boxes, board) {
   }
   const packed = valid
     ? packedIdentityFromTokens(tokens, board)
-    : {identity: null, signature: boxSignatureReference(boxes)};
+    : {identity: null, sortedTokens: null, signature: boxSignatureReference(boxes)};
   const layout = {
     cells,
     labels,
@@ -80,6 +134,18 @@ function denseBoxLayout(boxes, board) {
   return layout;
 }
 
+function ensureIndexByCell(layout, board) {
+  if (layout.indexByCell) return layout.indexByCell;
+  const indexByCell = new Int32Array(board.dense.keys.length);
+  indexByCell.fill(-1);
+  for (let i = 0; i < layout.cells.length; i++) {
+    indexByCell[layout.cells[i]] = i;
+  }
+  layout.indexByCell = indexByCell;
+  board.metrics.workspaceAllocations++;
+  return indexByCell;
+}
+
 function deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, board) {
   const parent = denseBoxLayout(parentBoxes, board);
   if (!parent.valid) {
@@ -89,31 +155,25 @@ function deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, b
   const cells = parent.cells.slice();
   const labels = parent.labels;
   const tokens = parent.tokens.slice();
-  const indexByCell = parent.indexByCell.slice();
-  const occupancyBits = parent.occupancyBits.slice();
   const previousId = cells[changedIndex];
   const oldToken = tokens[changedIndex];
   cells[changedIndex] = destinationId;
   const newToken = labels[changedIndex] * board.dense.keys.length + destinationId;
   tokens[changedIndex] = newToken;
-  indexByCell[previousId] = -1;
-  indexByCell[destinationId] = changedIndex;
-  occupancyBits[previousId >>> 5] &= ~(1 << (previousId & 31));
-  occupancyBits[destinationId >>> 5] |= 1 << (destinationId & 31);
-  const packed = packedIdentityFromTokens(tokens, board);
+  const packed = packedIdentityIncremental(parent, oldToken, newToken, board);
   board.denseBoxMemo.set(boxes, {
     cells,
     labels,
     tokens,
     orderedSignature: tokens.join("."),
-    indexByCell,
-    occupancyBits,
+    indexByCell: null,
+    occupancyBits: null,
     valid: true,
     ...packed,
   });
   board.metrics.denseLayoutDerivations++;
-  board.metrics.occupancyWordCopies += occupancyBits.length;
   board.metrics.denseIdentityUpdates++;
+  board.metrics.workspacePoolReuses++;
 }
 
 function cachedPushedBoxes(parentBoxes, changedIndex, destinationId, label, board) {
@@ -131,11 +191,10 @@ function cachedPushedBoxes(parentBoxes, changedIndex, destinationId, label, boar
     label,
   ];
   deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, board);
-  if (board.pushTransitionMemo.size >= PUSH_TRANSITION_MEMO_LIMIT) {
-    board.pushTransitionMemo.delete(board.pushTransitionMemo.keys().next().value);
-    board.metrics.denseTransitionCacheEvictions++;
-  }
+  const prevEvictions = board.pushTransitionMemo.evictions || 0;
   board.pushTransitionMemo.set(key, boxes);
+  const newEvictions = board.pushTransitionMemo.evictions || 0;
+  board.metrics.denseTransitionCacheEvictions += newEvictions - prevEvictions;
   return boxes;
 }
 
@@ -212,8 +271,10 @@ const SokomindState = {
   cellId,
   boxSignatureReference,
   packedIdentityFromTokens,
+  packedIdentityIncremental,
   denseBoxLayout,
   deriveDenseBoxLayout,
+  ensureIndexByCell,
   cachedPushedBoxes,
   boxSignature,
   packedBoxIdentity,

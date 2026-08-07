@@ -48,7 +48,59 @@ const GOAL_COMMITMENT = Object.freeze({
   PROVEN: "proven",
 });
 
+class ClockCache {
+  constructor(capacity) {
+    this._capacity = capacity;
+    this._keys = new Array(capacity).fill(undefined);
+    this._values = new Array(capacity).fill(undefined);
+    this._ref = new Uint8Array(capacity);
+    this._index = new Map();
+    this._hand = 0;
+    this._size = 0;
+    this.evictions = 0;
+  }
+  get(key) {
+    const slot = this._index.get(key);
+    if (slot === undefined) return undefined;
+    this._ref[slot] = 1;
+    return this._values[slot];
+  }
+  has(key) { return this._index.has(key); }
+  set(key, value) {
+    const existing = this._index.get(key);
+    if (existing !== undefined) {
+      this._values[existing] = value;
+      this._ref[existing] = 1;
+      return;
+    }
+    if (this._size >= this._capacity) {
+      while (this._ref[this._hand]) {
+        this._ref[this._hand] = 0;
+        this._hand = (this._hand + 1) % this._capacity;
+      }
+      const victim = this._hand;
+      if (this._keys[victim] !== undefined) {
+        this._index.delete(this._keys[victim]);
+        this.evictions++;
+      }
+      this._keys[victim] = key;
+      this._values[victim] = value;
+      this._ref[victim] = 1;
+      this._index.set(key, victim);
+      this._hand = (victim + 1) % this._capacity;
+      return;
+    }
+    const slot = this._size++;
+    this._keys[slot] = key;
+    this._values[slot] = value;
+    this._ref[slot] = 1;
+    this._index.set(key, slot);
+  }
+  get size() { return this._index.size; }
+}
+
 function memoLookup(memo, key) {
+  if (memo instanceof ClockCache) return memo.get(key);
   const value = memo.get(key);
   if (value !== undefined) {
     memo.delete(key);
@@ -58,6 +110,7 @@ function memoLookup(memo, key) {
 }
 
 function memoizeBounded(memo, key, value, limit = HEURISTIC_MEMO_LIMIT) {
+  if (memo instanceof ClockCache) { memo.set(key, value); return value; }
   if (memo.size >= limit) memo.delete(memo.keys().next().value);
   memo.set(key, value);
   return value;
@@ -123,6 +176,7 @@ const SokomindMemo = {
   GOAL_COMMITMENT,
   memoizeBounded,
   BoundedDepthMap,
+  ClockCache,
 };
 if (typeof globalThis !== "undefined") globalThis.SokomindMemo = SokomindMemo;
 if (typeof module === "object" && module.exports) module.exports = SokomindMemo;

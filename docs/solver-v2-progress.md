@@ -1334,3 +1334,95 @@ solver:huge:  1/1 pass (227s)
 3. **Monotonic improvement**: `selectBest()` picks lowest moves → pushes → discoveryOrder.
 4. **Harvest is bounded**: Never exceeds `min(configured, 10% of request time)`, minimum 500ms.
 5. **Rewrite budget divided**: N incumbents each get 1/N of the configured rewrite budget.
+
+## Sprint 11 — Production Engine State Efficiency
+
+**Date**: 2026-08-06
+**Spec sections**: §15.1–15.4
+
+### Summary
+
+Pure performance sprint targeting the engine's state manipulation hot path — the
+most frequently called code during successor generation. All changes are in the
+engine source files (`source/state.js`, `source/memo.js`, `source/metrics.js`),
+regenerated into `engine.generated.js`. No TypeScript solver files changed. No
+correctness semantics changed.
+
+### Changes
+
+**§15.1 — Incremental Zobrist update** (`state.js`)
+- Added `packedIdentityIncremental()`: computes child Zobrist hash as
+  `parent XOR hash(oldToken) XOR hash(newToken)` — O(1) per child state
+  instead of O(N) full recomputation.
+- `deriveDenseBoxLayout` uses incremental path when parent layout is available.
+
+**§15.2 — Ordered token reinsertion** (`state.js`)
+- `packedIdentityFromTokens` now returns `sortedTokens` field.
+- `packedIdentityIncremental` does binary-search remove + insert on the parent's
+  sorted token array — O(N) shift instead of O(N log N) sort.
+
+**§15.3 — Workspace pooling / lazy materialization** (`state.js`, `analysis.js`, `solver-search.js`)
+- `deriveDenseBoxLayout` sets `indexByCell: null` and `occupancyBits: null` in
+  derived child layouts, eliminating 2 `.slice()` typed-array copies per derivation.
+- Added `ensureIndexByCell()` helper for lazy materialization on first access.
+- Updated 5 consumer sites in `analysis.js` and `solver-search.js` to use
+  `ensureIndexByCell(layout, board)`.
+
+**§15.4 — Clock replacement cache** (`memo.js`, `board.js`)
+- Added `ClockCache` class with clock sweep eviction — cache hits set a reference
+  bit (no Map delete+set GC pressure), eviction sweeps for unreferenced slots.
+- Converted 4 hottest caches from `new Map()` to `ClockCache`:
+  `heuristicMemo` (100K), `deadlockMemo` (50K), `patternDeadlockMemo` (50K),
+  `pushTransitionMemo` (10K).
+- Updated `memoLookup` and `memoizeBounded` to detect ClockCache instances.
+
+**Observability** (`metrics.js`)
+- Added 6 new counters: `zobristFullRecomputations`, `zobristIncrementalUpdates`,
+  `tokenFullSorts`, `tokenIncrementalInsertions`, `workspaceAllocations`,
+  `workspacePoolReuses`.
+
+### Files modified
+
+| File | Changes |
+|---|---|
+| `source/state.js` | `packedIdentityIncremental`, `ensureIndexByCell`, sorted tokens, lazy indexByCell |
+| `source/memo.js` | `ClockCache` class, `memoLookup`/`memoizeBounded` ClockCache detection |
+| `source/metrics.js` | 6 new counter fields |
+| `source/board.js` | 4 memos converted to ClockCache (both init sites) |
+| `source/analysis.js` | 3 sites → `ensureIndexByCell` |
+| `source/solver-search.js` | 2 sites → `ensureIndexByCell` |
+| `engine.generated.js` | Regenerated |
+
+### Test results
+
+```
+check:sokomind-solver: pass
+typecheck:   clean
+lint:        clean
+test:unit:   915 pass, 0 fail
+build:       clean (4.55s)
+solver:multi: 4/4 pass
+solver:huge:  1/1 pass (169s)
+```
+
+### Grand Hall deterministic route
+
+| Orientation | Moves | Pushes | Visited | Generated |
+|---|---|---|---|---|
+| base | 1010 | 316 | 1843 | 13844 |
+| mirrored | 1010 | 316 | 1843 | 13844 |
+| rotated | 1010 | 316 | 1843 | 13844 |
+
+Route unchanged from Sprint 10.
+
+### Invariants verified
+
+1. **No correctness change**: Identical solutions, identical pruning decisions, identical
+   proof results across all test suites.
+2. **Grand Hall route unchanged**: Same 1010-move, 316-push solution in all 3 orientations.
+3. **Source → generated pipeline**: All edits in source files, regenerated via
+   `npm run prepare:sokomind-solver`.
+4. **Workspace lifetime**: `ensureIndexByCell` lazily materializes — derived layouts skip
+   allocation, consumers reconstruct on demand.
+5. **Cache correctness**: Clock replacement is a pure performance change — cache misses
+   cause redundant work, not incorrect results.

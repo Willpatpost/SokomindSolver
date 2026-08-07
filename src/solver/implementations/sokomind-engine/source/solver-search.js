@@ -494,7 +494,7 @@ function fessPackingOrder(board) {
 
 function fessConnectivityRegions(boxes, board) {
   const {dense} = board;
-  const occupied = denseBoxLayout(boxes, board).indexByCell;
+  const occupied = ensureIndexByCell(denseBoxLayout(boxes, board), board);
   const seen = new Uint8Array(dense.keys.length);
   const queue = new Uint32Array(dense.keys.length);
   let regions = 0;
@@ -3397,7 +3397,7 @@ function pushPermutationSearch(payload, path, board, maxVisited = 10000) {
         : {path: null, visited, generated, peakFrontier};
     }
     const reachable = reachablePaths(state, board);
-    const occupied = denseBoxLayout(state.boxes, board).indexByCell;
+    const occupied = ensureIndexByCell(denseBoxLayout(state.boxes, board), board);
     for (let boxIndex = 0; boxIndex < chains.length; boxIndex++) {
       const action = chains[boxIndex][state.progress[boxIndex]];
       if (!action) continue;

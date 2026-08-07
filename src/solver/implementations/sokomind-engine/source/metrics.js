@@ -193,6 +193,12 @@ function createPerformanceMetrics() {
     patternCanonicalizations: 0,
     recursiveFreezeChecks: 0,
     recursiveFreezeBoxes: 0,
+    zobristFullRecomputations: 0,
+    zobristIncrementalUpdates: 0,
+    tokenFullSorts: 0,
+    tokenIncrementalInsertions: 0,
+    workspaceAllocations: 0,
+    workspacePoolReuses: 0,
   };
   samplePerformanceMemory(metrics);
   return metrics;
