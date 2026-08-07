@@ -1551,3 +1551,112 @@ Self-audit against spec §17–§18 identified three bugs, all fixed:
    L only increases (partition trackers track max lower bound).
 5. **No partition overlap**: Partition IDs are canonical post-push state keys.
 6. **Browser safety**: `proofParallelism = 1` by default; parallel workers require explicit opt-in.
+
+## Sprint 13 — Node/HPC Runner
+
+**Date**: 2026-08-07
+**Spec sections**: §19 (Node/HPC Runner), §19.1–19.4
+
+### Summary
+
+Created a Node CLI runner (`scripts/solve-sokomind.ts`) and IDA* checkpoint/resume
+system. The solver can now run headless on Waterfield or any Node environment with
+deterministic JSONL output, `worker_threads`-based parallelism, and job-array-safe input.
+
+### New files
+
+| File | Purpose |
+|---|---|
+| `scripts/solve-sokomind.ts` | CLI entry point with JSONL output (§19.3) |
+| `src/solver/search/ida-star-checkpoint.ts` | Checkpoint schema, serialization, validation (§19.4) |
+| `src/solver/node-runner.ts` | `createNodeSolverAdapter` using `worker_threads` (§19.1) |
+| `src/solver/implementations/sokomind-engine.node-worker.ts` | Node engine worker wrapper |
+| `src/solver/implementations/sokomind-proof.node-worker.ts` | Node proof worker wrapper |
+| `tests/unit/ida-star-checkpoint.test.ts` | 25 checkpoint tests |
+| `tests/unit/node-runner.test.ts` | 8 CLI/JSONL output tests |
+
+### Modified files
+
+| File | Change |
+|---|---|
+| `src/solver/search/ida-star.ts` | Added `checkpoint`, `onCheckpoint`, `checkpointContext` options |
+| `src/solver/implementations/sokomind-solver.ts` | Fixed fractional `maxElapsedMs` in `withRemainingLimits` |
+| `package.json` | Added `solve` script |
+
+### Features
+
+1. **CLI runner** (`npm run solve -- --puzzle=<id>`): Parses puzzle from catalog, JSON file, or
+   stdin. Produces a single JSONL record to stdout with 22 fields covering solution, verification,
+   proof status, metrics, and configuration. Progress is reported to stderr.
+2. **IDA* checkpointing**: Between-iteration checkpoint snapshots (§19.4) with 11 fields including
+   board content key, solver version, codec version, thresholds, incumbent, and counters. TT is
+   cleared between iterations so checkpoints are small and safe.
+3. **Checkpoint compatibility validation**: Rejects checkpoints with mismatched solver version,
+   board content key, objective, codec version, or schema version.
+4. **Node worker wrappers**: `worker_threads`-based workers that wrap `parentPort` to match the
+   browser `Worker` interface. Engine worker imports `dispatchEngineCommand` directly; proof worker
+   mirrors `sokomind-proof-worker.ts` logic with `parentPort` instead of `self`.
+
+### Bug fix
+
+- **Fractional `maxElapsedMs`**: `withRemainingLimits` in `sokomind-solver.ts` computed
+  `Math.max(1, deadline - now())` which produced a float. The solver's own validation requires
+  integer `maxElapsedMs`. Fixed with `Math.ceil`.
+
+### CLI usage
+
+```bash
+# Solve a catalog puzzle
+npm run solve -- --puzzle=beginner-three
+
+# With timeout and mode
+npm run solve -- --puzzle=inter-rooms --mode=quality --timeout-ms=30000
+
+# From JSON input file
+npm run solve -- --input=job.json
+
+# Pipe from stdin
+echo '{"puzzleId":"test","rows":["OOOOO","OR O","O X O","O  SO","OOOOO"]}' | npm run solve
+```
+
+### Output schema (§19.3)
+
+JSONL record fields: `schemaVersion`, `puzzleId`, `rows`, `solution`, `verified`,
+`verificationDetail`, `lowerBound`, `upperBound`, `gap`, `proofStatus`, `proofAlgorithm`,
+`expandedStates`, `generatedStates`, `peakFrontierSize`, `counters`, `elapsedMs`, `mode`,
+`parallelism`, `deterministic`, `solverVersion`, `gitCommit`, `tuningFingerprint`.
+
+### Audit fixes (post-implementation)
+
+1. **HIGH — `lastExhaustedThreshold` overwrite on resume**: `ida-star.ts` line 711 unconditionally
+   set `lastExhaustedThreshold = initialH`, clobbering the value restored from checkpoint at line
+   457. Fixed: conditional on `!resumeCheckpoint`.
+2. **MEDIUM — Missing `memory` field in output (§19.3)**: Added top-level `memory` field to
+   `OutputRecord`, sourced from `counters.peakEstimatedMemoryBytes`.
+3. **MEDIUM — Missing input fields (§19.2)**: Added `solverVersion`, `gitCommit`,
+   `tuningFingerprint` to `JobInput` schema, parsed from JSON input.
+4. **MEDIUM — Shallow incumbent.solution validation**: Deserialization now validates `steps` (array),
+   `moves` (finite non-negative number), `pushes` (finite non-negative number).
+5. **MEDIUM — Counter validation too permissive**: Counter fields now reject `NaN`, `Infinity`, and
+   negative values.
+6. **MEDIUM — `parseInt` NaN in CLI args**: `--parallelism`, `--timeout-ms`, and `--memory-mib` now
+   validate parsed values; exit 1 on non-finite or non-positive input.
+
+### Test results
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- `npm run test:unit` — 1022 tests, 177 suites, all pass (+33 new tests)
+- `npm run test:solver:multi` — 4/4 pass
+- `npm run test:solver:huge` — pass (1010 moves, 316 pushes, deterministic)
+- `npm run test:coverage:typed:focused` — all coverage thresholds met
+
+### Invariants verified
+
+1. **No correctness change**: Node runner produces the same solutions as browser execution.
+2. **Grand Hall route unchanged**: 1010 moves, 316 pushes in all orientations.
+3. **Immutable JSONL output**: Single `process.stdout.write` per puzzle, one JSON line.
+4. **Checkpoint compatibility**: Mismatched version/board/codec → clear rejection with reason.
+5. **Checkpoint resume safety**: `lastExhaustedThreshold` preserved on resume (audit fix).
+6. **No browser emulation**: Uses `worker_threads` for parallelism (§19.1).
+7. **No new dependencies**: Node built-ins only.

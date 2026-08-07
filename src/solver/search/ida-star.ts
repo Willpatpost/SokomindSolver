@@ -1,4 +1,6 @@
 import { isSolverCancellation, throwIfSolverCancelled } from "../cancellation.ts";
+import type { IdaStarCheckpoint } from "./ida-star-checkpoint.ts";
+import { IDA_STAR_CHECKPOINT_SCHEMA_VERSION } from "./ida-star-checkpoint.ts";
 import type {
   SolutionStep,
   SolverExecutionContext,
@@ -64,6 +66,14 @@ export interface ExactMoveIdaStarOptions {
   readonly reachabilityPolicy?: IdaReachabilityPolicy;
   readonly snapshotPeriod?: number;
   readonly upperBoundChannel?: import("./exact-move-astar.ts").UpperBoundChannel;
+  readonly checkpoint?: import("./ida-star-checkpoint.ts").IdaStarCheckpoint;
+  readonly onCheckpoint?: (checkpoint: import("./ida-star-checkpoint.ts").IdaStarCheckpoint) => void;
+  readonly checkpointContext?: {
+    readonly boardContentKey: string;
+    readonly solverVersion: string;
+    readonly exactStateCodecVersion: number;
+    readonly partitionId: string | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -437,10 +447,20 @@ export async function runIdaStarSearch(
   };
   let transpositionSize = 0;
   let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
+
+  const resumeCheckpoint = options?.checkpoint ?? null;
   let incumbentSolution: SolverSolution | null =
+    resumeCheckpoint?.incumbent?.solution ??
     options?.incumbent?.solution ?? null;
-  let U = options?.incumbent?.cost ?? Infinity;
-  let lastExhaustedThreshold = 0;
+  let U = resumeCheckpoint?.incumbent?.cost ??
+    options?.incumbent?.cost ?? Infinity;
+  let lastExhaustedThreshold = resumeCheckpoint?.lastExhaustedThreshold ?? 0;
+
+  if (resumeCheckpoint) {
+    counters.expanded = resumeCheckpoint.counters.expanded;
+    counters.generated = resumeCheckpoint.counters.generated;
+    counters.iterations = resumeCheckpoint.counters.iterations;
+  }
 
   try {
     throwIfSolverCancelled(context.signal);
@@ -688,7 +708,7 @@ export async function runIdaStarSearch(
       initialBoxes,
     );
     const initialH = initialHPush + initialBoost + initialHWalk;
-    lastExhaustedThreshold = initialH;
+    if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
     const initialG = 0;
@@ -708,7 +728,9 @@ export async function runIdaStarSearch(
     // -------------------------------------------------------------------
     // IDA* main loop
     // -------------------------------------------------------------------
-    let fLimit = initialG + initialH;
+    let fLimit = resumeCheckpoint
+      ? resumeCheckpoint.currentThreshold
+      : initialG + initialH;
     let limitDetail: string | undefined;
 
     // Transposition table: cleared at the start of each iteration (§9.4).
@@ -716,6 +738,30 @@ export async function runIdaStarSearch(
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
     idaLoop: while (true) {
+      if (options?.onCheckpoint && options.checkpointContext) {
+        const ctx = options.checkpointContext;
+        const cp: IdaStarCheckpoint = {
+          schemaVersion: IDA_STAR_CHECKPOINT_SCHEMA_VERSION,
+          boardContentKey: ctx.boardContentKey,
+          solverVersion: ctx.solverVersion,
+          objective: request.objective,
+          exactStateCodecVersion: ctx.exactStateCodecVersion,
+          currentThreshold: fLimit,
+          lastExhaustedThreshold,
+          incumbent: incumbentSolution
+            ? { solution: incumbentSolution, cost: U }
+            : null,
+          partitionId: ctx.partitionId,
+          transpositionMetadata: { policy: "clear-per-iteration" },
+          counters: {
+            expanded: counters.expanded,
+            generated: counters.generated,
+            iterations: counters.iterations,
+          },
+        };
+        options.onCheckpoint(cp);
+      }
+
       counters.iterations += 1;
       let nextLimit = Number.POSITIVE_INFINITY;
 

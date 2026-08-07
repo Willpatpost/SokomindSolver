@@ -2122,7 +2122,7 @@ function withRemainingLimits(
       ...original,
       ...(remainingMs === undefined
         ? {}
-        : { maxElapsedMs: Math.max(1, remainingMs) }),
+        : { maxElapsedMs: Math.max(1, Math.ceil(remainingMs)) }),
       ...(remainingExpanded === undefined
         ? {}
         : { maxExpandedStates: Math.max(1, remainingExpanded) }),

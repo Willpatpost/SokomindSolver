@@ -31,6 +31,7 @@
     "test:solver:multi": "node --experimental-strip-types --test tests/performance/sokomind-solver-multi.test.ts",
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
+    "solve": "node --experimental-strip-types scripts/solve-sokomind.ts",
     "test:static": "node --test tests/static-build.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
