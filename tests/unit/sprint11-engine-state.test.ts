@@ -11,16 +11,14 @@ import { toLegacyState } from "../../src/solver/implementations/sokomind-solver.
 
 // Source files register on globalThis when imported as ESM.
 // Import in dependency order: metrics → memo → state.
-await import(
-  "../../src/solver/implementations/sokomind-engine/source/metrics.js"
-);
-await import(
-  "../../src/solver/implementations/sokomind-engine/source/memo.js"
-);
-await import(
-  "../../src/solver/implementations/sokomind-engine/source/state.js"
-);
+// @ts-expect-error — untyped engine source JS
+await import("../../src/solver/implementations/sokomind-engine/source/metrics.js");
+// @ts-expect-error — untyped engine source JS
+await import("../../src/solver/implementations/sokomind-engine/source/memo.js");
+// @ts-expect-error — untyped engine source JS
+await import("../../src/solver/implementations/sokomind-engine/source/state.js");
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const g = globalThis as any;
 const ClockCache = g.SokomindMemo.ClockCache;
 const { packedIdentityFromTokens, packedIdentityIncremental, ensureIndexByCell } =
@@ -252,7 +250,7 @@ describe("ensureIndexByCell", () => {
     };
     const layout = {
       cells: Uint32Array.from([2, 5, 8]),
-      indexByCell: null as any,
+      indexByCell: null as Int32Array | null,
     };
 
     const result = ensureIndexByCell(layout, board);
@@ -287,7 +285,7 @@ describe("ensureIndexByCell", () => {
     };
     const layout = {
       cells: Uint32Array.from([1, 4]),
-      indexByCell: null as any,
+      indexByCell: null as Int32Array | null,
     };
 
     const first = ensureIndexByCell(layout, board);
@@ -302,7 +300,7 @@ describe("ensureIndexByCell", () => {
     };
     const layout = {
       cells: Uint32Array.from([0, 3]),
-      indexByCell: null as any,
+      indexByCell: null as Int32Array | null,
     };
 
     const before = board.metrics.workspaceAllocations;
