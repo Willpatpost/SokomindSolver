@@ -1426,3 +1426,128 @@ Route unchanged from Sprint 10.
    allocation, consumers reconstruct on demand.
 5. **Cache correctness**: Clock replacement is a pure performance change — cache misses
    cause redundant work, not incorrect results.
+
+## Sprint 12 — Concurrent and Parallel Proof
+
+**Date**: 2026-08-07
+**Spec sections**: §17 (Dynamic Upper-Bound Updates), §17.1–17.2, §18 (Parallel Exact Proof), §18.1–18.5
+
+### Summary
+
+Makes proof **concurrent with discovery** and **parallelizable across workers** via
+first-push partitioning. Discovery sends incumbent improvements to proof workers in
+real time; workers run independent partition searches and report lower bounds back.
+Default `proofParallelism = 1` preserves existing sequential behavior.
+
+### Algorithm: First-Push Partitioning (§18.1)
+
+The proof search space is partitioned by canonical first push. For each box and
+legal push direction, the robot walks to the support cell (using `KeeperReachability`),
+pushes the box one cell, and records the resulting state as a unique partition:
+
+- `partitionId` = canonical state key of the post-push state (robot at box's old cell,
+  box at destination cell)
+- `prefixCost` = walk distance + 1 push
+- `prefixSteps` = walk path + push step
+
+Partitions are deduplicated by post-push state key. Each partition defines an
+independent subproblem whose optimal cost + prefixCost contributes to the global
+lower bound.
+
+### Dynamic Upper-Bound Channel (§17.1)
+
+Both A* and IDA* accept an optional `UpperBoundChannel { poll(): number | undefined }`
+via their options. At periodic yield points (already implemented for cancellation),
+the channel is polled. Strictly smaller values update U; the incumbent solution is
+never discarded.
+
+### Proof Protocol
+
+Discriminated union message types for coordinator ↔ worker communication:
+
+**Coordinator → Worker**: `proof/start-partition`, `proof/update-upper-bound`, `proof/cancel`
+**Worker → Coordinator**: `proof/progress`, `proof/solution`, `proof/partition-complete`, `proof/error`
+
+Type guards: `isProofCommand()`, `isProofResult()`. Pattern follows `engine-protocol.ts`.
+
+### Concurrent Proof Coordinator
+
+`runConcurrentProof()` manages proof workers:
+1. Enumerates first-push partitions
+2. Creates `min(proofParallelism, partitions.length)` workers
+3. Assigns partitions round-robin
+4. Forwards incumbent updates to all workers
+5. Aggregates per-partition lower bounds: `L = min(L_i)`
+6. Terminates when all complete or `min(L_i) >= U`
+7. Worker failure → bounded proof (not false positive)
+
+### Files changed
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/solver/implementations/sokomind-proof-protocol.ts` | Created | Protocol types, type guards, partitioning |
+| `src/solver/implementations/sokomind-proof-worker.ts` | Created | Proof worker entry point |
+| `src/solver/implementations/sokomind-proof.ts` | Updated | Added `runConcurrentProof`, `SokomindProofWorker` |
+| `src/solver/implementations/sokomind-solver.ts` | Updated | Added `createProofWorker` option, `runProof` router |
+| `src/solver/search/exact-move-astar.ts` | Updated | Added `UpperBoundChannel` interface and polling |
+| `src/solver/search/ida-star.ts` | Updated | Added `upperBoundChannel` option and polling |
+| `tests/unit/concurrent-proof.test.ts` | Created | 31 acceptance tests |
+
+### Acceptance criteria
+
+| Criterion | Status |
+|---|---|
+| Protocol type guards accept valid commands and results | PASS (14 tests) |
+| Protocol type guards reject invalid/malformed messages | PASS |
+| First-push partitions non-empty for solvable puzzles | PASS |
+| Partition IDs are unique (no duplicates) | PASS |
+| Prefix steps end with push, all prior steps are walks | PASS |
+| prefixCost equals walk steps + 1 | PASS |
+| buildPartitionRequest produces valid modified request | PASS |
+| Multi-label puzzle partitioning works correctly | PASS |
+| UpperBoundChannel poll pattern (set/read/clear) | PASS |
+| Channel accepts only strictly smaller values | PASS |
+| Grand Hall deterministic route unchanged | PASS (1010 moves, 316 pushes) |
+| proofParallelism=1 uses sequential proof (no partitioning) | PASS |
+| Worker failure produces bounded (not false) proof | PASS (mock worker test) |
+| All partitions exhausted produces optimal proof | PASS (mock worker test) |
+| Solution broadcast sends update-upper-bound to all workers | PASS (mock worker test) |
+| Cancellation terminates all workers | PASS (mock worker test) |
+| Pre-aborted signal returns cancelled immediately | PASS (mock worker test) |
+
+### Post-audit corrections
+
+Self-audit against spec §17–§18 identified three bugs, all fixed:
+
+1. **Upper-bound channel missing prefixCost subtraction**: Worker stored raw global
+   bound into `pendingUpperBound` without subtracting `prefixCost`. The inner search
+   operates in local cost space (global − prefixCost), so the inflated bound weakened
+   pruning. Fixed: worker now stores `command.moves - activePrefixCost`.
+
+2. **Global lower bound treated in-progress partitions as 0**: `checkTermination()`
+   used `t.completed ? t.lowerBound : 0` for incomplete partitions, making the
+   `min(L_i) >= U` early-termination condition unreachable. Fixed: now uses each
+   tracker's current `lowerBound` (which rises via progress reports).
+
+3. **Duplicate UpperBoundChannel interface**: Defined in both `sokomind-proof-protocol.ts`
+   and `exact-move-astar.ts`. Removed from protocol file (worker imports from
+   `exact-move-astar.ts`). Single source of truth.
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (0 errors)
+- `npm run test:unit` — 989 tests, 170 suites, all pass (+31 new tests)
+- `npm run test:solver:multi` — 4/4 pass
+- `npm run test:solver:huge` — pass (1010 moves, 316 pushes, deterministic)
+
+### Invariants verified
+
+1. **No correctness change**: `proofParallelism = 1` (default) routes through existing
+   `runSequentialProof` — identical behavior to Sprint 11.
+2. **Grand Hall route unchanged**: 1010 moves, 316 pushes in all orientations.
+3. **No false proofs**: Worker failure → partition marked incomplete → proof is bounded.
+4. **Monotonic bounds**: U only decreases (channel rejects non-strictly-smaller values);
+   L only increases (partition trackers track max lower bound).
+5. **No partition overlap**: Partition IDs are canonical post-push state keys.
+6. **Browser safety**: `proofParallelism = 1` by default; parallel workers require explicit opt-in.

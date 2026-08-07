@@ -64,8 +64,13 @@ export interface ExactIncumbent {
   readonly cost: number;
 }
 
+export interface UpperBoundChannel {
+  poll(): number | undefined;
+}
+
 export interface ExactMoveAStarOptions {
   readonly incumbent?: ExactIncumbent;
+  readonly upperBoundChannel?: UpperBoundChannel;
 }
 
 const PROGRESS_INTERVAL_MS = 100;
@@ -529,6 +534,8 @@ export async function runExactMoveAStar(
       ) {
         await delayForEventLoop();
         throwIfSolverCancelled(context.signal);
+        const channelU = options?.upperBoundChannel?.poll();
+        if (channelU !== undefined && channelU < U) U = channelU;
         lastYieldAt = context.now();
         workSinceYield = 0;
         if (elapsedLimitReached()) {

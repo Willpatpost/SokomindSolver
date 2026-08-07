@@ -63,6 +63,7 @@ export interface ExactMoveIdaStarOptions {
   readonly incumbent?: ExactIncumbent;
   readonly reachabilityPolicy?: IdaReachabilityPolicy;
   readonly snapshotPeriod?: number;
+  readonly upperBoundChannel?: import("./exact-move-astar.ts").UpperBoundChannel;
 }
 
 // ---------------------------------------------------------------------------
@@ -804,6 +805,8 @@ export async function runIdaStarSearch(
         ) {
           await delayForEventLoop();
           throwIfSolverCancelled(context.signal);
+          const channelU = options?.upperBoundChannel?.poll();
+          if (channelU !== undefined && channelU < U) U = channelU;
           lastYieldAt = context.now();
           workSinceYield = 0;
           if (elapsedLimitReached()) {

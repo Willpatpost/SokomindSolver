@@ -32,7 +32,11 @@ import {
   extractSokomindOptions,
   type SokomindRequestOptions,
 } from "./sokomind-options.ts";
-import { runSequentialProof } from "./sokomind-proof.ts";
+import {
+  runSequentialProof,
+  runConcurrentProof,
+  type SokomindProofWorker,
+} from "./sokomind-proof.ts";
 import {
   IncumbentCollector,
   computeHarvestMs,
@@ -147,6 +151,7 @@ export interface SokomindEngineWorker {
 
 export interface SokomindSolverAdapterOptions {
   readonly createWorker?: () => SokomindEngineWorker;
+  readonly createProofWorker?: () => SokomindProofWorker;
   readonly hardwareConcurrency?: number;
   readonly deviceMemoryGb?: number;
   readonly workerSilenceTimeoutMs?: number;
@@ -260,6 +265,41 @@ function defaultCreateWorker(): SokomindEngineWorker {
       name: "sokomind-engine",
     },
   ) as unknown as SokomindEngineWorker;
+}
+
+function defaultCreateProofWorker(): SokomindProofWorker {
+  return new Worker(
+    new URL(
+      "./sokomind-proof-worker.ts",
+      import.meta.url,
+    ),
+    {
+      type: "module",
+      name: "sokomind-proof",
+    },
+  ) as unknown as SokomindProofWorker;
+}
+
+function runProof(
+  request: SolverRequest,
+  context: SolverExecutionContext,
+  sokomindOptions: SokomindRequestOptions,
+  discoveryResult: SolverResult,
+  adapterOptions: SokomindSolverAdapterOptions,
+): Promise<SolverResult> {
+  if (sokomindOptions.proofParallelism > 1) {
+    return runConcurrentProof(
+      request,
+      context,
+      sokomindOptions,
+      discoveryResult,
+      {
+        createProofWorker: adapterOptions.createProofWorker ?? defaultCreateProofWorker,
+        proofParallelism: sokomindOptions.proofParallelism,
+      },
+    );
+  }
+  return runSequentialProof(request, context, sokomindOptions, discoveryResult);
 }
 
 function finiteNonNegative(value: unknown): number {
@@ -1997,11 +2037,12 @@ async function harvestAndImprove(
     solution: bestSolution,
     metrics: metrics(run),
   });
-  return runSequentialProof(
+  return runProof(
     run.request,
     run.context,
     sokomindOptions,
     discoveryResult,
+    options,
   );
 }
 
@@ -2547,11 +2588,12 @@ export function createSokomindSolverAdapter(
       const fallback = await runClassicFallback(run);
       if (fallback) {
         if (sokomindOptions.mode !== "fast" && fallback.status === "solved") {
-          return runSequentialProof(
+          return runProof(
             run.request,
             run.context,
             sokomindOptions,
             fallback,
+            options,
           );
         }
         return fallback;
