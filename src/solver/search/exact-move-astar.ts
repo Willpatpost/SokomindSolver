@@ -34,6 +34,7 @@ import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import {
   estimatedArenaMemoryBytes,
@@ -89,6 +90,7 @@ function createMetrics(
   staticBytes: number,
   boxCount: number,
   arenaRetainedBytes: number,
+  macroStats?: { readonly applications: number },
 ): SolverRunMetrics {
   const heuristicStats = heuristic.stats;
   const memoryBytes = estimatedArenaMemoryBytes(
@@ -122,6 +124,7 @@ function createMetrics(
       frontierSize,
       maxDepth: counters.maxDepth,
       estimatedMemoryBytes: memoryBytes,
+      forcedPushMacroApplications: macroStats?.applications ?? 0,
     },
   };
 }
@@ -142,6 +145,7 @@ function createProgress(
   incumbentInfo: { moves: number; pushes: number; objectiveScore: number } | undefined,
   lowerBound: number | undefined,
   upperBound: number | undefined,
+  macroStats?: { readonly applications: number },
 ): SolverProgress {
   const metrics = createMetrics(
     context,
@@ -154,6 +158,7 @@ function createProgress(
     staticBytes,
     boxCount,
     arenaRetainedBytes,
+    macroStats,
   );
   return {
     phase,
@@ -232,6 +237,7 @@ export async function runExactMoveAStar(
     const corralDetector = new SealedCorralDetector(cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
+    const macroDetector = new ForcedPushMacroDetector(board);
     const exactCodec = createExactStateCodec(cellCount, labels);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
@@ -284,12 +290,13 @@ export async function runExactMoveAStar(
     const initialBoost = initialLabelCosts
       ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
       : 0;
+    const initialLC = heuristic.lastLinearConflict(initialBoxes);
     const initialWalkBound = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialPushBound + initialBoost + initialWalkBound;
+    const initialH = initialPushBound + Math.max(initialLC, initialBoost) + initialWalkBound;
     lastLowerBound = initialH;
 
     let heapSize = 0;
@@ -307,6 +314,7 @@ export async function runExactMoveAStar(
         staticBytes,
         boxCount,
         arena.estimatedRetainedBytes(),
+        macroDetector.stats,
       );
     collectCurrentMetrics = metrics;
 
@@ -337,6 +345,7 @@ export async function runExactMoveAStar(
           incumbentInfo(),
           incumbentSolution ? lastLowerBound : undefined,
           incumbentSolution ? U : undefined,
+          macroDetector.stats,
         ),
       );
     };
@@ -660,6 +669,106 @@ export async function runExactMoveAStar(
 
       const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
 
+      // Forced push macro: if exactly one legal push, skip full successor generation
+      const fpResult = macroDetector.detect(expansionBoxes, occupied, reachable);
+      if (fpResult.forced) {
+        const fpBoxIdx = fpResult.boxIndex!;
+        const fpDir = fpResult.direction!;
+        const fpBox = expansionBoxes[fpBoxIdx];
+        const fpNeighbors = board.neighbors[fpBox.cell];
+        const fpDest = fpNeighbors?.[fpDir] ?? -1;
+
+        let fpDeadlock = fpDest < 0 || isStaticDeadCell(board, fpDest, fpBox.label);
+        if (!fpDeadlock) {
+          const savedCell = expansionBoxes[fpBoxIdx].cell;
+          (expansionBoxes[fpBoxIdx] as { cell: number }).cell = fpDest;
+          fillDeadlockOccupancy(deadlockOccupancyBuffer, expansionBoxes);
+          fpDeadlock =
+            createsFullyBlockedTwoByTwoDeadlock(board, expansionBoxes, fpDest, deadlockOccupancyBuffer) ||
+            hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer) ||
+            createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache);
+
+          if (!fpDeadlock) {
+            const fpOpposite = OPPOSITE_DIRECTION[fpDir];
+            const fpSupport = fpOpposite === undefined ? -1 : (fpNeighbors?.[fpOpposite] ?? -1);
+            const fpDistance = reachable.distanceTo(fpSupport);
+            if (fpDistance < 0) {
+              (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+              throw new Error("Forced push support cell has no keeper distance.");
+            }
+
+            counters.generated += 1;
+            workSinceYield += 1;
+
+            const childMoves = nodeMoves + fpDistance + 1;
+            const childPushes = arena.pushes(nodeIndex) + 1;
+
+            const oldToken = parentTokenBuf[fpBoxIdx];
+            const newLabelId = tokenToLabelId(oldToken);
+            const newToken = newLabelId * cellCount + fpDest;
+            sortedInsertToken(parentTokenBuf, boxCount, fpBoxIdx, newToken, childTokenBuf);
+
+            const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
+            const prevBestG = bestG.get(childKey);
+
+            if (prevBestG === undefined || childMoves < prevBestG) {
+              const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+              const movedLabel = labels[newLabelId];
+              const pushLowerBound = heuristic.evaluateIncremental(
+                expansionBoxes, childBoxKey, parentBoxKey, movedLabel,
+              );
+
+              if (Number.isFinite(pushLowerBound)) {
+                const labelCosts = heuristic.lastLabelCosts;
+                const interactionBoost = labelCosts
+                  ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
+                  : 0;
+                const fpLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
+                const walkBound = minimumManhattanWalkToPotentialPush(
+                  board, savedCell, expansionBoxes,
+                );
+                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost) + walkBound;
+                const f = childMoves + h;
+
+                if (f < U) {
+                  const childIndex = arena.allocate();
+                  arena.setRobotCell(childIndex, savedCell);
+                  arena.setGMoves(childIndex, childMoves);
+                  arena.setPushes(childIndex, childPushes);
+                  arena.setParentNode(childIndex, nodeIndex);
+                  arena.setPushedFromCell(childIndex, savedCell);
+                  arena.setPushDirection(childIndex, fpDir);
+                  arena.setHeuristic(childIndex, h);
+                  arena.writeBoxTokens(childIndex, childTokenBuf);
+                  counters.retainedBytes = arena.estimatedRetainedBytes();
+                  counters.maxDepth = Math.max(counters.maxDepth, childPushes);
+
+                  if (prevBestG === undefined) {
+                    uniqueStates += 1;
+                  } else {
+                    counters.reopens += 1;
+                  }
+                  bestG.set(childKey, childMoves);
+                  heap.enqueue(childIndex);
+                  syncState();
+                  counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
+                }
+              } else {
+                counters.infeasiblePrunes += 1;
+              }
+            } else {
+              counters.duplicates += 1;
+            }
+          } else {
+            counters.deadlockPrunes += 1;
+          }
+          (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+        } else {
+          counters.deadlockPrunes += 1;
+        }
+        continue;
+      }
+
       for (let boxIndex = 0; boxIndex < boxCount; boxIndex += 1) {
         if (committedBoxes.has(boxIndex)) {
           counters.commitmentSkips += 1;
@@ -790,12 +899,14 @@ export async function runExactMoveAStar(
             : 0;
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
+          const childLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
+
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
             savedCell,
             expansionBoxes,
           );
-          const h = pushLowerBound + interactionBoost + walkBound;
+          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost) + walkBound;
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

@@ -6,6 +6,7 @@ import {
 import type {
   CompiledSearchBoard,
 } from "./compiled-board.ts";
+import { computeLinearConflict } from "./linear-conflict.ts";
 import {
   canonicalBoxSignature,
   type DenseBox,
@@ -286,6 +287,11 @@ export class AssignmentHeuristic {
     return costs;
   }
 
+  lastLinearConflict(boxes: readonly DenseBox[]): number {
+    if (!this.#lastLabelStates) return 0;
+    return computeLinearConflict(this.#board, boxes, this.#lastLabelStates);
+  }
+
   #evictIfNeeded(): void {
     while (this.#cache.size >= this.#maxCacheEntries) {
       const oldest = this.#cache.keys().next().value as bigint | undefined;
@@ -334,16 +340,17 @@ export class AssignmentHeuristic {
       this.#fallbackCache.set(signature, cached);
       return cached;
     }
-    const value = assignmentLowerBound(this.#board, boxes);
+    const result = fullAssignmentWithState(this.#board, boxes);
+    this.#lastLabelStates = result.labelStates;
     if (this.#maxCacheEntries > 0) {
       while (this.#fallbackCache.size >= this.#maxCacheEntries) {
         const oldest = this.#fallbackCache.keys().next().value as string | undefined;
         if (oldest === undefined) break;
         this.#fallbackCache.delete(oldest);
       }
-      this.#fallbackCache.set(signature, value);
+      this.#fallbackCache.set(signature, result.totalCost);
     }
-    return value;
+    return result.totalCost;
   }
 
   evaluateIncremental(

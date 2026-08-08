@@ -1790,3 +1790,75 @@ expansion bound (used at expansion time for tighter pruning against the incumben
 - `npm run test:solver:oracle` — 19/19 pass
 - `npm run test:solver:optimal` — 5/5 pass
 - `npm run test:solver:multi` — 4/4 pass
+
+## Sprint 1 — Low-Hanging Fruit
+
+**Date**: 2026-08-08
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Tasks completed
+
+#### Task 1.1: Forced-push macros in IDA*
+
+Wired existing `ForcedPushMacroDetector` into IDA* search. When a position has exactly one legal push, the macro skips branching and applies the push directly. Detector instantiated once per search. Stats tracked via `forcedPushMacroApplications` counter.
+
+**Files modified:** `src/solver/search/ida-star.ts`
+
+#### Task 1.2: Forced-push macros in exact A*
+
+Same pattern as Task 1.1 but in `runExactMoveAStar`. Added macroDetector stats to `createMetrics` and `createProgress`.
+
+**Files modified:** `src/solver/search/exact-move-astar.ts`
+
+#### Task 1.3: TT-enhanced IDA* (TT-IDA*)
+
+Changed transposition table semantics from clear-per-iteration to persistent:
+- TT stores `backed_f = max(g + h, min_child_f)` per state key
+- Prune when `stored_f > fLimit` (proven lower bound from prior iterations)
+- On backtrack, update TT entry with backed-up f-value
+- TT size capped at 2M-4M entries (scales with available memory)
+- Replacement policy: higher f-value replaces lower
+- Bug fix: TT prune now updates `nextLimit` to prevent stale iteration termination
+- Bug fix: `finishSolvedOptimal()` guarded against null incumbent when `nextLimit >= U` with both at Infinity
+
+**Files modified:** `src/solver/search/ida-star.ts`, `src/solver/search/ida-star-checkpoint.ts`
+
+#### Task 1.4: Linear conflict heuristic boost
+
+Created `linear-conflict.ts` implementing the classic linear conflict heuristic:
+- For each row/column, detects pairs of boxes assigned to goals in the same line where they must pass each other
+- Greedy pairing by descending push distance ensures each box participates in at most one conflict per axis (admissibility)
+- Each conflict adds +2 to the lower bound
+- Composed as `h = hPush + max(linearConflict, interactionBoost) + hWalk` to avoid double-counting with existing interaction boost
+
+Also fixed `AssignmentHeuristic.#evaluateFallback` to store `lastLabelStates` when no `packBoxKey` is provided, enabling linear conflict computation in the fallback path.
+
+**Files created:** `src/solver/search/linear-conflict.ts`
+**Files modified:** `src/solver/search/heuristic.ts`, `src/solver/search/ida-star.ts`, `src/solver/search/exact-move-astar.ts`
+
+#### Task 1.5: Desktop-aware resource limits
+
+- `proof-algorithm-selection.ts`: A* threshold raised to 12 boxes / 150 cells when memory >= 2 GB, old 8/96 fallback for low memory
+- `sokomind-solver.ts`: `DEFAULT_IMPROVEMENT_MAX_VISITED` replaced with `defaultImprovementMaxVisited(maxMemoryBytes)` that scales: `max(50_000, min(500_000, availableMB * 200))`
+- `ida-star.ts`: TT size cap scales 2M/3M/4M with available memory tiers
+
+**Files modified:** `src/solver/search/proof-algorithm-selection.ts`, `src/solver/implementations/sokomind-solver.ts`, `src/solver/search/ida-star.ts`
+
+### Tests added
+
+- `tests/unit/linear-conflict.test.ts` — 7 tests: empty set, single box, no conflicts, typed box row conflict, greedy pairing, admissibility, already-solved
+- `tests/unit/proof-algorithm-selection.test.ts` — 7 new tests (11 total): memory-aware thresholds, low-memory fallback, undefined memory defaults
+- `tests/unit/ida-star.test.ts` — 9 new tests: forced-push macros (3), TT-enhanced IDA* (3), linear conflict (2)
+- `tests/unit/exact-move-astar.test.ts` — 6 new tests: forced-push macros (3), linear conflict (2)
+
+### Test results
+
+- `npm run check:sokomind-solver` — pass
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm run test:unit` — 1204 tests, 1202 pass, 1 pre-existing fail (`maxGeneratedStates: 0` validation)
+- `npm run test:coverage` — pass (all coverage gates met)
+- `npm run build` — pass
+- `npm run test:solver:oracle` — 19/19 pass
+- `npm run test:solver:optimal` — 5/5 pass

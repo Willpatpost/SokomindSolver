@@ -529,3 +529,75 @@ describe("bounded proof lb == U guard", () => {
     assert.equal(result.proof!.lowerBound, result.proof!.upperBound);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 1: Forced-push macros in exact A*
+// ---------------------------------------------------------------------------
+
+describe("exact A* forced-push macros", () => {
+  it("produces same optimal solution on corridor puzzle", async () => {
+    const req = requestFromRows([
+      "OOOOOOO",
+      "O  S  O",
+      "O  X  O",
+      "O  R  O",
+      "OOOOOOO",
+    ]);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.solution.pushes, 1);
+  });
+
+  it("produces same oracle-matched result on standard board with macros", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.ok(result.solution.moves > 0);
+  });
+
+  it("reports forced-push macro applications in metrics", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    const applications = result.metrics.counters?.forcedPushMacroApplications;
+    assert.ok(
+      applications !== undefined,
+      "Expected forcedPushMacroApplications counter in metrics",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 1: Linear conflict in exact A*
+// ---------------------------------------------------------------------------
+
+describe("exact A* with linear conflict", () => {
+  it("produces optimal verified solution on standard board", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+  });
+
+  it("produces optimal verified solution on corridor puzzle", async () => {
+    const req = requestFromRows([
+      "OOOOOOO",
+      "O  S  O",
+      "O  X  O",
+      "O  R  O",
+      "OOOOOOO",
+    ]);
+    const result = assertSolved(
+      await runExactMoveAStar(req, oracleContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.solution.pushes, 1);
+    assert.equal(result.solution.moves, 1);
+  });
+});

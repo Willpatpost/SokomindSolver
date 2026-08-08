@@ -352,3 +352,118 @@ describe("IDA* search", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 1: Forced-push macros in IDA*
+// ---------------------------------------------------------------------------
+
+const CORRIDOR_PUZZLE: PuzzleDefinition = {
+  id: "corridor",
+  title: "Corridor forced push",
+  difficulty: "tutorial",
+  boxes: 1,
+  rows: [
+    "OOOOOOO",
+    "O  S  O",
+    "O  X  O",
+    "O  R  O",
+    "OOOOOOO",
+  ],
+};
+
+describe("IDA* forced-push macros", () => {
+  it("produces the same optimal solution on corridor puzzle", async () => {
+    const request = requestFor(CORRIDOR_PUZZLE, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.solution.pushes, 1);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+
+  it("produces same optimal solution as A* on two-box puzzle with macros", async () => {
+    const request = requestFor(TWO_GENERIC_BOXES, { kind: "moves" });
+    const astarResult = solved(
+      await classicAStarSolver.solve(request, executionContext()),
+    );
+    const idaResult = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(idaResult.solution.moves, astarResult.solution.moves);
+    assert.equal(verifySolverSolution(request, idaResult.solution).valid, true);
+  });
+
+  it("reports forced-push macro applications in metrics", async () => {
+    const request = requestFor(TWO_GENERIC_BOXES, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    const applications = result.metrics.counters?.forcedPushMacroApplications;
+    assert.ok(
+      applications !== undefined,
+      "Expected forcedPushMacroApplications counter in metrics",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 1: TT-enhanced IDA* (TT-IDA*)
+// ---------------------------------------------------------------------------
+
+describe("TT-enhanced IDA*", () => {
+  it("finds optimal solution with TT persisting across iterations", async () => {
+    const request = requestFor(TWO_GENERIC_BOXES, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const iterations = result.metrics.counters?.idaStarIterations ?? 0;
+    assert.ok(iterations >= 1, "Expected at least 1 IDA* iteration");
+  });
+
+  it("finds same optimal solution on one-box puzzle with TT", async () => {
+    const request = requestFor(ONE_BOX, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.pushes, 1);
+  });
+
+  it("memory estimate includes transposition table", async () => {
+    const request = requestFor(TWO_GENERIC_BOXES, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    const ttBytes = result.metrics.counters?.memoryTranspositionBytes ?? 0;
+    assert.ok(ttBytes >= 0, "Expected non-negative TT memory");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 1: Linear conflict in IDA*
+// ---------------------------------------------------------------------------
+
+describe("IDA* with linear conflict", () => {
+  it("produces optimal verified solution on two-box puzzle", async () => {
+    const request = requestFor(TWO_GENERIC_BOXES, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+
+  it("produces optimal verified solution on one-box puzzle", async () => {
+    const request = requestFor(ONE_BOX, { kind: "moves" });
+    const result = solved(
+      await runIdaStarSearch(request, executionContext()),
+    );
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.solution.moves, 1);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+});

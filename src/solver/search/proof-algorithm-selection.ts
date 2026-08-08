@@ -10,7 +10,10 @@ export function selectProofAlgorithm(
   if (maxMemoryBytes !== undefined && maxMemoryBytes < 768 * 1024 * 1024) {
     return "ida-star";
   }
-  if (boxCount <= 8 && board.cellCount <= 96) {
+  const highMemory = maxMemoryBytes === undefined || maxMemoryBytes >= 2 * 1024 * 1024 * 1024;
+  const boxThreshold = highMemory ? 12 : 8;
+  const cellThreshold = highMemory ? 150 : 96;
+  if (boxCount <= boxThreshold && board.cellCount <= cellThreshold) {
     return "astar";
   }
   return "ida-star";

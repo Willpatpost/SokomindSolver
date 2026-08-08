@@ -36,6 +36,7 @@ import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
@@ -110,6 +111,10 @@ interface StackFrame {
   childCursor: number;
   /** Whether this node has been expanded (passed f-bound, TT, solved checks). */
   expanded: boolean;
+  /** Heuristic value at expansion (for TT-IDA* backed-up f computation). */
+  h: number;
+  /** Minimum f-value among explored/pruned children (for TT-IDA* backing up). */
+  minChildF: number;
   /** Saved BFS state after the initial flood, restored on child-return resumes. */
   reachabilitySnapshot: ReachabilitySnapshot | null;
   /** Cached flood result paired with the snapshot. */
@@ -335,6 +340,7 @@ function createMetrics(
   transpositionSize: number,
   heuristic: AssignmentHeuristic,
   memory: IdaMemorySnapshot,
+  macroStats?: { checks: number; applications: number },
 ): SolverRunMetrics {
   const heuristicStats = heuristic.stats;
   return {
@@ -368,6 +374,7 @@ function createMetrics(
       memoryDfsStackBytes: memory.dfsStackBytes,
       memoryReachabilitySnapshotBytes: memory.reachabilitySnapshotBytes,
       idaStarIterations: counters.iterations,
+      forcedPushMacroApplications: macroStats?.applications ?? 0,
     },
   };
 }
@@ -470,6 +477,7 @@ export async function runIdaStarSearch(
     const corralDetector = new SealedCorralDetector(board.cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
+    const macroDetector = new ForcedPushMacroDetector(board);
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -556,6 +564,7 @@ export async function runIdaStarSearch(
         transpositionSize,
         heuristic,
         memorySnapshot(),
+        macroDetector.stats,
       );
     collectCurrentMetrics = metrics;
 
@@ -702,12 +711,13 @@ export async function runIdaStarSearch(
     const initialBoost = initialLabelCosts
       ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
       : 0;
+    const initialLC = heuristic.lastLinearConflict(initialBoxes);
     const initialHWalk = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialHPush + initialBoost + initialHWalk;
+    const initialH = initialHPush + Math.max(initialLC, initialBoost) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
@@ -733,8 +743,15 @@ export async function runIdaStarSearch(
       : initialG + initialH;
     let limitDetail: string | undefined;
 
-    // Transposition table: cleared at the start of each iteration (§9.4).
-    let transposition = new Map<bigint, number>();
+    // TT-IDA*: transposition table persists across iterations.
+    // Stores backed_f (proven lower bound) per state key.
+    const maxMem = request.limits?.maxMemoryBytes;
+    const TT_SIZE_CAP = maxMem !== undefined && maxMem >= 2 * 1024 * 1024 * 1024
+      ? 4_000_000
+      : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
+        ? 3_000_000
+        : 2_000_000;
+    const transposition = new Map<bigint, number>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
     idaLoop: while (true) {
@@ -752,7 +769,7 @@ export async function runIdaStarSearch(
             ? { solution: incumbentSolution, cost: U }
             : null,
           partitionId: ctx.partitionId,
-          transpositionMetadata: { policy: "clear-per-iteration" },
+          transpositionMetadata: { policy: "tt-ida-star" },
           counters: {
             expanded: counters.expanded,
             generated: counters.generated,
@@ -765,13 +782,10 @@ export async function runIdaStarSearch(
       counters.iterations += 1;
       let nextLimit = Number.POSITIVE_INFINITY;
 
-      // Clear the transposition table each iteration. States explored
-      // at g-cost G in iteration N were f-pruned at f > fLimit(N).
-      // In iteration N+1 with a higher fLimit, the same states need
-      // re-exploration because their children may now pass the f-bound.
-      transposition = new Map<bigint, number>();
-      transpositionSize = 0;
-      transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
+      // TT-IDA*: transposition table is NOT cleared between iterations.
+      // Backed-up f-values from previous iterations are valid lower bounds
+      // that enable cross-iteration pruning.
+      transpositionSize = transposition.size;
 
       // Path stack: current DFS path from root to active node.
       const pathStack: StackFrame[] = [];
@@ -815,6 +829,8 @@ export async function runIdaStarSearch(
         committedBoxes: null,
         childCursor: 0,
         expanded: false,
+        h: 0,
+        minChildF: Number.POSITIVE_INFINITY,
         reachabilitySnapshot: null,
         cachedReachable: null,
         estimatedStackBytes: estimateStackFrameBytes(
@@ -909,35 +925,63 @@ export async function runIdaStarSearch(
             : 0;
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
+          const linearConflict = heuristic.lastLinearConflict(frame.boxes);
+
           const hWalk = minimumManhattanWalkToPotentialPush(
             board,
             frame.robot,
             frame.boxes,
           );
-          const h = hPush + interactionBoost + hWalk;
+          const h = hPush + Math.max(linearConflict, interactionBoost) + hWalk;
+          frame.h = h;
 
           const f = frame.g + h;
           if (f > fLimit) {
             nextLimit = Math.min(nextLimit, f);
             popFrame();
+            if (pathStack.length > 0) {
+              pathStack[pathStack.length - 1].minChildF = Math.min(
+                pathStack[pathStack.length - 1].minChildF, f,
+              );
+            }
             continue;
           }
           if (f >= U) {
             popFrame();
+            if (pathStack.length > 0) {
+              pathStack[pathStack.length - 1].minChildF = Math.min(
+                pathStack[pathStack.length - 1].minChildF, f,
+              );
+            }
             continue;
           }
 
-          // Transposition check (collision-free bigint identity)
-          const previousG = transposition.get(frame.exactKey);
-          if (previousG !== undefined && previousG <= frame.g) {
+          // TT-IDA* check: stored backed_f is a proven lower bound
+          const storedF = transposition.get(frame.exactKey);
+          if (storedF !== undefined && storedF > fLimit) {
             counters.duplicates += 1;
+            nextLimit = Math.min(nextLimit, storedF);
             popFrame();
+            if (pathStack.length > 0) {
+              pathStack[pathStack.length - 1].minChildF = Math.min(
+                pathStack[pathStack.length - 1].minChildF, storedF,
+              );
+            }
             continue;
           }
-          transposition.set(frame.exactKey, frame.g);
-          if (previousG === undefined) {
-            transpositionSize += 1;
+          // Store initial f-value; backed-up value is written on backtrack
+          const oldTTSize = transposition.size;
+          if (storedF === undefined || f > storedF) {
+            transposition.set(frame.exactKey, f);
+          }
+          if (transposition.size > oldTTSize) {
+            transpositionSize = transposition.size;
             transpositionMemoryBytes += estimateTranspositionEntryBytes();
+          }
+          // TT size cap with replacement policy
+          if (transposition.size > TT_SIZE_CAP) {
+            const firstKey = transposition.keys().next().value;
+            if (firstKey !== undefined) transposition.delete(firstKey);
           }
           if (memoryLimitReached()) {
             limitDetail = "Estimated solver memory limit reached.";
@@ -981,6 +1025,11 @@ export async function runIdaStarSearch(
             incumbentSolution = solution;
             throwIfSolverCancelled(context.signal);
             popFrame();
+            if (pathStack.length > 0) {
+              pathStack[pathStack.length - 1].minChildF = Math.min(
+                pathStack[pathStack.length - 1].minChildF, f,
+              );
+            }
             continue;
           }
 
@@ -1094,6 +1143,76 @@ export async function runIdaStarSearch(
         const committedBoxes = frame.committedBoxes;
         const boxCount = frame.boxes.length;
         const totalChildren = boxCount * SEARCH_DIRECTIONS.length;
+
+        // Forced push macro: if exactly one legal push, skip child generation
+        if (frame.childCursor === 0) {
+          const fpResult = macroDetector.detect(frame.boxes, occupancyBuffer, reachable);
+          if (fpResult.forced) {
+            const fpBoxIdx = fpResult.boxIndex!;
+            const fpDir = fpResult.direction!;
+            const fpBox = frame.boxes[fpBoxIdx];
+            const fpNeighbors = board.neighbors[fpBox.cell];
+            const fpDest = fpNeighbors?.[fpDir] ?? -1;
+
+            let fpDeadlock = fpDest < 0 || isStaticDeadCell(board, fpDest, fpBox.label);
+            let fpNewBoxes: readonly DenseBox[] | null = null;
+            if (!fpDeadlock) {
+              fpNewBoxes = movedBoxes(frame.boxes, fpBoxIdx, fpDest);
+              fillDeadlockOccupancy(deadlockOccupancyBuffer, fpNewBoxes);
+              fpDeadlock =
+                createsFullyBlockedTwoByTwoDeadlock(board, fpNewBoxes, fpDest, deadlockOccupancyBuffer) ||
+                hasFreezeDeadlock(board, fpNewBoxes, deadlockOccupancyBuffer) ||
+                createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache);
+            }
+
+            if (fpDeadlock) {
+              counters.deadlockPrunes += 1;
+              popFrame();
+              continue;
+            }
+
+            const fpOpposite = OPPOSITE_DIRECTION[fpDir];
+            const fpSupport = fpOpposite === undefined ? -1 : (fpNeighbors?.[fpOpposite] ?? -1);
+            const fpDistance = reachable.distanceTo(fpSupport);
+            if (fpDistance < 0) {
+              throw new Error("Forced push support cell has no keeper distance.");
+            }
+
+            counters.generated += 1;
+            workSinceYield += 1;
+
+            const fpNewMoves = frame.moves + fpDistance + 1;
+            const fpNewKey = exactKey(fpBox.cell, fpNewBoxes!);
+
+            frame.childCursor = totalChildren;
+
+            pushFrame({
+              robot: fpBox.cell,
+              boxes: fpNewBoxes!,
+              exactKey: fpNewKey,
+              moves: fpNewMoves,
+              pushes: frame.pushes + 1,
+              g: fpNewMoves,
+              push: { boxCell: fpBox.cell, directionIndex: fpDir },
+              frozenBoxes: null,
+              committedBoxes: null,
+              childCursor: 0,
+              expanded: false,
+              h: 0,
+              minChildF: Number.POSITIVE_INFINITY,
+              reachabilitySnapshot: null,
+              cachedReachable: null,
+              estimatedStackBytes: estimateStackFrameBytes(fpNewBoxes!, true),
+              estimatedReachabilityBytes: 0,
+            });
+            if (memoryLimitReached()) {
+              limitDetail = "Estimated solver memory limit reached.";
+              break idaLoop;
+            }
+            continue;
+          }
+        }
+
         let foundChild = false;
 
         while (frame.childCursor < totalChildren) {
@@ -1197,6 +1316,8 @@ export async function runIdaStarSearch(
             committedBoxes: null,
             childCursor: 0,
             expanded: false,
+            h: 0,
+            minChildF: Number.POSITIVE_INFINITY,
             reachabilitySnapshot: null,
             cachedReachable: null,
             estimatedStackBytes: estimateStackFrameBytes(
@@ -1215,16 +1336,31 @@ export async function runIdaStarSearch(
           break; // Process child before continuing with siblings
         }
 
-        // No more children: backtrack
+        // No more children: backtrack with TT-IDA* f-value propagation
         if (!foundChild) {
+          const backFrame = pathStack[pathStack.length - 1];
+          if (backFrame.expanded) {
+            const backedF = Math.max(backFrame.g + backFrame.h, backFrame.minChildF);
+            const existingF = transposition.get(backFrame.exactKey);
+            if (existingF === undefined || backedF > existingF) {
+              transposition.set(backFrame.exactKey, backedF);
+            }
+            nextLimit = Math.min(nextLimit, backedF);
+          }
           popFrame();
+          if (pathStack.length > 0) {
+            const backF = Math.max(backFrame.g + backFrame.h, backFrame.minChildF);
+            pathStack[pathStack.length - 1].minChildF = Math.min(
+              pathStack[pathStack.length - 1].minChildF, backF,
+            );
+          }
         }
       }
 
       transpositionSize = transposition.size;
       lastExhaustedThreshold = fLimit;
 
-      if (fLimit >= U || nextLimit >= U) {
+      if (incumbentSolution && (fLimit >= U || nextLimit >= U)) {
         return finishSolvedOptimal();
       }
 

@@ -25,7 +25,7 @@ export interface IdaStarCheckpoint {
   readonly lastExhaustedThreshold: number;
   readonly incumbent: IdaStarCheckpointIncumbent | null;
   readonly partitionId: string | null;
-  readonly transpositionMetadata: { readonly policy: "clear-per-iteration" };
+  readonly transpositionMetadata: { readonly policy: "clear-per-iteration" | "tt-ida-star" };
   readonly counters: IdaStarCheckpointCounters;
 }
 

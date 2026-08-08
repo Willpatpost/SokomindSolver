@@ -86,7 +86,13 @@ const ESTIMATED_RECORD_BASE_BYTES = 512;
 const BIDIRECTIONAL_CLONE_RESERVE_BYTES = 1024 * 1024;
 const PROGRESS_THROTTLE_MS = 200;
 const WORKER_SILENCE_WATCHDOG_MS = 120_000;
-const DEFAULT_IMPROVEMENT_MAX_VISITED = 50_000;
+function defaultImprovementMaxVisited(maxMemoryBytes?: number): number {
+  if (maxMemoryBytes === undefined || !Number.isFinite(maxMemoryBytes)) {
+    return 50_000;
+  }
+  const availableMB = maxMemoryBytes / (1024 * 1024);
+  return Math.max(50_000, Math.min(500_000, Math.floor(availableMB * 200)));
+}
 const DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS = 45_000;
 const DEFAULT_IMPROVEMENT_MINIMUM_MOVES = 100;
 
@@ -1787,16 +1793,17 @@ async function improveIncumbent(
     DEFAULT_IMPROVEMENT_MINIMUM_MOVES,
   );
   const memoryLimit = run.request.limits?.maxMemoryBytes ?? Infinity;
+  const scaledDefault = defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes);
   const memoryVisitedCap =
     memoryLimit <= 384 * 1024 * 1024
       ? 20_000
       : memoryLimit <= 768 * 1024 * 1024
         ? 35_000
-        : DEFAULT_IMPROVEMENT_MAX_VISITED;
+        : scaledDefault;
   const configuredVisited = Math.min(
     configuredBudget(
       options.improvementMaxVisited,
-      DEFAULT_IMPROVEMENT_MAX_VISITED,
+      scaledDefault,
     ),
     memoryVisitedCap,
   );
@@ -1994,7 +2001,7 @@ async function harvestAndImprove(
         improvementMaxVisited:
           options.improvementMaxVisited !== undefined
             ? Math.max(1, Math.floor(options.improvementMaxVisited / rewriteCount))
-            : Math.floor(DEFAULT_IMPROVEMENT_MAX_VISITED / rewriteCount),
+            : Math.floor(defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes) / rewriteCount),
         improvementMaxElapsedMs:
           options.improvementMaxElapsedMs !== undefined
             ? Math.max(1, Math.floor(options.improvementMaxElapsedMs / rewriteCount))
