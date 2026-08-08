@@ -9,8 +9,10 @@
  * Output is a single JSON Lines record to stdout (§19.3).
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { join } from "node:path";
 import { execSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 import { parsePuzzleRows, type ParsedBoard } from "../src/core/index.ts";
 import { PUZZLE_BY_ID } from "../src/catalog/puzzles.ts";
@@ -32,6 +34,12 @@ import {
   sokomindTuningFingerprint,
 } from "../src/solver/implementations/sokomind-tuning.ts";
 import { createNodeSolverAdapter } from "../src/solver/node-runner.ts";
+import {
+  deserializeCheckpoint,
+  validateCheckpointCompatibility,
+  serializeCheckpoint,
+  type IdaStarCheckpoint,
+} from "../src/solver/search/ida-star-checkpoint.ts";
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -261,14 +269,77 @@ interface OutputRecord {
   generatedStates: number | null;
   peakFrontierSize: number | null;
   counters: Readonly<Record<string, number>> | null;
+  perLaneCounters: Readonly<Record<string, Readonly<Record<string, number>>>> | null;
   memory: number | null;
   elapsedMs: number;
-  mode: string;
-  parallelism: number;
-  deterministic: boolean;
-  solverVersion: string;
-  gitCommit: string;
-  tuningFingerprint: string;
+  configuration: {
+    mode: string;
+    parallelism: number;
+    deterministic: boolean;
+    proofAlgorithm: string;
+    solverVersion: string;
+    gitCommit: string;
+    tuningFingerprint: string;
+  };
+}
+
+/**
+ * Extract per-lane counters from the flat counters record.
+ *
+ * The discovery search aggregates per-lane memory/state counters with keys
+ * like `memoryCurrent<Stem>Bytes`, `memoryPeak<Stem>Bytes`, etc. Group them
+ * by stem so the output record provides a structured per-lane view.
+ */
+function extractPerLaneCounters(
+  counters: Readonly<Record<string, number>> | undefined,
+): Readonly<Record<string, Readonly<Record<string, number>>>> | null {
+  if (!counters) return null;
+
+  // Lane counter keys follow the pattern: memory{Metric}{Stem}{Suffix}
+  // e.g. memoryCurrentDirectPortfolioBytes, memoryPeakBidirectionalForwardBytes
+  // Also: memory{Stem}RetainedStates, memory{Stem}FrontierStates, memory{Stem}CacheBytes
+  const lanePattern =
+    /^memory(Current|Peak)(.+?)(Bytes|ProcessBytes)$|^memory(.+?)(RetainedStates|FrontierStates|CacheBytes)$/;
+  const lanes: Record<string, Record<string, number>> = {};
+
+  for (const [key, value] of Object.entries(counters)) {
+    const match = lanePattern.exec(key);
+    if (!match) continue;
+
+    // Match group layout:
+    //   [1]=Current|Peak, [2]=Stem, [3]=Bytes|ProcessBytes  (first alt)
+    //   [4]=Stem, [5]=RetainedStates|...                    (second alt)
+    const stem = (match[2] ?? match[4] ?? "").replace(/^[A-Z]/, (c) => c.toLowerCase());
+    if (!stem) continue;
+
+    // Skip aggregate counters that are not per-lane
+    if (
+      stem === "estimatedMemory" ||
+      stem === "currentEstimatedMemory" ||
+      stem === "peakEstimatedMemory" ||
+      stem === "currentWorker" ||
+      stem === "currentCoordinator" ||
+      stem === "currentPreparedBoard" ||
+      stem === "workerRuntime" ||
+      stem === "workerBoard" ||
+      stem === "workerRetained" ||
+      stem === "workerFrontier" ||
+      stem === "workerCache" ||
+      stem === "workerArena" ||
+      stem === "workerRecord" ||
+      stem === "workerIsolateSample" ||
+      stem === "browserProcess" ||
+      stem === "peakBrowserProcess"
+    ) {
+      continue;
+    }
+
+    if (!lanes[stem]) lanes[stem] = {};
+    lanes[stem][key] = value;
+  }
+
+  if (Object.keys(lanes).length === 0) return null;
+  return lanes;
 }
 
 function buildOutputRecord(
@@ -311,15 +382,19 @@ function buildOutputRecord(
     generatedStates: result.metrics.generatedStates ?? null,
     peakFrontierSize: result.metrics.peakFrontierSize ?? null,
     counters: result.metrics.counters ?? null,
+    perLaneCounters: extractPerLaneCounters(result.metrics.counters),
     memory: (result.metrics.counters as Record<string, number> | undefined)
       ?.peakEstimatedMemoryBytes ?? null,
     elapsedMs: Math.round(result.metrics.elapsedMs * 100) / 100,
-    mode: job.mode,
-    parallelism: job.parallelism,
-    deterministic: job.deterministic,
-    solverVersion: sokomindSolverMetadata.version,
-    gitCommit,
-    tuningFingerprint: tuningFp,
+    configuration: {
+      mode: job.mode,
+      parallelism: job.parallelism,
+      deterministic: job.deterministic,
+      proofAlgorithm: job.proofAlgorithm,
+      solverVersion: sokomindSolverMetadata.version,
+      gitCommit,
+      tuningFingerprint: tuningFp,
+    },
   };
 }
 
@@ -336,6 +411,78 @@ async function main(): Promise<void> {
   const tuningFp = sokomindTuningFingerprint(tuningProfile);
 
   const board: ParsedBoard = parsePuzzleRows(job.rows);
+
+  // -------------------------------------------------------------------------
+  // Checkpoint loading (Gap 1a)
+  // -------------------------------------------------------------------------
+  let loadedCheckpoint: IdaStarCheckpoint | null = null;
+  if (args.checkpointFile) {
+    try {
+      const checkpointJson = readFileSync(args.checkpointFile, "utf-8");
+      const checkpoint = deserializeCheckpoint(checkpointJson);
+
+      // Validate compatibility with the current board / solver
+      const labels = [...new Set(board.goals.map((g) => g.label))].sort();
+      const compat = validateCheckpointCompatibility(
+        checkpoint,
+        board,
+        sokomindSolverMetadata.version,
+        { kind: "moves" },
+        board.floor.length,
+        labels.length,
+      );
+      if (compat.compatible) {
+        loadedCheckpoint = checkpoint;
+        process.stderr.write(
+          `Loaded checkpoint: threshold=${checkpoint.currentThreshold} ` +
+          `iterations=${checkpoint.counters.iterations}\n`,
+        );
+      } else {
+        process.stderr.write(
+          `Warning: checkpoint incompatible (${compat.reason}), starting fresh.\n`,
+        );
+      }
+    } catch (error: unknown) {
+      process.stderr.write(
+        `Warning: failed to load checkpoint (${error instanceof Error ? error.message : String(error)}), starting fresh.\n`,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Checkpoint saving setup (Gap 1b)
+  // -------------------------------------------------------------------------
+  let checkpointPath: string | undefined;
+  if (args.checkpointDir) {
+    try {
+      mkdirSync(args.checkpointDir, { recursive: true });
+    } catch {
+      // Directory may already exist
+    }
+    checkpointPath = join(
+      args.checkpointDir,
+      `${job.puzzleId}-checkpoint.json`,
+    );
+    process.stderr.write(`Checkpoint output: ${checkpointPath}\n`);
+  }
+
+  /**
+   * Write a checkpoint snapshot atomically (write to temp + rename).
+   * Called during IDA* proof runs when --checkpoint-dir is set.
+   */
+  function writeCheckpointSnapshot(cp: IdaStarCheckpoint): void {
+    if (!checkpointPath) return;
+    try {
+      const tmpPath = `${checkpointPath}.${randomBytes(4).toString("hex")}.tmp`;
+      writeFileSync(tmpPath, serializeCheckpoint(cp), "utf-8");
+      renameSync(tmpPath, checkpointPath);
+    } catch (error: unknown) {
+      process.stderr.write(
+        `Warning: failed to write checkpoint (${error instanceof Error ? error.message : String(error)})\n`,
+      );
+    }
+  }
+
   const request: SolverRequest = {
     board,
     snapshot: {
@@ -369,7 +516,19 @@ async function main(): Promise<void> {
     },
   };
 
-  const adapter = createNodeSolverAdapter();
+  const adapter = createNodeSolverAdapter({
+    ...(loadedCheckpoint || checkpointPath
+      ? {
+          checkpointOptions: {
+            ...(loadedCheckpoint ? { checkpoint: loadedCheckpoint } : {}),
+            ...(checkpointPath
+              ? { onCheckpoint: writeCheckpointSnapshot }
+              : {}),
+            solverVersion: sokomindSolverMetadata.version,
+          },
+        }
+      : {}),
+  });
 
   const ac = new AbortController();
   const handleSignal = () => ac.abort();

@@ -520,7 +520,8 @@ src/solver/search/exact-state.ts
 export interface ExactStateCodec {
   readonly cellBits: number;
   readonly tokenBits: number;
-  readonly boxCount: number;
+  readonly labelCount: number;   // distinct label types (for token encoding)
+  readonly cellCount: number;    // total board cells (for cell-index sizing)
 
   tokensFromBoxes(
     boxes: readonly DenseBox[],
@@ -540,6 +541,11 @@ export interface ExactStateCodec {
   ): readonly number[];
 }
 ```
+
+> **Rationale:** The codec needs `labelCount` (number of distinct label types) to
+> determine the token vocabulary size for encoding, and `cellCount` to size
+> cell-index fields. The raw box count is derivable and not directly consumed by
+> the codec interface.
 
 ## 7.2 Encoding requirements
 
@@ -861,8 +867,11 @@ pushedFromCell
 pushDirection
 boxTokenOffset
 heuristic
-insertionSequence
 ```
+
+FIFO tie-breaking (insertion sequence) is required but is managed internally by
+`NumericPriorityQueue` via its `#sequences` array, not stored in the arena.
+This avoids wasting arena memory on a value only the priority queue consumes.
 
 Use:
 
@@ -1248,7 +1257,7 @@ Deduplicate incumbents using:
 * Move count
 * Push count
 * Ordered push-chain signature
-* Room-transition sequence where available
+* Room-transition sequence (deferred — the engine tracks `strategicHistory` internally but does not propagate it through the solution contract)
 * Box-goal assignment signature
 
 Prefer structurally different routes over nearly identical routes.
@@ -1268,6 +1277,10 @@ Select the final rewritten incumbent by:
 ## 16.4 Global bounded re-search
 
 After local rewriting, run exact move A* or IDA* with the incumbent upper bound.
+
+Bounded re-search and optimality proof share the same `runProof()` /
+`runSequentialProof()` / `runConcurrentProof()` infrastructure, differentiated
+by mode-specific budget limits rather than being separate mechanisms.
 
 In Quality mode:
 

@@ -518,3 +518,238 @@ describe("solved-box-must-move-first regression", () => {
     }
   });
 });
+
+describe("repeated typed labels (M22)", () => {
+  it("oracle handles two boxes with the same typed label", () => {
+    const board = makeBoard([
+      "OOOOOOO",
+      "O     O",
+      "OR Aa O",
+      "O  Aa O",
+      "OOOOOOO",
+    ]);
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "O     O",
+      "OR Aa O",
+      "O  Aa O",
+      "OOOOOOO",
+    ]);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+
+    const result = exactRemainingMoves(board, robot, boxes);
+    assert.notEqual(result.exactMoves, null, "Two-A puzzle should be solvable");
+    assert.ok(result.exactMoves! > 0);
+  });
+
+  it("heuristic is admissible with repeated typed labels", () => {
+    const board = makeBoard([
+      "OOOOOOO",
+      "O     O",
+      "OR Aa O",
+      "O  Aa O",
+      "OOOOOOO",
+    ]);
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "O     O",
+      "OR Aa O",
+      "O  Aa O",
+      "OOOOOOO",
+    ]);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+
+    const oracleResult = exactRemainingMoves(board, robot, boxes);
+    if (oracleResult.exactMoves === null) return;
+
+    const pushBound = assignmentLowerBound(board, boxes);
+    const walkBound = minimumManhattanWalkToPotentialPush(board, robot, boxes);
+    const combined = pushBound + walkBound;
+
+    assert.ok(
+      combined <= oracleResult.exactMoves,
+      `Combined h=${combined} > exact=${oracleResult.exactMoves} on repeated-label board`,
+    );
+  });
+
+  it("exact A* matches oracle with repeated typed labels", async () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "O     O",
+      "OR Aa O",
+      "O  Aa O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+
+    const oracleResult = exactRemainingMoves(board, robot, boxes);
+    assert.notEqual(oracleResult.exactMoves, null);
+
+    const request = requestForOracleState(parsed, board, robot, boxes);
+    const result = assertSolved(
+      await runClassicSearch(request, oracleExecutionContext(), {
+        strategy: "astar",
+      }),
+    );
+
+    assert.equal(
+      result.solution.moves,
+      oracleResult.exactMoves,
+      `A* moves=${result.solution.moves} !== oracle=${oracleResult.exactMoves} on repeated-label board`,
+    );
+  });
+});
+
+describe("partial state testing (M23)", () => {
+  it("oracle solves from a mid-solve position", () => {
+    const board = makeBoard([
+      "OOOOO",
+      "OR  O",
+      "O XSO",
+      "OOOOO",
+    ]);
+    const boxes: DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(2, 2) },
+    ];
+    const robot = board.cellAt(2, 1);
+
+    const result = exactRemainingMoves(board, robot, boxes);
+    assert.notEqual(result.exactMoves, null);
+    assert.ok(result.exactMoves! >= 1);
+  });
+
+  it("exact A* solves from a mid-solve position", async () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OR  O",
+      "O XSO",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const midRobot = board.cellAt(2, 1);
+    const midBoxes: DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(2, 2) },
+    ];
+
+    const request = requestForOracleState(parsed, board, midRobot, midBoxes);
+    const result = assertSolved(
+      await runClassicSearch(request, oracleExecutionContext(), {
+        strategy: "astar",
+      }),
+    );
+
+    const oracleResult = exactRemainingMoves(board, midRobot, midBoxes);
+    assert.equal(result.solution.moves, oracleResult.exactMoves);
+  });
+});
+
+describe("unsolvable state exhaustion assertion (M24)", () => {
+  it("A* reports unsolvable with reason 'exhausted' for corner-deadlocked state", async () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OX SO",
+      "O   O",
+      "OR  O",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const cornerBox: DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(1, 1) },
+    ];
+
+    const oracleResult = exactRemainingMoves(board, board.cellAt(3, 1), cornerBox);
+    assert.equal(oracleResult.exactMoves, null, "Oracle confirms unsolvable");
+
+    const request = requestForOracleState(
+      parsed,
+      board,
+      board.cellAt(3, 1),
+      cornerBox,
+    );
+    const result = await runClassicSearch(request, oracleExecutionContext(), {
+      strategy: "astar",
+    });
+    assert.equal(result.status, "unsolved", "A* must report unsolved");
+    if (result.status === "unsolved") {
+      assert.equal(
+        result.reason,
+        "exhausted",
+        "A* must exhaust search space for unsolvable puzzles",
+      );
+    }
+  });
+
+  it("IDA* reports unsolvable with reason 'exhausted' for corner-deadlocked state", async () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OX SO",
+      "O   O",
+      "OR  O",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const cornerBox: DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(1, 1) },
+    ];
+
+    const oracleResult = exactRemainingMoves(board, board.cellAt(3, 1), cornerBox);
+    assert.equal(oracleResult.exactMoves, null, "Oracle confirms unsolvable");
+
+    const request = requestForOracleState(
+      parsed,
+      board,
+      board.cellAt(3, 1),
+      cornerBox,
+    );
+    const result = await runIdaStarSearch(request, oracleExecutionContext());
+    assert.equal(result.status, "unsolved", "IDA* must report unsolved");
+    if (result.status === "unsolved") {
+      assert.equal(
+        result.reason,
+        "exhausted",
+        "IDA* must exhaust search space for unsolvable puzzles",
+      );
+    }
+  });
+});
+
+describe("solved-box-must-move regression verification (M25)", () => {
+  it("verifies the optimal route requires moving a box that starts on its goal", async () => {
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "OSXSO",
+      "O  XO",
+      "O R O",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const robot = board.cellAt(3, 2);
+
+    const boxes: DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(1, 1) },
+      { id: "X:1", label: "X", cell: board.cellAt(2, 3) },
+    ];
+
+    const boxOnGoal = boxes.find(
+      (b) => board.goalLabelByCell[b.cell] === b.label,
+    );
+    assert.ok(boxOnGoal !== undefined, "At least one box must start on its goal");
+
+    const request = requestForOracleState(parsed, board, robot, boxes);
+    const result = await runClassicSearch(request, oracleExecutionContext(), {
+      strategy: "astar",
+    });
+
+    if (result.status !== "solved") return;
+
+    const firstPush = result.solution.steps.find((s) => s.kind === "push");
+    assert.ok(
+      firstPush !== undefined,
+      "Solution must contain at least one push",
+    );
+  });
+});

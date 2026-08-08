@@ -64,7 +64,7 @@ describe("proof protocol type guards", () => {
   it("isProofCommand accepts valid update-upper-bound", () => {
     assert.ok(
       isProofCommand({
-        type: "proof/update-upper-bound",
+        type: "solver/update-upper-bound",
         moves: 5,
       }),
     );
@@ -96,7 +96,7 @@ describe("proof protocol type guards", () => {
   it("isProofCommand rejects update-upper-bound with non-integer moves", () => {
     assert.ok(
       !isProofCommand({
-        type: "proof/update-upper-bound",
+        type: "solver/update-upper-bound",
         moves: 1.5,
       }),
     );
@@ -105,7 +105,7 @@ describe("proof protocol type guards", () => {
   it("isProofCommand rejects update-upper-bound with negative moves", () => {
     assert.ok(
       !isProofCommand({
-        type: "proof/update-upper-bound",
+        type: "solver/update-upper-bound",
         moves: -1,
       }),
     );
@@ -644,7 +644,7 @@ describe("concurrent proof coordinator", () => {
 
     for (const w of workers) {
       const updates = w.receivedCommands.filter(
-        (c) => c.type === "proof/update-upper-bound",
+        (c) => c.type === "solver/update-upper-bound",
       );
       assert.ok(
         updates.length > 0,

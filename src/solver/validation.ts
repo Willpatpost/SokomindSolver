@@ -47,7 +47,7 @@ type Issues = SolverValidationIssue[];
 type UnknownRecord = Record<string, unknown>;
 
 const OBJECTIVE_KINDS = new Set(["moves"]);
-const PHASES = new Set(["preparing", "searching", "improving", "verifying", "proving"]);
+const PHASES = new Set(["preparing", "searching", "improving", "verifying", "proving", "harvesting"]);
 const EXECUTION_TARGETS = new Set(["main-thread", "web-worker"]);
 const RUNTIMES = new Set(["javascript", "webassembly", "hybrid"]);
 const QUALITIES = new Set(["first-found", "bounded", "optimal"]);
@@ -1230,5 +1230,47 @@ export function assertValidSolverMetadata(
   const issues = collectMetadataIssues(value);
   if (!isValid(issues)) {
     throw new SolverValidationError("Solver metadata", issues);
+  }
+}
+
+export class ProgressMonotonicityTracker {
+  #lastLowerBound: number | undefined;
+  #lastUpperBound: number | undefined;
+
+  check(progress: SolverProgress): readonly SolverValidationIssue[] {
+    const issues: SolverValidationIssue[] = [];
+
+    if (progress.lowerBound !== undefined) {
+      if (
+        this.#lastLowerBound !== undefined &&
+        progress.lowerBound < this.#lastLowerBound
+      ) {
+        issues.push({
+          path: "progress.lowerBound",
+          message: `must not decrease (was ${this.#lastLowerBound}, now ${progress.lowerBound})`,
+        });
+      }
+      this.#lastLowerBound = progress.lowerBound;
+    }
+
+    if (progress.upperBound !== undefined) {
+      if (
+        this.#lastUpperBound !== undefined &&
+        progress.upperBound > this.#lastUpperBound
+      ) {
+        issues.push({
+          path: "progress.upperBound",
+          message: `must not increase (was ${this.#lastUpperBound}, now ${progress.upperBound})`,
+        });
+      }
+      this.#lastUpperBound = progress.upperBound;
+    }
+
+    return issues;
+  }
+
+  reset(): void {
+    this.#lastLowerBound = undefined;
+    this.#lastUpperBound = undefined;
   }
 }

@@ -3,14 +3,22 @@
  *
  * Enumerates all legal game states using step-level BFS where every
  * individual walk step and every push each cost exactly 1 move. Uses
- * the real core game engine's collision semantics (box positions
- * blocking movement, walls blocking everything).
+ * the real core game engine's `stepSnapshot()` transition function
+ * rather than reimplementing physics, satisfying spec section 21.1:
+ * "Use the real stepSnapshot() transition."
  *
  * This oracle is intentionally independent of the solver's heuristics,
- * deadlock detectors, and compiled board. It provides ground truth for
- * admissibility and optimality tests.
+ * deadlock detectors, and compiled board's neighbor tables. It provides
+ * ground truth for admissibility and optimality tests.
  */
 
+import {
+  DIRECTIONS,
+  stepSnapshot,
+  type Box,
+  type GameSnapshot,
+  type Position,
+} from "../../src/core/index.ts";
 import type { CompiledSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import type { DenseBox } from "../../src/solver/search/model.ts";
 
@@ -42,12 +50,79 @@ function isSolved(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bridging helpers: convert between dense cell indices and core types
+// ---------------------------------------------------------------------------
+
+/** Convert dense cell index to core Position using the compiled board's position table. */
+function cellToPosition(board: CompiledSearchBoard, cell: number): Position {
+  return board.positions[cell];
+}
+
+/** Convert DenseBox[] to core Box[] for use with stepSnapshot. */
+function denseBoxesToCoreBoxes(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+): readonly Box[] {
+  return boxes.map((box) => ({
+    id: box.id,
+    label: box.label,
+    position: cellToPosition(board, box.cell),
+  }));
+}
+
+/** Convert core Position to dense cell index. Returns -1 for walls/outside. */
+function positionToCell(board: CompiledSearchBoard, pos: Position): number {
+  return board.cellAt(pos.row, pos.column);
+}
+
+/** Convert a core GameSnapshot's boxes back to DenseBox[]. */
+function snapshotBoxesToDense(
+  board: CompiledSearchBoard,
+  coreBoxes: readonly Box[],
+): readonly DenseBox[] {
+  return coreBoxes.map((box) => ({
+    id: box.id,
+    label: box.label,
+    cell: positionToCell(board, box.position),
+  }));
+}
+
+/**
+ * Build a GameSnapshot from dense oracle state for use with stepSnapshot.
+ * The puzzleId is fixed to "oracle" since it is only used for snapshot identity.
+ */
+function buildSnapshot(
+  board: CompiledSearchBoard,
+  robotCell: number,
+  boxes: readonly DenseBox[],
+  moves: number,
+  pushes: number,
+): GameSnapshot {
+  const robotPos = cellToPosition(board, robotCell);
+  const coreBoxes = denseBoxesToCoreBoxes(board, boxes);
+  // We need to check solved status using the compiled board's goal data
+  // (which is what callers expect) rather than the core engine's solved check,
+  // but stepSnapshot will compute it from the ParsedBoard anyway.
+  // We construct a minimal snapshot — stepSnapshot only reads robot, boxes,
+  // moves, and pushes from it.
+  return Object.freeze({
+    puzzleId: "oracle",
+    robot: Object.freeze({ row: robotPos.row, column: robotPos.column }),
+    boxes: Object.freeze(coreBoxes.map((box) => Object.freeze(box))),
+    moves,
+    pushes,
+    solved: isSolved(board, boxes),
+  });
+}
+
 /**
  * Find the exact minimum number of moves (walk steps + pushes) to solve
  * the puzzle from the given state. Returns null if unsolvable.
  *
- * Uses Dijkstra/BFS with cost 1 per action (walk or push). This is a
- * step-level search, not a push-macro search.
+ * Uses BFS with cost 1 per action (walk or push). This is a step-level
+ * search, not a push-macro search. Transitions are computed via the
+ * core engine's `stepSnapshot()` function.
  */
 export function exactRemainingMoves(
   board: CompiledSearchBoard,
@@ -83,67 +158,45 @@ export function exactRemainingMoves(
 
     if ((bestMoves.get(currentKey) ?? Infinity) < current.moves) continue;
 
-    const boxIndexByCell = new Map<number, number>();
-    current.boxes.forEach(({ cell }, index) => {
-      boxIndexByCell.set(cell, index);
-    });
+    // Build a core GameSnapshot for the current state
+    const snapshot = buildSnapshot(
+      board,
+      current.robot,
+      current.boxes,
+      current.moves,
+      current.pushes,
+    );
 
-    const neighbors = board.neighbors[current.robot];
-    if (!neighbors) continue;
+    // Use stepSnapshot for each of the 4 directions
+    for (const direction of DIRECTIONS) {
+      const transition = stepSnapshot(board.source, snapshot, direction);
+      if (!transition.moved) continue;
 
-    for (let d = 0; d < 4; d++) {
-      const dest = neighbors[d];
-      if (dest === undefined || dest < 0) continue;
+      const nextRobot = positionToCell(board, transition.snapshot.robot);
+      const nextBoxes = snapshotBoxesToDense(board, transition.snapshot.boxes);
+      const newMoves = current.moves + 1;
+      const newPushes = transition.pushed
+        ? current.pushes + 1
+        : current.pushes;
+      const newKey = oracleStateKey(nextRobot, nextBoxes);
 
-      const pushedBoxIndex = boxIndexByCell.get(dest);
+      if (newMoves < (bestMoves.get(newKey) ?? Infinity)) {
+        bestMoves.set(newKey, newMoves);
 
-      if (pushedBoxIndex !== undefined) {
-        const boxNeighbors = board.neighbors[dest];
-        if (!boxNeighbors) continue;
-        const boxDest = boxNeighbors[d];
-        if (boxDest === undefined || boxDest < 0) continue;
-        if (boxIndexByCell.has(boxDest)) continue;
-
-        const newBoxes = current.boxes.map((box, index) =>
-          index === pushedBoxIndex
-            ? { ...box, cell: boxDest }
-            : box,
-        );
-        const newMoves = current.moves + 1;
-        const newKey = oracleStateKey(dest, newBoxes);
-
-        if (newMoves < (bestMoves.get(newKey) ?? Infinity)) {
-          bestMoves.set(newKey, newMoves);
-
-          if (isSolved(board, newBoxes)) {
-            return {
-              exactMoves: newMoves,
-              exactPushes: current.pushes + 1,
-              statesExplored: bestMoves.size,
-            };
-          }
-
-          queue.push({
-            robot: dest,
-            boxes: newBoxes,
-            moves: newMoves,
-            pushes: current.pushes + 1,
-          });
+        if (isSolved(board, nextBoxes)) {
+          return {
+            exactMoves: newMoves,
+            exactPushes: newPushes,
+            statesExplored: bestMoves.size,
+          };
         }
-      } else {
-        const newMoves = current.moves + 1;
-        const newKey = oracleStateKey(dest, current.boxes);
 
-        if (newMoves < (bestMoves.get(newKey) ?? Infinity)) {
-          bestMoves.set(newKey, newMoves);
-
-          queue.push({
-            robot: dest,
-            boxes: current.boxes,
-            moves: newMoves,
-            pushes: current.pushes,
-          });
-        }
+        queue.push({
+          robot: nextRobot,
+          boxes: nextBoxes,
+          moves: newMoves,
+          pushes: newPushes,
+        });
       }
     }
   }
@@ -179,45 +232,24 @@ export function allReachableStates(
 
   while (head < queue.length) {
     const current = queue[head++];
-    const boxIndexByCell = new Map<number, number>();
-    current.boxes.forEach(({ cell }, index) => {
-      boxIndexByCell.set(cell, index);
-    });
 
-    const neighbors = board.neighbors[current.robot];
-    if (!neighbors) continue;
+    // Build a core GameSnapshot for successor enumeration
+    const snapshot = buildSnapshot(board, current.robot, current.boxes, 0, 0);
 
-    for (let d = 0; d < 4; d++) {
-      const dest = neighbors[d];
-      if (dest === undefined || dest < 0) continue;
+    // Use stepSnapshot for each of the 4 directions
+    for (const direction of DIRECTIONS) {
+      const transition = stepSnapshot(board.source, snapshot, direction);
+      if (!transition.moved) continue;
 
-      const pushedBoxIndex = boxIndexByCell.get(dest);
+      const nextRobot = positionToCell(board, transition.snapshot.robot);
+      const nextBoxes = snapshotBoxesToDense(board, transition.snapshot.boxes);
+      const newKey = oracleStateKey(nextRobot, nextBoxes);
 
-      if (pushedBoxIndex !== undefined) {
-        const boxNeighbors = board.neighbors[dest];
-        if (!boxNeighbors) continue;
-        const boxDest = boxNeighbors[d];
-        if (boxDest === undefined || boxDest < 0) continue;
-        if (boxIndexByCell.has(boxDest)) continue;
-
-        const newBoxes = current.boxes.map((box, index) =>
-          index === pushedBoxIndex ? { ...box, cell: boxDest } : box,
-        );
-        const newKey = oracleStateKey(dest, newBoxes);
-        if (!visited.has(newKey)) {
-          visited.add(newKey);
-          const entry = { robot: dest, boxes: newBoxes };
-          reachable.set(newKey, entry);
-          queue.push(entry);
-        }
-      } else {
-        const newKey = oracleStateKey(dest, current.boxes);
-        if (!visited.has(newKey)) {
-          visited.add(newKey);
-          const entry = { robot: dest, boxes: current.boxes };
-          reachable.set(newKey, entry);
-          queue.push(entry);
-        }
+      if (!visited.has(newKey)) {
+        visited.add(newKey);
+        const entry = { robot: nextRobot, boxes: nextBoxes };
+        reachable.set(newKey, entry);
+        queue.push(entry);
       }
     }
   }

@@ -175,7 +175,7 @@ port.on("message", (data: unknown) => {
       void runPartition(command);
       break;
 
-    case "proof/update-upper-bound": {
+    case "solver/update-upper-bound": {
       const localBound = command.moves - activePrefixCost;
       if (localBound > 0 && (pendingUpperBound === undefined || localBound < pendingUpperBound)) {
         pendingUpperBound = localBound;

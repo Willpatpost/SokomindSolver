@@ -94,14 +94,20 @@ interface BenchmarkFixtureResult {
 
   moves?: number;
   pushes?: number;
+  lowerBound?: number;
+  gap?: number;
   expandedStates?: number;
   generatedStates?: number;
   reachabilityFloods?: number;
   reopens?: number;
   peakFrontierSize?: number;
   estimatedMemoryBytes?: number;
+  processRssBytes?: number;
+  assignmentCalls?: number;
+  assignmentCacheHits?: number;
   elapsedMs: number;
   counters?: Record<string, number>;
+  perLaneCounters?: Record<string, Record<string, number>>;
 
   verified?: boolean;
 }
@@ -138,12 +144,17 @@ const SOLVER_VERSIONS: Record<string, string> = {
 // Arguments
 // ---------------------------------------------------------------------------
 
+const DEFAULT_TIMED_RUNS = 5;
+const DEFAULT_WARMUP_RUNS = 1;
+
 function parseArguments(): {
   fixtureIds: string[];
   savePath: string | undefined;
   childMode: boolean;
   childFixtureId: string | undefined;
   childSolver: string | undefined;
+  timedRuns: number;
+  warmupRuns: number;
 } {
   const fixtureIds = process.argv
     .filter((a) => a.startsWith("--fixture="))
@@ -152,6 +163,10 @@ function parseArguments(): {
   const saveArg = process.argv.find((a) => a.startsWith("--save="));
   const savePath = saveArg ? saveArg.slice("--save=".length) : undefined;
   const childMode = process.argv.includes("--child");
+  const runsArg = process.argv.find((a) => a.startsWith("--runs="));
+  const timedRuns = runsArg ? Math.max(1, parseInt(runsArg.slice("--runs=".length), 10) || DEFAULT_TIMED_RUNS) : DEFAULT_TIMED_RUNS;
+  const warmupArg = process.argv.find((a) => a.startsWith("--warmup="));
+  const warmupRuns = warmupArg ? Math.max(0, parseInt(warmupArg.slice("--warmup=".length), 10) || DEFAULT_WARMUP_RUNS) : DEFAULT_WARMUP_RUNS;
   const childFixtureArg = process.argv.find((a) =>
     a.startsWith("--child-fixture="),
   );
@@ -164,7 +179,12 @@ function parseArguments(): {
   const childSolver = childSolverArg
     ? childSolverArg.slice("--child-solver=".length)
     : undefined;
-  return { fixtureIds, savePath, childMode, childFixtureId, childSolver };
+  return { fixtureIds, savePath, childMode, childFixtureId, childSolver, timedRuns, warmupRuns };
+}
+
+function selectMedian(results: BenchmarkFixtureResult[]): BenchmarkFixtureResult {
+  const sorted = [...results].sort((a, b) => a.elapsedMs - b.elapsedMs);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 // ---------------------------------------------------------------------------
@@ -281,15 +301,25 @@ async function runClassicSolver(
       : undefined,
   };
 
+  base.processRssBytes = process.memoryUsage.rss();
+
   if (result.status === "solved") {
     base.optimality = result.solution.optimality;
     base.moves = result.solution.moves;
     base.pushes = result.solution.pushes;
+    if (result.proof) {
+      base.lowerBound = result.proof.lowerBound;
+      base.gap = result.proof.gap;
+    }
     const verification = verifySolverSolution(request, result.solution);
     base.verified = verification.valid;
   } else if (result.status === "unsolved") {
     base.reason = result.reason;
     base.detail = result.detail;
+    if (result.proof) {
+      base.lowerBound = result.proof.lowerBound;
+      base.gap = result.proof.gap;
+    }
   }
 
   return base;
@@ -537,6 +567,62 @@ async function main(): Promise<void> {
 
   const allResults: BenchmarkFixtureResult[] = [];
   const solvers = ["sokomind-solver", "classic-astar", "classic-ida-star"];
+  const totalRuns = args.warmupRuns + args.timedRuns;
+
+  process.stderr.write(
+    `Benchmark: ${args.warmupRuns} warm-up run(s), median of ${args.timedRuns} timed run(s)\n`,
+  );
+
+  function runChildProcess(
+    fixtureId: string,
+    solver: string,
+  ): BenchmarkFixtureResult | null {
+    const parentStarted = performance.now();
+    const child = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        scriptPath,
+        "--child",
+        `--child-fixture=${fixtureId}`,
+        `--child-solver=${solver}`,
+      ],
+      {
+        encoding: "utf8",
+        env: process.env,
+        timeout: CHILD_TIMEOUT_MS,
+        windowsHide: true,
+      },
+    );
+
+    const parentElapsedMs = Math.round(performance.now() - parentStarted);
+
+    if (child.stdout) {
+      for (const line of child.stdout.split("\n").filter(Boolean)) {
+        try {
+          return JSON.parse(line) as BenchmarkFixtureResult;
+        } catch {
+          /* skip malformed lines */
+        }
+      }
+    }
+
+    const meta = buildMetadata(
+      BENCHMARK_FIXTURE_BY_ID[fixtureId] ?? BENCHMARK_CORPUS[0],
+      solver,
+    );
+    return {
+      ...meta,
+      fixtureId,
+      status: "error",
+      detail:
+        child.error?.message ??
+        (child.signal
+          ? `terminated-${child.signal}`
+          : `exit-${child.status ?? "unknown"}`),
+      elapsedMs: parentElapsedMs,
+    };
+  }
 
   for (const fixture of selectedFixtures) {
     for (const solver of solvers) {
@@ -547,63 +633,28 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const meta = buildMetadata(fixture, solver);
-      const parentStarted = performance.now();
+      for (let w = 0; w < args.warmupRuns; w++) {
+        process.stderr.write(
+          `  ${fixture.fixtureId} / ${solver}: warm-up ${w + 1}/${args.warmupRuns}\n`,
+        );
+        runChildProcess(fixture.fixtureId, solver);
+      }
 
-      const child = spawnSync(
-        process.execPath,
-        [
-          "--experimental-strip-types",
-          scriptPath,
-          "--child",
-          `--child-fixture=${fixture.fixtureId}`,
-          `--child-solver=${solver}`,
-        ],
-        {
-          encoding: "utf8",
-          env: process.env,
-          timeout: CHILD_TIMEOUT_MS,
-          windowsHide: true,
-        },
-      );
-
-      const parentElapsedMs = Math.round(performance.now() - parentStarted);
-
-      let childParsed = false;
-      if (child.stdout) {
-        for (const line of child.stdout.split("\n").filter(Boolean)) {
-          try {
-            const record = JSON.parse(line) as BenchmarkFixtureResult;
-            allResults.push(record);
-            childParsed = true;
-            process.stderr.write(
-              `  ${record.fixtureId} / ${record.solver}: ${record.status}` +
-                (record.moves !== undefined ? ` (${record.moves} moves)` : "") +
-                ` [${record.elapsedMs}ms]\n`,
-            );
-          } catch {
-            /* skip malformed lines */
-          }
+      const timedResults: BenchmarkFixtureResult[] = [];
+      for (let r = 0; r < args.timedRuns; r++) {
+        const result = runChildProcess(fixture.fixtureId, solver);
+        if (result) {
+          timedResults.push(result);
+          process.stderr.write(
+            `  ${result.fixtureId} / ${result.solver}: ${result.status}` +
+              (result.moves !== undefined ? ` (${result.moves} moves)` : "") +
+              ` [${result.elapsedMs}ms] run ${r + 1}/${args.timedRuns}\n`,
+          );
         }
       }
 
-      if (!childParsed || child.error || child.signal || child.status !== 0) {
-        if (!childParsed) {
-          const errorResult: BenchmarkFixtureResult = {
-            ...meta,
-            status: "error",
-            detail:
-              child.error?.message ??
-              (child.signal
-                ? `terminated-${child.signal}`
-                : `exit-${child.status ?? "unknown"}`),
-            elapsedMs: parentElapsedMs,
-          };
-          allResults.push(errorResult);
-          process.stderr.write(
-            `  ${fixture.fixtureId} / ${solver}: ERROR (${errorResult.detail}) [${parentElapsedMs}ms]\n`,
-          );
-        }
+      if (timedResults.length > 0) {
+        allResults.push(selectMedian(timedResults));
       }
     }
   }

@@ -14,7 +14,7 @@ import { KeeperReachability } from "../search/reachability.ts";
 
 export type ProofCommandType =
   | "proof/start-partition"
-  | "proof/update-upper-bound"
+  | "solver/update-upper-bound"
   | "proof/cancel";
 
 export type ProofResultType =
@@ -31,10 +31,11 @@ export interface ProofStartPartition {
   readonly prefixCost: number;
   readonly prefixSteps: readonly SolutionStep[];
   readonly algorithm: "astar" | "ida-star";
+  readonly deterministic?: boolean;
 }
 
 export interface ProofUpdateUpperBound {
-  readonly type: "proof/update-upper-bound";
+  readonly type: "solver/update-upper-bound";
   readonly moves: number;
 }
 
@@ -82,7 +83,7 @@ export type ProofResult =
 
 const PROOF_COMMAND_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/start-partition",
-  "proof/update-upper-bound",
+  "solver/update-upper-bound",
   "proof/cancel",
 ]);
 
@@ -118,7 +119,7 @@ export function isProofCommand(value: unknown): value is ProofCommand {
         Array.isArray(value.prefixSteps) &&
         (value.algorithm === "astar" || value.algorithm === "ida-star")
       );
-    case "proof/update-upper-bound":
+    case "solver/update-upper-bound":
       return (
         typeof value.moves === "number" &&
         Number.isSafeInteger(value.moves) &&

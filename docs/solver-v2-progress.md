@@ -117,7 +117,7 @@ These match the reviewed deterministic result exactly.
 
 - `src/solver/search/exact-state.ts` — Collision-free `BigInt` state codec (`ExactStateCodec`)
 - `tests/unit/solver-exact-state.test.ts` — 19 tests: round-trip, collision-exhaustion, label grouping, edge cases
-- `tests/support/exact-solver-oracle.ts` — Exhaustive step-level BFS oracle for tiny boards
+- `tests/support/exact-solver-oracle.ts` — Exhaustive step-level BFS oracle for tiny boards (uses core `stepSnapshot()` transitions per spec §21.1)
 - `tests/unit/solver-exact-oracle.test.ts` — 9 tests: admissibility verification, solved-box regression, codec collision check
 
 #### Modified files
@@ -162,7 +162,7 @@ The corrected `minimumManhattanWalkToPotentialPush` considers all boxes. Additio
 
 ### Oracle validation
 
-The exhaustive oracle uses step-level BFS (cost 1 per walk step, cost 1 per push) to compute exact minimum moves. On a 12-cell board with 2 generic boxes (660 total state positions, ~50+ solvable), the oracle verified:
+The exhaustive oracle uses step-level BFS (cost 1 per walk step, cost 1 per push) to compute exact minimum moves. Transitions are computed via the core engine's `stepSnapshot()` function (satisfying spec §21.1), bridging between the solver's dense cell indices and the core's `ParsedBoard`/`GameSnapshot` types. On a 12-cell board with 2 generic boxes (660 total state positions, ~50+ solvable), the oracle verified:
 - `assignmentLowerBound(state) <= exactRemainingMoves(state)` for every solvable state
 - `minimumManhattanWalkToPotentialPush(state) <= exactRemainingMoves(state)` for every solvable state
 - `pushBound + walkBound <= exactRemainingMoves(state)` for every solvable state (combined proof heuristic)
@@ -1730,3 +1730,63 @@ all optimality wording to ensure "optimal" never appears without proof metadata 
 4. **Proof details in diagnostics**: Keeps the simple case clean for ordinary users.
 5. **E2e tests updated**: "Proven optimal" assertion, proof detail assertions, mode dropdown
    assertions added.
+
+## Gap Fix §3.2 — Wire `minimumReachableWalkToLegalPush` into Search Engines
+
+**Date**: 2026-08-07
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+The function `minimumReachableWalkToLegalPush` existed in `heuristic.ts` (exported
+and tested since Sprint 1) but was never called from either search engine. Both
+`exact-move-astar.ts` and `ida-star.ts` used only the cheaper
+`minimumManhattanWalkToPotentialPush` at both generation and expansion time.
+
+Per spec section 3.2, the Manhattan version is the cheap insertion bound (used at
+generation time for frontier ordering), while the reachable version is the exact
+expansion bound (used at expansion time for tighter pruning against the incumbent).
+
+### Changes
+
+**`src/solver/search/exact-move-astar.ts`:**
+- Added import of `minimumReachableWalkToLegalPush`
+- After the BFS reachability flood and sealed corral check at expansion time,
+  added expansion-time pruning block that:
+  1. Computes `expandedWalk = minimumReachableWalkToLegalPush(board, expansionBoxes, occupied, reachable)`
+  2. If infinite (unsolved state with no legal push), increments `infeasiblePrunes` and skips
+  3. Retrieves `expandedPushBound` from assignment heuristic (cache hit from generation time)
+  4. If `nodeMoves + expandedPushBound + expandedWalk >= U`, prunes the node
+- Manhattan-based generation-time ordering is unchanged
+
+**`src/solver/search/ida-star.ts`:**
+- Added import of `minimumReachableWalkToLegalPush`
+- After the BFS reachability flood and sealed corral check (gated on `childCursor === 0`),
+  added expansion-time pruning block that:
+  1. Computes `expandedWalk = minimumReachableWalkToLegalPush(board, frame.boxes, occupancyBuffer, reachable)`
+  2. If infinite, increments `infeasiblePrunes` and pops frame
+  3. Retrieves `expandedPushBound` from assignment heuristic (cache hit from `!expanded` block)
+  4. If `frame.g + expandedPushBound + expandedWalk >= U`, pops frame
+- Manhattan-based f-bound check in the `!expanded` block is unchanged
+
+### Design notes
+
+- **No second BFS**: The expansion-time pruning reuses the keeper BFS already
+  computed for node expansion (reachability flood). The `reachable` object from
+  `flood()` satisfies the `{ distanceTo, isReachable }` interface.
+- **Cache hit guarantee**: The assignment heuristic was already evaluated at
+  generation time (A*) or in the `!expanded` block (IDA*), so the expansion-time
+  `heuristic.evaluate()` call is a cache hit.
+- **Generation-time ordering preserved**: The cheaper Manhattan walk bound
+  continues to be used at child generation for frontier ordering (A*) and initial
+  f-bound computation (IDA*). Only the expansion-time pruning uses the stronger bound.
+
+### Test regression
+
+- `npm run typecheck` — pass
+- `npm run lint` — pass (no new errors)
+- `npm run test:unit` — 1039 tests, all pass
+- `npm run test:solver:oracle` — 19/19 pass
+- `npm run test:solver:optimal` — 5/5 pass
+- `npm run test:solver:multi` — 4/4 pass

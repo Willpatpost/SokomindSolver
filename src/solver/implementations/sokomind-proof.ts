@@ -10,7 +10,12 @@ import type { SokomindRequestOptions } from "./sokomind-options.ts";
 import { compileSearchBoard } from "../search/compiled-board.ts";
 import { selectProofAlgorithm, type ProofAlgorithm } from "../search/proof-algorithm-selection.ts";
 import { runExactMoveAStar, type ExactIncumbent } from "../search/exact-move-astar.ts";
-import { runIdaStarSearch } from "../search/ida-star.ts";
+import { runIdaStarSearch, type ExactMoveIdaStarOptions } from "../search/ida-star.ts";
+import type { IdaStarCheckpoint } from "../search/ida-star-checkpoint.ts";
+import {
+  createBoardContentKey,
+  createExactStateCodecVersion,
+} from "../search/ida-star-checkpoint.ts";
 import {
   enumerateFirstPushPartitions,
   buildPartitionRequest,
@@ -20,11 +25,18 @@ import {
   type ProofStartPartition,
 } from "./sokomind-proof-protocol.ts";
 
+export interface ProofCheckpointOptions {
+  readonly checkpoint?: IdaStarCheckpoint;
+  readonly onCheckpoint?: (checkpoint: IdaStarCheckpoint) => void;
+  readonly solverVersion?: string;
+}
+
 export async function runSequentialProof(
   request: SolverRequest,
   context: SolverExecutionContext,
   options: SokomindRequestOptions,
   discoveryResult: SolverResult,
+  checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
   if (discoveryResult.status !== "solved") {
     return discoveryResult;
@@ -68,11 +80,29 @@ export async function runSequentialProof(
   if (algorithm === "astar") {
     proofResult = await runExactMoveAStar(proofRequest, context, { incumbent });
   } else {
-    proofResult = await runIdaStarSearch(proofRequest, context, {
+    const idaOptions: ExactMoveIdaStarOptions = {
       incumbent,
       reachabilityPolicy: options.idaReachabilitySnapshots,
       snapshotPeriod: options.idaSnapshotPeriod,
-    });
+      ...(checkpointOptions?.checkpoint
+        ? { checkpoint: checkpointOptions.checkpoint }
+        : {}),
+      ...((checkpointOptions?.onCheckpoint && checkpointOptions.solverVersion)
+        ? {
+            onCheckpoint: checkpointOptions.onCheckpoint,
+            checkpointContext: {
+              boardContentKey: createBoardContentKey(request.board),
+              solverVersion: checkpointOptions.solverVersion,
+              exactStateCodecVersion: createExactStateCodecVersion(
+                board.cellCount,
+                [...board.goalCellsByLabel.keys()].length,
+              ),
+              partitionId: null,
+            },
+          }
+        : {}),
+    };
+    proofResult = await runIdaStarSearch(proofRequest, context, idaOptions);
   }
 
   if (proofResult.status === "solved") {
@@ -271,7 +301,7 @@ export async function runConcurrentProof(
             for (const w of workers) {
               try {
                 w.postMessage({
-                  type: "proof/update-upper-bound",
+                  type: "solver/update-upper-bound",
                   moves: bestCost,
                 });
               } catch {
@@ -370,6 +400,7 @@ export async function runConcurrentProof(
         prefixCost: partition.prefixCost,
         prefixSteps: partition.prefixSteps,
         algorithm,
+        deterministic: options.deterministic,
       };
       tracker.worker.postMessage(command);
     }

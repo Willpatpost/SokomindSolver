@@ -17,7 +17,6 @@ export interface ExactStateCodec {
   readonly cellCount: number;
   readonly cellBits: number;
   readonly tokenBits: number;
-  readonly boxCount: number;
   readonly labelCount: number;
 
   tokensFromBoxes(boxes: readonly DenseBox[]): Uint32Array;
@@ -87,9 +86,16 @@ export function createExactStateCodec(
   }
 
   function packBoxTokens(sortedTokens: ArrayLike<number>): bigint {
+    const maxTokenValue = (1 << tokenBits) - 1;
     let packed = BigInt(sortedTokens.length);
     for (let i = 0; i < sortedTokens.length; i++) {
-      packed = (packed << BigInt(tokenBits)) | BigInt(sortedTokens[i]);
+      const token = sortedTokens[i];
+      if (token < 0 || token > maxTokenValue) {
+        throw new RangeError(
+          `Token ${token} does not fit within ${tokenBits} bits (max ${maxTokenValue}).`,
+        );
+      }
+      packed = (packed << BigInt(tokenBits)) | BigInt(token);
     }
     return packed;
   }
@@ -132,7 +138,6 @@ export function createExactStateCodec(
     cellCount,
     cellBits,
     tokenBits,
-    boxCount: 0, // not fixed per codec, boxes are per-call
     labelCount,
     tokensFromBoxes,
     packBoxTokens,

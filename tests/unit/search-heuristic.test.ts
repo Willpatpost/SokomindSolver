@@ -19,7 +19,6 @@ import {
 import {
   AssignmentHeuristic,
   assignmentLowerBound,
-  minimumWalkToFirstPush,
   minimumReachableWalkToLegalPush,
 } from "../../src/solver/search/heuristic.ts";
 import {
@@ -404,57 +403,6 @@ describe("conservative deadlocks", () => {
 
     assert.equal(goalCells.length, 4);
     assert.equal(createsFullyBlockedTwoByTwoDeadlock(board, boxes), false);
-  });
-});
-
-describe("minimumWalkToFirstPush", () => {
-  it("returns 0 when player is adjacent to an off-goal box", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOO",
-      "ORX O",
-      "O  SO",
-      "OOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
-    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
-    assert.equal(minimumWalkToFirstPush(board, playerCell, boxes), 0);
-  });
-
-  it("returns non-negative distance when player is far from boxes", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOOOO",
-      "OR    O",
-      "O     O",
-      "O   X O",
-      "O   S O",
-      "OOOOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
-    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
-    const dist = minimumWalkToFirstPush(board, playerCell, boxes);
-    assert.ok(dist >= 0, "Walk distance must be non-negative");
-    assert.ok(Number.isFinite(dist), "Walk distance must be finite");
-  });
-
-  it("returns 0 when all boxes are on goals", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOO",
-      "OR  O",
-      "O  XO",
-      "O  SO",
-      "OOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    const goalCells = [...(board.goalCellsByLabel.get("X") ?? [])];
-    const boxes: readonly DenseBox[] = goalCells.map((cell, i) => ({
-      id: `X:${i}`,
-      label: "X",
-      cell,
-    }));
-    const playerCell = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
-    assert.equal(minimumWalkToFirstPush(board, playerCell, boxes), 0);
   });
 });
 

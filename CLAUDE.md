@@ -41,10 +41,13 @@
 - npm run build
 - npm run test
 - npm run test:coverage
+- npm run test:solver:oracle
+- npm run test:solver:optimal
 - npm run test:solver:multi
 - npm run test:solver:huge
 - npm run benchmark:solver
 - npm run benchmark:solver:v2
+- npm run benchmark:solver:memory
 
 ## Environment variables
 

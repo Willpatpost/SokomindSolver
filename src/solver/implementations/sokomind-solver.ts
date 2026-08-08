@@ -36,6 +36,7 @@ import {
   runSequentialProof,
   runConcurrentProof,
   type SokomindProofWorker,
+  type ProofCheckpointOptions,
 } from "./sokomind-proof.ts";
 import {
   IncumbentCollector,
@@ -165,6 +166,8 @@ export interface SokomindSolverAdapterOptions {
   readonly improvementMaxPasses?: number;
   /** Routes shorter than this are returned immediately. */
   readonly improvementMinimumMoves?: number;
+  /** Checkpoint options for IDA* proof runs. */
+  readonly checkpointOptions?: ProofCheckpointOptions;
 }
 
 interface EnginePlan {
@@ -299,7 +302,13 @@ function runProof(
       },
     );
   }
-  return runSequentialProof(request, context, sokomindOptions, discoveryResult);
+  return runSequentialProof(
+    request,
+    context,
+    sokomindOptions,
+    discoveryResult,
+    adapterOptions.checkpointOptions,
+  );
 }
 
 function finiteNonNegative(value: unknown): number {

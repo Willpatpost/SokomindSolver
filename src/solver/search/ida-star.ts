@@ -37,7 +37,7 @@ import {
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
-import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush } from "./heuristic.ts";
+import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
@@ -794,7 +794,7 @@ export async function runIdaStarSearch(
       };
 
       report(
-        "searching",
+        incumbentSolution ? "proving" : "searching",
         `IDA* iteration ${counters.iterations}, f-limit=${fLimit}`,
       );
       throwIfSolverCancelled(context.signal);
@@ -840,7 +840,7 @@ export async function runIdaStarSearch(
         const now = context.now();
         if (now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
           report(
-            "searching",
+            incumbentSolution ? "proving" : "searching",
             `IDA* iteration ${counters.iterations}, f-limit=${fLimit}, depth=${pathStack.length - 1}`,
           );
           lastProgressAt = now;
@@ -1059,6 +1059,32 @@ export async function runIdaStarSearch(
           counters.corralPrunes += 1;
           popFrame();
           continue;
+        }
+
+        // Expansion-time tighter pruning: recompute h with exact BFS walk
+        // bound (reuses the flood already done, no second BFS).
+        if (frame.childCursor === 0) {
+          const expandedWalk = minimumReachableWalkToLegalPush(
+            board,
+            frame.boxes,
+            occupancyBuffer,
+            reachable,
+          );
+          if (!Number.isFinite(expandedWalk)) {
+            // Unsolved state with no legal push — dead end.
+            counters.infeasiblePrunes += 1;
+            popFrame();
+            continue;
+          }
+          // Push bound is a cache hit (was evaluated in the !expanded block).
+          const expandedPushBound = heuristic.evaluate(frame.boxes);
+          heuristicCacheEntries = heuristic.stats.cacheEntries;
+          const hExpanded = expandedPushBound + expandedWalk;
+          const fExpanded = frame.g + hExpanded;
+          if (fExpanded >= U) {
+            popFrame();
+            continue;
+          }
         }
 
         const frozenBoxes = frame.frozenBoxes!;

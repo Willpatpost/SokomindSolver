@@ -48,6 +48,7 @@ import {
 import {
   AssignmentHeuristic,
   minimumManhattanWalkToPotentialPush,
+  minimumReachableWalkToLegalPush,
 } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { createExactStateCodec } from "./exact-state.ts";
@@ -631,6 +632,28 @@ export async function runExactMoveAStar(
       if (hasSealedCorralDeadlock(board, expansionBoxes, occupied, reachable, corralDetector)) {
         counters.corralPrunes += 1;
         continue;
+      }
+
+      // Expansion-time tighter pruning: recompute h with exact BFS walk
+      // bound (reuses the flood already done, no second BFS).
+      {
+        const expandedWalk = minimumReachableWalkToLegalPush(
+          board,
+          expansionBoxes,
+          occupied,
+          reachable,
+        );
+        if (!Number.isFinite(expandedWalk)) {
+          // Unsolved state with no legal push — dead end.
+          counters.infeasiblePrunes += 1;
+          continue;
+        }
+        // Push bound is a cache hit (was evaluated at generation time).
+        const expandedPushBound = heuristic.evaluate(expansionBoxes);
+        const hExpanded = expandedPushBound + expandedWalk;
+        if (nodeMoves + hExpanded >= U) {
+          continue;
+        }
       }
 
       const committedBoxes = findProvenCommitments(board, expansionBoxes, commitmentDetector);

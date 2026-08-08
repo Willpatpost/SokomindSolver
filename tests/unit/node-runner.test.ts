@@ -71,20 +71,34 @@ describe("solve-sokomind CLI JSONL output", () => {
       "generatedStates",
       "peakFrontierSize",
       "counters",
+      "perLaneCounters",
       "memory",
       "elapsedMs",
-      "mode",
-      "parallelism",
-      "deterministic",
-      "solverVersion",
-      "gitCommit",
-      "tuningFingerprint",
+      "configuration",
     ];
 
     for (const field of requiredFields) {
       assert.ok(
         field in record,
         `missing required field: ${field}`,
+      );
+    }
+
+    // Configuration sub-fields
+    const configFields = [
+      "mode",
+      "parallelism",
+      "deterministic",
+      "proofAlgorithm",
+      "solverVersion",
+      "gitCommit",
+      "tuningFingerprint",
+    ];
+
+    for (const field of configFields) {
+      assert.ok(
+        field in record.configuration,
+        `missing configuration field: ${field}`,
       );
     }
   });
@@ -106,7 +120,7 @@ describe("solve-sokomind CLI JSONL output", () => {
     assert.equal(status, 0);
 
     const record = JSON.parse(stdout.trim());
-    assert.equal(record.solverVersion, "1.1.0");
+    assert.equal(record.configuration.solverVersion, "1.1.0");
   });
 
   it("mode reflects CLI argument", () => {
@@ -117,7 +131,7 @@ describe("solve-sokomind CLI JSONL output", () => {
     assert.equal(status, 0);
 
     const record = JSON.parse(stdout.trim());
-    assert.equal(record.mode, "fast");
+    assert.equal(record.configuration.mode, "fast");
   });
 
   it("respects --timeout-ms", () => {

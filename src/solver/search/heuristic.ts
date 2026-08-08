@@ -144,7 +144,7 @@ export function assignmentLowerBound(
  *   3. Walk moves and push moves are disjoint, so the walk lower bound can
  *      be safely added to the push-only lower bound without double-counting.
  */
-export function minimumWalkToFirstPush(
+function minimumWalkToFirstPush(
   board: CompiledSearchBoard,
   playerCell: number,
   boxes: readonly DenseBox[],
