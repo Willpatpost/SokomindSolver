@@ -509,7 +509,7 @@ describe("SolverWorkerHost - uncovered paths", () => {
   it("produces cancelled result when solver throws after being cancelled", async () => {
     const transport = new MockTransport();
     const registry = new SolverRegistry([
-      testAdapter(async (_req, ctx) => {
+      testAdapter(async () => {
         // Simulate solver checking signal and throwing
         const error = new Error("The operation was aborted");
         error.name = "AbortError";
@@ -680,11 +680,9 @@ describe("SolverWorkerHost - uncovered paths", () => {
 
   // Monotonicity: valid non-decreasing lowerBound is fine
   it("allows valid monotonic progress updates", async () => {
-    let reportProgress: ((p: SolverProgress) => void) | undefined;
     const transport = new MockTransport();
     const registry = new SolverRegistry([
       testAdapter(async (_req, ctx) => {
-        reportProgress = ctx.reportProgress;
         ctx.reportProgress({
           phase: "searching",
           elapsedMs: 1,

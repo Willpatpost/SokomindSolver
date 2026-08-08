@@ -29,12 +29,6 @@ const TWO_BOX = [
   "OOOOOOO",
 ];
 
-const TYPED = [
-  "OOOOO",
-  "ORAaO",
-  "OOOOO",
-];
-
 describe("toDenseBoxes", () => {
   it("converts parsed boxes to dense boxes", () => {
     const { boxes } = setup(SIMPLE);

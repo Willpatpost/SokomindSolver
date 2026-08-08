@@ -18,12 +18,6 @@ function setup(rows: string[]) {
  * We parse a minimal valid board, then use synthetic DenseBox arrays
  * for evaluate() calls.
  */
-function boardOnly(rows: string[]) {
-  const parsed = parsePuzzleRows(rows);
-  const board = compileSearchBoard(parsed);
-  return { parsed, board };
-}
-
 // ----- Board layouts -----
 // Each layout must satisfy the Sokomind parser: X matches S, uppercase A
 // matches lowercase a, and box/goal counts must match per label.

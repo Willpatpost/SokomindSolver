@@ -437,8 +437,6 @@ describe("LocalRoomDeadlockDetector", () => {
     // Note: this geometry may or may not produce a room depending on
     // articulation point analysis. If it does, test the deadlock.
     const dd = new LocalRoomDeadlockDetector(board, topology);
-    const rooms = topology.rooms;
-
     // Even if no room is found in this specific layout, the constructor
     // and check should not crash.
     const boxes: DenseBox[] = [
