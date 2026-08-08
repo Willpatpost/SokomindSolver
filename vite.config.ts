@@ -27,12 +27,13 @@ function metadataPlugin(publicSiteUrl: string, isProd: boolean): Plugin {
 
         // Compute SHA-256 hashes of inline scripts for CSP
         const inlineScriptHashes: string[] = [];
-        const scriptRegex = /<script>([^]*?)<\/script>/g;
+        const scriptRegex = /<script\b([^>]*)>([^]*?)<\/script>/gi;
         let match;
         while ((match = scriptRegex.exec(replaced)) !== null) {
+          if (/\bsrc\s*=/i.test(match[1])) continue;
           const hash = crypto
             .createHash("sha256")
-            .update(match[1])
+            .update(match[2])
             .digest("base64");
           inlineScriptHashes.push(`'sha256-${hash}'`);
         }
