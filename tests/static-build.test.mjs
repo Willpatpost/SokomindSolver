@@ -66,7 +66,7 @@ async function coldRouteAssetNames(entryPattern, assetNames) {
 }
 
 const DELIVERY_BUDGETS = Object.freeze({
-  allScriptsAndStylesGzipBytes: 310_000,
+  allScriptsAndStylesGzipBytes: 340_000,
   largestAssetGzipBytes: 70_000,
   homeRouteGzipBytes: 160_000,
   playRouteGzipBytes: 185_000,

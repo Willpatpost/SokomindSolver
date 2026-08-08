@@ -439,3 +439,74 @@
   --antenna-bg: #7ab8d4;
   --robot-face-bg: rgba(255, 255, 255, 0.12);
 }
+
+@media (forced-colors: active) {
+  .board {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .wall {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+
+  .floor {
+    forced-color-adjust: none;
+    background: Canvas;
+  }
+
+  .box {
+    forced-color-adjust: none;
+    border: 2px solid ButtonText;
+    background: ButtonFace;
+  }
+
+  .box[data-home] {
+    border-color: Highlight;
+    box-shadow: none;
+  }
+
+  .box[data-deadlocked] {
+    border-color: LinkText;
+    box-shadow: none;
+  }
+
+  .goal {
+    forced-color-adjust: none;
+    border: 2px dashed Highlight;
+    background: transparent;
+  }
+
+  .robot {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    background: Highlight;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .board {
+    --board-border-color: rgb(23 25 22 / 0.4);
+    --floor-inset-shadow: inset 0 0 0 1px rgb(23 25 22 / 0.1);
+    --wall-base: #282c26;
+    --box-border-color: hsl(var(--piece-hue) 48% 20%);
+    --goal-border: hsl(var(--piece-hue) 42% 30%);
+  }
+
+  .goal::before {
+    opacity: 0.75;
+  }
+
+  .goal::after {
+    opacity: 0.8;
+  }
+
+  .trailMarker::after {
+    --trail-opacity: calc(0.5 - var(--trail-age) * 0.06);
+  }
+
+  .box[data-deadlocked] {
+    border-width: clamp(2px, 0.3vw, 3px);
+  }
+}

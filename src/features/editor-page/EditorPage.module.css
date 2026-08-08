@@ -46,6 +46,11 @@
   background: var(--paper-50);
 }
 
+.backButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .titleGroup {
   display: grid;
   gap: 2px;
@@ -108,6 +113,11 @@
   background: rgb(251 250 245 / 0.6);
 }
 
+.sizeControls input:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .gridWrap {
   display: grid;
   min-width: 0;
@@ -158,6 +168,13 @@
   resize: vertical;
 }
 
+.fields input:focus-visible,
+.fields select:focus-visible,
+.fields textarea:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .validation {
   display: grid;
   gap: 4px;
@@ -175,6 +192,73 @@
   color: var(--sage-700);
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.undoRedo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.undoRedo button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 9px;
+  background: rgb(251 250 245 / 0.5);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.undoRedo button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+  background: var(--paper-50);
+}
+
+.undoRedo button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.undoRedo button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.fillToggle {
+  width: 100%;
+  min-height: 34px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 9px;
+  background: rgb(251 250 245 / 0.5);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.fillToggle[data-active] {
+  border-color: var(--blue-500);
+  background: rgb(74 127 150 / 0.1);
+  color: var(--blue-500);
+}
+
+.fillToggle:hover {
+  border-color: var(--sage-500);
+}
+
+.fillToggle:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
 }
 
 .actions {
@@ -199,6 +283,11 @@
 .actions button:hover {
   border-color: var(--sage-500);
   background: var(--paper-50);
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .actions button[data-primary] {
@@ -269,6 +358,102 @@
   background: rgb(251 250 245 / 0.6);
   font-size: 0.65rem;
   font-weight: 500;
+}
+
+.shareResult input:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.importModal {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.importContent {
+  padding: 28px;
+  border-radius: var(--radius-xl);
+  background: var(--paper-50);
+  box-shadow: 0 25px 80px rgb(0 0 0 / 0.2);
+}
+
+.importTitle {
+  margin: 0 0 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.importHint {
+  margin: 0 0 14px;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.importTextarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 10px;
+  background: rgb(251 250 245 / 0.6);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  resize: vertical;
+}
+
+.importTextarea:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.importActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.importActions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgb(23 25 22 / 0.12);
+  border-radius: 11px;
+  background: rgb(251 250 245 / 0.6);
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.importActions button:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-50);
+}
+
+.importActions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.importActions button[data-primary] {
+  border: none;
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+.importActions button[data-primary]:hover {
+  background: var(--sage-600);
+}
+
+.importActions button[data-primary]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 @media (max-width: 960px) {
@@ -387,4 +572,187 @@
   color: #171916;
   background: var(--coral-500);
   transition: border-color 150ms ease;
+}
+
+:global(html[data-theme="dark"]) .importContent {
+  background: var(--paper-100);
+  box-shadow: 0 25px 80px rgb(0 0 0 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .importTextarea {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+  color: var(--ink-700);
+}
+
+:global(html[data-theme="dark"]) .importActions button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .importActions button:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-200);
+}
+
+:global(html[data-theme="dark"]) .importActions button[data-primary] {
+  border-color: var(--sage-500);
+  background: #476b4b;
+}
+
+:global(html[data-theme="dark"]) .importActions button[data-primary]:hover:not(:disabled) {
+  background: #567d5a;
+}
+
+:global(html[data-theme="dark"]) .undoRedo button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .undoRedo button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+  background: var(--paper-200);
+}
+
+:global(html[data-theme="dark"]) .fillToggle {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .fillToggle:hover {
+  border-color: var(--sage-500);
+}
+
+@media (prefers-contrast: more) {
+  .backButton {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .gridWrap {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .sizeControls input,
+  .fields input,
+  .fields select,
+  .fields textarea,
+  .shareResult input,
+  .importTextarea {
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .undoRedo button,
+  .fillToggle {
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .undoRedo button:disabled,
+  .actions button[data-primary]:disabled {
+    opacity: 0.55;
+  }
+
+  .actions button {
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .actions button[data-danger] {
+    border-width: 2px;
+  }
+
+  .importActions button {
+    border-color: rgb(23 25 22 / 0.25);
+  }
+}
+
+@media (forced-colors: active) {
+  .gridWrap {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .backButton {
+    border: 2px solid ButtonText;
+  }
+
+  .sizeControls input,
+  .fields input,
+  .fields select,
+  .fields textarea,
+  .shareResult input,
+  .importTextarea {
+    border: 1px solid ButtonText;
+  }
+
+  .undoRedo button {
+    border: 2px solid ButtonText;
+  }
+
+  .undoRedo button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .fillToggle {
+    border: 2px solid ButtonText;
+  }
+
+  .fillToggle[data-active] {
+    border-color: Highlight;
+    color: Highlight;
+  }
+
+  .actions button {
+    border: 2px solid ButtonText;
+  }
+
+  .actions button[data-primary] {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .actions button[data-primary]:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    background: Canvas;
+  }
+
+  .actions button[data-danger] {
+    border-color: LinkText;
+    color: LinkText;
+  }
+
+  .importContent {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .importActions button {
+    border: 2px solid ButtonText;
+  }
+
+  .importActions button[data-primary] {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .importActions button[data-primary]:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    background: Canvas;
+  }
+
+  .notice,
+  .loadError {
+    border: 2px solid ButtonText;
+  }
+
+  .validationError {
+    color: LinkText;
+  }
 }

@@ -88,6 +88,11 @@
   background: var(--dpad-bg);
 }
 
+.dpad button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .up {
   grid-area: 1 / 2;
   border-radius: 10px 10px 3px 3px;
@@ -144,6 +149,11 @@
   cursor: not-allowed;
 }
 
+.actions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .actions kbd {
   color: var(--ink-subtle);
   font-family: inherit;
@@ -191,12 +201,36 @@
   .dpad {
     grid-column: 1;
     grid-row: auto;
+    grid-template: repeat(3, 52px) / repeat(3, 52px);
     margin: 7px auto 2px;
   }
 
   .actions {
     grid-column: 1;
     max-width: none;
+  }
+
+  .actions button {
+    min-height: 46px;
+  }
+}
+
+.thinking {
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+:global(html[data-motion="reduced"]) .thinking {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .thinking {
+    animation: none;
   }
 }
 
@@ -205,4 +239,61 @@
   --controls-bg: rgb(34 36 32 / 0.86);
   --dpad-border-color: #4a4e48;
   --dpad-bg: linear-gradient(145deg, #3a3d38, #2e312c);
+}
+
+:global(html[data-theme="dark"]) .actions button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(40 42 38 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .actions button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+}
+
+@media (prefers-contrast: more) {
+  .dpad button,
+  .center {
+    border-width: 2px;
+  }
+
+  .actions button {
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .actions button:disabled {
+    opacity: 0.55;
+  }
+}
+
+@media (forced-colors: active) {
+  .controls {
+    border: 2px solid ButtonBorder;
+  }
+
+  .dpad button {
+    forced-color-adjust: none;
+    border: 2px solid ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .dpad button:hover {
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .center {
+    forced-color-adjust: none;
+    border: 2px solid GrayText;
+    background: Canvas;
+  }
+
+  .actions button {
+    border: 2px solid ButtonText;
+  }
+
+  .actions button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
 }

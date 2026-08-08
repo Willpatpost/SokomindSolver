@@ -294,6 +294,22 @@ export function undo(session: GameSession): GameSession {
   );
 }
 
+export function undoN(session: GameSession, count: number): GameSession {
+  let result = session;
+  for (let i = 0; i < count; i++) {
+    const previous = result.history.head;
+    if (!previous) break;
+    result = createSessionValue(
+      result.puzzle,
+      result.board,
+      previous.snapshot,
+      popHistory(result.history),
+      result.actionLog.slice(0, -1),
+    );
+  }
+  return result;
+}
+
 export function reset(session: GameSession): GameSession {
   const snapshot = createSnapshot(
     session.puzzle.id,

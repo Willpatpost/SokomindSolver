@@ -9,6 +9,7 @@ interface GameControlsProps {
   disabled?: boolean;
   onMove: (direction: Direction) => void;
   onUndo: () => void;
+  onUndoN?: (count: number) => void;
   onHint?: () => void;
   onReset: () => void;
 }
@@ -32,6 +33,7 @@ export function GameControls({
   disabled = false,
   onMove,
   onUndo,
+  onUndoN,
   onHint,
   onReset,
 }: GameControlsProps) {
@@ -66,7 +68,22 @@ export function GameControls({
           <span>Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}</span>
           <kbd>U</kbd>
         </button>
-        <button type="button" onClick={onHint} disabled={disabled || !canHint}>
+        {onUndoN && undoDepth >= 5 && (
+          <button type="button" onClick={() => onUndoN(5)} disabled={disabled}>
+            <span>Undo 5</span>
+          </button>
+        )}
+        {onUndoN && undoDepth >= 10 && (
+          <button type="button" onClick={() => onUndoN(Infinity)} disabled={disabled}>
+            <span>Undo all</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className={hintThinking ? styles.thinking : undefined}
+          onClick={onHint}
+          disabled={disabled || !canHint}
+        >
           <span>{hintThinking ? "Thinking…" : "Hint"}</span>
           <kbd>H</kbd>
         </button>

@@ -249,7 +249,7 @@ export function usePersistedPlay(
   }, [commitProgressSnapshot, writerId]);
 
   const recordSolvedSession = useCallback(
-    (solved: GameSession): CompletionRecordUpdate => {
+    (solved: GameSession, elapsedMs?: number): CompletionRecordUpdate => {
       const current = progressSyncRef.current ?? loadProgressSyncSnapshot();
       const update = persistProgressUpdate(
         current,
@@ -259,6 +259,7 @@ export function usePersistedPlay(
           solved.puzzle.id,
           solved.moves,
           solved.pushes,
+          elapsedMs,
         ),
       );
       commitProgressSnapshot(update.snapshot);

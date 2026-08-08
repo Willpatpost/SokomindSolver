@@ -44,6 +44,11 @@
   background: var(--paper-50);
 }
 
+.backButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .pageTitle {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -99,6 +104,17 @@
   background: var(--sage-600);
 }
 
+.nextButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.breadcrumb a:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -106,7 +122,67 @@
   margin-bottom: 32px;
 }
 
-.difficultyCard,
+.difficultyCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgb(23 25 22 / 0.08);
+  border-radius: var(--radius-lg);
+  background: rgb(251 250 245 / 0.72);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+
+.difficultyCard:hover {
+  border-color: var(--sage-500);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-2px);
+}
+
+.difficultyCardMain:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: -2px;
+  border-radius: var(--radius-lg);
+}
+
+.randomButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: -2px;
+}
+
+.difficultyCardMain {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.randomButton {
+  padding: 8px 20px;
+  border: none;
+  border-top: 1px solid rgb(23 25 22 / 0.06);
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 750;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.randomButton:hover {
+  background: rgb(23 25 22 / 0.04);
+  color: var(--sage-700);
+}
+
 .collectionCard {
   display: flex;
   flex-direction: column;
@@ -124,24 +200,35 @@
     transform 100ms ease;
 }
 
-.difficultyCard:hover,
 .collectionCard:hover {
   border-color: var(--sage-500);
   box-shadow: var(--shadow-soft);
   transform: translateY(-2px);
 }
 
+.collectionCard:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.collectionCard[data-complete] {
+  border-color: color-mix(in srgb, var(--sage-600), transparent 50%);
+}
+
+.collectionCard[data-complete] .cardStats::after {
+  content: " ★ Complete";
+  color: var(--sage-700);
+  font-weight: 850;
+}
+
 .cardHeader {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 14px;
 }
 
-.cardDot {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border-radius: 50%;
+.progressRing {
+  flex: 0 0 48px;
 }
 
 .cardName {
@@ -180,6 +267,14 @@
   transition: width 400ms ease;
 }
 
+.cardMeta {
+  display: flex;
+  gap: 10px;
+  color: var(--ink-muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -199,11 +294,22 @@
   cursor: pointer;
   transition:
     border-color 150ms ease,
-    background 150ms ease;
+    background 150ms ease,
+    color 150ms ease,
+    transform 100ms ease;
 }
 
 .filterChip:hover {
   border-color: var(--sage-500);
+}
+
+.filterChip:active {
+  transform: scale(0.96);
+}
+
+.filterChip:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
 }
 
 .filterChip[data-active] {
@@ -237,6 +343,10 @@
   background: rgb(251 250 245 / 0.6);
   font-size: 0.76rem;
   backdrop-filter: blur(10px);
+}
+
+.search:focus-within {
+  border-color: var(--sage-500);
 }
 
 .search input {
@@ -331,6 +441,20 @@
   background: rgb(251 250 245 / 0.5);
 }
 
+.puzzleItem:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: -2px;
+  border-radius: 11px;
+}
+
+.puzzleItem[data-solved] {
+  border-left: 3px solid var(--sage-500);
+}
+
+.puzzleItem[data-optimal] {
+  border-left: 3px solid var(--amber-400);
+}
+
 .puzzleNumber {
   color: var(--ink-muted);
   font-size: 0.72rem;
@@ -352,6 +476,32 @@
 .puzzleCopy small {
   color: var(--ink-muted);
   font-size: 0.68rem;
+}
+
+.ratingDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--sage-400);
+}
+
+.ratingDot[data-rating="easy"] {
+  background: hsl(145 50% 50%);
+}
+
+.ratingDot[data-rating="right"] {
+  background: var(--blue-500);
+}
+
+.ratingDot[data-rating="hard"] {
+  background: var(--coral-500);
+}
+
+.puzzleFavorite {
+  font-size: 0.78rem;
+  color: var(--coral-400);
 }
 
 .puzzleComplete {
@@ -410,6 +560,14 @@
   border-color: var(--sage-500);
 }
 
+:global(html[data-theme="dark"]) .randomButton {
+  border-top-color: rgb(255 255 255 / 0.06);
+}
+
+:global(html[data-theme="dark"]) .randomButton:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
 :global(html[data-theme="dark"]) .filterChip {
   border-color: rgb(255 255 255 / 0.1);
   background: rgb(34 36 32 / 0.6);
@@ -433,4 +591,125 @@
 :global(html[data-theme="dark"]) .pageLink[aria-current="page"] {
   border-color: var(--sage-600);
   background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .cardTrack {
+  background: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .nextButton {
+  background: var(--sage-600);
+}
+
+@media (prefers-contrast: more) {
+  .puzzleItem {
+    border-color: rgb(23 25 22 / 0.12);
+  }
+
+  .pageLink[aria-disabled="true"] {
+    opacity: 0.6;
+  }
+
+  .difficultyCard,
+  .collectionCard {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .backButton {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .filterChip {
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .search {
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .pageLink {
+    border-color: rgb(23 25 22 / 0.2);
+  }
+}
+
+@media (forced-colors: active) {
+  .backButton {
+    border: 2px solid ButtonText;
+  }
+
+  .difficultyCard,
+  .collectionCard {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .difficultyCard:hover,
+  .collectionCard:hover {
+    border-color: Highlight;
+    transform: none;
+  }
+
+  .randomButton {
+    border-top: 1px solid ButtonBorder;
+  }
+
+  .nextButton {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .filterChip {
+    border: 1px solid ButtonText;
+  }
+
+  .filterChip[data-active] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .search {
+    border: 1px solid ButtonText;
+  }
+
+  .pageLink {
+    border: 1px solid ButtonText;
+  }
+
+  .pageLink[aria-current="page"] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .pageLink[aria-disabled="true"] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .puzzleItem {
+    border: 1px solid ButtonBorder;
+  }
+
+  .puzzleItem[data-solved] {
+    border-left: 3px solid Highlight;
+  }
+
+  .puzzleItem[data-optimal] {
+    border-left: 3px solid Highlight;
+  }
+
+  .cardTrack {
+    border: 1px solid GrayText;
+  }
+
+  .cardTrack span {
+    background: Highlight;
+  }
 }

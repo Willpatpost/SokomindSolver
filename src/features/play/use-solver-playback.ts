@@ -11,13 +11,18 @@ export interface SolutionPlayback {
   readonly active: boolean;
   readonly current: number;
   readonly total: number;
+  readonly speed: number;
 }
 
 const EMPTY_PLAYBACK: SolutionPlayback = Object.freeze({
   active: false,
   current: 0,
   total: 0,
+  speed: 1,
 });
+
+export const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
+export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
 interface UseSolverPlaybackOptions {
   readonly sessionRef: { readonly current: GameSession };
@@ -33,6 +38,7 @@ export function useSolverPlayback({
   onToast,
 }: UseSolverPlaybackOptions) {
   const [playback, setPlayback] = useState<SolutionPlayback>(EMPTY_PLAYBACK);
+  const speedRef = useRef<number>(1);
   const playbackRef = useRef<{
     token: number;
     timer?: number;
@@ -85,7 +91,6 @@ export function useSolverPlayback({
     runtime.token = token;
     runtime.active = true;
     let expectedActionLog = fingerprint.actionLog;
-    setPlayback({ active: true, current: 0, total: steps.length });
 
     const finish = (currentStep: number, message?: string) => {
       if (playbackRef.current.token !== token) return;
@@ -95,6 +100,7 @@ export function useSolverPlayback({
         active: false,
         current: currentStep,
         total: steps.length,
+        speed: speedRef.current,
       });
       if (message) onToast(message);
     };
@@ -122,16 +128,21 @@ export function useSolverPlayback({
         return;
       }
 
-      setPlayback({ active: true, current: completed, total: steps.length });
+      const speed = speedRef.current;
+      setPlayback({ active: true, current: completed, total: steps.length, speed });
+      const stepDelay = reducedMotion ? 45 : Math.round(135 / speed);
       playbackRef.current.timer = window.setTimeout(
         () => advance(completed),
-        reducedMotion ? 45 : 135,
+        stepDelay,
       );
     };
 
+    const speed = speedRef.current;
+    setPlayback({ active: true, current: 0, total: steps.length, speed });
+    const initialDelay = reducedMotion ? 45 : Math.round(180 / speed);
     runtime.timer = window.setTimeout(
       () => advance(0),
-      reducedMotion ? 45 : 180,
+      initialDelay,
     );
   }, [
     applyDirection,
@@ -141,9 +152,15 @@ export function useSolverPlayback({
     onToast,
   ]);
 
+  const setPlaybackSpeed = useCallback((speed: number) => {
+    speedRef.current = speed;
+    setPlayback((prev) => (prev.active ? { ...prev, speed } : prev));
+  }, []);
+
   return {
     playback,
     playSolverSolution,
     stopSolutionPlayback,
+    setPlaybackSpeed,
   };
 }

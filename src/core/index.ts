@@ -61,6 +61,7 @@ export {
   sessionReducer,
   stepSnapshot,
   undo,
+  undoN,
 } from "./game-session.ts";
 
 export { replayActionLog } from "./replay.ts";

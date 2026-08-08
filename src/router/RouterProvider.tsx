@@ -73,7 +73,13 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (prevPageRef.current !== route.page) {
       prevPageRef.current = route.page;
-      window.scrollTo(0, 0);
+      const prefersReduced =
+        document.documentElement.dataset.motion === "reduced" ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({
+        top: 0,
+        behavior: prefersReduced ? "instant" : "smooth",
+      });
     }
   }, [route.page]);
 

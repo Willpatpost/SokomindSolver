@@ -41,6 +41,11 @@
   cursor: not-allowed;
 }
 
+.iconButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .iconButton svg {
   width: 20px;
   height: 20px;
@@ -117,6 +122,12 @@
   font-size: 0.72rem;
   font-weight: 750;
   cursor: pointer;
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .supportNote,
@@ -281,6 +292,11 @@
   font-size: 0.72rem;
 }
 
+.motionSetting select:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .autoplayNote {
   margin-top: 16px;
 }
@@ -334,4 +350,68 @@
   border-color: rgb(255 255 255 / 0.08);
   background: rgb(34 36 32 / 0.97);
   box-shadow: 0 24px 70px rgb(0 0 0 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .switches {
+  border-block-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .setting + .setting {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .motionSetting {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .motionSetting select {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(40 42 38);
+}
+
+:global(html[data-theme="dark"]) .supportNote {
+  background: rgb(40 42 38);
+}
+
+@media (forced-colors: active) {
+  .iconButton {
+    border: 2px solid ButtonText;
+  }
+
+  .iconButton[aria-pressed="true"] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .panel {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .switchTrack {
+    border: 2px solid ButtonText;
+  }
+
+  .switchControl input:checked + .switchTrack {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .motionSetting select {
+    border: 1px solid ButtonText;
+  }
+
+  .switches {
+    border-block-color: ButtonBorder;
+  }
+
+  .setting + .setting {
+    border-top-color: ButtonBorder;
+  }
+
+  .motionSetting {
+    border-top-color: ButtonBorder;
+  }
 }

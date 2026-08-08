@@ -84,10 +84,13 @@ export function HowToPlay({ open, onClose }: HowToPlayProps) {
         <div className={styles.shortcuts}>
           <span><kbd>↑ ↓ ← →</kbd> Move</span>
           <span><kbd>W A S D</kbd> Move</span>
-          <span><kbd>U</kbd> Undo</span>
+          <span><kbd>U</kbd> / <kbd>Ctrl+Z</kbd> Undo</span>
           <span><kbd>H</kbd> Hint</span>
           <span><kbd>R</kbd> Reset</span>
+          <span><kbd>P</kbd> Pause</span>
+          <span><kbd>F</kbd> Favorite</span>
           <span><kbd>[ ]</kbd> Prev / Next puzzle</span>
+          <span><kbd>?</kbd> Shortcuts</span>
         </div>
 
         <button className={styles.primary} type="button" onClick={onClose}>

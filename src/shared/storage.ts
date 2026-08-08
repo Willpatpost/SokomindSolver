@@ -11,6 +11,9 @@ export const STORAGE_KEYS = Object.freeze({
   session: "sokomind.session.v1",
   optimal: "sokomind.optimal.v3",
   reset: "sokomind.reset.v1",
+  ratings: "sokomind.ratings.v1",
+  favorites: "sokomind.favorites.v1",
+  editorDraft: "sokomind.editor-draft.v1",
 });
 
 export const LEGACY_STORAGE_KEYS = Object.freeze({

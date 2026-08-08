@@ -9,11 +9,15 @@
   --paper-100: #f3f0e7;
   --paper-200: #e6e0d2;
   --paper-300: #d4ccba;
+  --sage-400: #8aa08c;
   --sage-500: #708872;
   --sage-600: #566e59;
   --sage-700: #3f5744;
+  --amber-300: #f0c060;
   --amber-400: #e5a64b;
   --amber-500: #cb8230;
+  --amber-600: #a86820;
+  --coral-400: #d4806a;
   --coral-500: #c8664d;
   --blue-500: #4a7f96;
   --shadow-soft: 0 24px 70px rgb(23 25 22 / 0.12);
@@ -78,6 +82,26 @@ button,
   outline-offset: 3px;
 }
 
+.skip-to-content {
+  position: fixed;
+  z-index: 200;
+  top: 10px;
+  left: 10px;
+  padding: 11px 15px;
+  border-radius: 10px;
+  color: var(--paper-50);
+  background: var(--ink-950);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: none;
+  transform: translateY(-150%);
+  transition: transform 120ms ease;
+}
+
+.skip-to-content:focus {
+  transform: translateY(0);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -101,11 +125,15 @@ html[data-theme="dark"] {
   --paper-100: #222420;
   --paper-200: #2e312c;
   --paper-300: #3e413a;
+  --sage-400: #6b8e6e;
   --sage-500: #5a7a5d;
   --sage-600: #4a6a4d;
   --sage-700: #6a9a6d;
+  --amber-300: #e0b050;
   --amber-400: #d4963c;
   --amber-500: #ba7828;
+  --amber-600: #9a6020;
+  --coral-400: #e08a72;
   --coral-500: #d87a62;
   --blue-500: #5a9ab0;
   --shadow-soft: 0 24px 70px rgb(0 0 0 / 0.4);
@@ -117,6 +145,30 @@ html[data-theme="dark"] body {
   background:
     radial-gradient(circle at 12% 8%, rgb(30 30 28 / 0.95), transparent 28rem),
     linear-gradient(145deg, #1a1c19 0%, #222420 100%);
+}
+
+.page-enter-forward > * {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
+.page-enter-back > * {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.page-enter-active > * {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+@media (max-width: 560px) {
+  body {
+    padding-bottom: 60px;
+  }
 }
 
 html[data-motion="reduced"] {
@@ -148,5 +200,30 @@ html[data-motion="reduced"] *::after {
     animation-iteration-count: 1 !important;
     transition-delay: 0ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --shadow-card: 0 10px 30px rgb(23 25 22 / 0.16);
+  }
+
+  :focus-visible {
+    outline-width: 3px;
+  }
+
+  .skip-to-content {
+    font-size: 0.85rem;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  ::selection {
+    color: HighlightText;
+    background: Highlight;
   }
 }

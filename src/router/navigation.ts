@@ -54,6 +54,10 @@ export function editorHash(customData?: string): string {
   return `#/editor?custom=${encodeURIComponent(customData)}`;
 }
 
+export function statsHash(): string {
+  return "#/stats";
+}
+
 export function createShareUrl(
   location: { origin: string; pathname: string },
   puzzleId: string,

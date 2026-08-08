@@ -6,8 +6,12 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
   "background_color": "#f3f0e7",
   "theme_color": "#171916",
+  "categories": ["games", "entertainment"],
   "icons": [
     {
       "src": "./icon-192.png",
@@ -20,6 +24,23 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Browse Puzzles",
+      "short_name": "Puzzles",
+      "url": "./#/puzzles"
+    },
+    {
+      "name": "Puzzle Editor",
+      "short_name": "Editor",
+      "url": "./#/editor"
+    },
+    {
+      "name": "Statistics",
+      "short_name": "Stats",
+      "url": "./#/stats"
     }
   ]
 }

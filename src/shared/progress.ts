@@ -8,6 +8,7 @@ export interface PuzzleRecord {
   readonly moves: number;
   readonly pushes: number;
   readonly completedAt: string;
+  readonly elapsedMs?: number;
 }
 
 export interface ProgressData {
@@ -45,7 +46,9 @@ function isPuzzleRecord(value: unknown): value is PuzzleRecord {
     Number(record.pushes) >= 0 &&
     Number(record.pushes) <= Number(record.moves) &&
     Number.isFinite(completedAt) &&
-    new Date(completedAt).toISOString() === record.completedAt
+    new Date(completedAt).toISOString() === record.completedAt &&
+    (record.elapsedMs === undefined ||
+      (typeof record.elapsedMs === "number" && Number.isFinite(record.elapsedMs) && record.elapsedMs >= 0))
   );
 }
 
@@ -119,12 +122,14 @@ export function recordCompletion(
   puzzleId: string,
   moves: number,
   pushes: number,
+  elapsedMs?: number,
 ): ProgressData {
   const current = progress.completed[puzzleId];
   const candidate: PuzzleRecord = {
     moves,
     pushes,
     completedAt: new Date().toISOString(),
+    ...(elapsedMs !== undefined && elapsedMs > 0 ? { elapsedMs: Math.round(elapsedMs) } : {}),
   };
 
   if (!isBetterRecord(candidate, current)) return progress;

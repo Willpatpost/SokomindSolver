@@ -178,3 +178,22 @@
   --select-color: var(--ink-700);
   --select-bg: rgb(34 36 32 / 0.9);
 }
+
+@media (forced-colors: active) {
+  .tool,
+  .typedTool {
+    border: 2px solid ButtonText;
+  }
+
+  .tool[data-active],
+  .typedTool[data-active] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .labelSelect select {
+    border: 1px solid ButtonText;
+  }
+}

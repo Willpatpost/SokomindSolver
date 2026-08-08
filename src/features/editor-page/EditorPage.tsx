@@ -17,13 +17,14 @@ import {
   encodePuzzleUrl,
   decodeCustomPuzzle,
 } from "@/src/features/editor/editor-serialization";
+import { Modal } from "@/src/shared/ui/Modal";
 import { useEditorState } from "@/src/features/editor/use-editor-state";
 import { EditorGrid } from "@/src/features/editor/EditorGrid";
 import { EditorPlaytest } from "@/src/features/editor/EditorPlaytest";
 import { EditorToolbar } from "@/src/features/editor/EditorToolbar";
 import { ConfirmDialog } from "@/src/shared/ui/ConfirmDialog";
 import { GeneratorDialog } from "@/src/features/generator/GeneratorDialog";
-import { Link, editorHash, homeHash } from "@/src/router";
+import { editorHash, homeHash, useRouter } from "@/src/router";
 import styles from "./EditorPage.module.css";
 
 interface EditorPageProps {
@@ -73,14 +74,22 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 export function EditorPage({ customData }: EditorPageProps) {
-  const [state, dispatch] = useEditorState();
+  const editor = useEditorState();
+  const { state, dispatch } = editor;
   const [playtestDraft, setPlaytestDraft] = useState<PlaytestDraft | null>(
     null,
   );
   const [notice, setNotice] = useState<Notice | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [fillMode, setFillMode] = useState(false);
+  const { navigate } = useRouter();
+  const isDirtyRef = useRef(false);
   const draftRevisionRef = useRef(0);
   const shareOperationRef = useRef(0);
   const restoreEditorFocusRef = useRef(false);
@@ -89,6 +98,49 @@ export function EditorPage({ customData }: EditorPageProps) {
   useEffect(() => {
     document.title = "Puzzle Editor · Sokomind";
   }, []);
+
+  useEffect(() => {
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (isDirtyRef.current) event.preventDefault();
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  const testPuzzleRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "z" && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
+        event.preventDefault();
+        editor.undo();
+      } else if (
+        (event.key === "z" && (event.ctrlKey || event.metaKey) && event.shiftKey) ||
+        (event.key === "y" && (event.ctrlKey || event.metaKey))
+      ) {
+        event.preventDefault();
+        editor.redo();
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        testPuzzleRef.current?.();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editor]);
+
+  const handleBackClick = useCallback(() => {
+    if (isDirtyRef.current) {
+      setLeaveConfirmOpen(true);
+    } else {
+      navigate(homeHash());
+    }
+  }, [navigate]);
+
+  const handleLeaveConfirm = useCallback(() => {
+    isDirtyRef.current = false;
+    navigate(homeHash());
+  }, [navigate]);
 
   const sharedPuzzle = useMemo(
     () =>
@@ -127,6 +179,7 @@ export function EditorPage({ customData }: EditorPageProps) {
       if (action.type !== "set-tool") {
         draftRevisionRef.current += 1;
         shareOperationRef.current += 1;
+        isDirtyRef.current = true;
       }
       dispatch(action);
       if (action.type !== "set-tool") {
@@ -157,6 +210,11 @@ export function EditorPage({ customData }: EditorPageProps) {
     });
     setNotice(null);
   }, [customData, isValid, state]);
+
+  useEffect(() => {
+    testPuzzleRef.current =
+      isValid && !activePlaytest ? handleTest : null;
+  }, [isValid, activePlaytest, handleTest]);
 
   const handleShare = useCallback(async () => {
     if (!isValid) return;
@@ -218,6 +276,48 @@ export function EditorPage({ customData }: EditorPageProps) {
     [dispatch],
   );
 
+  const handleImportOpen = useCallback(() => {
+    setImportText("");
+    setImportError(null);
+    setImportOpen(true);
+  }, []);
+
+  const handleImportConfirm = useCallback(() => {
+    const lines = importText.split("\n").filter((line) => line.length > 0);
+    if (lines.length < 2) {
+      setImportError("Paste at least 2 rows of puzzle text.");
+      return;
+    }
+    const width = Math.max(...lines.map((line) => [...line].length));
+    if (width < 3 || lines.length < 3) {
+      setImportError("Puzzle must be at least 3x3.");
+      return;
+    }
+    if (width > 20 || lines.length > 20) {
+      setImportError("Puzzle must be at most 20x20.");
+      return;
+    }
+    const rows = lines.map((line) => {
+      const chars = [...line];
+      while (chars.length < width) chars.push("O");
+      return chars.join("");
+    });
+    const puzzle: PuzzleDefinition = {
+      id: `import-${Date.now()}`,
+      title: "Imported puzzle",
+      difficulty: "beginner",
+      boxes: rows.reduce((count, row) => count + [...row].filter((c) => c === "X").length, 0),
+      rows,
+    };
+    draftRevisionRef.current += 1;
+    shareOperationRef.current += 1;
+    dispatch({ type: "load", puzzle });
+    isDirtyRef.current = true;
+    setImportOpen(false);
+    setShareResult(null);
+    setNotice(null);
+  }, [dispatch, importText]);
+
   useEffect(() => {
     if (!activePlaytest && restoreEditorFocusRef.current) {
       restoreEditorFocusRef.current = false;
@@ -230,13 +330,14 @@ export function EditorPage({ customData }: EditorPageProps) {
       <div className={styles.container}>
         <div className={styles.topBar}>
           <div className={styles.topBarLeft}>
-            <Link
-              href={homeHash()}
+            <button
+              type="button"
               className={styles.backButton}
               aria-label="Back to home"
+              onClick={handleBackClick}
             >
               <span aria-hidden="true">←</span>
-            </Link>
+            </button>
             <div className={styles.titleGroup}>
               <span className={styles.eyebrow}>Workshop</span>
               <h1 className={styles.pageTitle}>Puzzle Editor</h1>
@@ -313,7 +414,7 @@ export function EditorPage({ customData }: EditorPageProps) {
             </div>
 
             <div className={styles.gridWrap}>
-              <EditorGrid state={state} dispatch={applyEditorAction} />
+              <EditorGrid state={state} dispatch={applyEditorAction} fillMode={fillMode} />
             </div>
 
             <div className={styles.sidebar}>
@@ -391,6 +492,38 @@ export function EditorPage({ customData }: EditorPageProps) {
                       : null}
               </div>
 
+              <div className={styles.undoRedo}>
+                <button
+                  type="button"
+                  disabled={!editor.canUndo}
+                  onClick={editor.undo}
+                  aria-label="Undo"
+                  title="Undo (Ctrl+Z)"
+                >
+                  ↩ Undo
+                </button>
+                <button
+                  type="button"
+                  disabled={!editor.canRedo}
+                  onClick={editor.redo}
+                  aria-label="Redo"
+                  title="Redo (Ctrl+Shift+Z)"
+                >
+                  ↪ Redo
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className={styles.fillToggle}
+                aria-pressed={fillMode}
+                data-active={fillMode || undefined}
+                onClick={() => setFillMode((v) => !v)}
+                title="Fill mode — click to flood-fill connected cells"
+              >
+                {fillMode ? "◆ Fill on" : "◇ Fill off"}
+              </button>
+
               <div className={styles.actions}>
                 <button
                   ref={testButtonRef}
@@ -398,6 +531,7 @@ export function EditorPage({ customData }: EditorPageProps) {
                   data-primary
                   disabled={!isValid}
                   onClick={handleTest}
+                  title="Test puzzle (Ctrl+Enter)"
                 >
                   Test puzzle
                 </button>
@@ -413,6 +547,9 @@ export function EditorPage({ customData }: EditorPageProps) {
                   onClick={() => setGeneratorOpen(true)}
                 >
                   Generate puzzle
+                </button>
+                <button type="button" onClick={handleImportOpen}>
+                  Import from text
                 </button>
                 <button type="button" data-danger onClick={handleClearRequest}>
                   Clear board
@@ -446,6 +583,16 @@ export function EditorPage({ customData }: EditorPageProps) {
       </div>
 
       <ConfirmDialog
+        open={leaveConfirmOpen}
+        title="Leave the editor?"
+        message="You have unsaved changes. Leaving will discard your current draft."
+        confirmLabel="Leave"
+        destructive
+        onConfirm={handleLeaveConfirm}
+        onClose={() => setLeaveConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
         open={clearConfirmOpen}
         title="Clear the board?"
         message="Clear every cell in this puzzle? This cannot be undone."
@@ -460,6 +607,47 @@ export function EditorPage({ customData }: EditorPageProps) {
         onClose={() => setGeneratorOpen(false)}
         onAccept={handleGeneratorAccept}
       />
+
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        label="Import puzzle from text"
+        className={styles.importModal}
+      >
+        <div className={styles.importContent}>
+          <h2 className={styles.importTitle}>Import from text</h2>
+          <p className={styles.importHint}>
+            Paste puzzle rows using: O (wall), R (robot), X (box), S (goal), space (floor).
+          </p>
+          <textarea
+            className={styles.importTextarea}
+            data-autofocus
+            rows={10}
+            placeholder={"OOOOO\nO R O\nO X O\nO S O\nOOOOO"}
+            value={importText}
+            onChange={(event) => {
+              setImportText(event.currentTarget.value);
+              setImportError(null);
+            }}
+          />
+          {importError && (
+            <p className={styles.validationError} role="alert">{importError}</p>
+          )}
+          <div className={styles.importActions}>
+            <button type="button" onClick={() => setImportOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-primary
+              disabled={!importText.trim()}
+              onClick={handleImportConfirm}
+            >
+              Import
+            </button>
+          </div>
+        </div>
+      </Modal>
     </main>
   );
 }

@@ -61,7 +61,67 @@
   background: var(--coral-500);
 }
 
+.actions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.actions button[data-destructive]:focus-visible {
+  outline-color: var(--coral-500);
+}
+
 :global(html[data-theme="dark"]) .card {
   border-color: rgb(255 255 255 / 0.08);
   box-shadow: 0 30px 90px rgb(0 0 0 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .actions button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .actions button:last-child {
+  border-color: var(--sage-600);
+  background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .actions button[data-destructive] {
+  border-color: var(--coral-500);
+  background: var(--coral-500);
+}
+
+@media (prefers-contrast: more) {
+  .card {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .actions button {
+    border-width: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .card {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .actions button {
+    border: 2px solid ButtonText;
+  }
+
+  .actions button:last-child {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .actions button[data-destructive] {
+    forced-color-adjust: none;
+    border-color: LinkText;
+    color: HighlightText;
+    background: LinkText;
+  }
 }

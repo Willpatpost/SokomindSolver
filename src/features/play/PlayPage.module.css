@@ -24,6 +24,9 @@
 }
 
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -31,6 +34,7 @@
   min-height: 58px;
   margin: 0 auto 16px;
   padding: 0 8px;
+  backdrop-filter: blur(12px);
 }
 
 .headerLeft {
@@ -66,6 +70,11 @@
 .backButton:hover {
   border-color: var(--back-hover-border);
   background: var(--back-hover-bg);
+}
+
+.backButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .brandSmall {
@@ -105,6 +114,80 @@
   letter-spacing: -0.035em;
 }
 
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(100%, 1200px);
+  margin: -8px auto 8px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.breadcrumb a {
+  color: var(--sage-700);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb a:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.brandSmall:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.breadcrumb > span {
+  color: var(--ink-muted);
+}
+
+.breadcrumbCurrent {
+  color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.collectionProgress {
+  position: relative;
+  width: min(100%, 1200px);
+  height: 3px;
+  margin: -4px auto 8px;
+  border-radius: 2px;
+  background: var(--paper-200);
+  overflow: hidden;
+}
+
+.collectionProgress span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--sage-500);
+  transition: width 400ms ease;
+}
+
+.headerStats {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
 .headerActions {
   display: flex;
   gap: 8px;
@@ -137,6 +220,16 @@
 .utilityButton:hover {
   border-color: var(--utility-hover-border);
   background: var(--utility-hover-bg);
+}
+
+.utilityButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.utilityButton[data-active] {
+  border-color: var(--coral-400);
+  color: var(--coral-500);
 }
 
 .utilityButton > span:first-child {
@@ -172,6 +265,11 @@
   background: var(--stage-bg);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px);
+}
+
+.stage:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .stageHeader {
@@ -232,13 +330,106 @@
   text-transform: none;
 }
 
+.levelNav {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.levelNav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 6px;
+  background: var(--paper-50);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.levelNav button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+}
+
+.levelNav button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.levelNav button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .boardWrap {
+  position: relative;
   display: grid;
   width: 100%;
   min-height: 0;
   flex: 1;
   place-items: center;
   touch-action: none;
+}
+
+.pauseOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgb(23 25 22 / 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.pauseContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--paper-100);
+}
+
+.pauseIcon {
+  font-size: 2rem;
+}
+
+.pauseContent strong {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pauseContent button {
+  min-height: 40px;
+  padding: 0 24px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.1);
+  color: var(--paper-100);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.pauseContent button:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
+.pauseContent button:focus-visible {
+  outline: 2px solid var(--amber-400);
+  outline-offset: 2px;
+}
+
+.pauseHint {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.5);
 }
 
 .hint {
@@ -337,10 +528,45 @@
   background: rgb(255 255 255 / 0.16);
 }
 
+.playbackBar button:focus-visible {
+  outline: 2px solid var(--amber-400);
+  outline-offset: 2px;
+}
+
+.playbackSpeedGroup {
+  display: flex;
+  gap: 3px;
+}
+
+.playbackSpeedButton {
+  min-height: 28px !important;
+  min-width: 36px;
+  padding: 0 6px !important;
+  border-radius: 7px !important;
+  font-size: 0.65rem !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.playbackSpeedButton[data-active] {
+  border-color: var(--amber-400) !important;
+  color: var(--ink-950) !important;
+  background: var(--amber-300) !important;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+}
+
+:global(html[data-motion="reduced"]) .toast {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .toast {
+    animation: none;
   }
 }
 
@@ -389,6 +615,10 @@
     white-space: nowrap;
   }
 
+  .headerStats {
+    display: flex;
+  }
+
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -401,6 +631,10 @@
 }
 
 @media (max-width: 560px) {
+  .breadcrumb {
+    display: none;
+  }
+
   .stageHeader {
     align-items: flex-start;
     margin-bottom: 20px;
@@ -444,6 +678,19 @@
   --utility-hover-bg: var(--paper-200);
 }
 
+:global(html[data-theme="dark"]) .levelNav button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .levelNav button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .collectionProgress {
+  background: rgb(255 255 255 / 0.08);
+}
+
 :global(html[data-theme="dark"]) .stage {
   --stage-border-color: rgb(255 255 255 / 0.06);
   --stage-bg:
@@ -462,4 +709,114 @@
 
 :global(html[data-theme="dark"]) .playbackBar {
   --playback-border-color: rgb(255 255 255 / 0.1);
+}
+
+@media (prefers-contrast: more) {
+  .backButton {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .utilityButton {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .stage {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .levelNav button {
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .levelNav button:disabled {
+    opacity: 0.55;
+  }
+
+  .hint {
+    border-width: 2px;
+  }
+
+  .collectionProgress {
+    border: 1px solid rgb(23 25 22 / 0.15);
+  }
+}
+
+@media (forced-colors: active) {
+  .backButton {
+    border: 2px solid ButtonText;
+  }
+
+  .utilityButton {
+    border: 2px solid ButtonText;
+  }
+
+  .utilityButton[data-active] {
+    border-color: Highlight;
+    color: Highlight;
+  }
+
+  .stage {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .levelNav button {
+    border: 1px solid ButtonText;
+  }
+
+  .levelNav button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .hint {
+    border: 1px solid ButtonBorder;
+  }
+
+  .collectionProgress {
+    border: 1px solid GrayText;
+  }
+
+  .collectionProgress span {
+    background: Highlight;
+  }
+
+  .playbackBar {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .playbackBar button {
+    border: 1px solid ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+
+  .toast {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .skipLink {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+  }
+
+  .pauseOverlay {
+    border: 2px solid Highlight;
+  }
+
+  .pauseContent button {
+    border: 2px solid ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
 }

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   DIFFICULTY_ORDER,
+  getMetadataCollectionsForDifficulty,
   getPuzzleMetadataByDifficulty,
   PUZZLE_METADATA,
   type PuzzleMetadata,
@@ -13,6 +14,7 @@ import {
   playHash,
 } from "@/src/router";
 import { DIFFICULTY_LABELS, DIFFICULTY_COLORS } from "./selector-constants";
+import { ProgressRing } from "./ProgressRing";
 import styles from "./PuzzleSelectorPage.module.css";
 
 export interface DifficultyGridProps {
@@ -57,29 +59,57 @@ export function DifficultyGrid({
         <div className={styles.grid}>
           {DIFFICULTY_ORDER.map((difficulty) => {
             const puzzles = getPuzzleMetadataByDifficulty(difficulty);
+            const collections = getMetadataCollectionsForDifficulty(difficulty);
             const solved = puzzles.filter((p) => completedIds.has(p.id)).length;
+            const unsolved = puzzles.filter((p) => !completedIds.has(p.id));
             const pct = puzzles.length > 0 ? (solved / puzzles.length) * 100 : 0;
             return (
-              <button
-                key={difficulty}
-                type="button"
-                className={styles.difficultyCard}
-                onClick={() => navigate(puzzleDifficultyHash(difficulty))}
-              >
-                <div className={styles.cardHeader}>
-                  <span
-                    className={styles.cardDot}
-                    style={{ background: DIFFICULTY_COLORS[difficulty] }}
-                  />
-                  <h2 className={styles.cardName}>{DIFFICULTY_LABELS[difficulty]}</h2>
-                </div>
-                <div className={styles.cardStats}>
-                  <strong>{solved}</strong> of {puzzles.length} cleared
-                </div>
-                <div className={styles.cardTrack}>
-                  <span style={{ width: `${pct}%` }} />
-                </div>
-              </button>
+              <div key={difficulty} className={styles.difficultyCard}>
+                <button
+                  type="button"
+                  className={styles.difficultyCardMain}
+                  onClick={() => navigate(puzzleDifficultyHash(difficulty))}
+                >
+                  <div className={styles.cardHeader}>
+                    <ProgressRing
+                      percentage={pct}
+                      color={DIFFICULTY_COLORS[difficulty]}
+                    />
+                    <div>
+                      <h2 className={styles.cardName}>{DIFFICULTY_LABELS[difficulty]}</h2>
+                      <div className={styles.cardStats}>
+                        <strong>{solved}</strong> of {puzzles.length} cleared
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.cardTrack}>
+                    <span style={{ width: `${pct}%` }} />
+                  </div>
+                  {puzzles.length > 0 && (
+                    <div className={styles.cardMeta}>
+                      <span>{puzzles.length} puzzles</span>
+                      {collections.length > 1 && (
+                        <span>{collections.length} collections</span>
+                      )}
+                      <span>
+                        {Math.round(puzzles.reduce((s, p) => s + p.boxes, 0) / puzzles.length)} avg boxes
+                      </span>
+                    </div>
+                  )}
+                </button>
+                {unsolved.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.randomButton}
+                    onClick={() => {
+                      const pick = unsolved[Math.floor(Math.random() * unsolved.length)];
+                      navigate(playHash(pick.id));
+                    }}
+                  >
+                    Random unsolved
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

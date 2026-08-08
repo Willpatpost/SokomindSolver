@@ -80,6 +80,10 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
     const previousTheme = root.dataset.theme;
     root.dataset.theme = resolvedTheme;
 
+    const color = resolvedTheme === "dark" ? "#171916" : "#f3f0e7";
+    const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    metas.forEach((meta) => meta.setAttribute("content", color));
+
     return () => {
       if (previousTheme === undefined) {
         delete root.dataset.theme;
@@ -158,6 +162,29 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
     (theme: ThemePreference) => updatePreferences({ theme }),
     [updatePreferences],
   );
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        !event.shiftKey ||
+        event.key !== "T"
+      ) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (document.querySelector("dialog[open], [role='dialog']")) return;
+      event.preventDefault();
+      setPreferences((current) => {
+        const nextTheme: ThemePreference = current.theme === "dark" ? "light" : "dark";
+        return updateExperiencePreferences(current, { theme: nextTheme });
+      });
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const value = useMemo(
     () => ({

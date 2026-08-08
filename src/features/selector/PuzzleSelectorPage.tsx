@@ -4,6 +4,8 @@ import {
   type PuzzleMetadata,
 } from "@/src/catalog/puzzle-metadata";
 import { useStoredProgress } from "@/src/shared/use-stored-progress";
+import { useFavorites } from "@/src/shared/use-favorites";
+import { loadRatings } from "@/src/shared/puzzle-ratings";
 import {
   hydrateOptimalCacheFromIDB,
   loadOptimalCache,
@@ -35,6 +37,8 @@ export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
     () => new Set(Object.keys(progress.completed)),
     [progress],
   );
+  const { favorites: favoriteIds } = useFavorites();
+  const ratings = useMemo(() => loadRatings(), []);
   const [optimalCache, setOptimalCache] = useState(loadOptimalCache);
 
   useEffect(() => {
@@ -103,9 +107,11 @@ export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
           difficulty={route.difficulty}
           collection={collections[0].name}
           completedIds={completedIds}
+          favoriteIds={favoriteIds}
           directDifficultyView
           optimalCache={optimalCache}
           progress={progress}
+          ratings={ratings}
           navigate={navigate}
           pageNumber={route.pageNumber}
         />
@@ -127,8 +133,10 @@ export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
       difficulty={route.difficulty}
       collection={route.collection}
       completedIds={completedIds}
+      favoriteIds={favoriteIds}
       optimalCache={optimalCache}
       progress={progress}
+      ratings={ratings}
       navigate={navigate}
       pageNumber={route.pageNumber}
     />

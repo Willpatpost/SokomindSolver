@@ -13,12 +13,13 @@ import {
 } from "@/src/router";
 import { DIFFICULTY_LABELS, PUZZLES_PER_PAGE } from "./selector-constants";
 
-export type CompletionFilter = "all" | "cleared" | "open";
+export type CompletionFilter = "all" | "cleared" | "open" | "favorites";
 
 export interface UsePuzzleListStateOptions {
   readonly difficulty: PuzzleDifficulty;
   readonly collection: string;
   readonly completedIds: ReadonlySet<string>;
+  readonly favoriteIds?: ReadonlySet<string>;
   readonly navigate: RouterValue["navigate"];
   readonly pageNumber?: number;
   readonly directDifficultyView: boolean;
@@ -28,6 +29,7 @@ export function usePuzzleListState({
   difficulty,
   collection,
   completedIds,
+  favoriteIds,
   navigate,
   pageNumber,
   directDifficultyView,
@@ -62,10 +64,11 @@ export function usePuzzleListState({
       if (boxFilter !== null && p.boxes !== boxFilter) return false;
       if (completionFilter === "cleared" && !completedIds.has(p.id)) return false;
       if (completionFilter === "open" && completedIds.has(p.id)) return false;
+      if (completionFilter === "favorites" && !favoriteIds?.has(p.id)) return false;
       if (needle && !p.title.toLocaleLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [allPuzzles, boxFilter, completionFilter, completedIds, debouncedQuery]);
+  }, [allPuzzles, boxFilter, completionFilter, completedIds, favoriteIds, debouncedQuery]);
 
   const nextUnsolved = useMemo(
     () => allPuzzles.find((p) => !completedIds.has(p.id))?.id,

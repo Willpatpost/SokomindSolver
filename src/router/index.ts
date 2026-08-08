@@ -13,5 +13,6 @@ export {
   puzzleCollectionPageHash,
   playHash,
   editorHash,
+  statsHash,
   createShareUrl,
 } from "./navigation";

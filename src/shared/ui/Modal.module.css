@@ -29,6 +29,26 @@
   }
 }
 
+:global(html[data-motion="reduced"]) .dialog::backdrop {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .dialog::backdrop {
+    animation: none;
+  }
+}
+
 :global(html[data-theme="dark"]) .dialog::backdrop {
   background: rgb(0 0 0 / 0.7);
+}
+
+@media (forced-colors: active) {
+  .dialog {
+    border: 2px solid ButtonBorder;
+  }
+
+  .dialog::backdrop {
+    background: rgba(0, 0, 0, 0.8);
+  }
 }

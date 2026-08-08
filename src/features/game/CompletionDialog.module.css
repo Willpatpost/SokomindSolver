@@ -15,11 +15,30 @@
   animation: complete-in 260ms ease both;
 }
 
+.badgeRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.minimapWrap {
+  width: 48px;
+}
+
+.minimapWrap > div {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-height: 48px !important;
+  border-radius: 8px;
+}
+
 .badge {
   display: grid;
   width: 62px;
   height: 62px;
-  margin: 0 auto 20px;
+  margin: 0;
   place-items: center;
   border-radius: 18px;
   color: var(--paper-50);
@@ -35,6 +54,18 @@
   font-weight: 850;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.difficultyBadge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
 }
 
 .completion h2 {
@@ -89,6 +120,125 @@
   font-weight: 500;
 }
 
+.ratingRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.gradeLetter {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ratingValue {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--sage-700);
+  padding: 3px 10px;
+  border: 1px solid var(--sage-500);
+  border-radius: 6px;
+  background: rgb(86 110 89 / 0.08);
+}
+
+.difficultyFeedback {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid rgb(23 25 22 / 0.06);
+  border-radius: 12px;
+  background: rgb(243 240 231 / 0.5);
+}
+
+.feedbackLabel {
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.feedbackButtons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.feedbackButton {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgb(23 25 22 / 0.1);
+  border-radius: 8px;
+  background: var(--paper-50);
+  color: var(--ink-700);
+  font-size: 0.68rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.feedbackButton:hover {
+  border-color: var(--sage-500);
+}
+
+.feedbackButton[data-selected] {
+  border-color: var(--sage-700);
+  background: var(--sage-700);
+  color: var(--paper-50);
+}
+
+.ratingSummary {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ratingSummaryLabel {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.ratingBar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--paper-200);
+}
+
+.ratingSegment {
+  min-width: 2px;
+  transition: flex 300ms ease;
+}
+
+.ratingSegment[data-kind="easy"] {
+  background: hsl(145 50% 50%);
+}
+
+.ratingSegment[data-kind="right"] {
+  background: var(--blue-500);
+}
+
+.ratingSegment[data-kind="hard"] {
+  background: var(--coral-500);
+}
+
+.ratingCounts {
+  display: flex;
+  gap: 12px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1.4fr;
@@ -119,10 +269,83 @@
   border-color: var(--sage-500);
 }
 
+.nextUnsolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 6px 16px;
+  border: 1px solid var(--sage-500);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sage-700);
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.nextUnsolved:hover {
+  background: var(--sage-700);
+  color: var(--paper-50);
+}
+
+.nextUnsolved:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.shareResult {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.shareResult:hover {
+  color: var(--sage-700);
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.feedbackButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.shareResult:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 @keyframes complete-in {
   from {
     opacity: 0;
     transform: translateY(12px) scale(0.985);
+  }
+}
+
+:global(html[data-motion="reduced"]) .completion {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .completion {
+    animation: none;
   }
 }
 
@@ -135,4 +358,129 @@
 :global(html[data-theme="dark"]) .completion {
   --completion-shadow: 0 35px 100px rgb(0 0 0 / 0.5);
   --completion-stats-color: var(--ink-muted);
+}
+
+:global(html[data-theme="dark"]) .difficultyFeedback {
+  border-color: rgb(255 255 255 / 0.06);
+  background: rgb(34 36 32 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .feedbackButton {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .feedbackButton:hover {
+  border-color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .ratingValue {
+  background: rgb(86 110 89 / 0.15);
+}
+
+:global(html[data-theme="dark"]) .actions button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .actions button:last-child {
+  border-color: var(--sage-600);
+  background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .actions button:hover {
+  border-color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .nextUnsolved {
+  border-color: var(--sage-600);
+  color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .nextUnsolved:hover {
+  background: var(--sage-700);
+  color: var(--paper-50);
+}
+
+:global(html[data-theme="dark"]) .optimalNote {
+  color: #1a1206;
+}
+
+@media (prefers-contrast: more) {
+  .actions button {
+    border-width: 2px;
+  }
+
+  .feedbackButton {
+    border-width: 2px;
+  }
+
+  .nextUnsolved {
+    border-width: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .completion {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .badge {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .optimalNote {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .actions button {
+    border: 2px solid ButtonText;
+  }
+
+  .actions button:last-child {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .feedbackButton {
+    border: 2px solid ButtonText;
+  }
+
+  .feedbackButton[data-selected] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .ratingBar {
+    border: 1px solid GrayText;
+  }
+
+  .ratingValue {
+    border: 1px solid ButtonText;
+  }
+
+  .difficultyFeedback {
+    border: 1px solid ButtonBorder;
+  }
+
+  .difficultyBadge {
+    forced-color-adjust: none;
+    border: 1px solid Highlight;
+  }
+
+  .nextUnsolved {
+    border: 2px solid Highlight;
+    color: Highlight;
+  }
 }

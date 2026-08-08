@@ -45,6 +45,13 @@
   cursor: pointer;
 }
 
+.card header button:focus-visible,
+.danger > button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .summary {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -102,6 +109,11 @@
   cursor: pointer;
 }
 
+.actions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .actions button:first-child {
   border-color: var(--ink-950);
   color: var(--paper-50);
@@ -140,6 +152,15 @@
   font-size: 0.74rem;
   font-weight: 750;
   cursor: pointer;
+}
+
+.danger > div button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.danger > div button:first-of-type:focus-visible {
+  outline-color: var(--coral-500);
 }
 
 .danger > div button:first-of-type {
@@ -268,4 +289,102 @@
 :global(html[data-theme="dark"]) .card {
   border-color: rgb(255 255 255 / 0.08);
   box-shadow: 0 35px 100px rgb(0 0 0 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .actions button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .actions button:first-child {
+  border-color: var(--sage-600);
+  background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .danger {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .danger > div button {
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+:global(html[data-theme="dark"]) .statsSection {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .summary > div {
+  background: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .tierBar {
+  background: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .emptyStats {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+@media (prefers-contrast: more) {
+  .card {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .actions button {
+    border-width: 2px;
+  }
+
+  .danger > div button {
+    border-width: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .card {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .actions button {
+    border: 2px solid ButtonText;
+  }
+
+  .actions button:first-child {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .summary > div {
+    border: 1px solid GrayText;
+  }
+
+  .summary > div span {
+    background: Highlight;
+  }
+
+  .tierBar {
+    border: 1px solid GrayText;
+  }
+
+  .tierBar span {
+    background: Highlight;
+  }
+
+  .danger {
+    border-top: 1px solid ButtonBorder;
+  }
+
+  .danger > div button {
+    border: 2px solid ButtonText;
+  }
+
+  .danger > div button:first-of-type {
+    forced-color-adjust: none;
+    border-color: LinkText;
+    color: HighlightText;
+    background: LinkText;
+  }
 }

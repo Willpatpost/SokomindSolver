@@ -5,6 +5,7 @@ export interface CelebrationOverlayProps {
   readonly active: boolean;
   readonly message?: string;
   readonly className?: string;
+  readonly variant?: "default" | "optimal";
 }
 
 type ParticleStyle = CSSProperties & {
@@ -43,12 +44,17 @@ export function CelebrationOverlay({
   active,
   message = "Puzzle solved.",
   className,
+  variant = "default",
 }: CelebrationOverlayProps) {
   if (!active) return null;
 
-  const overlayClassName = className
-    ? `${styles.overlay} ${className}`
-    : styles.overlay;
+  const overlayClassName = [
+    styles.overlay,
+    variant === "optimal" ? styles.optimal : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <>

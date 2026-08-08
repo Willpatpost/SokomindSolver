@@ -1,0 +1,90 @@
+.timeline {
+  --timeline-bg: var(--paper-200);
+  --move-color: var(--blue-500);
+  --push-color: var(--amber-500);
+  --marker-color: var(--ink-950);
+
+  width: min(100%, 720px);
+  margin-top: 8px;
+}
+
+.bar {
+  position: relative;
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--timeline-bg);
+}
+
+.segment {
+  height: 100%;
+  min-width: 1px;
+  transition: width 200ms ease;
+}
+
+.segment[data-type="move"] {
+  background: var(--move-color);
+}
+
+.segment[data-type="push"] {
+  background: var(--push-color);
+}
+
+.legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.legendItems {
+  display: flex;
+  gap: 12px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6rem;
+  font-weight: 750;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.legendDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.ratio {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+:global(html[data-theme="dark"]) .timeline {
+  --timeline-bg: rgb(52 55 50);
+}
+
+@media (forced-colors: active) {
+  .bar {
+    border: 1px solid GrayText;
+  }
+
+  .segment[data-type="move"] {
+    background: Highlight;
+  }
+
+  .segment[data-type="push"] {
+    background: LinkText;
+  }
+
+  .legendDot {
+    border: 1px solid ButtonText;
+  }
+}

@@ -3,6 +3,7 @@ import {
   move,
   reset,
   undo,
+  undoN,
   type Direction,
   type PuzzleDefinition,
 } from "@/src/core";
@@ -28,6 +29,9 @@ import { classifyMove } from "@/src/features/game/game-feedback";
 import { useGameKeyboard } from "@/src/features/game/use-game-keyboard";
 import { useHintController } from "@/src/features/game/use-hint-controller";
 import { useTimer } from "@/src/features/game/use-timer";
+import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
+import { computeStats } from "@/src/features/progress/compute-stats";
+import { getUnlockedAchievements } from "@/src/features/achievements/achievements";
 import { usePersistedPlay, type CompletionRecordUpdate } from "./use-persisted-play";
 import { puzzlesHash, useRouter } from "@/src/router";
 import { useSharing } from "./use-sharing";
@@ -49,10 +53,15 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
+interface PlayControllerOptions {
+  readonly onToggleFavorite?: () => boolean;
+}
+
 export function usePlayController(
   puzzle: PuzzleDefinition,
   actionLog?: string,
   freshAttempt = false,
+  options: PlayControllerOptions = {},
 ) {
   const { playCue, reducedMotion } = useExperience();
   const { navigate } = useRouter();
@@ -77,6 +86,8 @@ export function usePlayController(
     freshAttempt,
   );
   const [helpOpen, setHelpOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [manualPaused, setManualPaused] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [resetConfirmPuzzleId, setResetConfirmPuzzleId] =
     useState<string | null>(null);
@@ -139,6 +150,8 @@ export function usePlayController(
 
   // --- Game move logic ---
 
+  const elapsedRef = useRef(0);
+
   const applyDirection = useCallback((direction: Direction): boolean => {
     const current = sessionRef.current;
     if (current.solved) return false;
@@ -154,8 +167,20 @@ export function usePlayController(
     commitSession(next);
     if (feedback === "solved") {
       setDeadlockedBoxIds(EMPTY_BOX_SET);
-      setCompletionResult(recordSolvedSession(next));
+      const preSolveStats = computeStats(progress, PUZZLE_METADATA);
+      const preSolveAchievements = new Set(
+        getUnlockedAchievements(preSolveStats, progress).map((a) => a.id),
+      );
+      const result = recordSolvedSession(next, elapsedRef.current);
+      setCompletionResult(result);
       setCompletionPuzzleId(next.puzzle.id);
+      const postSolveStats = computeStats(progress, PUZZLE_METADATA);
+      const newAchievements = getUnlockedAchievements(postSolveStats, progress)
+        .filter((a) => !preSolveAchievements.has(a.id));
+      if (newAchievements.length > 0) {
+        const names = newAchievements.map((a) => a.title).join(", ");
+        setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
+      }
     } else if (feedback === "push" || feedback === "goal" || feedback === "goal-leave") {
       const pushed = findPushedBox(current.snapshot.boxes, next.snapshot.boxes);
       const result = detectDeadlock(next.board, next.snapshot, pushed?.id);
@@ -170,7 +195,7 @@ export function usePlayController(
       setDeadlockedBoxIds(EMPTY_BOX_SET);
     }
     return true;
-  }, [commitSession, playCue, recordSolvedSession, sessionRef]);
+  }, [commitSession, playCue, progress, recordSolvedSession, sessionRef]);
 
   // --- Solver playback (delegated) ---
 
@@ -178,6 +203,7 @@ export function usePlayController(
     playback,
     playSolverSolution: playSolverSolutionRaw,
     stopSolutionPlayback,
+    setPlaybackSpeed,
   } = useSolverPlayback({
     sessionRef,
     reducedMotion,
@@ -202,6 +228,7 @@ export function usePlayController(
     solverOpen ||
     helpOpen ||
     progressOpen ||
+    manualPaused ||
     playback.active ||
     session.moves === 0;
   const timer = useTimer({
@@ -209,6 +236,9 @@ export function usePlayController(
     persistKey: `sokomind:timer:${session.puzzle.id}`,
     restorePersisted: sessionRestored,
     persistenceReady: sessionPersistenceReady,
+  });
+  useEffect(() => {
+    elapsedRef.current = timer.elapsed;
   });
   const timerResetRef = useRef(timer.reset);
   useEffect(() => {
@@ -264,6 +294,22 @@ export function usePlayController(
     void playCue("undo");
   }, [commitSession, playCue, sessionRef, stopSolutionPlayback]);
 
+  const handleUndoN = useCallback((count: number) => {
+    stopSolutionPlayback();
+    setCompletionPuzzleId(null);
+    setDeadlockedBoxIds(EMPTY_BOX_SET);
+    const current = sessionRef.current;
+    const result = undoN(current, count);
+    if (result === current) {
+      setToast("No move to undo yet.");
+      void playCue("blocked");
+      return;
+    }
+    commitSession(result);
+    void playCue("undo");
+    setToast(`Undid ${current.moves - result.moves} moves.`);
+  }, [commitSession, playCue, sessionRef, stopSolutionPlayback]);
+
   const performReset = useCallback(() => {
     hintCancelRef.current();
     stopSolutionPlayback();
@@ -299,10 +345,11 @@ export function usePlayController(
     puzzleIndex,
     totalPuzzles,
     nextPuzzle,
+    nextUnsolvedPuzzle,
     selectPuzzle,
     selectPreviousPuzzle,
     selectNextPuzzle,
-  } = usePuzzleNavigation(session.puzzle.id, onBeforeNavigate);
+  } = usePuzzleNavigation(session.puzzle.id, onBeforeNavigate, completedIds);
 
   // --- Sharing (delegated) ---
 
@@ -337,6 +384,10 @@ export function usePlayController(
 
   // --- Keyboard ---
 
+  const selectNextUnsolved = useCallback(() => {
+    if (nextUnsolvedPuzzle) selectPuzzle(nextUnsolvedPuzzle.id);
+  }, [nextUnsolvedPuzzle, selectPuzzle]);
+
   useGameKeyboard({
     enabled: !playback.active,
     onMove: attemptMove,
@@ -345,6 +396,17 @@ export function usePlayController(
     onHint: hint.requestHint,
     onNextPuzzle: selectNextPuzzle,
     onPreviousPuzzle: selectPreviousPuzzle,
+    onNextUnsolved: nextUnsolvedPuzzle ? selectNextUnsolved : undefined,
+    onShowShortcuts: () => setShortcutsOpen((v) => !v),
+    onPause: () => {
+      if (!session.solved && session.moves > 0) setManualPaused((v) => !v);
+    },
+    onToggleFavorite: options.onToggleFavorite
+      ? () => {
+          const nowFavorited = options.onToggleFavorite!();
+          setToast(nowFavorited ? "Added to favorites." : "Removed from favorites.");
+        }
+      : undefined,
   });
 
   return {
@@ -356,6 +418,7 @@ export function usePlayController(
     hint,
     reducedMotion,
     toast,
+    showToast: setToast,
     helpOpen,
     progressOpen,
     solverOpen,
@@ -365,6 +428,7 @@ export function usePlayController(
     playback,
     attemptMove,
     handleUndo,
+    handleUndoN,
     performReset,
     requestReset,
     selectPuzzle,
@@ -374,6 +438,7 @@ export function usePlayController(
     playSolverSolution,
     replaySolution,
     stopSolutionPlayback: () => stopSolutionPlayback(true),
+    setPlaybackSpeed,
     openHelp: () => {
       stopSolutionPlayback();
       hint.cancel();
@@ -400,10 +465,21 @@ export function usePlayController(
     },
     optimalCache,
     saveOptimalRecord: handleSaveOptimal,
+    shortcutsOpen,
+    closeShortcuts: () => setShortcutsOpen(false),
+    manualPaused,
+    togglePause: () => {
+      if (!session.solved && session.moves > 0) setManualPaused((v) => !v);
+    },
+    resumeFromPause: () => setManualPaused(false),
     completionAnnouncement: `${session.puzzle.title} solved in ${countLabel(session.moves, "move")} and ${countLabel(session.pushes, "push")}.`,
     resetMessage: `Restarting removes ${countLabel(session.moves, "move")} in this attempt. Your completed personal best is not affected.`,
     totalPuzzles,
     puzzleIndex,
     nextPuzzle,
+    nextUnsolvedPuzzle,
+    selectNextUnsolved,
+    selectPreviousPuzzle,
+    selectNextPuzzle,
   } as const;
 }

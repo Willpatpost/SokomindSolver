@@ -1,5 +1,8 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, type Route } from "@/src/router";
+import { MobileNav } from "@/src/shared/ui/MobileNav";
+import { ScrollToTop } from "@/src/shared/ui/ScrollToTop";
+import { LoadingSkeleton } from "@/src/shared/ui/LoadingSkeleton";
 
 const HomePage = lazy(() =>
   import("@/src/features/home/HomePage").then((m) => ({ default: m.HomePage })),
@@ -17,6 +20,11 @@ const EditorPage = lazy(() =>
     default: m.EditorPage,
   })),
 );
+const StatsPage = lazy(() =>
+  import("@/src/features/stats/StatsPage").then((m) => ({
+    default: m.StatsPage,
+  })),
+);
 
 const PAGE_LABELS: Record<string, string> = {
   home: "Home",
@@ -25,12 +33,24 @@ const PAGE_LABELS: Record<string, string> = {
   "puzzles-collection": "Puzzles",
   play: "Play",
   editor: "Editor",
+  stats: "Statistics",
+};
+
+const PAGE_DEPTH: Record<string, number> = {
+  home: 0,
+  puzzles: 1,
+  "puzzles-difficulty": 2,
+  "puzzles-collection": 3,
+  play: 3,
+  editor: 1,
+  stats: 1,
 };
 
 function routeIdentity(route: Route): string {
   switch (route.page) {
     case "home":
     case "puzzles":
+    case "stats":
       return route.page;
     case "puzzles-difficulty":
       return `${route.page}:${route.difficulty}`;
@@ -44,15 +64,11 @@ function routeIdentity(route: Route): string {
 }
 
 function LoadingFallback() {
-  return (
-    <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
-      <span aria-busy="true">Loading...</span>
-    </div>
-  );
+  return <LoadingSkeleton />;
 }
 
 export function AppShell() {
-  const { previousRoute, route } = useRouter();
+  const { previousRoute, route, back } = useRouter();
   const announcerRef = useRef<HTMLDivElement>(null);
   const identity = routeIdentity(route);
   const previousIdentityRef = useRef(identity);
@@ -60,6 +76,31 @@ export function AppShell() {
     route.page === "play" &&
     previousRoute?.page === "play" &&
     previousRoute.puzzleId !== route.puzzleId;
+
+  const handleEscapeBack = useCallback(
+    (event: KeyboardEvent) => {
+      if (
+        route.page === "home" ||
+        event.defaultPrevented ||
+        event.key !== "Escape" ||
+        document.querySelector("dialog[open], [role='dialog']")
+      ) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+      event.preventDefault();
+      back();
+    },
+    [route.page, back],
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleEscapeBack);
+    return () => window.removeEventListener("keydown", handleEscapeBack);
+  }, [handleEscapeBack]);
 
   useEffect(() => {
     if (previousIdentityRef.current === identity) return;
@@ -114,8 +155,39 @@ export function AppShell() {
     };
   }, [identity, route.page]);
 
+  const [transitionClass, setTransitionClass] = useState("page-enter-active");
+  const previousPageRef = useRef(route.page);
+
+  useEffect(() => {
+    if (previousPageRef.current === route.page) return;
+    const prevDepth = PAGE_DEPTH[previousPageRef.current] ?? 0;
+    const nextDepth = PAGE_DEPTH[route.page] ?? 0;
+    previousPageRef.current = route.page;
+    const direction = nextDepth >= prevDepth ? "page-enter-forward" : "page-enter-back";
+    setTransitionClass(direction);
+    const frame = requestAnimationFrame(() => {
+      setTransitionClass("page-enter-active");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [route.page]);
+
+  const skipToMain = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      const main = document.querySelector<HTMLElement>("main");
+      if (main) {
+        if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+        main.focus();
+      }
+    },
+    [],
+  );
+
   return (
     <>
+      <a href="#main" className="skip-to-content" onClick={skipToMain}>
+        Skip to content
+      </a>
       <div
         ref={announcerRef}
         role="status"
@@ -127,6 +199,7 @@ export function AppShell() {
         <div
           key={identity}
           data-route-identity={identity}
+          className={transitionClass}
           style={{ display: "contents" }}
         >
           {route.page === "home" && <HomePage />}
@@ -144,8 +217,11 @@ export function AppShell() {
             />
           )}
           {route.page === "editor" && <EditorPage customData={route.customData} />}
+          {route.page === "stats" && <StatsPage />}
         </div>
       </Suspense>
+      <MobileNav />
+      <ScrollToTop />
     </>
   );
 }

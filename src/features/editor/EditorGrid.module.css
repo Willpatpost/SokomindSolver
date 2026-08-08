@@ -101,6 +101,16 @@
   background: transparent;
 }
 
+.sizeBadge {
+  display: block;
+  margin: 8px auto 0;
+  color: var(--ink-muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 640px) {
   .grid {
     --editor-cell-size: 36px;
@@ -116,4 +126,47 @@
   --cell-floor-bg: #3a3830;
   --cell-goal-color: #b6d1b8;
   --cell-goal-border: #82a485;
+}
+
+@media (forced-colors: active) {
+  .grid {
+    border: 2px solid ButtonBorder;
+  }
+
+  .cell {
+    forced-color-adjust: none;
+    border: 1px solid GrayText;
+  }
+
+  .cell[data-symbol="O"] {
+    color: CanvasText;
+    background: GrayText;
+  }
+
+  .cell[data-symbol=" "] {
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .cell[data-symbol="R"] {
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .cell[data-symbol="X"],
+  .cell[data-labeled-box] {
+    color: HighlightText;
+    background: LinkText;
+  }
+
+  .cell[data-symbol="S"],
+  .cell[data-labeled-goal] {
+    border: 2px solid Highlight;
+    color: Highlight;
+    background: Canvas;
+  }
+
+  .cell:focus-visible {
+    outline: 3px solid Highlight;
+  }
 }

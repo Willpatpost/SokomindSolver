@@ -12,6 +12,7 @@ export interface EditorState {
 
 export type EditorAction =
   | { type: "set-cell"; row: number; column: number }
+  | { type: "fill"; row: number; column: number }
   | { type: "resize"; width: number; height: number }
   | { type: "set-title"; title: string }
   | { type: "set-difficulty"; difficulty: Difficulty }
@@ -115,6 +116,29 @@ export function editorReducer(
       const cells = cloneGrid(state.cells);
       if (state.selectedTool === ROBOT) removeRobot(cells);
       cells[row][column] = state.selectedTool;
+      return { ...state, cells };
+    }
+
+    case "fill": {
+      const { row, column } = action;
+      if (row < 0 || row >= state.height || column < 0 || column >= state.width)
+        return state;
+      const target = state.cells[row][column];
+      if (target === state.selectedTool) return state;
+      const cells = cloneGrid(state.cells);
+      if (state.selectedTool === ROBOT) removeRobot(cells);
+      const stack: [number, number][] = [[row, column]];
+      const visited = new Set<string>();
+      while (stack.length > 0) {
+        const [r, c] = stack.pop()!;
+        const key = `${r},${c}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (r < 0 || r >= state.height || c < 0 || c >= state.width) continue;
+        if (cells[r][c] !== target) continue;
+        cells[r][c] = state.selectedTool;
+        stack.push([r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]);
+      }
       return { ...state, cells };
     }
 

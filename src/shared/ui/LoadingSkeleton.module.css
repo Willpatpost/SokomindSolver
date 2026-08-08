@@ -1,0 +1,79 @@
+.skeleton {
+  display: flex;
+  justify-content: center;
+  padding: 24px 18px;
+  min-height: 100vh;
+}
+
+.container {
+  width: min(100%, 900px);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.bone {
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--paper-200) 25%,
+    var(--paper-100) 50%,
+    var(--paper-200) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.boneSmall {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+
+.boneTitle {
+  width: 160px;
+  height: 28px;
+}
+
+.boneCard {
+  height: 120px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+:global(html[data-motion="reduced"]) .bone {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .bone {
+    animation: none;
+  }
+}
+
+:global(html[data-theme="dark"]) .bone {
+  background: linear-gradient(
+    90deg,
+    rgb(40 42 38) 25%,
+    rgb(50 52 48) 50%,
+    rgb(40 42 38) 75%
+  );
+  background-size: 200% 100%;
+}

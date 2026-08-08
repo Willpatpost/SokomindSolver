@@ -47,6 +47,12 @@
   cursor: pointer;
 }
 
+.heading button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .intro {
   max-width: 50ch;
   margin: 24px 0 30px;
@@ -129,6 +135,11 @@
   transform: translateY(-1px);
 }
 
+.primary:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -148,7 +159,77 @@
   }
 }
 
+:global(html[data-motion="reduced"]) .sheet {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .sheet {
+    animation: none;
+  }
+}
+
 :global(html[data-theme="dark"]) .sheet {
   border-color: rgb(255 255 255 / 0.08);
   box-shadow: 0 35px 100px rgb(0 0 0 / 0.5);
+}
+
+:global(html[data-theme="dark"]) .shortcuts span {
+  background: rgb(40 42 38);
+}
+
+:global(html[data-theme="dark"]) .rules {
+  border-top-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .rules article {
+  border-bottom-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .primary {
+  background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .primary:hover {
+  background: var(--sage-600);
+}
+
+@media (prefers-contrast: more) {
+  .rules {
+    border-top-width: 2px;
+  }
+
+  .rules article {
+    border-bottom-width: 2px;
+  }
+
+  .shortcuts span {
+    border: 1px solid rgb(23 25 22 / 0.1);
+  }
+}
+
+@media (forced-colors: active) {
+  .sheet {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .rules {
+    border-top: 1px solid ButtonBorder;
+  }
+
+  .rules article {
+    border-bottom: 1px solid ButtonBorder;
+  }
+
+  .shortcuts span {
+    border: 1px solid ButtonText;
+  }
+
+  .primary {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
 }

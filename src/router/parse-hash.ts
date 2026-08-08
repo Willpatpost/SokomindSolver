@@ -48,6 +48,10 @@ export function parseHash(hash: string): ParseResult {
     return { kind: "route", route: { page: "play", puzzleId, actionLog } };
   }
 
+  if (segments[0] === "stats" && segments.length === 1) {
+    return { kind: "route", route: { page: "stats" } };
+  }
+
   if (segments[0] === "editor") {
     const params = new URLSearchParams(queryString);
     const customData = params.get("custom") ?? undefined;

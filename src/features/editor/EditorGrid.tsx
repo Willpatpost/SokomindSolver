@@ -17,6 +17,7 @@ import styles from "./EditorGrid.module.css";
 interface EditorGridProps {
   readonly state: EditorState;
   readonly dispatch: (action: EditorAction) => void;
+  readonly fillMode?: boolean;
 }
 
 type EditorGridStyle = CSSProperties & {
@@ -60,7 +61,7 @@ function cellFromTarget(target: EventTarget | null): HTMLButtonElement | null {
     : null;
 }
 
-export function EditorGrid({ state, dispatch }: EditorGridProps) {
+export function EditorGrid({ state, dispatch, fillMode = false }: EditorGridProps) {
   const activePointer = useRef<ActivePointer | null>(null);
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const [activeCell, setActiveCell] = useState({ row: 0, column: 0 });
@@ -69,9 +70,9 @@ export function EditorGrid({ state, dispatch }: EditorGridProps) {
 
   const paint = useCallback(
     (row: number, column: number) => {
-      dispatch({ type: "set-cell", row, column });
+      dispatch(fillMode ? { type: "fill", row, column } : { type: "set-cell", row, column });
     },
-    [dispatch],
+    [dispatch, fillMode],
   );
 
   const paintElement = useCallback(
@@ -272,6 +273,9 @@ export function EditorGrid({ state, dispatch }: EditorGridProps) {
           </div>
         ))}
       </div>
+      <span className={styles.sizeBadge} aria-label={`Grid size: ${state.width} by ${state.height}`}>
+        {state.width} &times; {state.height}
+      </span>
     </div>
   );
 }

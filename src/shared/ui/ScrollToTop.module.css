@@ -1,0 +1,66 @@
+.button {
+  position: fixed;
+  z-index: 30;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(23 25 22 / 0.12);
+  border-radius: 50%;
+  background: rgb(251 250 245 / 0.9);
+  color: var(--ink-700);
+  font-size: 1rem;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgb(23 25 22 / 0.12);
+  animation: scroll-top-in 200ms ease;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.button:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-50);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+@keyframes scroll-top-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (max-width: 560px) {
+  .button {
+    bottom: 72px;
+  }
+}
+
+:global(html[data-motion="reduced"]) .button {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .button {
+    animation: none;
+  }
+}
+
+:global(html[data-theme="dark"]) .button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.9);
+}
+
+:global(html[data-theme="dark"]) .button:hover {
+  border-color: var(--sage-500);
+  background: var(--paper-200);
+}

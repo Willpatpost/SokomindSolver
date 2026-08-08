@@ -125,13 +125,44 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--ink-muted);
   font-size: 0.68rem;
   font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease;
 }
 
-.tier strong {
+.tier:hover {
+  background: rgb(23 25 22 / 0.04);
+}
+
+.tier:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.tierLabel strong {
   color: var(--ink-700);
+}
+
+.tierBar {
+  flex: 1;
+  min-width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--paper-200);
+  overflow: hidden;
+}
+
+.tierBar span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 400ms ease;
 }
 
 .tierDot {
@@ -139,6 +170,171 @@
   height: 6px;
   flex: 0 0 6px;
   border-radius: 50%;
+}
+
+.streakBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 16px;
+  border: 1px solid rgb(229 166 75 / 0.25);
+  border-radius: var(--radius-sm);
+  background: rgb(229 166 75 / 0.08);
+}
+
+.streakFlame {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50% 50% 50% 0;
+  background: linear-gradient(135deg, var(--amber-400), var(--coral-500));
+  transform: rotate(-45deg);
+}
+
+.streakInfo {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.streakInfo strong {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--ink-700);
+}
+
+.streakInfo span {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.dailyChallenge {
+  --daily-border-color: rgb(74 127 150 / 0.2);
+  --daily-bg: rgb(74 127 150 / 0.06);
+  --daily-hover-border: var(--blue-500);
+  --daily-hover-bg: rgb(74 127 150 / 0.1);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--daily-border-color);
+  border-radius: var(--radius-sm);
+  background: var(--daily-bg);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.dailyChallenge:hover {
+  border-color: var(--daily-hover-border);
+  background: var(--daily-hover-bg);
+}
+
+.dailyChallenge:focus-visible {
+  outline: 2px solid var(--blue-500);
+  outline-offset: 2px;
+}
+
+.dailyLabel {
+  display: grid;
+  gap: 3px;
+}
+
+.dailyLabel span {
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--blue-500);
+}
+
+.dailyLabel strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+
+.dailyStatus {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: var(--blue-500);
+  color: var(--paper-50);
+}
+
+.dailyStatus[data-done] {
+  background: var(--sage-600);
+}
+
+.recentSection {
+  margin-bottom: 14px;
+}
+
+.recentLabel {
+  margin: 0 0 8px;
+  color: var(--ink-700);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.recentList {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.recentItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgb(23 25 22 / 0.06);
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.recentItem:hover {
+  border-color: var(--sage-500);
+  background: rgb(251 250 245 / 0.5);
+}
+
+.recentItem:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
+.recentItem strong {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentItem span {
+  font-size: 0.62rem;
+  font-weight: 750;
+  color: var(--ink-muted);
+  flex-shrink: 0;
 }
 
 .actions {
@@ -165,6 +361,11 @@
 
 .primaryButton:hover {
   background: var(--sage-600);
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .secondaryButtons {
@@ -202,6 +403,11 @@
   background: var(--secondary-hover-bg);
 }
 
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .helpLink {
   display: inline-flex;
   align-items: center;
@@ -220,6 +426,12 @@
   color: var(--sage-700);
 }
 
+.helpLink:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 @media (max-width: 560px) {
   .card {
     padding: 36px 24px;
@@ -232,6 +444,17 @@
   .tiers {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  color: var(--ink-muted);
+  font-size: 0.6rem;
+  font-weight: 600;
+  opacity: 0.6;
 }
 
 :global(html[data-theme="dark"]) .card {
@@ -251,4 +474,70 @@
   --secondary-bg: rgb(34 36 32 / 0.6);
   --secondary-hover-border: var(--sage-500);
   --secondary-hover-bg: var(--paper-200);
+}
+
+:global(html[data-theme="dark"]) .dailyChallenge {
+  --daily-border-color: rgb(90 154 176 / 0.2);
+  --daily-bg: rgb(90 154 176 / 0.08);
+  --daily-hover-border: var(--blue-500);
+  --daily-hover-bg: rgb(90 154 176 / 0.14);
+}
+
+:global(html[data-theme="dark"]) .tier:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+:global(html[data-theme="dark"]) .streakBanner {
+  border-color: rgb(229 166 75 / 0.2);
+  background: rgb(229 166 75 / 0.06);
+}
+
+:global(html[data-theme="dark"]) .recentItem {
+  border-color: rgb(255 255 255 / 0.06);
+}
+
+:global(html[data-theme="dark"]) .recentItem:hover {
+  border-color: var(--sage-500);
+  background: rgb(34 36 32 / 0.5);
+}
+
+@media (prefers-contrast: more) {
+  .card {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .secondaryButton {
+    border-width: 2px;
+  }
+
+  .recentItem {
+    border-color: rgb(23 25 22 / 0.12);
+  }
+}
+
+@media (forced-colors: active) {
+  .card {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .primaryButton {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .secondaryButton {
+    border: 2px solid ButtonText;
+  }
+
+  .progressTrack {
+    border: 1px solid ButtonText;
+  }
+
+  .progressTrack > span {
+    background: Highlight;
+  }
 }

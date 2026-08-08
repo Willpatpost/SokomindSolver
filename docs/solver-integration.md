@@ -115,6 +115,76 @@ soft ordering weights. It cannot change legality, hard pruning, replay
 verification, or resource limits, which keeps future AlphaEvolve experiments
 behind a stable correctness boundary.
 
+## Sokomind Solver modes: fast, quality, and optimal
+
+The Sokomind Solver adapter accepts a `mode` option (`"fast"`, `"quality"`, or
+`"optimal"`) that controls how much work the solver does after finding its
+first verified route.
+
+**Fast** (default) runs the multi-lane discovery portfolio (structural
+planning, guided push search, bidirectional frontiers), takes the first
+verified solution, runs a single bounded move-rewriting pass to shorten walks,
+and returns. No incumbent harvesting and no proof work. This is the mode users
+get from the default Solve button.
+
+**Quality** extends the fast pipeline with two additional phases. After the
+first solution, the solver enters a *harvesting* phase: it continues searching
+for up to `harvestElapsedMs` (default 5 000 ms) to collect up to
+`maximumIncumbents` (default 4) diverse alternative solutions. It then rewrites
+all of them with a divided improvement budget, selects the best, and hands the
+winner to the *proof* pipeline. The proof pipeline runs exact move A\* or
+IDA\* (sequential or concurrent depending on `proofParallelism`) to establish
+whether the solution is move-optimal. The proof may attach
+`optimality: "proven"` or report a bound and gap.
+
+**Optimal** follows the same discovery-harvest-rewrite-proof pipeline as
+quality. The distinction is semantic: optimal mode signals that the caller
+expects the proof to complete rather than treating it as best-effort. Both
+modes take the same code path — the gate in the source is
+`sokomindOptions.mode !== "fast"`.
+
+## Classic A\*, IDA\*, and Sokomind Solver compared
+
+Classic A\*, classic IDA\*, and the Sokomind Solver in quality/optimal mode all
+aim for move-optimal solutions, but they use fundamentally different
+strategies.
+
+**Classic A\*** (`classic-astar`) is a standard graph search. It maintains an
+open set (priority queue ordered by f = g + h) and a closed set (visited
+states). It expands the lowest-f node, generates successors, and skips visited
+states. It guarantees move-optimality when the heuristic is admissible. It is
+memory-hungry: it stores every expanded state, and for large puzzles memory
+grows rapidly and can exhaust the browser allocation before finding a solution.
+It uses the exact keeper position in state identity because walking distance
+contributes to the move-count objective. A compact typed-array arena reduces
+per-node overhead.
+
+**Classic IDA\*** (`classic-ida-star`) performs depth-first searches with
+increasing f-cost thresholds. Each iteration prunes any node where f exceeds
+the current threshold. If no solution is found, the threshold increases to the
+minimum pruned f. It guarantees move-optimality with the same admissibility
+requirement. It is memory-efficient: it stores only the current path (O(depth)
+instead of O(states)). It is slower in practice for moderately-sized puzzles
+because it re-expands nodes across iterations, but it can handle puzzles where
+A\* runs out of memory. It supports checkpointing for HPC and long runs.
+
+**Sokomind Solver quality/optimal** is not a single algorithm but a multi-lane
+portfolio orchestrator. The discovery phase uses the legacy engine kernel
+(structural macros, guided push search, bidirectional frontiers) to find
+solutions fast without optimality guarantees. In quality/optimal mode, after
+discovery it harvests multiple incumbent solutions, rewrites them to reduce
+move count, selects the best, and delegates to the proof pipeline — which
+internally runs exact move A\* or IDA\*. The upper bound from discovery prunes
+the exact search (incumbent bounding), making the proof faster than running
+A\*/IDA\* cold. The proof can run concurrently across multiple workers.
+
+The key tradeoff: A\* and IDA\* are clean single-algorithm searches that
+guarantee optimality but may be slow or exhaust memory on hard puzzles. The
+Sokomind Solver sacrifices algorithmic purity for practical speed — it finds a
+good answer fast via heuristic search, then optionally proves it with the same
+exact algorithms but with the advantage of an incumbent bound to prune the
+search space.
+
 ## Contract
 
 A solver receives:

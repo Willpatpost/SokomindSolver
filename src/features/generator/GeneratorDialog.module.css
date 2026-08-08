@@ -65,6 +65,11 @@
   background: var(--paper-100);
 }
 
+.close:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .content {
   display: grid;
   gap: 16px;
@@ -159,6 +164,12 @@
   font-size: 0.76rem;
 }
 
+.fields select:focus-visible,
+.fields input[type="number"]:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .fields select:disabled,
 .fields input:disabled {
   color: var(--ink-muted);
@@ -212,6 +223,11 @@
   border: 1px solid rgb(23 25 22 / 0.16);
   color: var(--ink-700);
   background: transparent;
+}
+
+.primaryActions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .primaryActions button:disabled {
@@ -324,6 +340,11 @@
   background: var(--sage-600);
 }
 
+.accept:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 @media (max-width: 640px) {
   .modal {
     width: 100%;
@@ -390,4 +411,68 @@
 :global(html[data-theme="dark"]) .metrics {
   border-color: rgb(255 255 255 / 0.06);
   background: rgb(255 255 255 / 0.04);
+}
+
+@media (prefers-contrast: more) {
+  .dialog {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .card,
+  .result {
+    border-color: rgb(23 25 22 / 0.18);
+  }
+
+  .primaryActions button:disabled {
+    opacity: 0.55;
+  }
+}
+
+@media (forced-colors: active) {
+  .dialog {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .header {
+    border-bottom: 1px solid ButtonBorder;
+  }
+
+  .close {
+    border: 2px solid ButtonText;
+  }
+
+  .card,
+  .result {
+    border: 1px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .fields select,
+  .fields input[type="number"] {
+    border: 1px solid ButtonText;
+  }
+
+  .generate,
+  .accept {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .generate:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    background: Canvas;
+  }
+
+  .cancel {
+    border: 2px solid ButtonText;
+  }
+
+  .metrics {
+    border: 1px solid ButtonBorder;
+  }
 }

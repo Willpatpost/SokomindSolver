@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   EDITOR_TOOLS,
   TYPED_LABELS,
@@ -33,6 +33,29 @@ export function EditorToolbar({
   const [typedLabel, setTypedLabel] = useState<TypedLabel>("A");
   const typedKind = isTypedGoalSymbol(selectedTool) ? "goal" : "box";
 
+  useEffect(() => {
+    const TOOL_KEYS: Record<string, string> = {
+      "1": "O",
+      "2": " ",
+      "3": "R",
+      "4": "X",
+      "5": "S",
+    };
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (document.querySelector("dialog[open], [role='dialog']")) return;
+      const tool = TOOL_KEYS[event.key];
+      if (tool) {
+        event.preventDefault();
+        dispatch({ type: "set-tool", tool });
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [dispatch]);
+
   const selectTypedLabel = (label: TypedLabel) => {
     setTypedLabel(label);
     dispatch({
@@ -48,22 +71,26 @@ export function EditorToolbar({
           <p className={styles.groupLabel}>{group.label}</p>
           <div className={styles.tools}>
             {EDITOR_TOOLS.filter((tool) => tool.group === group.key).map(
-              (tool) => (
+              (tool) => {
+                const globalIndex = EDITOR_TOOLS.indexOf(tool);
+                const shortcut = globalIndex + 1 <= 5 ? String(globalIndex + 1) : undefined;
+                return (
                 <button
                   key={tool.symbol}
                   className={styles.tool}
                   type="button"
                   data-active={selectedTool === tool.symbol || undefined}
-                  aria-label={tool.label}
+                  aria-label={`${tool.label}${shortcut ? ` (${shortcut})` : ""}`}
                   aria-pressed={selectedTool === tool.symbol}
-                  title={tool.label}
+                  title={`${tool.label}${shortcut ? ` (${shortcut})` : ""}`}
                   onClick={() =>
                     dispatch({ type: "set-tool", tool: tool.symbol })
                   }
                 >
                   {toolGlyph(tool.symbol)}
                 </button>
-              ),
+                );
+              },
             )}
           </div>
         </div>

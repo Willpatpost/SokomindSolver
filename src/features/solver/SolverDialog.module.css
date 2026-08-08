@@ -67,6 +67,11 @@
   background: var(--paper-100);
 }
 
+.close:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -162,6 +167,11 @@
   font-size: 0.76rem;
 }
 
+.fields select:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 1px;
+}
+
 .fields select:disabled {
   color: var(--ink-muted);
   cursor: not-allowed;
@@ -225,6 +235,13 @@
 .retry {
   width: 100%;
   margin-top: 9px;
+}
+
+.primaryActions button:focus-visible,
+.play:focus-visible,
+.retry:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .primaryActions button:disabled,
@@ -318,6 +335,12 @@
   padding-top: 12px;
   cursor: pointer;
   font-weight: 800;
+}
+
+.diagnostics summary:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .diagnostics dl {
@@ -526,4 +549,94 @@
 
 :global(html[data-theme="dark"]) .log li {
   border-bottom-color: rgb(255 255 255 / 0.05);
+}
+
+@media (prefers-contrast: more) {
+  .dialog {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .card,
+  .logCard,
+  .result {
+    border-color: rgb(23 25 22 / 0.18);
+  }
+
+  .fields select:disabled {
+    opacity: 0.55;
+  }
+
+  .primaryActions button:disabled,
+  .play:disabled {
+    opacity: 0.55;
+  }
+}
+
+@media (forced-colors: active) {
+  .dialog {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .header {
+    border-bottom: 1px solid ButtonBorder;
+  }
+
+  .close {
+    border: 2px solid ButtonText;
+  }
+
+  .card,
+  .logCard,
+  .result {
+    border: 1px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .fields select {
+    border: 1px solid ButtonText;
+  }
+
+  .fields select:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .start,
+  .play {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .start:disabled,
+  .play:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    background: Canvas;
+  }
+
+  .cancel,
+  .retry {
+    border: 2px solid ButtonText;
+  }
+
+  .metrics,
+  .solutionMetrics {
+    border: 1px solid ButtonBorder;
+  }
+
+  .log li {
+    border-bottom: 1px solid ButtonBorder;
+  }
+
+  .log li::before {
+    background: Highlight;
+  }
+
+  .diagnostics {
+    border-top: 1px solid ButtonBorder;
+  }
 }

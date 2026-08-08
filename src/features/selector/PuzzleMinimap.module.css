@@ -1,0 +1,51 @@
+.minimap {
+  display: grid;
+  width: 36px;
+  min-width: 36px;
+  max-height: 36px;
+  gap: 1px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--paper-200);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  transform-origin: left center;
+}
+
+button:hover .minimap {
+  transform: scale(1.8);
+  z-index: 10;
+  position: relative;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+}
+
+.cell {
+  background: var(--paper-100);
+  min-width: 0;
+  min-height: 0;
+}
+
+.cell[data-type="box"] {
+  background: var(--sage-400);
+}
+
+:global(html[data-theme="dark"]) .cell {
+  background: rgb(40 42 38);
+}
+
+:global(html[data-theme="dark"]) .cell[data-type="box"] {
+  background: var(--sage-600);
+}
+
+:global(html[data-theme="dark"]) .minimap {
+  background: rgb(28 30 26);
+}
+
+:global(html[data-motion="reduced"]) button:hover .minimap {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) button:hover .minimap {
+    transform: none;
+  }
+}

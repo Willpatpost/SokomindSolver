@@ -1,5 +1,5 @@
-import { memo } from "react";
-import type { Direction, GameSession } from "@/src/core";
+import { memo, useMemo } from "react";
+import { positionKey, type Direction, type GameSession } from "@/src/core";
 import type { PuzzleRecord } from "@/src/shared/progress";
 import { formatTime } from "./timer-math";
 import { GameControls } from "./GameControls";
@@ -10,11 +10,13 @@ interface GameSidebarProps {
   readonly best?: PuzzleRecord;
   readonly controlsDisabled?: boolean;
   readonly isOptimal?: boolean;
+  readonly optimalMoves?: number;
   readonly canHint?: boolean;
   readonly hintThinking?: boolean;
   readonly elapsed?: number;
   readonly onMove: (direction: Direction) => void;
   readonly onUndo: () => void;
+  readonly onUndoN?: (count: number) => void;
   readonly onHint?: () => void;
   readonly onReset: () => void;
 }
@@ -24,15 +26,26 @@ export const GameSidebar = memo(function GameSidebar({
   best,
   controlsDisabled = false,
   isOptimal = false,
+  optimalMoves,
   canHint = false,
   hintThinking = false,
   elapsed = 0,
   onMove,
   onUndo,
+  onUndoN,
   onHint,
   onReset,
 }: GameSidebarProps) {
-  const { puzzle } = session;
+  const { puzzle, board, snapshot } = session;
+
+  const matchedBoxes = useMemo(() => {
+    const goalMap = new Map(
+      board.goals.map((g) => [positionKey(g.position), g.label]),
+    );
+    return snapshot.boxes.filter(
+      (box) => goalMap.get(positionKey(box.position)) === box.label,
+    ).length;
+  }, [board.goals, snapshot.boxes]);
 
   return (
     <aside className={styles.rightRail} aria-label="Current game details">
@@ -44,6 +57,7 @@ export const GameSidebar = memo(function GameSidebar({
         disabled={controlsDisabled}
         onMove={onMove}
         onUndo={onUndo}
+        onUndoN={onUndoN}
         onHint={onHint}
         onReset={onReset}
       />
@@ -60,7 +74,7 @@ export const GameSidebar = memo(function GameSidebar({
         ) : null}
         <div className={styles.stats}>
           <div className={styles.stat}>
-            <strong data-testid="moves-count">{session.moves}</strong>
+            <strong key={session.moves} data-testid="moves-count">{session.moves}</strong>
             <span>Moves</span>
             {best && session.moves > 0 ? (
               <small
@@ -73,7 +87,7 @@ export const GameSidebar = memo(function GameSidebar({
             ) : null}
           </div>
           <div className={styles.stat}>
-            <strong data-testid="pushes-count">{session.pushes}</strong>
+            <strong key={session.pushes} data-testid="pushes-count">{session.pushes}</strong>
             <span>Pushes</span>
             {best && session.pushes > 0 ? (
               <small
@@ -86,12 +100,40 @@ export const GameSidebar = memo(function GameSidebar({
             ) : null}
           </div>
         </div>
+        {session.moves > 0 && (
+          <div className={styles.efficiency}>
+            <span>Efficiency</span>
+            <strong>{Math.round((session.pushes / session.moves) * 100)}%</strong>
+          </div>
+        )}
+        {puzzle.boxes > 1 && (
+          <div className={styles.boxProgress}>
+            <span>Boxes placed</span>
+            <div className={styles.boxTrack}>
+              <span
+                style={{ width: `${(matchedBoxes / puzzle.boxes) * 100}%` }}
+                data-complete={matchedBoxes === puzzle.boxes || undefined}
+              />
+            </div>
+            <strong>{matchedBoxes} / {puzzle.boxes}</strong>
+          </div>
+        )}
         <div className={styles.best}>
           <span>Personal best{isOptimal ? " ★" : ""}</span>
           <strong>
-            {best ? `${best.pushes} pushes · ${best.moves} moves` : "Not cleared"}
+            {best
+              ? `${best.pushes} pushes · ${best.moves} moves${best.elapsedMs ? ` · ${formatTime(best.elapsedMs)}` : ""}`
+              : "Not cleared"}
           </strong>
+          {!isOptimal && optimalMoves !== undefined && best && (
+            <small className={styles.optimalHint}>
+              Optimal: {optimalMoves} moves ({best.moves - optimalMoves} to go)
+            </small>
+          )}
         </div>
+        {best && session.moves > 0 && session.moves < best.moves && !session.solved ? (
+          <div className={styles.paceBadge}>New best pace</div>
+        ) : null}
         {isOptimal ? (
           <div className={styles.optimalBadge}>Optimal</div>
         ) : null}
