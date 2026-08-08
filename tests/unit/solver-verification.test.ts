@@ -126,4 +126,100 @@ describe("solver solution verification", () => {
       assert.equal(wrongObjective.code, "invalid-solution");
     }
   });
+
+  it("returns invalid-request when the request itself is malformed", () => {
+    // Construct a request with a completely bogus board to trigger
+    // assertValidSolverRequest failure. Use a non-SolverValidationError path
+    // by passing something that is not even an object.
+    const badRequest = {
+      board: "not a board",
+      snapshot: "not a snapshot",
+      objective: { kind: "moves" },
+    } as unknown as SolverRequest;
+    const solution = makeSolution(
+      [{ direction: "right", kind: "push" }],
+      1,
+    );
+
+    const result = verifySolverSolution(badRequest, solution);
+    assert.equal(result.valid, false);
+    if (!result.valid) {
+      assert.equal(result.code, "invalid-request");
+      assert.match(result.message, /invalid/i);
+    }
+  });
+
+  it("rejects solution with mismatched move count (pre-validation gate)", () => {
+    // When solution.moves != steps.length, assertValidSolverSolution
+    // rejects it before replay, producing "invalid-solution".
+    const request = makeRequest(["OOOOOO", "OR XSO", "OOOOOO"]);
+    const solution: SolverSolution = {
+      steps: [
+        { direction: "right", kind: "walk" },
+        { direction: "right", kind: "push" },
+      ],
+      moves: 99, // wrong: should be 2
+      pushes: 1,
+      objective: { kind: "moves" },
+      objectiveScore: 99,
+      optimality: "unknown",
+    };
+
+    const result = verifySolverSolution(request, solution);
+    assert.equal(result.valid, false);
+    if (!result.valid) {
+      assert.equal(result.code, "invalid-solution");
+      assert.match(result.message, /invalid/i);
+    }
+  });
+
+  it("rejects solution with mismatched push count (pre-validation gate)", () => {
+    // When solution.pushes != count of push-kind steps,
+    // assertValidSolverSolution rejects it before replay.
+    const request = makeRequest(["OOOOO", "ORXSO", "OOOOO"]);
+    const solution: SolverSolution = {
+      steps: [{ direction: "right", kind: "push" }],
+      moves: 1,
+      pushes: 5, // wrong: should be 1
+      objective: { kind: "moves" },
+      objectiveScore: 1,
+      optimality: "unknown",
+    };
+
+    const result = verifySolverSolution(request, solution);
+    assert.equal(result.valid, false);
+    if (!result.valid) {
+      assert.equal(result.code, "invalid-solution");
+    }
+  });
+
+  it("throws SolverSolutionVerificationError for all rejection codes", () => {
+    // Test that assertVerifiedSolverSolution wraps the failure
+    const request = makeRequest(["OOOOO", "ORXSO", "OOOOO"]);
+
+    // step-kind-mismatch
+    assert.throws(
+      () =>
+        assertVerifiedSolverSolution(
+          request,
+          makeSolution([{ direction: "right", kind: "walk" }], 0),
+        ),
+      (error: unknown) =>
+        error instanceof SolverSolutionVerificationError &&
+        error.failure.code === "step-kind-mismatch" &&
+        error.failure.stepIndex === 0,
+    );
+
+    // illegal-step
+    assert.throws(
+      () =>
+        assertVerifiedSolverSolution(
+          request,
+          makeSolution([{ direction: "up", kind: "walk" }], 0),
+        ),
+      (error: unknown) =>
+        error instanceof SolverSolutionVerificationError &&
+        error.failure.code === "illegal-step",
+    );
+  });
 });
