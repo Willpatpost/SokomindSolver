@@ -567,8 +567,6 @@ async function main(): Promise<void> {
 
   const allResults: BenchmarkFixtureResult[] = [];
   const solvers = ["sokomind-solver", "classic-astar", "classic-ida-star"];
-  const totalRuns = args.warmupRuns + args.timedRuns;
-
   process.stderr.write(
     `Benchmark: ${args.warmupRuns} warm-up run(s), median of ${args.timedRuns} timed run(s)\n`,
   );

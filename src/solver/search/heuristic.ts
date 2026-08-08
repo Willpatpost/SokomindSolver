@@ -127,68 +127,10 @@ export function assignmentLowerBound(
 }
 
 /**
- * Admissible lower bound on the walk cost to reach the first push.
- *
- * For every box that is NOT yet on its matching goal, the player must walk
- * to one of the four adjacent cells (the "support" cell) before pushing.
- * The Manhattan distance from the player to the closest such support cell
- * is a lower bound on the walk moves needed to begin the first push.
- *
- * When every box is already on its goal the remaining work is zero, and
- * this function returns 0 (consistent with the assignment heuristic
- * returning 0 in the solved state).
- *
- * The estimate is admissible because:
- *   1. Manhattan distance <= actual BFS walk distance (obstacles only add cost).
- *   2. The player cannot push any box without first reaching a support cell.
- *   3. Walk moves and push moves are disjoint, so the walk lower bound can
- *      be safely added to the push-only lower bound without double-counting.
- */
-function minimumWalkToFirstPush(
-  board: CompiledSearchBoard,
-  playerCell: number,
-  boxes: readonly DenseBox[],
-): number {
-  const playerPos = board.positions[playerCell];
-  if (!playerPos) return 0;
-
-  let minDist = Number.POSITIVE_INFINITY;
-
-  for (const box of boxes) {
-    // Skip boxes that are already on their matching goal.
-    if (board.goalLabelByCell[box.cell] === box.label) continue;
-
-    const boxPos = board.positions[box.cell];
-    if (!boxPos) continue;
-
-    // Check each of the four neighbor cells as potential support positions.
-    const neighbors = board.neighbors[box.cell];
-    if (!neighbors) continue;
-
-    for (let d = 0; d < 4; d++) {
-      const supportCell = neighbors[d];
-      if (supportCell === undefined || supportCell < 0) continue;
-      const supportPos = board.positions[supportCell];
-      if (!supportPos) continue;
-
-      const manhattan =
-        Math.abs(playerPos.row - supportPos.row) +
-        Math.abs(playerPos.column - supportPos.column);
-      if (manhattan < minDist) {
-        minDist = manhattan;
-        if (manhattan === 0) return 0; // Player is already at a support cell
-      }
-    }
-  }
-
-  return Number.isFinite(minDist) ? minDist : 0;
-}
-
-/**
  * Safe admissible walk lower bound that considers ALL boxes, including
  * those already on matching goals.
  *
- * This corrects the unsound exclusion in `minimumWalkToFirstPush` where
+ * Unlike a simpler variant that skips goal-placed boxes, this considers
  * boxes on their matching goal were skipped. An optimal solution can
  * require moving a correctly placed box first (e.g., to make room for
  * another box to pass through).

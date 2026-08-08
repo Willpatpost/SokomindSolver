@@ -17,7 +17,6 @@ export interface DoorwayCrossingStats {
  */
 export class DoorwayCrossingLowerBound {
   readonly #board: CompiledSearchBoard;
-  readonly #topology: BoardTopology;
   #evaluations = 0;
   #positiveResults = 0;
 
@@ -37,7 +36,6 @@ export class DoorwayCrossingLowerBound {
 
   constructor(board: CompiledSearchBoard, topology: BoardTopology) {
     this.#board = board;
-    this.#topology = topology;
 
     const cellCount = board.cellCount;
     const articulations = topology.articulations;
@@ -204,8 +202,6 @@ export class DoorwayCrossingLowerBound {
     const regionId = this.#regionId;
     const regionCount = this.#regionCount;
     const regionDist = this.#regionDist;
-    const articulations = this.#topology.articulations;
-
     let totalCrossings = 0;
 
     for (let i = 0; i < boxes.length; i++) {

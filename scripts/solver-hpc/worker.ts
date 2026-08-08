@@ -19,7 +19,6 @@ import { parsePuzzleRows, type ParsedBoard } from "../../src/core/index.ts";
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import type {
   SolverExecutionContext,
-  SolverProgress,
   SolverRequest,
   SolverResult,
 } from "../../src/solver/contracts.ts";
@@ -204,7 +203,7 @@ async function run(): Promise<void> {
 
   const context: SolverExecutionContext = {
     signal: ac.signal,
-    reportProgress(_progress: SolverProgress): void {
+    reportProgress(): void {
       // Progress could be forwarded to parent if needed; suppressed in HPC mode
     },
     now: performance.now.bind(performance),

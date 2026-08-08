@@ -182,12 +182,11 @@ export class LocalRoomDeadlockDetector {
 
   check(
     boxes: readonly DenseBox[],
-    occupancy: Uint8Array,
   ): boolean {
     this.#checks++;
 
     for (const table of this.#tables) {
-      if (this.#isRoomDeadlocked(table, boxes, occupancy)) {
+      if (this.#isRoomDeadlocked(table, boxes)) {
         this.#deadlocks++;
         return true;
       }
@@ -199,7 +198,6 @@ export class LocalRoomDeadlockDetector {
   #isRoomDeadlocked(
     table: RoomTable,
     boxes: readonly DenseBox[],
-    occupancy: Uint8Array,
   ): boolean {
     const room = table.room;
 
