@@ -48,6 +48,7 @@ import {
 } from "./exact-search-types.ts";
 import {
   AssignmentHeuristic,
+  PdbHeuristicEvaluator,
   minimumManhattanWalkToPotentialPush,
   minimumReachableWalkToLegalPush,
 } from "./heuristic.ts";
@@ -242,6 +243,7 @@ export async function runExactMoveAStar(
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
+    const pdbEvaluator = new PdbHeuristicEvaluator(board);
     const staticBytes = estimateStaticSearchBytes(board);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();
@@ -296,7 +298,8 @@ export async function runExactMoveAStar(
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialPushBound + Math.max(initialLC, initialBoost) + initialWalkBound;
+    const initialPdbSum = pdbEvaluator.evaluate(initialBoxes);
+    const initialH = Math.max(initialPushBound + Math.max(initialLC, initialBoost), initialPdbSum) + initialWalkBound;
     lastLowerBound = initialH;
 
     let heapSize = 0;
@@ -724,10 +727,11 @@ export async function runExactMoveAStar(
                   ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
                   : 0;
                 const fpLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
+                const fpPdbSum = pdbEvaluator.evaluate(expansionBoxes);
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost) + walkBound;
+                const h = Math.max(pushLowerBound + Math.max(fpLinearConflict, interactionBoost), fpPdbSum) + walkBound;
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -900,13 +904,14 @@ export async function runExactMoveAStar(
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
           const childLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
+          const childPdbSum = pdbEvaluator.evaluate(expansionBoxes);
 
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
             savedCell,
             expansionBoxes,
           );
-          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost) + walkBound;
+          const h = Math.max(pushLowerBound + Math.max(childLinearConflict, interactionBoost), childPdbSum) + walkBound;
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

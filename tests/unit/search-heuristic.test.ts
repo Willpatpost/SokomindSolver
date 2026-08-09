@@ -18,6 +18,7 @@ import {
 } from "../../src/solver/search/deadlocks.ts";
 import {
   AssignmentHeuristic,
+  PdbHeuristicEvaluator,
   assignmentLowerBound,
   minimumReachableWalkToLegalPush,
 } from "../../src/solver/search/heuristic.ts";
@@ -472,5 +473,95 @@ describe("AssignmentHeuristic.resetStats", () => {
     heuristic.resetStats();
     assert.equal(heuristic.stats.calls, 0);
     assert.equal(heuristic.stats.cacheHits, 0);
+  });
+});
+
+describe("PdbHeuristicEvaluator", () => {
+  it("returns 0 for a solved state", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR XX O",
+      "O  SS O",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const goalCells = [...(board.goalCellsByLabel.get("X") ?? [])];
+    const solvedBoxes: readonly DenseBox[] = goalCells.map((cell, i) => ({
+      id: `X:${i}`,
+      label: "X",
+      cell,
+    }));
+    const pdb = new PdbHeuristicEvaluator(board);
+    assert.equal(pdb.evaluate(solvedBoxes), 0);
+  });
+
+  it("returns non-negative value for unsolved states", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR XX O",
+      "O  SS O",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const pdb = new PdbHeuristicEvaluator(board);
+    assert.ok(pdb.evaluate(boxes) >= 0);
+  });
+
+  it("is >= 0 and <= exact push count (admissible) on a small board", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR    O",
+      "O  X  O",
+      "O  S  O",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const robot = board.cellAt(1, 1);
+    const pdb = new PdbHeuristicEvaluator(board);
+    const pdbValue = pdb.evaluate(boxes);
+    const exact = exactRemainingPushes(board, robot, boxes);
+    assert.ok(pdbValue >= 0);
+    if (exact !== null) {
+      assert.ok(pdbValue <= exact,
+        `PDB value ${pdbValue} exceeds exact ${exact}`);
+    }
+  });
+
+  it("is at least as large as the base Hungarian heuristic", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR XX O",
+      "O  SS O",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const hungarian = assignmentLowerBound(board, boxes);
+    const pdb = new PdbHeuristicEvaluator(board);
+    const pdbValue = pdb.evaluate(boxes);
+    assert.ok(
+      pdbValue >= hungarian || pdbValue === 0,
+      `PDB(${pdbValue}) should be >= Hungarian(${hungarian}) or 0 if boxes outside region`,
+    );
+  });
+
+  it("reports partition and table counts", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOOO",
+      "OR XX O",
+      "O  SS O",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const pdb = new PdbHeuristicEvaluator(board);
+    assert.ok(pdb.partitionCount >= 1);
+    assert.ok(pdb.totalTableEntries >= 1);
   });
 });

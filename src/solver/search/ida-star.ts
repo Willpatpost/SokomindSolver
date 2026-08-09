@@ -38,7 +38,7 @@ import {
 } from "./goal-commitment.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
-import { AssignmentHeuristic, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
+import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
@@ -497,6 +497,7 @@ export async function runIdaStarSearch(
     const packBoxKeyFromBoxes = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
+    const pdbEvaluator = new PdbHeuristicEvaluator(board);
 
     function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
       const tokens = exactCodec.tokensFromBoxes(boxes);
@@ -717,7 +718,8 @@ export async function runIdaStarSearch(
       initialRobot,
       initialBoxes,
     );
-    const initialH = initialHPush + Math.max(initialLC, initialBoost) + initialHWalk;
+    const initialPdbSum = pdbEvaluator.evaluate(initialBoxes);
+    const initialH = Math.max(initialHPush + Math.max(initialLC, initialBoost), initialPdbSum) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
@@ -932,7 +934,8 @@ export async function runIdaStarSearch(
             frame.robot,
             frame.boxes,
           );
-          const h = hPush + Math.max(linearConflict, interactionBoost) + hWalk;
+          const pdbSum = pdbEvaluator.evaluate(frame.boxes);
+          const h = Math.max(hPush + Math.max(linearConflict, interactionBoost), pdbSum) + hWalk;
           frame.h = h;
 
           const f = frame.g + h;

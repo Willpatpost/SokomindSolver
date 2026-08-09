@@ -6,11 +6,17 @@ import {
 import type {
   CompiledSearchBoard,
 } from "./compiled-board.ts";
+import { partitionGoals, type GoalPartition } from "./goal-partitioning.ts";
 import { computeLinearConflict } from "./linear-conflict.ts";
 import {
   canonicalBoxSignature,
   type DenseBox,
 } from "./model.ts";
+import {
+  buildPatternDatabase,
+  UNSOLVED as PDB_UNSOLVED,
+  type PatternDatabase,
+} from "./pattern-database.ts";
 
 const INCREMENTAL_ASSIGNMENT_CROSSOVER = 3;
 
@@ -523,5 +529,94 @@ export class AssignmentHeuristic {
     this.#calls = 0;
     this.#cacheHits = 0;
     this.#incrementalRepairs = 0;
+  }
+}
+
+function minSubsetLookup(
+  pdb: PatternDatabase,
+  cells: readonly number[],
+  k: number,
+): number {
+  const n = cells.length;
+  if (n === k) return pdb.lookup(cells);
+
+  let minValue = PDB_UNSOLVED;
+  const indices = new Array<number>(k);
+  for (let j = 0; j < k; j++) indices[j] = j;
+
+  while (true) {
+    const subset: number[] = new Array(k);
+    for (let j = 0; j < k; j++) subset[j] = cells[indices[j]];
+
+    const value = pdb.lookup(subset);
+    if (value < minValue) {
+      minValue = value;
+      if (value === 0) break;
+    }
+
+    let j = k - 1;
+    while (j >= 0 && indices[j] === n - k + j) j--;
+    if (j < 0) break;
+    indices[j]++;
+    for (let m = j + 1; m < k; m++) indices[m] = indices[m - 1] + 1;
+  }
+
+  return minValue;
+}
+
+export class PdbHeuristicEvaluator {
+  readonly #pdbs: readonly PatternDatabase[];
+  readonly #partitions: readonly GoalPartition[];
+
+  constructor(board: CompiledSearchBoard) {
+    this.#partitions = partitionGoals(board);
+    this.#pdbs = this.#partitions.map((partition) =>
+      buildPatternDatabase(board, {
+        goalCells: partition.goalCells,
+        labelIds: partition.labels,
+        regionCells: partition.regionCells,
+      }),
+    );
+  }
+
+  get partitionCount(): number {
+    return this.#partitions.length;
+  }
+
+  get totalTableEntries(): number {
+    return this.#pdbs.reduce((sum, pdb) => sum + pdb.tableSize, 0);
+  }
+
+  evaluate(boxes: readonly DenseBox[]): number {
+    if (this.#pdbs.length === 0) return 0;
+
+    const cellsByLabel = new Map<string, number[]>();
+    for (const box of boxes) {
+      const cells = cellsByLabel.get(box.label) ?? [];
+      cells.push(box.cell);
+      cellsByLabel.set(box.label, cells);
+    }
+
+    let total = 0;
+    for (let i = 0; i < this.#partitions.length; i++) {
+      const partition = this.#partitions[i];
+      const pdb = this.#pdbs[i];
+      const k = pdb.k;
+      if (k === 0) continue;
+
+      const label = partition.labels[0];
+      const boxCells = cellsByLabel.get(label);
+      if (!boxCells || boxCells.length < k) continue;
+
+      let value: number;
+      if (boxCells.length === k) {
+        value = pdb.lookup(boxCells);
+      } else {
+        value = minSubsetLookup(pdb, boxCells, k);
+      }
+      if (value !== PDB_UNSOLVED) total += value;
+    }
+
+    return total;
   }
 }

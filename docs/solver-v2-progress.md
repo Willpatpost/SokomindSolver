@@ -1862,3 +1862,75 @@ Also fixed `AssignmentHeuristic.#evaluateFallback` to store `lastLabelStates` wh
 - `npm run build` — pass
 - `npm run test:solver:oracle` — 19/19 pass
 - `npm run test:solver:optimal` — 5/5 pass
+
+## Sprint 2 — Pattern Databases
+
+**Date**: 2026-08-08
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Tasks completed
+
+#### Task 2.1: PDB construction via reverse-push BFS
+
+Created `pattern-database.ts` implementing pattern databases for Sokoban:
+- Combinadic (combinatorial number system) encoding maps k sorted cell positions to contiguous indices
+- Precomputed binomial coefficients `C(n, k)` for efficient encoding/decoding
+- `Uint16Array` storage with `UNSOLVED = 0xFFFF`
+- BFS from solved state (all boxes on goals) exploring reverse pushes
+- Relaxed player position (player can teleport) — admissible lower bound
+- Maximum k=6 boxes per PDB
+- `buildGoalRegion()` computes region cells via BFS flood within configurable maxDistance
+
+**Files created:** `src/solver/search/pattern-database.ts`
+
+#### Task 2.2: Goal partitioning for additive PDBs
+
+Created `goal-partitioning.ts` for partitioning goals into disjoint subsets:
+- Groups goals by label first
+- Splits groups larger than 5 goals by spatial proximity (greedy nearest-neighbor clustering)
+- Each partition includes region cells computed by `buildGoalRegion()` with maxDistance=8
+- Disjoint partitions ensure additive PDB combination is admissible
+
+**Files created:** `src/solver/search/goal-partitioning.ts`
+
+#### Task 2.3: Wire PDBs into the heuristic
+
+Added `PdbHeuristicEvaluator` class to `heuristic.ts`:
+- Constructor calls `partitionGoals()` and builds a PDB per partition
+- `evaluate(boxes)` sums PDB lookups across partitions
+- Handles split labels via `minSubsetLookup` (min over C(n,k) subsets)
+- UNSOLVED values (boxes outside region) contribute 0 to the sum
+
+Wired into both search engines with admissible composition:
+- `h = max(hPush + max(linearConflict, interactionBoost), pdbSum) + hWalk`
+- PDB provides alternative push lower bound; max ensures we use whichever is tighter
+- Modified at all h-composition sites: 2 in IDA*, 3 in exact A*
+
+**Files modified:** `src/solver/search/heuristic.ts`, `src/solver/search/ida-star.ts`, `src/solver/search/exact-move-astar.ts`
+
+### Admissibility argument
+
+The PDB heuristic is admissible because:
+1. Each PDB is built by reverse-push BFS from the solved state — values are exact push distances in a relaxed problem (no other boxes, player teleports)
+2. Goal partitions are disjoint — additive combination is valid since each goal belongs to exactly one partition
+3. For split labels (same label across partitions), `minSubsetLookup` takes the minimum over all C(n,k) box subsets — a valid lower bound since the actual assignment must use some specific subset
+4. The final composition `max(hungarian_based, pdb_sum)` is admissible because max of two admissible values is admissible
+5. Walk bound is independent (measures player distance, not push distance) and remains additive
+
+### Tests added
+
+- `tests/unit/pattern-database.test.ts` — 14 tests: combinadic roundtrip (k=1,2,3), contiguous indices, goal region BFS, 1-box PDB, 2-box PDB, UNSOLVED for out-of-region, k=0 edge case, admissibility check
+- `tests/unit/goal-partitioning.test.ts` — 7 tests: one partition per label, empty board, single goal, disjoint partitions, label separation, region inclusion, split on > 5 goals
+- `tests/unit/search-heuristic.test.ts` — 5 new PdbHeuristicEvaluator tests: solved state returns 0, non-negative for unsolved, admissibility vs exact pushes, >= Hungarian, partition/table counts
+
+### Test results
+
+- `npm run check:sokomind-solver` — pass
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm run test:unit` — 1230 tests, 1229 pass, 1 pre-existing fail (`maxGeneratedStates: 0` validation)
+- `npm run test:coverage` — pass (all coverage gates met)
+- `npm run build` — pass
+- `npm run test:solver:oracle` — 19/19 pass
+- `npm run test:solver:optimal` — 5/5 pass
