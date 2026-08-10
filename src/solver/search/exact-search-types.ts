@@ -36,6 +36,9 @@ export interface SearchCounters {
   deadlockPrunes: number;
   patternDeadlockPrunes: number;
   corralPrunes: number;
+  piCorralPrunes: number;
+  goalMacroPrunes: number;
+  deadlockTablePrunes: number;
   commitmentSkips: number;
   interactionBoostTotal: number;
   infeasiblePrunes: number;

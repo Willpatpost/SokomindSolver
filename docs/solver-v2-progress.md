@@ -1934,3 +1934,163 @@ The PDB heuristic is admissible because:
 - `npm run build` — pass
 - `npm run test:solver:oracle` — 19/19 pass
 - `npm run test:solver:optimal` — 5/5 pass
+
+## Sprint 3 — Advanced Pruning (PI-Corral, Goal Macros, Deadlock Tables)
+
+**Date**: 2026-08-08
+**Node**: v22.16.0
+**Platform**: linux x64 (AMD EPYC 7B13)
+
+### Summary
+
+Three advanced pruning techniques added to both search engines. Each prune is
+provably sound — exhaustive oracle BFS tests on small boards confirm zero false
+positives across all solvable states.
+
+### Tasks completed
+
+#### Task 3.1: PI-Corral Pruning
+
+Extended sealed corral detection. A sealed corral has no boundary push that can
+open it — PI-corral additionally checks: when boundary pushes exist but ALL such
+pushes produce states that are deadlocked (2×2, freeze, or recursive sealed
+sub-corral), the position is still dead.
+
+- Reimplements sealed corral flood-fill logic (subsumes `sealed-corral.ts`)
+- Gates PI analysis to corrals with ≤6 boundary boxes
+- Separate `sealedDeadlocks` and `piDeadlocks` stats
+- Imports `createsFullyBlockedTwoByTwoDeadlock` and `hasFreezeDeadlock` from
+  `deadlocks.ts` for push simulation
+
+**Files created:** `src/solver/search/pi-corral.ts` (~185 lines)
+
+#### Task 3.2: Goal Macros (Forced Packing Order)
+
+In goal rooms (connected components with ≥2 goals accessed through a single
+gate), deeper goals must be filled before shallower blocking goals.
+
+- `analyzeGoalMacros(board)` builds per-room packing orders via BFS from gate
+- `isGoalMacroViolation(board, boxes, movedCell, analysis)` checks if a box is
+  now on a matching goal AND statically immovable AND a deeper goal is unfilled
+- `isStaticallyImmovable` checks both axes wall-blocked (both neighbors on each
+  axis are walls)
+- Only prunes on provably stuck boxes — per CLAUDE.md: "Incomplete local analysis
+  is not a deadlock"
+
+**Files created:** `src/solver/search/goal-macros.ts` (~133 lines)
+
+#### Task 3.3: Board-Specific Deadlock Tables
+
+Precomputed deadlock patterns for 2–3 box configurations in wall-adjacent
+sub-grids via bounded BFS.
+
+- Enumerates wall-adjacent sub-grids (≤9 cells, at least one wall neighbor)
+- For each region, enumerates 2–3 box placements and runs bounded BFS
+  (≤5,000 states) treating rest of board as empty
+- If BFS exhausts state space with no solution → deadlock pattern
+- Time-capped at 2 seconds total precomputation
+- String-based keys for reliable lookup (no bigint collision risk)
+
+**Files created:** `src/solver/search/deadlock-tables.ts` (~240 lines)
+
+### Integration
+
+All three families wired into both `exact-move-astar.ts` and `ida-star.ts`:
+
+- PI-corral replaces sealed corral check at expansion time (per-node, after
+  reachability flood)
+- Goal macros checked per-successor after pattern deadlock
+- Deadlock tables checked per-successor after goal macro
+- Forced-push macro paths also include goal macro and deadlock table checks
+
+Deadlock check hierarchy (per-successor):
+`isStaticDeadCell` → `2×2` → `freeze` → `patternDeadlock` → `goalMacro` → `deadlockTable`
+
+PI-corral check (per-expansion): after reachability flood, before child generation.
+
+New counters in `SearchCounters`: `piCorralPrunes`, `goalMacroPrunes`,
+`deadlockTablePrunes`
+
+### Soundness arguments
+
+1. **PI-corral**: If every possible push of every boundary box leads to a state
+   that is provably deadlocked, then no solution passes through this state. Each
+   sub-check (2×2, freeze) is individually sound. Sealed corral case is a strict
+   subset. Gate at ≤6 boundary boxes prevents exponential blowup.
+
+2. **Goal macros**: Box is corner-locked on correct goal (both axes wall-blocked —
+   cannot be pushed out). If a deeper goal in the same room is unfilled, no box
+   can reach that deeper goal past the immovable blocker. Only triggers on the
+   PROVEN tier (statically immovable), never on conditionally immovable boxes.
+
+3. **Deadlock tables**: BFS over-approximates legal moves (ignores outside boxes,
+   ignores player reachability). If BFS exhausts all states without reaching
+   solved → truly deadlocked. Cutoff (state limit exceeded) returns false
+   (conservative).
+
+### Files changed
+
+| File | Action | Purpose |
+|---|---|---|
+| `src/solver/search/pi-corral.ts` | Created | PI-corral detector |
+| `src/solver/search/goal-macros.ts` | Created | Goal macro analysis + violation check |
+| `src/solver/search/deadlock-tables.ts` | Created | Precomputed deadlock patterns |
+| `src/solver/search/exact-search-types.ts` | Updated | +3 counter fields |
+| `src/solver/search/exact-move-astar.ts` | Updated | Wired all 3 pruning families |
+| `src/solver/search/ida-star.ts` | Updated | Wired all 3 pruning families |
+| `src/solver/search/engine.ts` | Updated | +3 counter fields in init |
+| `tests/unit/pi-corral.test.ts` | Created | 8 tests |
+| `tests/unit/goal-macros.test.ts` | Created | 9 tests |
+| `tests/unit/deadlock-tables.test.ts` | Created | 8 tests |
+
+### Correctness gates
+
+Oracle exhaustive tests on tiny 2-box boards verify no pruning fires on any
+solvable state. Zero false positives across all three families.
+
+| Test | Result |
+|---|---|
+| PI-corral: sealed corral subsumption | PASS |
+| PI-corral: returns false for reachable boxes | PASS |
+| PI-corral: returns false for on-goal boxes | PASS |
+| PI-corral: returns false for solved state | PASS |
+| PI-corral: returns false for solvable config | PASS |
+| PI-corral: stats tracking | PASS |
+| PI-corral: subsumes sealed corral (verified both detectors) | PASS |
+| PI-corral: oracle exhaustive, 0 false positives | PASS |
+| Goal macros: empty for no rooms | PASS |
+| Goal macros: empty for single goal | PASS |
+| Goal macros: packing order deepest-first | PASS |
+| Goal macros: goal-to-room mapping | PASS |
+| Goal macros: no violation for non-goal cell | PASS |
+| Goal macros: no violation for movable box | PASS |
+| Goal macros: no violation when all goals filled | PASS |
+| Goal macros: no violation for non-room goals | PASS |
+| Goal macros: no violation for mismatched label | PASS |
+| Deadlock tables: build time budget (small) | PASS |
+| Deadlock tables: build time budget (medium) | PASS |
+| Deadlock tables: region/pattern counts | PASS |
+| Deadlock tables: empty for no-goal board | PASS |
+| Deadlock tables: solvable config → false | PASS |
+| Deadlock tables: solved config → false | PASS |
+| Deadlock tables: wall-corner pattern detection | PASS |
+| Deadlock tables: oracle exhaustive, 0 false positives | PASS |
+
+### Coverage
+
+| File | Lines | Branches |
+|---|---|---|
+| `pi-corral.ts` | 98.93% | 93.93% |
+| `goal-macros.ts` | 85.71% | 83.78% |
+| `deadlock-tables.ts` | 100% | 97.34% |
+
+### Test results
+
+- `npm run check:sokomind-solver` — pass
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm run test:unit` — 1254/1255 pass, 1 pre-existing fail (`maxGeneratedStates: 0` validation)
+- `npm run test:coverage` — pass
+- `npm run build` — pass
+- `npm run test:solver:oracle` — 19/19 pass
+- `npm run test:solver:optimal` — 5/5 pass

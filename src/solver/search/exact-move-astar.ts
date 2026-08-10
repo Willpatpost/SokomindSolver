@@ -27,14 +27,16 @@ import {
   PatternDeadlockCache,
 } from "./pattern-deadlock.ts";
 import {
-  hasSealedCorralDeadlock,
-  SealedCorralDetector,
-} from "./sealed-corral.ts";
+  hasPiCorralDeadlock,
+  PiCorralDetector,
+} from "./pi-corral.ts";
 import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { buildDeadlockTables } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
+import { analyzeGoalMacros, isGoalMacroViolation } from "./goal-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import {
   estimatedArenaMemoryBytes,
@@ -114,6 +116,9 @@ function createMetrics(
       deadlockPrunes: counters.deadlockPrunes,
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
+      piCorralPrunes: counters.piCorralPrunes,
+      goalMacroPrunes: counters.goalMacroPrunes,
+      deadlockTablePrunes: counters.deadlockTablePrunes,
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
@@ -212,6 +217,9 @@ export async function runExactMoveAStar(
     deadlockPrunes: 0,
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
+    piCorralPrunes: 0,
+    goalMacroPrunes: 0,
+    deadlockTablePrunes: 0,
     commitmentSkips: 0,
     interactionBoostTotal: 0,
     infeasiblePrunes: 0,
@@ -235,10 +243,12 @@ export async function runExactMoveAStar(
     const labels = [...board.goalCellsByLabel.keys()].sort();
     const reachability = new KeeperReachability(board);
     const patternCache = new PatternDeadlockCache();
-    const corralDetector = new SealedCorralDetector(cellCount);
+    const corralDetector = new PiCorralDetector(cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const macroDetector = new ForcedPushMacroDetector(board);
+    const goalMacroAnalysis = analyzeGoalMacros(board);
+    const deadlockTableLookup = buildDeadlockTables(board);
     const exactCodec = createExactStateCodec(cellCount, labels);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
@@ -641,8 +651,8 @@ export async function runExactMoveAStar(
       const reachable = reachability.flood(robotCell, occupied);
       counters.reachabilityFloods += 1;
 
-      if (hasSealedCorralDeadlock(board, expansionBoxes, occupied, reachable, corralDetector)) {
-        counters.corralPrunes += 1;
+      if (hasPiCorralDeadlock(board, expansionBoxes, occupied, reachable, corralDetector)) {
+        counters.piCorralPrunes += 1;
         continue;
       }
 
@@ -689,7 +699,9 @@ export async function runExactMoveAStar(
           fpDeadlock =
             createsFullyBlockedTwoByTwoDeadlock(board, expansionBoxes, fpDest, deadlockOccupancyBuffer) ||
             hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer) ||
-            createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache);
+            createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache) ||
+            isGoalMacroViolation(board, expansionBoxes, fpDest, goalMacroAnalysis) ||
+            deadlockTableLookup.check(expansionBoxes, fpDest);
 
           if (!fpDeadlock) {
             const fpOpposite = OPPOSITE_DIRECTION[fpDir];
@@ -843,6 +855,18 @@ export async function runExactMoveAStar(
           if (createsPatternDeadlock(board, expansionBoxes, destination, patternCache)) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.patternDeadlockPrunes += 1;
+            continue;
+          }
+
+          if (isGoalMacroViolation(board, expansionBoxes, destination, goalMacroAnalysis)) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+            counters.goalMacroPrunes += 1;
+            continue;
+          }
+
+          if (deadlockTableLookup.check(expansionBoxes, destination)) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+            counters.deadlockTablePrunes += 1;
             continue;
           }
 
@@ -1015,6 +1039,9 @@ export async function runExactMoveAStar(
           patternDeadlockPrunes: counters.patternDeadlockPrunes,
           infeasiblePrunes: counters.infeasiblePrunes,
           corralPrunes: counters.corralPrunes,
+          piCorralPrunes: counters.piCorralPrunes,
+          goalMacroPrunes: counters.goalMacroPrunes,
+          deadlockTablePrunes: counters.deadlockTablePrunes,
           commitmentSkips: counters.commitmentSkips,
           interactionBoostTotal: counters.interactionBoostTotal,
           reopens: counters.reopens,

@@ -29,14 +29,16 @@ import {
   PatternDeadlockCache,
 } from "./pattern-deadlock.ts";
 import {
-  hasSealedCorralDeadlock,
-  SealedCorralDetector,
-} from "./sealed-corral.ts";
+  hasPiCorralDeadlock,
+  PiCorralDetector,
+} from "./pi-corral.ts";
 import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
+import { buildDeadlockTables } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
+import { analyzeGoalMacros, isGoalMacroViolation } from "./goal-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
@@ -132,6 +134,9 @@ interface SearchCounters {
   deadlockPrunes: number;
   patternDeadlockPrunes: number;
   corralPrunes: number;
+  piCorralPrunes: number;
+  goalMacroPrunes: number;
+  deadlockTablePrunes: number;
   commitmentSkips: number;
   interactionBoostTotal: number;
   infeasiblePrunes: number;
@@ -355,6 +360,9 @@ function createMetrics(
       deadlockPrunes: counters.deadlockPrunes,
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
+      piCorralPrunes: counters.piCorralPrunes,
+      goalMacroPrunes: counters.goalMacroPrunes,
+      deadlockTablePrunes: counters.deadlockTablePrunes,
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
@@ -444,6 +452,9 @@ export async function runIdaStarSearch(
     deadlockPrunes: 0,
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
+    piCorralPrunes: 0,
+    goalMacroPrunes: 0,
+    deadlockTablePrunes: 0,
     commitmentSkips: 0,
     interactionBoostTotal: 0,
     infeasiblePrunes: 0,
@@ -474,10 +485,12 @@ export async function runIdaStarSearch(
     const board = compileSearchBoard(request.board);
     const reachability = new KeeperReachability(board);
     const patternCache = new PatternDeadlockCache();
-    const corralDetector = new SealedCorralDetector(board.cellCount);
+    const corralDetector = new PiCorralDetector(board.cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const macroDetector = new ForcedPushMacroDetector(board);
+    const goalMacroAnalysis = analyzeGoalMacros(board);
+    const deadlockTableLookup = buildDeadlockTables(board);
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -1107,8 +1120,8 @@ export async function runIdaStarSearch(
           }
         }
 
-        if (frame.childCursor === 0 && hasSealedCorralDeadlock(board, frame.boxes, occupancyBuffer, reachable, corralDetector)) {
-          counters.corralPrunes += 1;
+        if (frame.childCursor === 0 && hasPiCorralDeadlock(board, frame.boxes, occupancyBuffer, reachable, corralDetector)) {
+          counters.piCorralPrunes += 1;
           popFrame();
           continue;
         }
@@ -1165,7 +1178,9 @@ export async function runIdaStarSearch(
               fpDeadlock =
                 createsFullyBlockedTwoByTwoDeadlock(board, fpNewBoxes, fpDest, deadlockOccupancyBuffer) ||
                 hasFreezeDeadlock(board, fpNewBoxes, deadlockOccupancyBuffer) ||
-                createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache);
+                createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache) ||
+                isGoalMacroViolation(board, fpNewBoxes, fpDest, goalMacroAnalysis) ||
+                deadlockTableLookup.check(fpNewBoxes, fpDest);
             }
 
             if (fpDeadlock) {
@@ -1292,6 +1307,16 @@ export async function runIdaStarSearch(
 
           if (createsPatternDeadlock(board, newBoxes, destination, patternCache)) {
             counters.patternDeadlockPrunes += 1;
+            continue;
+          }
+
+          if (isGoalMacroViolation(board, newBoxes, destination, goalMacroAnalysis)) {
+            counters.goalMacroPrunes += 1;
+            continue;
+          }
+
+          if (deadlockTableLookup.check(newBoxes, destination)) {
+            counters.deadlockTablePrunes += 1;
             continue;
           }
 
