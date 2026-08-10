@@ -662,6 +662,10 @@
   .brandSmall > strong {
     display: none;
   }
+
+  .headerStats {
+    display: none;
+  }
 }
 
 :global(html[data-theme="dark"]) .backButton {

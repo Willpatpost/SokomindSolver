@@ -138,6 +138,9 @@ test("playtest is fully playable and returns to the unchanged draft", async ({
   await page.goto(editorUrl(QUICK_TEST));
   await expect(page.getByLabel("Title")).toHaveValue(QUICK_TEST.title);
   await expect(page.getByLabel("Hint")).toHaveValue(QUICK_TEST.hint ?? "");
+  await page.waitForFunction(
+    () => localStorage.getItem("sokomind.editor-draft.v1") !== null,
+  );
   const storageKeysBefore = await page.evaluate(() => Object.keys(localStorage));
 
   await page

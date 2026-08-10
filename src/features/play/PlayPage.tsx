@@ -211,7 +211,7 @@ function ValidatedPlayPage({
           </Link>
         </div>
 
-        <div className={styles.headerStats} aria-label={`${session.moves} moves, ${session.pushes} pushes`}>
+        <div className={styles.headerStats} role="status" aria-label={`${session.moves} moves, ${session.pushes} pushes`}>
           <span aria-hidden="true">{session.moves}m</span>
           <span aria-hidden="true">{session.pushes}p</span>
         </div>
