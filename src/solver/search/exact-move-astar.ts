@@ -34,7 +34,7 @@ import {
   findProvenCommitments,
   GoalCommitmentDetector,
 } from "./goal-commitment.ts";
-import { buildDeadlockTables } from "./deadlock-tables.ts";
+import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import { analyzeGoalMacros, isGoalMacroViolation } from "./goal-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
@@ -260,7 +260,7 @@ export async function runExactMoveAStar(
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const macroDetector = new ForcedPushMacroDetector(board);
     const goalMacroAnalysis = analyzeGoalMacros(board);
-    const deadlockTableLookup = buildDeadlockTables(board);
+    const deadlockTableLookup = await buildDeadlockTablesAsync(board, context.signal);
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
@@ -269,7 +269,7 @@ export async function runExactMoveAStar(
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
-    const pdbEvaluator = new PdbHeuristicEvaluator(board);
+    const pdbEvaluator = await PdbHeuristicEvaluator.createAsync(board, context.signal);
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
     const staticBytes = estimateStaticSearchBytes(board);

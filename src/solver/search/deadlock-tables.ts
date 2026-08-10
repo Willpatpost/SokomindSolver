@@ -1,5 +1,7 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
 import type { DenseBox } from "./model.ts";
+import { throwIfSolverCancelled } from "../cancellation.ts";
+import { delayForEventLoop } from "./engine.ts";
 
 const MAX_REGION_CELLS = 9;
 const MAX_BOX_COUNT = 3;
@@ -215,6 +217,80 @@ export function buildDeadlockTables(
 
   for (const region of regions) {
     if (Date.now() - startTime > TIME_BUDGET_MS) break;
+
+    const regionId = region.cells[0];
+    const deadlocks = new Set<string>();
+
+    for (let boxCount = MIN_BOX_COUNT; boxCount <= Math.min(MAX_BOX_COUNT, region.cells.length); boxCount++) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) break;
+
+      const indices = new Array<number>(boxCount);
+      for (let j = 0; j < boxCount; j++) indices[j] = j;
+
+      while (true) {
+        if (Date.now() - startTime > TIME_BUDGET_MS) break;
+
+        const cells = indices.map((i) => region.cells[i]);
+
+        for (const label of allLabels) {
+          const labels = new Array<string>(boxCount).fill(label);
+          if (isDeadlockedBFS(board, region, cells, labels)) {
+            const key = configKey(cells, labels);
+            deadlocks.add(key);
+            patternCount++;
+          }
+        }
+
+        let j = boxCount - 1;
+        while (j >= 0 && indices[j] === region.cells.length - boxCount + j) j--;
+        if (j < 0) break;
+        indices[j]++;
+        for (let m = j + 1; m < boxCount; m++) indices[m] = indices[m - 1] + 1;
+      }
+    }
+
+    if (deadlocks.size > 0) {
+      deadlockSets.set(regionId, deadlocks);
+    }
+
+    for (const cell of region.cells) {
+      const existing = cellToRegions.get(cell) ?? [];
+      existing.push(region);
+      cellToRegions.set(cell, existing);
+    }
+  }
+
+  return new DeadlockTableLookup(deadlockSets, cellToRegions, {
+    regionCount: regions.length,
+    patternCount,
+    buildTimeMs: Date.now() - startTime,
+  });
+}
+
+export async function buildDeadlockTablesAsync(
+  board: CompiledSearchBoard,
+  signal: AbortSignal,
+): Promise<DeadlockTableLookup> {
+  const startTime = Date.now();
+  const regions = findWallAdjacentRegions(board);
+
+  const deadlockSets = new Map<number, Set<string>>();
+  const cellToRegions = new Map<number, SubGrid[]>();
+  let patternCount = 0;
+
+  const allLabels = [...board.goalCellsByLabel.keys()];
+  if (allLabels.length === 0) {
+    return new DeadlockTableLookup(deadlockSets, cellToRegions, {
+      regionCount: 0,
+      patternCount: 0,
+      buildTimeMs: Date.now() - startTime,
+    });
+  }
+
+  for (const region of regions) {
+    if (Date.now() - startTime > TIME_BUDGET_MS) break;
+    throwIfSolverCancelled(signal);
+    await delayForEventLoop();
 
     const regionId = region.cells[0];
     const deadlocks = new Set<string>();

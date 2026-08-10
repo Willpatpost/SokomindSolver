@@ -14,6 +14,7 @@ import {
 } from "./model.ts";
 import {
   buildPatternDatabase,
+  buildPatternDatabaseAsync,
   UNSOLVED as PDB_UNSOLVED,
   type PatternDatabase,
 } from "./pattern-database.ts";
@@ -568,15 +569,44 @@ export class PdbHeuristicEvaluator {
   readonly #pdbs: readonly PatternDatabase[];
   readonly #partitions: readonly GoalPartition[];
 
-  constructor(board: CompiledSearchBoard) {
-    this.#partitions = partitionGoals(board);
-    this.#pdbs = this.#partitions.map((partition) =>
-      buildPatternDatabase(board, {
-        goalCells: partition.goalCells,
-        labelIds: partition.labels,
-        regionCells: partition.regionCells,
-      }),
-    );
+  constructor(board: CompiledSearchBoard);
+  constructor(partitions: readonly GoalPartition[], pdbs: readonly PatternDatabase[]);
+  constructor(
+    boardOrPartitions: CompiledSearchBoard | readonly GoalPartition[],
+    pdbs?: readonly PatternDatabase[],
+  ) {
+    if (pdbs !== undefined) {
+      this.#partitions = boardOrPartitions as readonly GoalPartition[];
+      this.#pdbs = pdbs;
+    } else {
+      const board = boardOrPartitions as CompiledSearchBoard;
+      this.#partitions = partitionGoals(board);
+      this.#pdbs = this.#partitions.map((partition) =>
+        buildPatternDatabase(board, {
+          goalCells: partition.goalCells,
+          labelIds: partition.labels,
+          regionCells: partition.regionCells,
+        }),
+      );
+    }
+  }
+
+  static async createAsync(
+    board: CompiledSearchBoard,
+    signal: AbortSignal,
+  ): Promise<PdbHeuristicEvaluator> {
+    const partitions = partitionGoals(board);
+    const pdbs: PatternDatabase[] = [];
+    for (const partition of partitions) {
+      pdbs.push(
+        await buildPatternDatabaseAsync(board, {
+          goalCells: partition.goalCells,
+          labelIds: partition.labels,
+          regionCells: partition.regionCells,
+        }, signal),
+      );
+    }
+    return new PdbHeuristicEvaluator(partitions, pdbs);
   }
 
   get partitionCount(): number {

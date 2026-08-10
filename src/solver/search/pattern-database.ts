@@ -1,4 +1,6 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
+import { throwIfSolverCancelled } from "../cancellation.ts";
+import { delayForEventLoop } from "./engine.ts";
 
 export interface PatternDatabaseConfig {
   readonly goalCells: readonly number[];
@@ -183,6 +185,129 @@ export function buildPatternDatabase(
   };
 }
 
+const PDB_BFS_YIELD_INTERVAL = 4096;
+
+export async function buildPatternDatabaseAsync(
+  board: CompiledSearchBoard,
+  config: PatternDatabaseConfig,
+  signal: AbortSignal,
+): Promise<PatternDatabase> {
+  const { goalCells, regionCells } = config;
+  const k = goalCells.length;
+
+  if (k === 0) {
+    return { k: 0, tableSize: 0, goalCells, regionCells, lookup: () => 0 };
+  }
+  if (k > MAX_K) {
+    throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
+  }
+
+  const regionSet = new Set(regionCells);
+  const regionCount = regionCells.length;
+
+  const cellToRegionIndex = new Int32Array(board.cellCount).fill(-1);
+  for (let i = 0; i < regionCells.length; i++) {
+    cellToRegionIndex[regionCells[i]] = i;
+  }
+
+  const binom = buildBinomials(regionCount, k);
+  const tableSize = binom[regionCount][k];
+
+  if (tableSize === 0) {
+    return { k, tableSize: 0, goalCells, regionCells, lookup: () => UNSOLVED };
+  }
+
+  const table = new Uint16Array(tableSize);
+  table.fill(UNSOLVED);
+
+  const solvedRegionPositions = goalCells
+    .map((gc) => cellToRegionIndex[gc])
+    .sort((a, b) => a - b);
+
+  if (solvedRegionPositions.some((p) => p < 0)) {
+    return { k, tableSize, goalCells, regionCells, lookup: () => UNSOLVED };
+  }
+
+  const solvedIndex = combinadicEncode(solvedRegionPositions, binom);
+  table[solvedIndex] = 0;
+
+  interface BfsState {
+    regionPositions: number[];
+  }
+
+  const queue: BfsState[] = [{ regionPositions: [...solvedRegionPositions] }];
+  let head = 0;
+  let itersSinceYield = 0;
+
+  while (head < queue.length) {
+    if (++itersSinceYield >= PDB_BFS_YIELD_INTERVAL) {
+      itersSinceYield = 0;
+      throwIfSolverCancelled(signal);
+      await delayForEventLoop();
+    }
+
+    const current = queue[head++];
+    const currentIndex = combinadicEncode(current.regionPositions, binom);
+    const currentDist = table[currentIndex];
+
+    if (currentDist >= UNSOLVED - 1) continue;
+
+    const occupiedRegion = new Uint8Array(regionCount);
+    for (const rp of current.regionPositions) {
+      occupiedRegion[rp] = 1;
+    }
+
+    for (let bi = 0; bi < k; bi++) {
+      const regionPos = current.regionPositions[bi];
+      const boardCell = regionCells[regionPos];
+      const neighbors = board.neighbors[boardCell];
+
+      for (let d = 0; d < 4; d++) {
+        const destCell = neighbors[d];
+        if (destCell < 0) continue;
+
+        const destRegion = cellToRegionIndex[destCell];
+        if (destRegion < 0) continue;
+        if (occupiedRegion[destRegion]) continue;
+
+        const supportCell = board.neighbors[destCell]?.[d] ?? -1;
+        if (supportCell < 0) continue;
+        if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
+        if (board.positions[supportCell] === undefined) continue;
+
+        const newPositions = [...current.regionPositions];
+        newPositions[bi] = destRegion;
+        newPositions.sort((a, b) => a - b);
+
+        const newIndex = combinadicEncode(newPositions, binom);
+        if (table[newIndex] !== UNSOLVED) continue;
+
+        table[newIndex] = currentDist + 1;
+        queue.push({ regionPositions: newPositions });
+      }
+    }
+  }
+
+  return {
+    k,
+    tableSize,
+    goalCells: [...goalCells],
+    regionCells: [...regionCells],
+    lookup(boxCells: readonly number[]): number {
+      const regionPositions: number[] = [];
+      for (const cell of boxCells) {
+        const rp = cellToRegionIndex[cell];
+        if (rp < 0) return UNSOLVED;
+        regionPositions.push(rp);
+      }
+      regionPositions.sort((a, b) => a - b);
+      const index = combinadicEncode(regionPositions, binom);
+      if (index >= tableSize) return UNSOLVED;
+      return table[index];
+    },
+  };
+}
+
 export function buildGoalRegion(
   board: CompiledSearchBoard,
   goalCells: readonly number[],
@@ -218,4 +343,4 @@ export function buildGoalRegion(
   return [...region].sort((a, b) => a - b);
 }
 
-export { combinadicEncode, combinadicDecode, buildBinomials, UNSOLVED };
+export { combinadicEncode, combinadicDecode, buildBinomials, UNSOLVED, PDB_BFS_YIELD_INTERVAL };
