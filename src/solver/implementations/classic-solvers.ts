@@ -87,7 +87,10 @@ export const classicIdaStarSolver: SolverAdapter = Object.freeze({
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {
-    return runIdaStarSearch(request, context, { reachabilityPolicy: "all" });
+    return runIdaStarSearch(request, context, {
+      reachabilityPolicy: "all",
+      persistTransposition: false,
+    });
   },
 });
 

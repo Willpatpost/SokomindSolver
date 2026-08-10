@@ -707,4 +707,257 @@ describe("concurrent proof coordinator", () => {
 
     assert.equal(result.status, "cancelled");
   });
+
+  it("serializes partition dispatch: one active partition per worker at a time", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    let maxConcurrent = 0;
+    let currentActive = 0;
+    const pendingPartitions: string[] = [];
+
+    const createWorker = () => {
+      const w = new MockProofWorker((cmd) => {
+        currentActive++;
+        if (currentActive > maxConcurrent) maxConcurrent = currentActive;
+        pendingPartitions.push(cmd.partitionId);
+
+        queueMicrotask(() => {
+          currentActive--;
+          w.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 10,
+            exhausted: true,
+          });
+        });
+      });
+      return w;
+    };
+
+    await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: createWorker, proofParallelism: 1 },
+    );
+
+    assert.equal(
+      maxConcurrent,
+      1,
+      "only one partition should be active per worker at any time",
+    );
+    assert.ok(
+      pendingPartitions.length > 0,
+      "at least one partition should have been dispatched",
+    );
+  });
+
+  it("non-exhausted completion produces bounded proof, not optimal", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    const worker = new MockProofWorker((cmd) => {
+      queueMicrotask(() => {
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: cmd.partitionId,
+          lowerBound: 3,
+          exhausted: false,
+        });
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "unknown");
+      assert.ok(result.proof);
+      assert.equal(result.proof!.kind, "bounded");
+    }
+  });
+
+  it("exhausted partitions with no better solution prove optimality", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    const worker = new MockProofWorker((cmd) => {
+      queueMicrotask(() => {
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: cmd.partitionId,
+          lowerBound: 15,
+          exhausted: true,
+        });
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "proven");
+      assert.ok(result.proof);
+      assert.equal(result.proof!.kind, "optimal");
+      assert.equal(result.proof!.gap, 0);
+    }
+  });
+
+  it("mixed exhausted and bound-dominated partitions prove optimality", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    let partitionIndex = 0;
+    const worker = new MockProofWorker((cmd) => {
+      const idx = partitionIndex++;
+      queueMicrotask(() => {
+        if (idx % 2 === 0) {
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 12,
+            exhausted: true,
+          });
+        } else {
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 10,
+            exhausted: false,
+          });
+        }
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "proven");
+      assert.ok(result.proof);
+      assert.equal(result.proof!.kind, "optimal");
+    }
+  });
+
+  it("failed partition prevents optimal claim even if others exhausted", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    let partitionIndex = 0;
+    const worker = new MockProofWorker((cmd) => {
+      const idx = partitionIndex++;
+      queueMicrotask(() => {
+        if (idx === 0) {
+          worker.emit({
+            type: "proof/error",
+            partitionId: cmd.partitionId,
+            message: "out of memory",
+          });
+        } else {
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 15,
+            exhausted: true,
+          });
+        }
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "unknown");
+      assert.ok(result.proof);
+      assert.equal(result.proof!.kind, "bounded");
+    }
+  });
+
+  it("progress updates raise partition lower bounds", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    const worker = new MockProofWorker((cmd) => {
+      queueMicrotask(() => {
+        worker.emit({
+          type: "proof/progress",
+          partitionId: cmd.partitionId,
+          lowerBound: 8,
+          expandedStates: 500,
+        });
+        queueMicrotask(() => {
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 10,
+            exhausted: true,
+          });
+        });
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "proven");
+    }
+  });
 });

@@ -85,9 +85,9 @@ export interface ExactMoveIdaStarOptions {
    * cannot safely prune cheaper re-visits across contours without a formal
    * correctness proof.
    *
-   * When true (the default for non-proof discovery), the TT persists across
-   * contours for faster convergence. This is acceptable for bounded/first-
-   * found searches where optimality is not claimed.
+   * When true, the TT persists across contours for faster convergence.
+   * This is acceptable for bounded/first-found searches where optimality
+   * is not claimed. Defaults to false (contour-scoped) for safety.
    */
   readonly persistTransposition?: boolean;
 }
@@ -803,7 +803,7 @@ export async function runIdaStarSearch(
         : 2_000_000;
     const transposition = new Map<number, { bigintKey: bigint; f: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
-    const persistTT = options?.persistTransposition !== false;
+    const persistTT = options?.persistTransposition === true;
 
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {

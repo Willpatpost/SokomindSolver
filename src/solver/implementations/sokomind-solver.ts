@@ -1255,6 +1255,7 @@ async function runPhase(
     };
 
     const startPlan = (plan: EnginePlan) => {
+      const executionId = run.registry.uniqueId(plan.id);
       try {
         const worker = createWorker();
         startedWorkers += 1;
@@ -1263,20 +1264,20 @@ async function runPhase(
           forwardRecords,
           reverseRecords,
         );
-        run.registry.register(plan.id, plan.label, plan.mode);
+        run.registry.register(executionId, plan.label, plan.mode);
 
         const onMessage: EngineMessageListener = ({ data }) => {
           if (settled) return;
           if (!isEngineResult(data)) {
             failedWorkers += 1;
             errors.push(`${plan.label} emitted an invalid engine message.`);
-            cleanupWorker(plan.id);
+            cleanupWorker(executionId);
             continueOrFinish();
             return;
           }
           resetWatchdog();
           const message: EngineResult = data;
-          updateTelemetry(run, plan.id, message);
+          updateTelemetry(run, executionId, message);
           try {
             const limit = reachedLimit(run);
             if (limit) {
@@ -1305,12 +1306,12 @@ async function runPhase(
                 errors.push(
                   "Typed board analysis returned no reusable prepared seed.",
                 );
-                workerFinished(plan.id, message);
+                workerFinished(executionId, message);
                 return;
               }
               const path = asLegacyPath(message.path);
               if (path && acceptPath(path, plan.label)) return;
-              workerFinished(plan.id, message);
+              workerFinished(executionId, message);
               return;
             }
 
@@ -1329,17 +1330,17 @@ async function runPhase(
           errors.push(
             event.message || `${plan.label} worker stopped unexpectedly.`,
           );
-          cleanupWorker(plan.id);
+          cleanupWorker(executionId);
           continueOrFinish();
         };
         const onMessageError: EngineErrorListener = () => {
           if (settled) return;
           failedWorkers += 1;
           errors.push(`${plan.label} emitted an unreadable message.`);
-          cleanupWorker(plan.id);
+          cleanupWorker(executionId);
           continueOrFinish();
         };
-        active.set(plan.id, {
+        active.set(executionId, {
           worker,
           plan,
           onMessage,
@@ -1364,7 +1365,7 @@ async function runPhase(
         errors.push(
           error instanceof Error ? error.message : String(error),
         );
-        cleanupWorker(plan.id);
+        cleanupWorker(executionId);
       }
     };
 

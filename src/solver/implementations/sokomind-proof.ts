@@ -213,6 +213,17 @@ export async function runConcurrentProof(
 
   const trackerById = new Map(trackers.map((t) => [t.partitionId, t]));
 
+  // Per-worker partition queues: only one partition runs at a time on each
+  // worker to avoid shared mutable state cross-talk (abortController,
+  // pendingUpperBound, activePrefixCost are module-level in the worker).
+  const workerQueues = new Map<SokomindProofWorker, number[]>();
+  for (const worker of workers) {
+    workerQueues.set(worker, []);
+  }
+  for (let i = 0; i < trackers.length; i++) {
+    workerQueues.get(trackers[i].worker)!.push(i);
+  }
+
   return new Promise<SolverResult>((resolve) => {
     let settled = false;
 
@@ -230,34 +241,44 @@ export async function runConcurrentProof(
       resolve(result);
     }
 
+    function partitionLowerBound(t: PartitionTracker): number {
+      if (t.failed) return 0;
+      if (t.exhausted && !t.completed) return t.lowerBound;
+      if (t.exhausted) return Infinity;
+      return t.lowerBound;
+    }
+
     function checkTermination(): void {
       if (settled) return;
 
       const allComplete = trackers.every((t) => t.completed || t.failed);
-      const globalLower = Math.min(...trackers.map((t) =>
-        t.failed ? 0 : t.lowerBound,
-      ));
+      const globalLower = Math.min(
+        ...trackers.map((t) => partitionLowerBound(t)),
+      );
 
       if (allComplete) {
-        const anyIncomplete = trackers.some((t) => t.failed);
-        const allExhausted = trackers.every((t) => t.exhausted || t.failed);
+        const allProved = trackers.every(
+          (t) => t.exhausted || t.failed || t.lowerBound >= bestCost,
+        );
+        const anyFailed = trackers.some((t) => t.failed);
+
+        const provedOptimal = allProved && !anyFailed;
 
         const proof: SolverProof = {
           objective: { kind: "moves" },
-          kind: anyIncomplete ? "bounded" : "optimal",
+          kind: provedOptimal ? "optimal" : "bounded",
           lowerBound: globalLower,
           upperBound: bestCost,
-          gap: bestCost - globalLower,
+          gap: bestCost - Math.min(globalLower, bestCost),
           algorithm: proofAlgorithmLabel,
         };
 
-        if (allExhausted && bestCost === globalU && !anyIncomplete) {
-          proof satisfies SolverProof;
-        }
-
         finish({
           status: "solved",
-          solution: { ...bestSolution, optimality: anyIncomplete ? "unknown" : "proven" },
+          solution: {
+            ...bestSolution,
+            optimality: provedOptimal ? "proven" : "unknown",
+          },
           metrics: discoveryResult.metrics,
           proof,
         });
@@ -279,6 +300,44 @@ export async function runConcurrentProof(
           },
         });
       }
+    }
+
+    function dispatchPartition(index: number): void {
+      const partition = partitions[index];
+      const tracker = trackers[index];
+
+      const localU = bestCost - partition.prefixCost;
+      if (localU <= 0) {
+        tracker.completed = true;
+        tracker.exhausted = true;
+        tracker.lowerBound = partition.prefixCost;
+        dispatchNext(tracker.worker);
+        return;
+      }
+
+      const command: ProofStartPartition = {
+        type: "proof/start-partition",
+        partitionId: partition.partitionId,
+        request: buildPartitionRequest(request, partition),
+        initialUpperBound: localU,
+        prefixCost: partition.prefixCost,
+        prefixSteps: partition.prefixSteps,
+        algorithm,
+        deterministic: options.deterministic,
+      };
+      tracker.worker.postMessage(command);
+    }
+
+    function dispatchNext(worker: SokomindProofWorker): void {
+      if (settled) return;
+      const queue = workerQueues.get(worker);
+      if (!queue || queue.length === 0) {
+        checkTermination();
+        return;
+      }
+      const next = queue.shift()!;
+      dispatchPartition(next);
+      checkTermination();
     }
 
     function handleMessage(data: unknown): void {
@@ -314,8 +373,8 @@ export async function runConcurrentProof(
             tracker.completed = true;
             tracker.exhausted = true;
             tracker.lowerBound = result.totalCost;
+            dispatchNext(tracker.worker);
           }
-          checkTermination();
           break;
         }
 
@@ -327,8 +386,8 @@ export async function runConcurrentProof(
             if (result.lowerBound > tracker.lowerBound) {
               tracker.lowerBound = result.lowerBound;
             }
+            dispatchNext(tracker.worker);
           }
-          checkTermination();
           break;
         }
 
@@ -337,8 +396,8 @@ export async function runConcurrentProof(
           if (tracker) {
             tracker.completed = true;
             tracker.failed = true;
+            dispatchNext(tracker.worker);
           }
-          checkTermination();
           break;
         }
       }
@@ -380,30 +439,13 @@ export async function runConcurrentProof(
     }
     context.signal.addEventListener("abort", onAbort, { once: true });
 
-    for (let i = 0; i < partitions.length; i++) {
-      const partition = partitions[i];
-      const tracker = trackers[i];
-      const partitionRequest = buildPartitionRequest(request, partition);
-
-      const localU = bestCost - partition.prefixCost;
-      if (localU <= 0) {
-        tracker.completed = true;
-        tracker.exhausted = true;
-        tracker.lowerBound = partition.prefixCost;
-        continue;
+    // Dispatch only the first partition to each worker; subsequent
+    // partitions are queued and dispatched when the current one completes.
+    for (const [, queue] of workerQueues) {
+      if (queue.length > 0) {
+        const first = queue.shift()!;
+        dispatchPartition(first);
       }
-
-      const command: ProofStartPartition = {
-        type: "proof/start-partition",
-        partitionId: partition.partitionId,
-        request: partitionRequest,
-        initialUpperBound: localU,
-        prefixCost: partition.prefixCost,
-        prefixSteps: partition.prefixSteps,
-        algorithm,
-        deterministic: options.deterministic,
-      };
-      tracker.worker.postMessage(command);
     }
 
     checkTermination();
