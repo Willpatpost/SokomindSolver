@@ -2094,3 +2094,65 @@ solvable state. Zero false positives across all three families.
 - `npm run build` — pass
 - `npm run test:solver:oracle` — 19/19 pass
 - `npm run test:solver:optimal` — 5/5 pass
+
+---
+
+## Sprint 4 — Engineering Optimization
+
+**Date**: 2026-08-10
+
+### Task 4.1: Zobrist state hashing
+
+Created `src/solver/search/zobrist-state.ts` (143 lines):
+- Pre-generates random 64-bit values (hi/lo 32-bit pairs) for each (cell, labelId) token and each keeper cell
+- State hash = XOR of all box-token random values XOR keeper random value
+- Lower 53 bits used as safe integer Map key (no BigInt overhead)
+- Incremental update support: XOR out old value, XOR in new value
+- Deterministic PRNG (Mulberry32) seeded per table for reproducibility
+
+Integration into IDA* (`ida-star.ts`):
+- TT changed from `Map<bigint, number>` to `Map<number, { bigintKey: bigint; f: number }>`
+- Zobrist key used as primary Map lookup; BigInt key stored for collision verification
+- Collision-safe: TT hit requires Zobrist match AND BigInt match
+- Zobrist key added to StackFrame alongside exactKey
+
+Integration into Exact A* (`exact-move-astar.ts`):
+- bestG changed from `Map<bigint, number>` to `Map<number, BestGEntry[]>` with collision chaining
+- `bestGLookup` and `bestGStore` helper functions encapsulate collision-safe access
+- All successor generation paths (forced-push macro + regular) use Zobrist keys
+
+### Bug fixes during verification
+
+Fixed forced-push macro path missing `maxGeneratedStates` limit check in both IDA* and exact A*. The limit was only enforced in the regular successor generation loop; the forced-push macro path bypassed it.
+
+Fixed `search-limits.test.ts`:
+- Changed limit values from 0 to 1 (0 is not a valid positive safe integer per validation)
+- Changed puzzle from trivial ONE_PUSH to TWO_BOX (1-push puzzle solved before limits checked)
+- Added mock clock for elapsed time test
+
+### Task 4.2: Parallel harvesting and rewriting
+
+Changed `harvestAndImprove` in `sokomind-solver.ts` to rewrite multiple incumbents concurrently using `Promise.all` instead of sequential `for...of` with `await`.
+
+### Tests
+
+Created `tests/unit/zobrist-state.test.ts` (130 lines):
+- Same-state consistency
+- Different-state collision rate (< 1%)
+- Incremental token update matches full recomputation
+- Incremental robot update matches full recomputation
+- 53-bit safe integer range
+- Push-only hash excludes robot position
+- Deterministic across same seed
+- Different seeds produce different hashes
+- Empty token array
+
+### Test results
+
+- `npm run check:sokomind-solver` — pass
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm run test:unit` — 1265/1265 pass (0 solver failures; 2 pre-existing child-process timing failures on shared login node)
+- `npm run build` — pass
+- `npm run test:solver:oracle` — 19/19 pass
+- `npm run test:solver:optimal` — 5/5 pass

@@ -44,6 +44,7 @@ import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPoten
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
+import { createZobristTable, type ZobristTable } from "./zobrist-state.ts";
 import {
   sortedBoxes,
   movedBoxes,
@@ -101,6 +102,7 @@ interface StackFrame {
   readonly robot: number;
   readonly boxes: readonly DenseBox[];
   readonly exactKey: bigint;
+  readonly zobristKey: number;
   readonly moves: number;
   readonly pushes: number;
   readonly g: number;
@@ -512,9 +514,16 @@ export async function runIdaStarSearch(
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
     const pdbEvaluator = new PdbHeuristicEvaluator(board);
 
+    const zobristTable: ZobristTable = createZobristTable(board.cellCount, exactCodec.labelCount);
+
     function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
       const tokens = exactCodec.tokensFromBoxes(boxes);
       return exactCodec.packMoveState(robotCell, tokens);
+    }
+
+    function zobristKey(robotCell: number, boxes: readonly DenseBox[]): number {
+      const tokens = exactCodec.tokensFromBoxes(boxes);
+      return zobristTable.hashFromTokens(tokens, robotCell);
     }
 
     const staticMemoryBytes = estimateIdaStaticBytes(
@@ -736,6 +745,7 @@ export async function runIdaStarSearch(
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
+    const initialZobristKey = zobristKey(initialRobot, initialBoxes);
     const initialG = 0;
 
     // Pre-allocate reusable buffers
@@ -766,7 +776,7 @@ export async function runIdaStarSearch(
       : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
         ? 3_000_000
         : 2_000_000;
-    const transposition = new Map<bigint, number>();
+    const transposition = new Map<number, { bigintKey: bigint; f: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
 
     idaLoop: while (true) {
@@ -837,6 +847,7 @@ export async function runIdaStarSearch(
         robot: initialRobot,
         boxes: initialBoxes,
         exactKey: initialExactKey,
+        zobristKey: initialZobristKey,
         moves: 0,
         pushes: 0,
         g: initialG,
@@ -973,7 +984,8 @@ export async function runIdaStarSearch(
           }
 
           // TT-IDA* check: stored backed_f is a proven lower bound
-          const storedF = transposition.get(frame.exactKey);
+          const ttEntry = transposition.get(frame.zobristKey);
+          const storedF = (ttEntry !== undefined && ttEntry.bigintKey === frame.exactKey) ? ttEntry.f : undefined;
           if (storedF !== undefined && storedF > fLimit) {
             counters.duplicates += 1;
             nextLimit = Math.min(nextLimit, storedF);
@@ -988,7 +1000,7 @@ export async function runIdaStarSearch(
           // Store initial f-value; backed-up value is written on backtrack
           const oldTTSize = transposition.size;
           if (storedF === undefined || f > storedF) {
-            transposition.set(frame.exactKey, f);
+            transposition.set(frame.zobristKey, { bigintKey: frame.exactKey, f });
           }
           if (transposition.size > oldTTSize) {
             transpositionSize = transposition.size;
@@ -1196,11 +1208,19 @@ export async function runIdaStarSearch(
               throw new Error("Forced push support cell has no keeper distance.");
             }
 
+            {
+              const maxGenerated = request.limits?.maxGeneratedStates;
+              if (maxGenerated !== undefined && counters.generated >= maxGenerated) {
+                limitDetail = "Maximum generated-state count reached.";
+                break idaLoop;
+              }
+            }
             counters.generated += 1;
             workSinceYield += 1;
 
             const fpNewMoves = frame.moves + fpDistance + 1;
             const fpNewKey = exactKey(fpBox.cell, fpNewBoxes!);
+            const fpNewZobristKey = zobristKey(fpBox.cell, fpNewBoxes!);
 
             frame.childCursor = totalChildren;
 
@@ -1208,6 +1228,7 @@ export async function runIdaStarSearch(
               robot: fpBox.cell,
               boxes: fpNewBoxes!,
               exactKey: fpNewKey,
+              zobristKey: fpNewZobristKey,
               moves: fpNewMoves,
               pushes: frame.pushes + 1,
               g: fpNewMoves,
@@ -1331,11 +1352,13 @@ export async function runIdaStarSearch(
           const newPushes = frame.pushes + 1;
           const newG = newMoves;
           const newExactKey = exactKey(box.cell, newBoxes);
+          const newZobristKey = zobristKey(box.cell, newBoxes);
 
           const childFrame: StackFrame = {
             robot: box.cell,
             boxes: newBoxes,
             exactKey: newExactKey,
+            zobristKey: newZobristKey,
             moves: newMoves,
             pushes: newPushes,
             g: newG,
@@ -1369,9 +1392,10 @@ export async function runIdaStarSearch(
           const backFrame = pathStack[pathStack.length - 1];
           if (backFrame.expanded) {
             const backedF = Math.max(backFrame.g + backFrame.h, backFrame.minChildF);
-            const existingF = transposition.get(backFrame.exactKey);
+            const existingEntry = transposition.get(backFrame.zobristKey);
+            const existingF = (existingEntry !== undefined && existingEntry.bigintKey === backFrame.exactKey) ? existingEntry.f : undefined;
             if (existingF === undefined || backedF > existingF) {
-              transposition.set(backFrame.exactKey, backedF);
+              transposition.set(backFrame.zobristKey, { bigintKey: backFrame.exactKey, f: backedF });
             }
             nextLimit = Math.min(nextLimit, backedF);
           }

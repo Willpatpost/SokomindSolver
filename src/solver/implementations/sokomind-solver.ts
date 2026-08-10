@@ -2011,9 +2011,10 @@ async function harvestAndImprove(
     : options;
 
   const rewrittenCandidates: { solution: SolverSolution; discoveryOrder: number }[] = [];
-  for (const incumbent of rewriteCandidates) {
-    if (run.context.signal.aborted) break;
-
+  const rewritePromises = rewriteCandidates.map(async (incumbent) => {
+    if (run.context.signal.aborted) {
+      return { solution: incumbent.solution, discoveryOrder: incumbent.discoveryOrder };
+    }
     const improved = await improveIncumbent(
       run,
       state,
@@ -2021,17 +2022,14 @@ async function harvestAndImprove(
       createWorker,
       dividedOptions,
     );
-    if (improved.cancelled) {
-      rewrittenCandidates.push({
-        solution: improved.solution,
-        discoveryOrder: incumbent.discoveryOrder,
-      });
-      break;
-    }
-    rewrittenCandidates.push({
+    return {
       solution: improved.solution,
       discoveryOrder: incumbent.discoveryOrder,
-    });
+    };
+  });
+  const rewriteResults = await Promise.all(rewritePromises);
+  for (const result of rewriteResults) {
+    rewrittenCandidates.push(result);
   }
 
   if (rewrittenCandidates.length === 0) {

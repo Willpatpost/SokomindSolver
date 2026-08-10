@@ -24,8 +24,16 @@ const ONE_PUSH: PuzzleDefinition = {
   rows: ["OOOOO", "ORXSO", "OOOOO"],
 };
 
-function request(limits?: SolverLimits): SolverRequest {
-  const session = createSession(ONE_PUSH);
+const TWO_BOX: PuzzleDefinition = {
+  id: "two-box",
+  title: "Two box",
+  difficulty: "tutorial",
+  boxes: 2,
+  rows: ["OOOOOOO", "OS X  O", "O     O", "OS X  O", "O  R  O", "OOOOOOO"],
+};
+
+function request(limits?: SolverLimits, puzzle?: PuzzleDefinition): SolverRequest {
+  const session = createSession(puzzle ?? ONE_PUSH);
   return {
     board: session.board,
     snapshot: session.snapshot,
@@ -50,19 +58,30 @@ function limited(result: SolverResult): void {
 
 describe("classic search control plane", () => {
   it("enforces elapsed, expanded, generated, and estimated-memory limits", async () => {
-    const cases: readonly {
+    let clockMs = 0;
+    const fakeClock = () => clockMs++;
+
+    const elapsedResult = await classicAStarSolver.solve(
+      request({ maxElapsedMs: 1 }, TWO_BOX),
+      context(undefined, undefined, fakeClock),
+    );
+    limited(elapsedResult);
+    if (elapsedResult.status === "unsolved") {
+      assert.match(elapsedResult.detail ?? "", /elapsed/i);
+    }
+
+    const otherCases: readonly {
       readonly limits: SolverLimits;
       readonly detail: RegExp;
     }[] = [
-      { limits: { maxElapsedMs: 0 }, detail: /elapsed/i },
-      { limits: { maxExpandedStates: 0 }, detail: /expanded/i },
-      { limits: { maxGeneratedStates: 0 }, detail: /generated/i },
+      { limits: { maxExpandedStates: 1 }, detail: /expanded/i },
+      { limits: { maxGeneratedStates: 1 }, detail: /generated/i },
       { limits: { maxMemoryBytes: 1 }, detail: /memory/i },
     ];
 
-    for (const fixture of cases) {
+    for (const fixture of otherCases) {
       const result = await classicAStarSolver.solve(
-        request(fixture.limits),
+        request(fixture.limits, TWO_BOX),
         context(),
       );
       limited(result);

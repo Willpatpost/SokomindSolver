@@ -56,6 +56,7 @@ import {
 } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { createExactStateCodec } from "./exact-state.ts";
+import { createZobristTable } from "./zobrist-state.ts";
 import { NumericPriorityQueue } from "./numeric-priority-queue.ts";
 import { KeeperReachability } from "./reachability.ts";
 import {
@@ -250,6 +251,7 @@ export async function runExactMoveAStar(
     const goalMacroAnalysis = analyzeGoalMacros(board);
     const deadlockTableLookup = buildDeadlockTables(board);
     const exactCodec = createExactStateCodec(cellCount, labels);
+    const zobristTable = createZobristTable(cellCount, labels.length);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
@@ -297,6 +299,7 @@ export async function runExactMoveAStar(
 
     const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
     const initialKey = exactCodec.packMoveState(initialRobot, initialTokens);
+    const initialZobristKey = zobristTable.hashFromTokens(initialTokens, initialRobot);
     const initialPushBound = heuristic.evaluate(initialBoxes);
     const initialLabelCosts = heuristic.lastLabelCosts;
     const initialBoost = initialLabelCosts
@@ -517,7 +520,34 @@ export async function runExactMoveAStar(
     heapSize = 1;
     counters.peakFrontier = 1;
 
-    const bestG = new Map<bigint, number>([[initialKey, 0]]);
+    interface BestGEntry { bigintKey: bigint; g: number }
+    const bestG = new Map<number, BestGEntry[]>();
+    bestG.set(initialZobristKey, [{ bigintKey: initialKey, g: 0 }]);
+
+    function bestGLookup(zobKey: number, bigKey: bigint): number | undefined {
+      const chain = bestG.get(zobKey);
+      if (chain === undefined) return undefined;
+      for (let i = 0; i < chain.length; i++) {
+        if (chain[i].bigintKey === bigKey) return chain[i].g;
+      }
+      return undefined;
+    }
+
+    function bestGStore(zobKey: number, bigKey: bigint, g: number): boolean {
+      const chain = bestG.get(zobKey);
+      if (chain === undefined) {
+        bestG.set(zobKey, [{ bigintKey: bigKey, g }]);
+        return true;
+      }
+      for (let i = 0; i < chain.length; i++) {
+        if (chain[i].bigintKey === bigKey) {
+          chain[i].g = g;
+          return false;
+        }
+      }
+      chain.push({ bigintKey: bigKey, g });
+      return true;
+    }
     uniqueStates = 1;
     let lastProgressAt = context.now();
     let lastYieldAt = lastProgressAt;
@@ -572,10 +602,12 @@ export async function runExactMoveAStar(
       syncState();
 
       arena.readBoxTokens(nodeIndex, parentTokenBuf);
-      const nodeKey = exactCodec.packMoveState(arena.robotCell(nodeIndex), parentTokenBuf);
+      const nodeRobotCell = arena.robotCell(nodeIndex);
+      const nodeKey = exactCodec.packMoveState(nodeRobotCell, parentTokenBuf);
+      const nodeZobristKey = zobristTable.hashFromTokens(parentTokenBuf, nodeRobotCell);
       const nodeMoves = arena.gMoves(nodeIndex);
 
-      if (bestG.get(nodeKey) !== nodeMoves) continue;
+      if (bestGLookup(nodeZobristKey, nodeKey) !== nodeMoves) continue;
 
       const L = nodeMoves + arena.heuristic(nodeIndex);
       lastLowerBound = L;
@@ -712,6 +744,15 @@ export async function runExactMoveAStar(
               throw new Error("Forced push support cell has no keeper distance.");
             }
 
+            {
+              const maxGenerated = request.limits?.maxGeneratedStates;
+              if (maxGenerated !== undefined && counters.generated >= maxGenerated) {
+                (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+                limitDetail = "Maximum generated-state count reached.";
+                syncState();
+                break searchLoop;
+              }
+            }
             counters.generated += 1;
             workSinceYield += 1;
 
@@ -724,7 +765,8 @@ export async function runExactMoveAStar(
             sortedInsertToken(parentTokenBuf, boxCount, fpBoxIdx, newToken, childTokenBuf);
 
             const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
-            const prevBestG = bestG.get(childKey);
+            const childZobristKey = zobristTable.hashFromTokens(childTokenBuf, savedCell);
+            const prevBestG = bestGLookup(childZobristKey, childKey);
 
             if (prevBestG === undefined || childMoves < prevBestG) {
               const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
@@ -759,12 +801,12 @@ export async function runExactMoveAStar(
                   counters.retainedBytes = arena.estimatedRetainedBytes();
                   counters.maxDepth = Math.max(counters.maxDepth, childPushes);
 
-                  if (prevBestG === undefined) {
+                  const isNew = bestGStore(childZobristKey, childKey, childMoves);
+                  if (isNew) {
                     uniqueStates += 1;
                   } else {
                     counters.reopens += 1;
                   }
-                  bestG.set(childKey, childMoves);
                   heap.enqueue(childIndex);
                   syncState();
                   counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
@@ -884,7 +926,8 @@ export async function runExactMoveAStar(
           sortedInsertToken(parentTokenBuf, boxCount, boxIndex, newToken, childTokenBuf);
 
           const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
-          const prevBestG = bestG.get(childKey);
+          const childZobristKey = zobristTable.hashFromTokens(childTokenBuf, savedCell);
+          const prevBestG = bestGLookup(childZobristKey, childKey);
           if (prevBestG !== undefined && childMoves >= prevBestG) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.duplicates += 1;
@@ -975,12 +1018,12 @@ export async function runExactMoveAStar(
           counters.retainedBytes = arena.estimatedRetainedBytes();
           counters.maxDepth = Math.max(counters.maxDepth, childPushes);
 
-          if (prevBestG === undefined) {
+          const isNewState = bestGStore(childZobristKey, childKey, childMoves);
+          if (isNewState) {
             uniqueStates += 1;
           } else {
             counters.reopens += 1;
           }
-          bestG.set(childKey, childMoves);
           heap.enqueue(childIndex);
           syncState();
           counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
