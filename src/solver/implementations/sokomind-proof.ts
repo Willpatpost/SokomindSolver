@@ -84,6 +84,7 @@ export async function runSequentialProof(
       incumbent,
       reachabilityPolicy: options.idaReachabilitySnapshots,
       snapshotPeriod: options.idaSnapshotPeriod,
+      persistTransposition: false,
       ...(checkpointOptions?.checkpoint
         ? { checkpoint: checkpointOptions.checkpoint }
         : {}),

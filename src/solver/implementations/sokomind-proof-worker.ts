@@ -124,6 +124,7 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       result = await runIdaStarSearch(request, context, {
         incumbent,
         upperBoundChannel: channel,
+        persistTransposition: false,
       });
     }
   } catch (error: unknown) {

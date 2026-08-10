@@ -254,16 +254,24 @@ export async function runExactMoveAStar(
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new PiCorralDetector(cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
+
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const macroDetector = new ForcedPushMacroDetector(board);
     const goalMacroAnalysis = analyzeGoalMacros(board);
     const deadlockTableLookup = buildDeadlockTables(board);
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
+
     const exactCodec = createExactStateCodec(cellCount, labels);
     const zobristTable = createZobristTable(cellCount, labels.length);
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
     const pdbEvaluator = new PdbHeuristicEvaluator(board);
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
     const staticBytes = estimateStaticSearchBytes(board);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();

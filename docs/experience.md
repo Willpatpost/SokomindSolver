@@ -53,7 +53,7 @@ The completion message itself uses a polite live region.
 ## Deadlock feedback
 
 When a push creates a deadlocked box (detected by the deadlock bridge in
-`src/core/deadlock-bridge.ts`), the box cell receives a `data-deadlocked`
+`src/solver/deadlock-bridge.ts`), the box cell receives a `data-deadlocked`
 attribute. CSS applies a coral glow to visually distinguish stuck boxes. A
 toast notification warns the player with "That box looks stuck." This feedback
 is purely presentational and does not prevent further moves.

@@ -1,0 +1,58 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validate-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  solver-correctness:
+    name: Solver correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Doc path validation
+        run: npm run lint:docs
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Coverage gate
+        run: npm run test:coverage
+
+      - name: Oracle correctness tests
+        run: npm run test:solver:oracle
+
+      - name: Optimality proof tests
+        run: npm run test:solver:optimal
+
+      - name: Build
+        run: npm run build
+
+      - name: Multi-puzzle solver regression
+        run: npm run test:solver:multi

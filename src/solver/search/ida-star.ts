@@ -78,6 +78,18 @@ export interface ExactMoveIdaStarOptions {
     readonly exactStateCodecVersion: number;
     readonly partitionId: string | null;
   };
+  /**
+   * When false, the transposition table is cleared at the start of each
+   * IDA* contour. This is the conservative-correct behavior for proof-
+   * producing runs: root-relative backed-f values are path-dependent and
+   * cannot safely prune cheaper re-visits across contours without a formal
+   * correctness proof.
+   *
+   * When true (the default for non-proof discovery), the TT persists across
+   * contours for faster convergence. This is acceptable for bounded/first-
+   * found searches where optimality is not claimed.
+   */
+  readonly persistTransposition?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -497,10 +509,15 @@ export async function runIdaStarSearch(
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new PiCorralDetector(board.cellCount);
     const commitmentDetector = new GoalCommitmentDetector();
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
+
     const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
     const macroDetector = new ForcedPushMacroDetector(board);
     const goalMacroAnalysis = analyzeGoalMacros(board);
     const deadlockTableLookup = buildDeadlockTables(board);
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
 
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -521,6 +538,8 @@ export async function runIdaStarSearch(
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
     const pdbEvaluator = new PdbHeuristicEvaluator(board);
+    throwIfSolverCancelled(context.signal);
+    await delayForEventLoop();
 
     const zobristTable: ZobristTable = createZobristTable(board.cellCount, exactCodec.labelCount);
 
@@ -776,8 +795,6 @@ export async function runIdaStarSearch(
       : initialG + initialH;
     let limitDetail: string | undefined;
 
-    // TT-IDA*: transposition table persists across iterations.
-    // Stores backed_f (proven lower bound) per state key.
     const maxMem = request.limits?.maxMemoryBytes;
     const TT_SIZE_CAP = maxMem !== undefined && maxMem >= 2 * 1024 * 1024 * 1024
       ? 4_000_000
@@ -786,6 +803,7 @@ export async function runIdaStarSearch(
         : 2_000_000;
     const transposition = new Map<number, { bigintKey: bigint; f: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
+    const persistTT = options?.persistTransposition !== false;
 
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {
@@ -802,7 +820,7 @@ export async function runIdaStarSearch(
             ? { solution: incumbentSolution, cost: U }
             : null,
           partitionId: ctx.partitionId,
-          transpositionMetadata: { policy: "tt-ida-star" },
+          transpositionMetadata: { policy: persistTT ? "tt-ida-star" : "clear-per-iteration" },
           counters: {
             expanded: counters.expanded,
             generated: counters.generated,
@@ -815,9 +833,10 @@ export async function runIdaStarSearch(
       counters.iterations += 1;
       let nextLimit = Number.POSITIVE_INFINITY;
 
-      // TT-IDA*: transposition table is NOT cleared between iterations.
-      // Backed-up f-values from previous iterations are valid lower bounds
-      // that enable cross-iteration pruning.
+      if (!persistTT) {
+        transposition.clear();
+        transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
+      }
       transpositionSize = transposition.size;
 
       // Path stack: current DFS path from root to active node.

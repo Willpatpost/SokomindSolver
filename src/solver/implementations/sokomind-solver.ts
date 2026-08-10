@@ -8,7 +8,6 @@ import type {
   SolutionStep,
   SolverAdapter,
   SolverExecutionContext,
-  SolverLimits,
   SolverMetadata,
   SolverRequest,
   SolverResult,
@@ -32,6 +31,15 @@ import {
   extractSokomindOptions,
   type SokomindRequestOptions,
 } from "./sokomind-options.ts";
+import {
+  WorkerExecutionRegistry,
+  type WorkerMemoryBreakdown,
+} from "./sokomind-worker-registry.ts";
+import {
+  BudgetTracker,
+  type AggregateSnapshot,
+  type BudgetStopReason,
+} from "./sokomind-budget-tracker.ts";
 import {
   runSequentialProof,
   runConcurrentProof,
@@ -97,12 +105,7 @@ const DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS = 45_000;
 const DEFAULT_IMPROVEMENT_MINIMUM_MOVES = 100;
 
 type LegacyDirection = keyof typeof LEGACY_DIRECTIONS;
-type PhaseStopReason =
-  | "cancelled"
-  | "elapsed"
-  | "expanded"
-  | "generated"
-  | "memory";
+type PhaseStopReason = BudgetStopReason;
 
 interface LegacyState {
   readonly rows: readonly string[];
@@ -184,46 +187,6 @@ interface EnginePlan {
   readonly capturesPreparedBoard?: boolean;
 }
 
-interface WorkerTelemetry {
-  readonly label: string;
-  readonly mode: EngineCommand["mode"];
-  active: boolean;
-  visited: number;
-  generated: number;
-  generatedForLimit: number;
-  frontier: number;
-  peakFrontier: number;
-  retained: number;
-  peakRetained: number;
-  publishedRecords: number;
-  estimatedMemoryBytes: number;
-  peakEstimatedMemoryBytes: number;
-  processMemoryBytes: number;
-  peakProcessMemoryBytes: number;
-  memoryBreakdown: WorkerMemoryBreakdown;
-  performance: Readonly<Record<string, unknown>>;
-}
-
-interface WorkerMemoryBreakdown {
-  readonly runtimeBytes: number;
-  readonly boardBytes: number;
-  readonly retainedBytes: number;
-  readonly frontierBytes: number;
-  readonly cacheBytes: number;
-  readonly arenaBytes: number;
-  readonly recordBytes: number;
-  readonly isolateSampleBytes: number;
-}
-
-interface AggregateSnapshot {
-  readonly expandedStates: number;
-  readonly generatedStates: number;
-  readonly frontierSize: number;
-  readonly peakFrontierSize: number;
-  readonly estimatedMemoryBytes: number;
-  readonly peakEstimatedMemoryBytes: number;
-  readonly counters: Readonly<Record<string, number>>;
-}
 
 interface SearchRunState {
   readonly startedAt: number;
@@ -233,17 +196,12 @@ interface SearchRunState {
   readonly profile: SokomindTuningProfile;
   readonly workerSilenceTimeoutMs: number;
   readonly structuralHeadStartLimitMs: number;
-  readonly workerTelemetry: Map<string, WorkerTelemetry>;
-  peakFrontierSize: number;
-  peakEstimatedMemoryBytes: number;
+  readonly registry: WorkerExecutionRegistry;
+  readonly budget: BudgetTracker;
   rejectedCandidates: number;
   completedWorkers: number;
   phaseTimeouts: number;
   watchdogTimeouts: number;
-  coordinatorRecordCount: number;
-  peakCoordinatorRecordCount: number;
-  coordinatorEstimatedMemoryBytes: number;
-  preparedBoardEstimatedMemoryBytes: number;
   lastProgressAt: number;
   progressPhase: "searching" | "harvesting" | "improving";
   initialSolutionMoves: number;
@@ -640,31 +598,11 @@ function elapsed(run: SearchRunState): number {
   return Math.max(0, run.context.now() - run.startedAt);
 }
 
-function limitValue(
-  limits: SolverLimits | undefined,
-  key: keyof SolverLimits,
-): number | undefined {
-  return optionalFiniteNonNegative(limits?.[key]);
-}
-
 function valueFromPerformance(
   performance: Readonly<Record<string, unknown>>,
   key: string,
 ): number {
   return numericProperty(performance, key);
-}
-
-function emptyMemoryBreakdown(): WorkerMemoryBreakdown {
-  return Object.freeze({
-    runtimeBytes: DEFAULT_MEMORY_ESTIMATE_BYTES,
-    boardBytes: 0,
-    retainedBytes: 0,
-    frontierBytes: 0,
-    cacheBytes: 0,
-    arenaBytes: 0,
-    recordBytes: 0,
-    isolateSampleBytes: 0,
-  });
 }
 
 function laneCounterStem(id: string): string {
@@ -685,8 +623,8 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
   let browserProcessMemoryBytes = 0;
   let peakBrowserProcessMemoryBytes = 0;
   let currentMemory =
-    run.coordinatorEstimatedMemoryBytes +
-    run.preparedBoardEstimatedMemoryBytes;
+    run.budget.coordinatorEstimatedMemoryBytes +
+    run.budget.preparedBoardEstimatedMemoryBytes;
   let historicalPeakCandidate = currentMemory;
   const memoryBreakdown = {
     runtimeBytes: 0,
@@ -704,7 +642,7 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
   let deadlockPrunes = 0;
   let infeasiblePrunes = 0;
 
-  for (const [id, telemetry] of run.workerTelemetry) {
+  for (const [id, telemetry] of run.registry.entries()) {
     expandedStates += telemetry.visited;
     generatedStates += telemetry.generatedForLimit;
     peakRetainedStates += telemetry.peakRetained;
@@ -771,9 +709,9 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
     historicalPeakCandidate,
     peakBrowserProcessMemoryBytes,
   );
-  run.peakFrontierSize = Math.max(run.peakFrontierSize, frontierSize);
-  run.peakEstimatedMemoryBytes = Math.max(
-    run.peakEstimatedMemoryBytes,
+  run.budget.peakFrontierSize = Math.max(run.budget.peakFrontierSize, frontierSize);
+  run.budget.peakEstimatedMemoryBytes = Math.max(
+    run.budget.peakEstimatedMemoryBytes,
     currentMemory,
     historicalPeakCandidate,
   );
@@ -781,9 +719,9 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
     expandedStates,
     generatedStates,
     frontierSize,
-    peakFrontierSize: run.peakFrontierSize,
+    peakFrontierSize: run.budget.peakFrontierSize,
     estimatedMemoryBytes: currentMemory,
-    peakEstimatedMemoryBytes: run.peakEstimatedMemoryBytes,
+    peakEstimatedMemoryBytes: run.budget.peakEstimatedMemoryBytes,
     counters: Object.freeze({
       uniqueStates: expandedStates,
       duplicateStates: Math.max(0, generatedStates - expandedStates),
@@ -795,12 +733,12 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
       reachabilityFloods,
       estimatedMemoryBytes: currentMemory,
       currentEstimatedMemoryBytes: currentMemory,
-      peakEstimatedMemoryBytes: run.peakEstimatedMemoryBytes,
+      peakEstimatedMemoryBytes: run.budget.peakEstimatedMemoryBytes,
       currentWorkerMemoryBytes,
       currentCoordinatorMemoryBytes:
-        run.coordinatorEstimatedMemoryBytes,
+        run.budget.coordinatorEstimatedMemoryBytes,
       currentPreparedBoardMemoryBytes:
-        run.preparedBoardEstimatedMemoryBytes,
+        run.budget.preparedBoardEstimatedMemoryBytes,
       workerRuntimeMemoryBytes: memoryBreakdown.runtimeBytes,
       workerBoardMemoryBytes: memoryBreakdown.boardBytes,
       workerRetainedMemoryBytes: memoryBreakdown.retainedBytes,
@@ -815,8 +753,8 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
       rejectedCandidates: run.rejectedCandidates,
       phaseTimeouts: run.phaseTimeouts,
       watchdogTimeouts: run.watchdogTimeouts,
-      coordinatorRecords: run.coordinatorRecordCount,
-      peakCoordinatorRecords: run.peakCoordinatorRecordCount,
+      coordinatorRecords: run.budget.coordinatorRecordCount,
+      peakCoordinatorRecords: run.budget.peakCoordinatorRecordCount,
       initialSolutionMoves: run.initialSolutionMoves,
       bestSolutionMoves: run.bestSolutionMoves,
       solutionImprovements: run.solutionImprovements,
@@ -861,7 +799,7 @@ function updateTelemetry(
   id: string,
   message: EngineResult,
 ): void {
-  const telemetry = run.workerTelemetry.get(id);
+  const telemetry = run.registry.get(id);
   if (!telemetry) return;
   if (Array.isArray(message.records)) {
     telemetry.publishedRecords += message.records.length;
@@ -1030,40 +968,25 @@ function retainLegacyRecord(
 ): void {
   const previous = records.get(record.id);
   if (previous) {
-    run.coordinatorEstimatedMemoryBytes -=
-      estimateLegacyRecordBytes(previous);
-  } else {
-    run.coordinatorRecordCount += 1;
-    run.peakCoordinatorRecordCount = Math.max(
-      run.peakCoordinatorRecordCount,
-      run.coordinatorRecordCount,
+    run.budget.updateRecord(
+      estimateLegacyRecordBytes(previous),
+      estimateLegacyRecordBytes(record),
     );
+  } else {
+    run.budget.retainRecord(estimateLegacyRecordBytes(record));
   }
   records.set(record.id, record);
-  run.coordinatorEstimatedMemoryBytes += estimateLegacyRecordBytes(record);
 }
 
-function reachedLimit(run: SearchRunState): PhaseStopReason | undefined {
-  if (run.context.signal.aborted) return "cancelled";
-  if (run.context.now() >= run.deadline) return "elapsed";
+function reachedLimit(run: SearchRunState): BudgetStopReason | undefined {
   const snapshot = aggregate(run);
-  const limits = run.request.limits;
-  const maxExpanded = limitValue(limits, "maxExpandedStates");
-  if (maxExpanded !== undefined && snapshot.expandedStates >= maxExpanded) {
-    return "expanded";
-  }
-  const maxGenerated = limitValue(limits, "maxGeneratedStates");
-  if (maxGenerated !== undefined && snapshot.generatedStates >= maxGenerated) {
-    return "generated";
-  }
-  const maxMemory = limitValue(limits, "maxMemoryBytes");
-  if (
-    maxMemory !== undefined &&
-    snapshot.estimatedMemoryBytes >= maxMemory
-  ) {
-    return "memory";
-  }
-  return undefined;
+  return run.budget.checkLimit(
+    snapshot,
+    run.request.limits,
+    run.context.signal,
+    run.context.now(),
+    run.deadline,
+  );
 }
 
 function recordMapForPlan(
@@ -1132,11 +1055,7 @@ async function runPhase(
         entry.onMessageError,
       );
       entry.worker.terminate();
-      const telemetry = run.workerTelemetry.get(id);
-      if (telemetry) {
-        telemetry.active = false;
-        telemetry.frontier = 0;
-      }
+      run.registry.deactivate(id);
       run.completedWorkers += 1;
     };
 
@@ -1171,8 +1090,7 @@ async function runPhase(
       // terminating workers and releasing the phase-local meeting maps.
       aggregate(run);
       for (const id of [...active.keys()]) cleanupWorker(id);
-      run.coordinatorRecordCount = 0;
-      run.coordinatorEstimatedMemoryBytes = 0;
+      run.budget.resetPhase();
       resolve({
         ...outcome,
         cutoff,
@@ -1190,8 +1108,7 @@ async function runPhase(
       run.context.signal.removeEventListener("abort", onAbort);
       aggregate(run);
       for (const id of [...active.keys()]) cleanupWorker(id);
-      run.coordinatorRecordCount = 0;
-      run.coordinatorEstimatedMemoryBytes = 0;
+      run.budget.resetPhase();
       reject(error);
     };
 
@@ -1346,25 +1263,7 @@ async function runPhase(
           forwardRecords,
           reverseRecords,
         );
-        run.workerTelemetry.set(plan.id, {
-          label: plan.label,
-          mode: plan.mode,
-          active: true,
-          visited: 0,
-          generated: 0,
-          generatedForLimit: 0,
-          frontier: 0,
-          peakFrontier: 0,
-          retained: 0,
-          peakRetained: 0,
-          publishedRecords: 0,
-          estimatedMemoryBytes: DEFAULT_MEMORY_ESTIMATE_BYTES,
-          peakEstimatedMemoryBytes: DEFAULT_MEMORY_ESTIMATE_BYTES,
-          processMemoryBytes: 0,
-          peakProcessMemoryBytes: 0,
-          memoryBreakdown: emptyMemoryBreakdown(),
-          performance: Object.freeze({}),
-        });
+        run.registry.register(plan.id, plan.label, plan.mode);
 
         const onMessage: EngineMessageListener = ({ data }) => {
           if (settled) return;
@@ -1734,18 +1633,19 @@ function legacyPathFromSolution(
   );
 }
 
-function solutionImprovementPlan(
+export function solutionImprovementPlan(
   state: LegacyState,
   incumbent: SolverSolution,
   maxVisited: number,
   pass: number,
   rewriteProfile: SokomindTuningProfile,
+  candidateIndex = 0,
 ): EnginePlan {
   const windowVisited = rewriteProfile.rewriteWindowVisited;
   const moveScale = rewriteProfile.rewriteMoveWindowScale;
   return Object.freeze({
-    id: `solution-rewrite-${pass}`,
-    label: `Move-count solution rewrite ${pass}`,
+    id: `solution-rewrite-c${candidateIndex}-p${pass}`,
+    label: `Move-count solution rewrite c${candidateIndex} p${pass}`,
     mode: "search",
     payload: Object.freeze({
       algorithm: "solution-window-rewrite",
@@ -1781,6 +1681,7 @@ async function improveIncumbent(
   incumbent: SolverSolution,
   createWorker: () => SokomindEngineWorker,
   options: SokomindSolverAdapterOptions,
+  candidateIndex = 0,
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -1865,6 +1766,7 @@ async function improveIncumbent(
             Math.floor(maxVisited),
             pass,
             run.profile,
+            candidateIndex,
           ),
         ],
         createWorker,
@@ -2011,7 +1913,7 @@ async function harvestAndImprove(
     : options;
 
   const rewrittenCandidates: { solution: SolverSolution; discoveryOrder: number }[] = [];
-  const rewritePromises = rewriteCandidates.map(async (incumbent) => {
+  const rewritePromises = rewriteCandidates.map(async (incumbent, candidateIndex) => {
     if (run.context.signal.aborted) {
       return { solution: incumbent.solution, discoveryOrder: incumbent.discoveryOrder };
     }
@@ -2021,6 +1923,7 @@ async function harvestAndImprove(
       incumbent.solution,
       createWorker,
       dividedOptions,
+      candidateIndex,
     );
     return {
       solution: improved.solution,
@@ -2389,17 +2292,12 @@ export function createSokomindSolverAdapter(
         structuralHeadStartLimitMs:
           finiteNonNegative(options.structuralHeadStartMs) ||
           profile.structuralHeadStartMs,
-        workerTelemetry: new Map(),
-        peakFrontierSize: 0,
-        peakEstimatedMemoryBytes: 0,
+        registry: new WorkerExecutionRegistry(),
+        budget: new BudgetTracker(),
         rejectedCandidates: 0,
         completedWorkers: 0,
         phaseTimeouts: 0,
         watchdogTimeouts: 0,
-        coordinatorRecordCount: 0,
-        peakCoordinatorRecordCount: 0,
-        coordinatorEstimatedMemoryBytes: 0,
-        preparedBoardEstimatedMemoryBytes: 0,
         lastProgressAt: -Infinity,
         progressPhase: "searching",
         initialSolutionMoves: 0,
@@ -2444,7 +2342,7 @@ export function createSokomindSolverAdapter(
         );
         if (preparation.preparedBoard) {
           state = withPreparedBoard(state, preparation.preparedBoard);
-          run.preparedBoardEstimatedMemoryBytes =
+          run.budget.preparedBoardEstimatedMemoryBytes =
             preparedBoardMemoryEstimate(preparation.preparedBoard);
         }
         errors = [...errors, ...preparation.errors];

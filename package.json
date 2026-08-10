@@ -38,6 +38,7 @@
     "test:static": "node --test tests/static-build.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "lint:docs": "node scripts/validate-doc-paths.mjs --ci",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
