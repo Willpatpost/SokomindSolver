@@ -485,6 +485,14 @@ export async function runIdaStarSearch(
   try {
     throwIfSolverCancelled(context.signal);
     const board = compileSearchBoard(request.board);
+
+    context.reportProgress({
+      phase: "preparing",
+      elapsedMs: Math.max(0, context.now() - startedAt),
+      detail: "Compiling search structures",
+      counters: {},
+    });
+
     const reachability = new KeeperReachability(board);
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new PiCorralDetector(board.cellCount);

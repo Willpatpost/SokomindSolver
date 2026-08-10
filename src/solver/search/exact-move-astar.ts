@@ -242,6 +242,14 @@ export async function runExactMoveAStar(
     const board = compileSearchBoard(request.board);
     const { cellCount } = board;
     const labels = [...board.goalCellsByLabel.keys()].sort();
+
+    context.reportProgress({
+      phase: "preparing",
+      elapsedMs: Math.max(0, context.now() - startedAt),
+      detail: "Compiling search structures",
+      counters: {},
+    });
+
     const reachability = new KeeperReachability(board);
     const patternCache = new PatternDeadlockCache();
     const corralDetector = new PiCorralDetector(cellCount);

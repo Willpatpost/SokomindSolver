@@ -185,7 +185,7 @@ test("cancels a running Grand Hall A* search", async ({ page }) => {
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(cancel).toBeEnabled();
   const diagnostics = dialog.getByText("Search diagnostics", { exact: true });
-  await expect(diagnostics).toBeVisible({ timeout: 15_000 });
+  await expect(diagnostics).toBeVisible();
 
   // <summary> is natively keyboard-focusable and must participate in the
   // modal's manual wrap calculation. From Cancel it is the next control.

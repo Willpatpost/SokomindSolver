@@ -115,7 +115,7 @@ describe("classic search control plane", () => {
       }),
     );
     assert.equal(during.status, "cancelled");
-    assert.deepEqual(phases, ["preparing", "searching"]);
+    assert.deepEqual(phases, ["preparing", "preparing", "searching"]);
     assert.equal(during.metrics.counters?.uniqueStates, 1);
     assert.equal(during.metrics.counters?.retainedStates, 1);
     assert.ok((during.metrics.counters?.estimatedMemoryBytes ?? 0) > 0);
@@ -130,7 +130,7 @@ describe("classic search control plane", () => {
     assert.equal(result.status, "solved");
     assert.deepEqual(
       updates.map(({ phase }) => phase),
-      ["preparing", "searching", "improving"],
+      ["preparing", "preparing", "searching", "improving"],
     );
 
     let previousExpanded = 0;

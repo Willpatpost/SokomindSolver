@@ -296,7 +296,10 @@ describe("IDA* search", () => {
     }
 
     const counters = baseline.metrics.counters;
-    const staticBytes = progress[0]?.counters?.memoryStaticBytes ?? 0;
+    const firstFullProgress = progress.find(
+      (p) => p.counters?.memoryStaticBytes !== undefined,
+    );
+    const staticBytes = firstFullProgress?.counters?.memoryStaticBytes ?? 0;
     const currentBytes = counters?.estimatedMemoryBytes ?? 0;
     const peakBytes = counters?.peakEstimatedMemoryBytes ?? 0;
     assert.ok(staticBytes > 0);
