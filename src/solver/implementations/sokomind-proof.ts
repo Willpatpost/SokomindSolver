@@ -264,14 +264,29 @@ export async function runConcurrentProof(
 
         const provedOptimal = allProved && !anyFailed;
 
-        const proof: SolverProof = {
-          objective: { kind: "moves" },
-          kind: provedOptimal ? "optimal" : "bounded",
-          lowerBound: globalLower,
-          upperBound: bestCost,
-          gap: bestCost - Math.min(globalLower, bestCost),
-          algorithm: proofAlgorithmLabel,
-        };
+        let proof: SolverProof;
+        if (provedOptimal) {
+          proof = {
+            objective: { kind: "moves" },
+            kind: "optimal",
+            lowerBound: bestCost,
+            upperBound: bestCost,
+            gap: 0,
+            algorithm: proofAlgorithmLabel,
+          };
+        } else {
+          const reportedLower = Number.isFinite(globalLower)
+            ? Math.min(globalLower, bestCost)
+            : 0;
+          proof = {
+            objective: { kind: "moves" },
+            kind: "bounded",
+            lowerBound: reportedLower,
+            upperBound: bestCost,
+            gap: bestCost - reportedLower,
+            algorithm: proofAlgorithmLabel,
+          };
+        }
 
         finish({
           status: "solved",
@@ -293,7 +308,7 @@ export async function runConcurrentProof(
           proof: {
             objective: { kind: "moves" },
             kind: "optimal",
-            lowerBound: globalLower,
+            lowerBound: bestCost,
             upperBound: bestCost,
             gap: 0,
             algorithm: proofAlgorithmLabel,
@@ -368,12 +383,6 @@ export async function runConcurrentProof(
                 // worker already terminated
               }
             }
-          }
-          if (tracker) {
-            tracker.completed = true;
-            tracker.exhausted = true;
-            tracker.lowerBound = result.totalCost;
-            dispatchNext(tracker.worker);
           }
           break;
         }
