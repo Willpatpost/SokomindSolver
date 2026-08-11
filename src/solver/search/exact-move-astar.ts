@@ -36,7 +36,6 @@ import {
 } from "./goal-commitment.ts";
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
-import { analyzeGoalMacros, isGoalMacroViolation } from "./goal-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import {
   estimatedArenaMemoryBytes,
@@ -64,6 +63,12 @@ import {
   estimateStaticSearchBytes,
 } from "./engine.ts";
 import { delayForEventLoop } from "./scheduling.ts";
+import {
+  createExactSearchFeatureTelemetry,
+  exactSearchFeatureMask,
+  resolveExactSearchFeatures,
+  type ExactSearchFeatures,
+} from "./exact-search-features.ts";
 
 export interface ExactIncumbent {
   readonly solution: SolverSolution;
@@ -77,6 +82,7 @@ export interface UpperBoundChannel {
 export interface ExactMoveAStarOptions {
   readonly incumbent?: ExactIncumbent;
   readonly upperBoundChannel?: UpperBoundChannel;
+  readonly features?: Partial<ExactSearchFeatures>;
 }
 
 const PROGRESS_INTERVAL_MS = 100;
@@ -95,6 +101,7 @@ function createMetrics(
   boxCount: number,
   arenaRetainedBytes: number,
   macroStats?: { readonly applications: number },
+  featureCounters?: () => Readonly<Record<string, number>>,
 ): SolverRunMetrics {
   const heuristicStats = heuristic.stats;
   const memoryBytes = estimatedArenaMemoryBytes(
@@ -118,7 +125,6 @@ function createMetrics(
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
       piCorralPrunes: counters.piCorralPrunes,
-      goalMacroPrunes: counters.goalMacroPrunes,
       deadlockTablePrunes: counters.deadlockTablePrunes,
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
@@ -132,6 +138,7 @@ function createMetrics(
       maxDepth: counters.maxDepth,
       estimatedMemoryBytes: memoryBytes,
       forcedPushMacroApplications: macroStats?.applications ?? 0,
+      ...featureCounters?.(),
     },
   };
 }
@@ -153,6 +160,7 @@ function createProgress(
   lowerBound: number | undefined,
   upperBound: number | undefined,
   macroStats?: { readonly applications: number },
+  featureCounters?: () => Readonly<Record<string, number>>,
 ): SolverProgress {
   const metrics = createMetrics(
     context,
@@ -166,6 +174,7 @@ function createProgress(
     boxCount,
     arenaRetainedBytes,
     macroStats,
+    featureCounters,
   );
   return {
     phase,
@@ -210,6 +219,8 @@ export async function runExactMoveAStar(
   options?: ExactMoveAStarOptions,
 ): Promise<SolverResult> {
   const startedAt = context.now();
+  const features = resolveExactSearchFeatures(options?.features);
+  const featureTelemetry = createExactSearchFeatureTelemetry();
 
   const counters: SearchCounters = {
     expanded: 0,
@@ -219,7 +230,6 @@ export async function runExactMoveAStar(
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
     piCorralPrunes: 0,
-    goalMacroPrunes: 0,
     deadlockTablePrunes: 0,
     commitmentSkips: 0,
     interactionBoostTotal: 0,
@@ -251,16 +261,27 @@ export async function runExactMoveAStar(
     });
 
     const reachability = new KeeperReachability(board);
-    const patternCache = new PatternDeadlockCache();
-    const corralDetector = new PiCorralDetector(cellCount);
-    const commitmentDetector = new GoalCommitmentDetector();
+    const patternCache = features.patternDeadlockPruning
+      ? new PatternDeadlockCache()
+      : null;
+    const corralDetector = features.piCorralPruning
+      ? new PiCorralDetector(cellCount)
+      : null;
+    const commitmentDetector = features.goalCommitmentPruning
+      ? new GoalCommitmentDetector()
+      : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
-    const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
-    const macroDetector = new ForcedPushMacroDetector(board);
-    const goalMacroAnalysis = analyzeGoalMacros(board);
-    const deadlockTableLookup = await buildDeadlockTablesAsync(board, context.signal);
+    const boostEvaluator = features.interactionBoost
+      ? new InteractionBoostEvaluator(board, board.topology)
+      : null;
+    const macroDetector = features.forcedPushMacros
+      ? new ForcedPushMacroDetector(board)
+      : null;
+    const deadlockTableLookup = features.deadlockTablePruning
+      ? await buildDeadlockTablesAsync(board, context.signal)
+      : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
@@ -269,7 +290,14 @@ export async function runExactMoveAStar(
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
-    const pdbEvaluator = await PdbHeuristicEvaluator.createAsync(board, context.signal);
+    const pdbStartedAt = context.now();
+    const pdbEvaluator = features.patternDatabase
+      ? await PdbHeuristicEvaluator.createAsync(board, context.signal)
+      : null;
+    featureTelemetry.pdbBuildTimeMs = features.patternDatabase
+      ? Math.max(0, context.now() - pdbStartedAt)
+      : 0;
+    featureTelemetry.pdbTableEntries = pdbEvaluator?.totalTableEntries ?? 0;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
     const staticBytes = estimateStaticSearchBytes(board);
@@ -288,6 +316,27 @@ export async function runExactMoveAStar(
       toDenseBoxes(board, request.snapshot.boxes),
     );
     const boxCount = initialBoxes.length;
+
+    const linearConflict = (boxes: readonly DenseBox[]): number => {
+      if (!features.linearConflict) return 0;
+      featureTelemetry.linearConflictEvaluations += 1;
+      const value = heuristic.lastLinearConflict(boxes);
+      featureTelemetry.linearConflictTotal += value;
+      return value;
+    };
+    const pdbValue = (boxes: readonly DenseBox[]): number => {
+      if (!pdbEvaluator) return 0;
+      featureTelemetry.pdbEvaluations += 1;
+      return pdbEvaluator.evaluate(boxes);
+    };
+    const deadlockTableCheck = (
+      boxes: readonly DenseBox[],
+      movedCell: number,
+    ): boolean => {
+      if (!deadlockTableLookup) return false;
+      featureTelemetry.deadlockTableChecks += 1;
+      return deadlockTableLookup.check(boxes, movedCell);
+    };
 
     const initialOccupancy = new Uint8Array(cellCount);
     for (const box of initialBoxes) initialOccupancy[box.cell] = 1;
@@ -318,21 +367,41 @@ export async function runExactMoveAStar(
     const initialZobristKey = zobristTable.hashFromTokens(initialTokens, initialRobot);
     const initialPushBound = heuristic.evaluate(initialBoxes);
     const initialLabelCosts = heuristic.lastLabelCosts;
-    const initialBoost = initialLabelCosts
+    const initialBoost = initialLabelCosts && boostEvaluator
       ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
       : 0;
-    const initialLC = heuristic.lastLinearConflict(initialBoxes);
+    const initialLC = linearConflict(initialBoxes);
     const initialWalkBound = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSum = pdbEvaluator.evaluate(initialBoxes);
+    const initialPdbSum = pdbValue(initialBoxes);
     const initialH = Math.max(initialPushBound + Math.max(initialLC, initialBoost), initialPdbSum) + initialWalkBound;
     lastLowerBound = initialH;
 
     let heapSize = 0;
     let uniqueStates = 0;
+
+    const featureCounters = (): Readonly<Record<string, number>> => ({
+      exactFeatureMask: exactSearchFeatureMask(features),
+      incrementalAssignmentRepairs: heuristic.stats.incrementalRepairs,
+      linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
+      linearConflictTotal: featureTelemetry.linearConflictTotal,
+      interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
+      pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
+      pdbTableEntries: featureTelemetry.pdbTableEntries,
+      pdbEvaluations: featureTelemetry.pdbEvaluations,
+      forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
+      piCorralChecks: corralDetector?.stats.checks ?? 0,
+      patternDeadlockChecks: patternCache?.stats.checks ?? 0,
+      deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
+      deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
+      deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
+      deadlockTableChecks: featureTelemetry.deadlockTableChecks,
+      goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
+      goalCommitments: commitmentDetector?.stats.commitments ?? 0,
+    });
 
     const metrics = () =>
       createMetrics(
@@ -346,7 +415,8 @@ export async function runExactMoveAStar(
         staticBytes,
         boxCount,
         arena.estimatedRetainedBytes(),
-        macroDetector.stats,
+        macroDetector?.stats,
+        featureCounters,
       );
     collectCurrentMetrics = metrics;
 
@@ -377,7 +447,8 @@ export async function runExactMoveAStar(
           incumbentInfo(),
           incumbentSolution ? lastLowerBound : undefined,
           incumbentSolution ? U : undefined,
-          macroDetector.stats,
+          macroDetector?.stats,
+          featureCounters,
         ),
       );
     };
@@ -699,7 +770,16 @@ export async function runExactMoveAStar(
       const reachable = reachability.flood(robotCell, occupied);
       counters.reachabilityFloods += 1;
 
-      if (hasPiCorralDeadlock(board, expansionBoxes, occupied, reachable, corralDetector)) {
+      if (
+        corralDetector &&
+        hasPiCorralDeadlock(
+          board,
+          expansionBoxes,
+          occupied,
+          reachable,
+          corralDetector,
+        )
+      ) {
         counters.piCorralPrunes += 1;
         continue;
       }
@@ -726,13 +806,15 @@ export async function runExactMoveAStar(
         }
       }
 
-      const committedBoxes = findProvenCommitments(board, expansionBoxes, commitmentDetector);
+      const committedBoxes = commitmentDetector
+        ? findProvenCommitments(board, expansionBoxes, commitmentDetector)
+        : new Set<number>();
 
       const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
 
       // Forced push macro: if exactly one legal push, skip full successor generation
-      const fpResult = macroDetector.detect(expansionBoxes, occupied, reachable);
-      if (fpResult.forced) {
+      const fpResult = macroDetector?.detect(expansionBoxes, occupied, reachable);
+      if (fpResult?.forced) {
         const fpBoxIdx = fpResult.boxIndex!;
         const fpDir = fpResult.direction!;
         const fpBox = expansionBoxes[fpBoxIdx];
@@ -747,9 +829,9 @@ export async function runExactMoveAStar(
           fpDeadlock =
             createsFullyBlockedTwoByTwoDeadlock(board, expansionBoxes, fpDest, deadlockOccupancyBuffer) ||
             hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer) ||
-            createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache) ||
-            isGoalMacroViolation(board, expansionBoxes, fpDest, goalMacroAnalysis) ||
-            deadlockTableLookup.check(expansionBoxes, fpDest);
+            (patternCache !== null &&
+              createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache)) ||
+            deadlockTableCheck(expansionBoxes, fpDest);
 
           if (!fpDeadlock) {
             const fpOpposite = OPPOSITE_DIRECTION[fpDir];
@@ -787,17 +869,25 @@ export async function runExactMoveAStar(
             if (prevBestG === undefined || childMoves < prevBestG) {
               const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
               const movedLabel = labels[newLabelId];
-              const pushLowerBound = heuristic.evaluateIncremental(
-                expansionBoxes, childBoxKey, parentBoxKey, movedLabel,
-              );
+              const pushLowerBound = features.incrementalAssignment
+                ? heuristic.evaluateIncremental(
+                    expansionBoxes,
+                    childBoxKey,
+                    parentBoxKey,
+                    movedLabel,
+                  )
+                : heuristic.evaluate(expansionBoxes);
 
               if (Number.isFinite(pushLowerBound)) {
                 const labelCosts = heuristic.lastLabelCosts;
-                const interactionBoost = labelCosts
+                const interactionBoost = labelCosts && boostEvaluator
                   ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
                   : 0;
-                const fpLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
-                const fpPdbSum = pdbEvaluator.evaluate(expansionBoxes);
+                if (interactionBoost > 0) {
+                  counters.interactionBoostTotal += interactionBoost;
+                }
+                const fpLinearConflict = linearConflict(expansionBoxes);
+                const fpPdbSum = pdbValue(expansionBoxes);
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
@@ -910,19 +1000,16 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          if (createsPatternDeadlock(board, expansionBoxes, destination, patternCache)) {
+          if (
+            patternCache !== null &&
+            createsPatternDeadlock(board, expansionBoxes, destination, patternCache)
+          ) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.patternDeadlockPrunes += 1;
             continue;
           }
 
-          if (isGoalMacroViolation(board, expansionBoxes, destination, goalMacroAnalysis)) {
-            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
-            counters.goalMacroPrunes += 1;
-            continue;
-          }
-
-          if (deadlockTableLookup.check(expansionBoxes, destination)) {
+          if (deadlockTableCheck(expansionBoxes, destination)) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.deadlockTablePrunes += 1;
             continue;
@@ -952,9 +1039,14 @@ export async function runExactMoveAStar(
 
           const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
           const movedLabel = labels[newLabelId];
-          const pushLowerBound = heuristic.evaluateIncremental(
-            expansionBoxes, childBoxKey, parentBoxKey, movedLabel,
-          );
+          const pushLowerBound = features.incrementalAssignment
+            ? heuristic.evaluateIncremental(
+                expansionBoxes,
+                childBoxKey,
+                parentBoxKey,
+                movedLabel,
+              )
+            : heuristic.evaluate(expansionBoxes);
           const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
           if (
             maxMemoryAfterHeuristic !== undefined &&
@@ -981,13 +1073,13 @@ export async function runExactMoveAStar(
           counters.avoidedReachabilityFloods += 1;
 
           const labelCosts = heuristic.lastLabelCosts;
-          const interactionBoost = labelCosts
+          const interactionBoost = labelCosts && boostEvaluator
             ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
             : 0;
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
-          const childLinearConflict = heuristic.lastLinearConflict(expansionBoxes);
-          const childPdbSum = pdbEvaluator.evaluate(expansionBoxes);
+          const childLinearConflict = linearConflict(expansionBoxes);
+          const childPdbSum = pdbValue(expansionBoxes);
 
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
@@ -1099,7 +1191,6 @@ export async function runExactMoveAStar(
           infeasiblePrunes: counters.infeasiblePrunes,
           corralPrunes: counters.corralPrunes,
           piCorralPrunes: counters.piCorralPrunes,
-          goalMacroPrunes: counters.goalMacroPrunes,
           deadlockTablePrunes: counters.deadlockTablePrunes,
           commitmentSkips: counters.commitmentSkips,
           interactionBoostTotal: counters.interactionBoostTotal,

@@ -22,6 +22,13 @@ test("invalid or incompatible experience preferences fail closed", () => {
   );
 });
 
+test("fresh experience defaults enable music and effects at equal volume", () => {
+  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.soundEnabled, true);
+  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.musicEnabled, true);
+  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.effectsVolume, 0.5);
+  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.musicVolume, 0.5);
+});
+
 test("valid fields survive while malformed fields use safe defaults", () => {
   const preferences = parseExperiencePreferences(
     JSON.stringify({
@@ -56,7 +63,7 @@ test("preference updates are immutable and normalize volume ranges", () => {
   );
 
   assert.notEqual(updated, DEFAULT_EXPERIENCE_PREFERENCES);
-  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.soundEnabled, false);
+  assert.equal(DEFAULT_EXPERIENCE_PREFERENCES.soundEnabled, true);
   assert.equal(updated.soundEnabled, true);
   assert.equal(updated.effectsVolume, 0);
   assert.equal(updated.musicVolume, 0.55);

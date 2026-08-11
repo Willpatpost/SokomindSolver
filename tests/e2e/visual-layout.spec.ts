@@ -19,6 +19,25 @@ async function expectInsideViewport(page: Page, locator: Locator) {
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height + 1);
 }
 
+async function setExperience(
+  page: Page,
+  preferences: { readonly motion?: "full"; readonly theme?: "light" },
+) {
+  await page.getByRole("button", { name: "Sound and motion settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Sound & motion" });
+  if (preferences.motion) {
+    await settings
+      .getByRole("combobox", { name: /motion/i })
+      .selectOption(preferences.motion);
+  }
+  if (preferences.theme) {
+    await settings
+      .getByRole("combobox", { name: /theme/i })
+      .selectOption(preferences.theme);
+  }
+  await settings.getByRole("button", { name: "Close" }).click();
+}
+
 test("critical Play surfaces retain visible geometry in light and dark themes", async ({
   page,
 }) => {
@@ -64,4 +83,156 @@ test("solver and editor workspaces stay within their reviewed layout bounds", as
     vertical: document.documentElement.scrollHeight > document.documentElement.clientHeight,
   }));
   expect(overflow.horizontal).toBe(false);
+});
+
+test("light mode preserves distinct typed box and storage colors", async ({
+  page,
+}) => {
+  await page.goto("./#/play/beginner-typed-line");
+  await setExperience(page, { theme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+  const pieceBackgrounds = await page.evaluate(() => {
+    const backgrounds = (selector: string) =>
+      [...document.querySelectorAll<HTMLElement>(selector)].map((element) => ({
+        label: element.dataset.boxLabel ?? element.dataset.goalLabel ?? "",
+        image: getComputedStyle(element).backgroundImage,
+      }));
+    return {
+      boxes: backgrounds("[data-box-label]"),
+      goals: backgrounds("[data-goal-label]"),
+    };
+  });
+
+  expect(pieceBackgrounds.boxes.map(({ label }) => label).sort()).toEqual(["A", "B", "C"]);
+  expect(pieceBackgrounds.goals.map(({ label }) => label).sort()).toEqual(["A", "B", "C"]);
+  for (const piece of [...pieceBackgrounds.boxes, ...pieceBackgrounds.goals]) {
+    expect(piece.image).not.toBe("none");
+  }
+  expect(new Set(pieceBackgrounds.boxes.map(({ image }) => image)).size).toBe(3);
+  expect(new Set(pieceBackgrounds.goals.map(({ image }) => image)).size).toBe(3);
+});
+
+test("the six-step route trail fades and shrinks with age", async ({ page }) => {
+  await page.goto("./#/play/beginner-typed-line");
+  await setExperience(page, { motion: "full" });
+  await page.getByTestId("game-board").click();
+
+  for (const key of [
+    "ArrowLeft",
+    "ArrowLeft",
+    "ArrowLeft",
+    "ArrowUp",
+    "ArrowUp",
+    "ArrowRight",
+  ]) {
+    await page.keyboard.press(key);
+  }
+  await expect(page.getByTestId("moves-count")).toHaveText("6");
+  await expect(page.locator("[data-trail-age]")).toHaveCount(6);
+
+  const presentation = await page.locator("[data-trail-age]").evaluateAll((markers) =>
+    markers
+      .map((marker) => {
+        const style = getComputedStyle(marker, "::after");
+        const matrix = new DOMMatrixReadOnly(style.transform);
+        return {
+          age: Number((marker as HTMLElement).dataset.trailAge),
+          opacity: Number(style.opacity),
+          scale: matrix.a,
+        };
+      })
+      .sort((left, right) => left.age - right.age),
+  );
+
+  expect(presentation.map(({ age }) => age)).toEqual([0, 1, 2, 3, 4, 5]);
+  for (let index = 1; index < presentation.length; index += 1) {
+    expect(presentation[index].opacity).toBeLessThan(presentation[index - 1].opacity);
+    expect(presentation[index].scale).toBeLessThan(presentation[index - 1].scale);
+  }
+});
+
+test("rapid keeper input never animates farther than one adjacent cell", async ({
+  page,
+}) => {
+  await page.goto("./#/play/beginner-typed-line");
+  await setExperience(page, { motion: "full" });
+  await page.getByTestId("game-board").click();
+
+  const route = [
+    "ArrowLeft",
+    "ArrowLeft",
+    "ArrowLeft",
+    "ArrowUp",
+    "ArrowUp",
+    "ArrowRight",
+  ];
+  let observedAnimations = 0;
+  for (const [index, key] of route.entries()) {
+    await page.keyboard.press(key);
+    await expect(page.getByTestId("moves-count")).toHaveText(String(index + 1));
+    const translations = await page.locator('[data-piece-id="keeper"]').evaluate((slot) => {
+      const layer = slot.parentElement;
+      if (!layer) throw new Error("Keeper slot has no piece layer.");
+      const layerStyle = getComputedStyle(layer);
+      const layerRect = layer.getBoundingClientRect();
+      const columns = Number(layerStyle.getPropertyValue("--columns"));
+      const rows = Number(layerStyle.getPropertyValue("--rows"));
+      const columnGap = Number.parseFloat(layerStyle.columnGap);
+      const rowGap = Number.parseFloat(layerStyle.rowGap);
+      const columnPitch = (layerRect.width - columnGap * (columns - 1)) / columns + columnGap;
+      const rowPitch = (layerRect.height - rowGap * (rows - 1)) / rows + rowGap;
+      return slot.getAnimations().flatMap((animation) =>
+        (animation.effect as KeyframeEffect | null)?.getKeyframes().map((frame) => {
+          const matrix = new DOMMatrixReadOnly(String(frame.transform));
+          return {
+            x: matrix.m41,
+            y: matrix.m42,
+            columnPitch,
+            rowPitch,
+          };
+        }) ?? [],
+      );
+    });
+    if (translations.length > 0) observedAnimations += 1;
+    for (const translation of translations) {
+      expect(Math.min(Math.abs(translation.x), Math.abs(translation.y))).toBeLessThan(0.75);
+      expect(Math.abs(translation.x)).toBeLessThanOrEqual(translation.columnPitch + 1);
+      expect(Math.abs(translation.y)).toBeLessThanOrEqual(translation.rowPitch + 1);
+    }
+  }
+  expect(observedAnimations).toBeGreaterThan(1);
+
+  const keeper = page.locator('[data-piece-id="keeper"]');
+  await expect.poll(
+    () => keeper.evaluate((slot) => slot.getAnimations().length),
+    { timeout: 2_000 },
+  ).toBe(0);
+  const settled = await keeper.evaluate((slot) => {
+    const layer = slot.parentElement;
+    if (!layer) throw new Error("Keeper slot has no piece layer.");
+    const layerStyle = getComputedStyle(layer);
+    const layerRect = layer.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    const columns = Number(layerStyle.getPropertyValue("--columns"));
+    const rows = Number(layerStyle.getPropertyValue("--rows"));
+    const column = Number((slot as HTMLElement).dataset.pieceColumn);
+    const row = Number((slot as HTMLElement).dataset.pieceRow);
+    const columnGap = Number.parseFloat(layerStyle.columnGap);
+    const rowGap = Number.parseFloat(layerStyle.rowGap);
+    const cellWidth = (layerRect.width - columnGap * (columns - 1)) / columns;
+    const cellHeight = (layerRect.height - rowGap * (rows - 1)) / rows;
+    return {
+      activeAnimations: slot.getAnimations().length,
+      leftError: Math.abs(slotRect.left - (layerRect.left + column * (cellWidth + columnGap))),
+      topError: Math.abs(slotRect.top - (layerRect.top + row * (cellHeight + rowGap))),
+      widthError: Math.abs(slotRect.width - cellWidth),
+      heightError: Math.abs(slotRect.height - cellHeight),
+    };
+  });
+  expect(settled.activeAnimations).toBe(0);
+  expect(settled.leftError).toBeLessThan(1);
+  expect(settled.topError).toBeLessThan(1);
+  expect(settled.widthError).toBeLessThan(1);
+  expect(settled.heightError).toBeLessThan(1);
 });

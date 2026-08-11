@@ -23,28 +23,6 @@
   --wall-inset-border: rgb(255 255 255 / 0.045);
   --wall-inset-ledge: rgb(0 0 0 / 0.13);
 
-  --trail-opacity: calc(0.32 - var(--trail-age) * 0.045);
-
-  --box-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
-  --box-border-color: hsl(var(--piece-hue) 48% 27%);
-  --box-cross-color: hsl(var(--piece-hue) 48% 29% / 0.32);
-  --crate-face-border: hsl(var(--piece-hue) 46% 22% / 0.4);
-  --crate-face-bg: hsl(var(--piece-hue) 50% 72% / 0.55);
-  --box-home-shadow:
-    inset 0 0 0 clamp(2px, 0.25vw, 3px) rgb(255 255 255 / 0.38),
-    0 0 0 clamp(1px, 0.2vw, 2px) hsl(var(--piece-hue) 44% 28%),
-    0 0 14px hsl(var(--piece-hue) 68% 68% / 0.48);
-  --box-dead-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
-  --box-dead-border: hsl(12 65% 45%);
-  --box-dead-shadow:
-    0 0 10px rgb(200 102 77 / 0.35),
-    inset 0 0 0 clamp(1px, 0.18vw, 2px) rgb(200 102 77 / 0.25);
-
-  --goal-border: hsl(var(--piece-hue) 32% 40%);
-  --goal-bg:
-    radial-gradient(circle, transparent 32%, hsl(var(--piece-hue) 34% 66% / 0.42) 34% 42%, transparent 44%),
-    hsl(var(--piece-hue) 30% 82% / 0.5);
-
   --robot-border: #294d5d;
   --antenna-bg: #294d5d;
   --robot-face-bg:
@@ -112,6 +90,10 @@
 
 .goal {
   --piece-hue: 95;
+  --goal-border: hsl(var(--piece-hue) 32% 40%);
+  --goal-bg:
+    radial-gradient(circle, transparent 32%, hsl(var(--piece-hue) 34% 66% / 0.42) 34% 42%, transparent 44%),
+    hsl(var(--piece-hue) 30% 82% / 0.5);
 
   position: absolute;
   z-index: 1;
@@ -199,10 +181,26 @@
   background: var(--blue-500);
   opacity: var(--trail-opacity);
   content: "";
+  transform: scale(var(--trail-scale));
+  transform-origin: center;
 }
 
 .box {
   --piece-hue: 32;
+  --box-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
+  --box-border-color: hsl(var(--piece-hue) 48% 27%);
+  --box-cross-color: hsl(var(--piece-hue) 48% 29% / 0.32);
+  --crate-face-border: hsl(var(--piece-hue) 46% 22% / 0.4);
+  --crate-face-bg: hsl(var(--piece-hue) 50% 72% / 0.55);
+  --box-home-shadow:
+    inset 0 0 0 clamp(2px, 0.25vw, 3px) rgb(255 255 255 / 0.38),
+    0 0 0 clamp(1px, 0.2vw, 2px) hsl(var(--piece-hue) 44% 28%),
+    0 0 14px hsl(var(--piece-hue) 68% 68% / 0.48);
+  --box-dead-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
+  --box-dead-border: hsl(12 65% 45%);
+  --box-dead-shadow:
+    0 0 10px rgb(200 102 77 / 0.35),
+    inset 0 0 0 clamp(1px, 0.18vw, 2px) rgb(200 102 77 / 0.25);
 
   position: absolute;
   inset: 7%;
@@ -418,8 +416,12 @@
   --wall-inset-border: rgb(255 255 255 / 0.06);
   --wall-inset-ledge: rgb(0 0 0 / 0.18);
 
-  --trail-opacity: calc(0.28 - var(--trail-age) * 0.04);
+  --robot-border: #4a9aba;
+  --antenna-bg: #7ab8d4;
+  --robot-face-bg: rgba(255, 255, 255, 0.12);
+}
 
+:global(html[data-theme="dark"]) .box {
   --box-bg: linear-gradient(135deg, #8b6914 0%, #a07d1c 50%, #8b6914 100%);
   --box-border-color: #c4a235;
   --box-cross-color: rgba(255, 255, 255, 0.15);
@@ -431,13 +433,11 @@
   --box-dead-shadow:
     0 0 10px rgb(200 102 77 / 0.35),
     inset 0 0 0 clamp(1px, 0.18vw, 2px) rgb(200 102 77 / 0.25);
+}
 
+:global(html[data-theme="dark"]) .goal {
   --goal-border: rgba(255, 255, 255, 0.35);
   --goal-bg: rgba(255, 255, 255, 0.08);
-
-  --robot-border: #4a9aba;
-  --antenna-bg: #7ab8d4;
-  --robot-face-bg: rgba(255, 255, 255, 0.12);
 }
 
 @media (forced-colors: active) {
@@ -490,7 +490,13 @@
     --board-border-color: rgb(23 25 22 / 0.4);
     --floor-inset-shadow: inset 0 0 0 1px rgb(23 25 22 / 0.1);
     --wall-base: #282c26;
+  }
+
+  .box {
     --box-border-color: hsl(var(--piece-hue) 48% 20%);
+  }
+
+  .goal {
     --goal-border: hsl(var(--piece-hue) 42% 30%);
   }
 
@@ -500,10 +506,6 @@
 
   .goal::after {
     opacity: 0.8;
-  }
-
-  .trailMarker::after {
-    --trail-opacity: calc(0.5 - var(--trail-age) * 0.06);
   }
 
   .box[data-deadlocked] {

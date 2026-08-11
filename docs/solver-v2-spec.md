@@ -1,5 +1,12 @@
 # Sokomind Solver V2
 
+> Implementation note (August 11, 2026): this is the original design
+> specification, not a completion report. Current behavior and audited
+> deviations are recorded in `docs/solver-v2-progress.md`. In particular,
+> goal-depth macro pruning is disabled, and the proposed local-room,
+> local-corral, doorway-crossing, and generic registry scaffolds were removed
+> after they failed the proof-and-unique-benefit acceptance bar.
+
 ## Anytime Optimality, Search Quality, Memory Efficiency, and Performance Plan
 
 ## 1. Mission
@@ -1057,7 +1064,6 @@ Create:
 
 ```text
 src/solver/search/proof-heuristics.ts
-src/solver/search/proof-heuristic-registry.ts
 ```
 
 Do not port every production heuristic at once.
@@ -1069,13 +1075,14 @@ Phase one:
 * Typed assignment push lower bound
 * Corrected first-push walk lower bound
 
-Phase two, after oracle tests:
+Phase two candidates, only after oracle and unique-benefit tests:
 
 * Exact disjoint room-pattern lower bounds
 * Exact pair-conflict lower bounds
-* Exact closed local-room lower bounds
-* Exact closed local-corral lower bounds
-* Proven doorway-crossing lower bounds
+
+The local-room, local-corral, and doorway-crossing prototypes were later
+rejected and removed. Room/corral variants lacked a complete global
+box-exchange proof, while the doorway bound was dominated by typed assignment.
 
 ## 13.2 Combination rules
 
@@ -2024,7 +2031,6 @@ Create:
 
 ```text
 src/solver/search/proof-heuristics.ts
-src/solver/search/proof-heuristic-registry.ts
 ```
 
 Update as required:

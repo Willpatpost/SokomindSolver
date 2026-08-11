@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 
 /** Mirrors OutputRecord from solve-sokomind.ts (schema v3). */
 interface ResultRecord {
+  readonly [key: string]: unknown;
   schemaVersion: number;
   puzzleId: string;
   rows: readonly string[];

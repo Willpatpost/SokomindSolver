@@ -1,7 +1,7 @@
 # Sokomind Consolidated Project Audit — August 11, 2026
 
-**Status:** Remediated — all 20 recorded findings are closed in this working tree
-**Base revision:** `89bc98d` (`main`)
+**Status:** Remediated — all 30 recorded findings are closed in this working tree
+**Base revision:** `19cdf79` (`main`)
 **Audit and remediation date:** 2026-08-11
 **Scope:** Architecture, game core, catalog, persistence, editor, solver and
 proof systems, workers, PWA behavior, accessibility, tests, CI, documentation,
@@ -58,7 +58,7 @@ Solver UI
 
 | ID | Former priority | Area | Resolution |
 |---|---|---|---|
-| AUD-001 | P0 | Solver | Closed — sound IDA* dominance and optimal-cache v4 |
+| AUD-001 | P0 | Solver | Closed — sound IDA* dominance and optimal-cache v5 |
 | AUD-002 | P1 | Checkpoints | Closed — exact-state checkpoint v2 and incumbent replay |
 | AUD-003 | P1 | Resources | Closed — one remaining-budget ledger and merged telemetry |
 | AUD-004 | P1 | Protocol | Closed — deep validation, identity binding, and replay |
@@ -78,6 +78,16 @@ Solver UI
 | AUD-018 | P3 | Architecture | Closed — neutral solver UI types and cycle gate |
 | AUD-019 | P3 | Documentation | Closed — recursive link/anchor/path validation and reconciled docs |
 | AUD-020 | P2 | Editor persistence | Closed — latest draft flushes on page exit/reload |
+| AUD-021 | P0 | Solver pruning | Closed — unsafe goal-depth macro removed and proof cache invalidated |
+| AUD-022 | P1 | Solver regression gates | Closed — independent inter-rooms oracle and complete frozen-optimum manifest |
+| AUD-023 | P1 | Rewrite resources | Closed — disjoint expanded/generated/time allocations per lane |
+| AUD-024 | P1 | Benchmarks | Closed — production adapter harness, exact limits, raw samples, immutable artifacts |
+| AUD-025 | P1 | Proof mechanisms | Closed — five unproven or dominated scaffolds removed |
+| AUD-026 | P2 | Efficiency evidence | Closed — exact feature toggles, exercise counters, and controlled A/B runs |
+| AUD-027 | P2 | Audio defaults | Closed — fresh profiles enable effects and music at 50% |
+| AUD-028 | P2 | Light theme | Closed — hue-dependent box and goal variables resolve on each piece |
+| AUD-029 | P3 | Move trail | Closed — six-step opacity and size decay is explicit and testable |
+| AUD-030 | P2 | Animation | Closed — clean-target adjacent-only FLIP animation |
 
 ## Detailed findings and implemented fixes
 
@@ -91,8 +101,9 @@ backed `f` value from a more expensive path. That value was unsafe for the new
 **Fix:** IDA* now stores collision-checked exact state plus the lowest `g` seen
 in the current contour. It prunes only when the prior `g` is no greater than the
 current one, clears proof-pruning state between contours, and no longer backs
-path-dependent `f` values into the transposition table. Optimal-cache schema v4
-invalidates all v1–v3 proof records.
+path-dependent `f` values into the transposition table. Optimal-cache schema v5
+invalidates all v1–v4 proof records, including records affected by the later
+goal-depth macro finding.
 
 **Evidence:** the original two-box counterexample returns 11 moves / 4 pushes
 under exact A*, contour-scoped IDA*, and the compatibility persistent mode. A
@@ -339,6 +350,165 @@ shared previews remain excluded, so the fix does not reintroduce AUD-006.
 **Evidence:** the mobile browser test edits and resizes an imported draft,
 reloads immediately, and then successfully starts its preserved playtest.
 
+### AUD-021 — Goal-depth macro pruning could discard an optimal route
+
+**Discovered during the Solver V2 audit:** the goal-room macro treated a local
+depth order as a proof obligation even when the global puzzle allowed a
+different legal packing order. That made the prune unsuitable for an exact
+move-optimal search and could contaminate cached proof results.
+
+**Fix:** goal-macro analysis and pruning were removed from both exact A* and
+IDA*. The classic solver versions were advanced to 2.1.0 and optimal-cache
+schema v5 rejects every earlier proof record.
+
+**Evidence:** the inter-rooms counterexample and every classic-eligible frozen
+known-optimum fixture are replayed against their expected move/push totals.
+
+### AUD-022 — Frozen fixtures did not form a complete optimum gate
+
+**Former gap:** a few regular hand-picked boards stood in for the complete
+classic-eligible corpus, and the inter-rooms failure was absent. A regression
+could therefore pass while changing a known optimum elsewhere.
+
+**Fix:** the repository now owns a 25-fixture move/push optimum manifest and a
+dedicated independent step-oracle regression for inter-rooms. Both exact
+engines must return its 28-move / 7-push proof with matching lower and upper
+bounds.
+
+**Evidence:** all 25 eligible frozen fixtures matched their known optima and
+replayed successfully. `expert-tetris` remained correct at 38 moves / 19
+pushes but took about 150 seconds in the audit environment, so its performance
+is tracked as an improvement opportunity rather than a correctness failure.
+
+### AUD-023 — Parallel rewrite lanes each received the full budget
+
+**Former gap:** concurrent incumbent rewrites shared state and time fields in
+name only. Each lane could receive the complete allowance, and generated-state
+work inside bridge and permutation searches was not consistently charged.
+
+**Fix:** one deterministic allocator divides finite elapsed, expanded, and
+generated ceilings into disjoint shares, including zero-share lanes when the
+budget is smaller than the worker count. Every rewrite window reports and
+enforces generated work, and generated source was rebuilt from its canonical
+engine source.
+
+**Evidence:** allocator tests prove that lane shares sum exactly to the parent
+budget and engine tests exhaust a deliberately small generated-state ceiling.
+
+### AUD-024 — The V2 benchmark bypassed production behavior
+
+**Former gap:** Sokomind benchmarks invoked the generated kernel directly,
+classic requests omitted their recorded limits, warm-ups occurred in discarded
+processes, child output was weakly identified, variance was discarded, peak
+memory was mislabeled, and saved artifacts could be overwritten.
+
+**Fix:** the schema-v3 harness uses the production Node solver adapter and six
+explicit production profiles. Requests carry the exact recorded limits;
+samples retain raw timings and min/median/max/MAD summaries; RSS fields separate
+before, after, and peak observations; child exit and identity are strict;
+artifacts carry repository/corpus/tuning/feature fingerprints and are immutable
+unless `--force` is explicit. `--warmup=0` is preserved, and untimed isolated
+preflights are described honestly rather than as JIT warm-up.
+
+**Evidence:** unit tests cover parsing, corpus/profile coverage, request
+identity, deterministic drift, and baseline promotion. A production
+`sokomind-fast` ultra-tiny smoke run completed through the adapter.
+
+### AUD-025 — Five proof mechanisms were disconnected and uncertified
+
+**Former gap:** local-room lower-bound/deadlock, local-corral lower-bound/deadlock,
+and doorway-crossing mechanisms existed behind a registry but were never part
+of production proof search. Their tests established non-negativity or
+registration rather than proof soundness and unique benefit.
+
+**Fix:** the five mechanisms, dead registry, exports, caches, and misleading
+tests were removed. Local-room selection did not account for every compatible
+global box exchange, local-corral bounds lacked a closed-boundary proof, the
+corral deadlock was dominated by active PI-corral pruning, and the doorway
+bound was dominated by typed assignment.
+
+**Evidence:** the active proof barrel now exposes only mechanisms used by the
+search kernels and protected by exact-oracle tests. Future candidates must
+prove admissibility or deadlock implication and demonstrate unique exercised
+benefit before integration.
+
+### AUD-026 — Solver efficiency claims lacked controlled feature ablation
+
+**Former gap:** V2 documentation listed algorithms as improvements without a
+way to disable one mechanism while holding all other search conditions fixed.
+Counters also could not show whether the feature had actually executed.
+
+**Fix:** exact A* and IDA* resolve a validated, fingerprinted nine-feature
+vector. Disabled features skip preprocessing as well as evaluation, and each
+feature exposes exercise telemetry. The benchmark CLI can pair an exact control
+with `without:<feature>` under identical board, limits, version, algorithm, and
+remaining features. Non-default IDA* vectors are rejected when checkpointing
+is requested so an exhausted contour cannot cross configurations.
+
+**Evidence:** both exact engines prove the inter-rooms optimum with every
+individual feature disabled and with all features disabled. Pattern-database
+A/B produced identical work on both sides: A* expanded 312 / generated 1,433
+states and IDA* expanded 2,705 / generated 12,640. Both are correctly
+classified as **no effect** rather than improvements.
+
+### AUD-027 — Fresh profiles started with audio disabled and uneven gain
+
+**Requested UX correction:** sound effects and music were opt-in, with effects
+at 72% and music at 28%.
+
+**Fix:** fresh or malformed preference records enable both channels at 50%.
+The schema remains version 1 so a returning user's explicit mute and volume
+choices are not overwritten. Web Audio still waits for a browser-approved
+input gesture.
+
+**Evidence:** unit and browser tests assert the fresh settings and then mute,
+reload, and confirm that the explicit choice persists.
+
+### AUD-028 — Typed pieces lost their colors in light mode
+
+**Former gap:** box and goal color variables were declared on the board but
+depended on `--piece-hue`, which existed only on descendant pieces. CSS custom
+properties resolved the dependency at the wrong element, invalidating the
+background and leaving light-theme pieces white.
+
+**Fix:** every hue-dependent box variable is declared on `.box`, and every
+hue-dependent goal variable on `.goal`; dark and high-contrast overrides target
+the same owning elements.
+
+**Evidence:** the browser regression requires non-empty, pairwise-distinct
+computed backgrounds for A, B, and C boxes and storage goals in forced light
+mode.
+
+### AUD-029 — Move-trail age did not affect opacity or size
+
+**Former gap:** all six trail dots used the same inset and full opacity because
+an ancestor variable referenced child-only `--trail-age`; the typed
+multiplication was also not portable CSS.
+
+**Fix:** the trail component assigns explicit clamped opacity and scale values
+for ages zero through five, and the pseudo-element applies both directly.
+
+**Evidence:** a six-position browser route requires opacity and transform scale
+to decrease strictly at every age.
+
+### AUD-030 — Rapid movement accumulated transformed FLIP geometry
+
+**Former gap:** a new movement measured the keeper while the prior WAAPI
+transform was active, then cancelled the animation and saved the contaminated
+rectangle. Rapid input could compound translations and make the keeper appear
+to fly across the board.
+
+**Fix:** each layout pass cancels first, measures clean grid geometry, and
+compares logical positions. The transform is derived from the logical cell
+delta and current cell pitch, so surrounding page reflow cannot add another
+axis. FLIP runs only for a one-cell Manhattan move on the same puzzle; reset and
+multi-step changes snap. Identity-guarded finish and cancel handlers release
+the animation reference.
+
+**Evidence:** rapid-input browser coverage inspects the keeper keyframes,
+rejects any diagonal or longer-than-one-cell translation, then verifies the
+settled slot is centered on its declared grid cell with no active animation.
+
 ## Validation evidence
 
 | Check | Result |
@@ -347,22 +517,28 @@ reloads immediately, and then successfully starts its preserved playtest.
 | ESLint | Passed |
 | Generated solver freshness | Passed |
 | Generated catalog freshness | Passed |
-| Unit suite | 1,359 passed, 0 failed |
-| All-source typed coverage gate | Passed above 65% lines/statements (60% floor) |
-| Focused typed and generated-engine coverage | Passed |
+| Unit suite | 1,305 passed, 0 failed |
+| All-source typed coverage gate | Passed |
+| Focused typed coverage | Passed: 92.87% lines, 87.62% branches, 94.02% functions |
+| Generated-engine coverage | Passed: 51.66% lines, 72.10% branches, 64.85% functions |
 | Critical route behavior matrix | Passed for Home, Selector, Play, Editor, Stats |
 | Markdown links, anchors, and paths | Passed |
-| Production build and static artifact | Passed; 9 static checks |
-| Chromium desktop browser matrix | 56 passed |
+| Production build and static artifact | Passed; 9 static checks; 351,971 / 353,000 aggregate gzip bytes |
+| Chromium desktop browser matrix | 59 passed |
+| WebKit UI regression matrix | Passed the 6 app and 5 visual-layout checks |
 | Mobile Chrome editor regression | Passed |
 | WebKit editor matrix | 8 passed, 1 expected clipboard skip |
 | Mobile Safari editor regression | Passed |
 | Dependency advisory audit | 0 vulnerabilities |
-| Grand Hall performance guard | Passed base, mirrored, rotated, and rewrite cases in 44.2 s total |
+| Frozen exact-optimum manifest | Passed all 25 eligible fixtures at their known move/push optima |
+| Controlled PDB A/B | A* and IDA* both replayed and proved the 28 / 7 inter-rooms optimum on both sides |
+| V2 production and memory smoke profiles | Passed with schema-3 output and enforced limits |
+| Grand Hall performance guard | Passed base, mirrored, rotated, and rewrite cases in 45.2 s total |
 
-The remaining cross-browser and long-running solver performance commands remain
-normal release gates and should be recorded whenever this working tree is
-released.
+Firefox could not start on this Windows host because its software compositor
+failed before page startup. The Firefox matrix and the full multi-profile V2
+baseline capture remain normal CI/release gates; the failure was environmental,
+not a page assertion.
 
 ## Security, privacy, PWA, and accessibility assessment
 

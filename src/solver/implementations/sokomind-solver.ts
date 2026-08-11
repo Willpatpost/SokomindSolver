@@ -1641,6 +1641,7 @@ export function solutionImprovementPlan(
   pass: number,
   rewriteProfile: SokomindTuningProfile,
   candidateIndex = 0,
+  maxGenerated = Infinity,
 ): EnginePlan {
   const windowVisited = rewriteProfile.rewriteWindowVisited;
   const moveScale = rewriteProfile.rewriteMoveWindowScale;
@@ -1653,6 +1654,7 @@ export function solutionImprovementPlan(
       state,
       solutionPath: legacyPathFromSolution(incumbent),
       maxVisited,
+      maxGenerated,
       permutationVisited: Math.floor(maxVisited * 0.2),
       permutationWindowPushes: Object.freeze([8, 16, 32]),
       perPermutationWindowVisited: 1_500,
@@ -1676,6 +1678,52 @@ interface ImprovedIncumbent {
   readonly cancelled: boolean;
 }
 
+export interface ParallelRewriteBudget {
+  readonly maxVisited: number;
+  readonly maxGenerated: number;
+  readonly maxElapsedMs: number;
+}
+
+function dividedIntegerBudget(total: number, count: number): readonly number[] {
+  if (count <= 0) return Object.freeze([]);
+  if (!Number.isFinite(total)) {
+    return Object.freeze(Array.from({ length: count }, () => Infinity));
+  }
+  const safeTotal = Math.floor(finiteNonNegative(total));
+  const base = Math.floor(safeTotal / count);
+  const remainder = safeTotal % count;
+  return Object.freeze(
+    Array.from(
+      { length: count },
+      (_, index) => base + (index < remainder ? 1 : 0),
+    ),
+  );
+}
+
+/**
+ * Reserves disjoint state and wall-clock shares before parallel rewrites start.
+ * Taking the snapshot once prevents every concurrent candidate from observing
+ * and spending the same global remainder.
+ */
+export function allocateParallelRewriteBudgets(
+  candidateCount: number,
+  maxVisited: number,
+  maxGenerated: number | undefined,
+  maxElapsedMs: number,
+): readonly ParallelRewriteBudget[] {
+  const count = Math.max(0, Math.floor(finiteNonNegative(candidateCount)));
+  const visitedShares = dividedIntegerBudget(maxVisited, count);
+  const generatedShares = dividedIntegerBudget(maxGenerated ?? Infinity, count);
+  const elapsedShares = dividedIntegerBudget(maxElapsedMs, count);
+  return Object.freeze(
+    Array.from({ length: count }, (_, index) => Object.freeze({
+      maxVisited: visitedShares[index],
+      maxGenerated: generatedShares[index],
+      maxElapsedMs: elapsedShares[index],
+    })),
+  );
+}
+
 async function improveIncumbent(
   run: SearchRunState,
   state: LegacyState,
@@ -1683,6 +1731,7 @@ async function improveIncumbent(
   createWorker: () => SokomindEngineWorker,
   options: SokomindSolverAdapterOptions,
   candidateIndex = 0,
+  reservedGenerated = Infinity,
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -1753,9 +1802,12 @@ async function improveIncumbent(
     const maxVisited = Math.min(
       configuredVisited,
       remainingRequest.limits?.maxExpandedStates ?? Infinity,
+    );
+    const maxGenerated = Math.min(
+      reservedGenerated,
       remainingRequest.limits?.maxGeneratedStates ?? Infinity,
     );
-    if (maxVisited < 1) break;
+    if (maxVisited < 1 || maxGenerated < 1) break;
 
     try {
       const outcome = await runPhase(
@@ -1768,6 +1820,7 @@ async function improveIncumbent(
             pass,
             run.profile,
             candidateIndex,
+            Math.floor(maxGenerated),
           ),
         ],
         createWorker,
@@ -1898,26 +1951,46 @@ async function harvestAndImprove(
     true,
   );
 
-  const dividedOptions: SokomindSolverAdapterOptions = rewriteCount > 1
-    ? {
-        ...options,
-        improvementMaxVisited:
-          options.improvementMaxVisited !== undefined
-            ? Math.max(1, Math.floor(options.improvementMaxVisited / rewriteCount))
-            : Math.floor(defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes) / rewriteCount),
-        improvementMaxElapsedMs:
-          options.improvementMaxElapsedMs !== undefined
-            ? Math.max(1, Math.floor(options.improvementMaxElapsedMs / rewriteCount))
-            : Math.floor(DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS / rewriteCount),
-        improvementMaxPasses: 1,
-      }
-    : options;
+  const remainingRewriteRequest = withRemainingLimits(run);
+  const configuredRewriteVisited = configuredBudget(
+    options.improvementMaxVisited,
+    defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes),
+  );
+  const totalRewriteVisited = Math.min(
+    configuredRewriteVisited,
+    remainingRewriteRequest?.limits?.maxExpandedStates ?? Infinity,
+  );
+  const configuredRewriteElapsed = configuredBudget(
+    options.improvementMaxElapsedMs,
+    DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
+  );
+  const rewriteBudgets = remainingRewriteRequest
+    ? allocateParallelRewriteBudgets(
+        rewriteCount,
+        totalRewriteVisited,
+        remainingRewriteRequest.limits?.maxGeneratedStates,
+        configuredRewriteElapsed,
+      )
+    : [];
 
   const rewrittenCandidates: { solution: SolverSolution; discoveryOrder: number }[] = [];
   const rewritePromises = rewriteCandidates.map(async (incumbent, candidateIndex) => {
-    if (run.context.signal.aborted) {
+    const budget = rewriteBudgets[candidateIndex];
+    if (
+      run.context.signal.aborted ||
+      !budget ||
+      budget.maxVisited < 1 ||
+      budget.maxGenerated < 1 ||
+      budget.maxElapsedMs < 1
+    ) {
       return { solution: incumbent.solution, discoveryOrder: incumbent.discoveryOrder };
     }
+    const dividedOptions: SokomindSolverAdapterOptions = {
+      ...options,
+      improvementMaxVisited: budget.maxVisited,
+      improvementMaxElapsedMs: budget.maxElapsedMs,
+      improvementMaxPasses: 1,
+    };
     const improved = await improveIncumbent(
       run,
       state,
@@ -1925,6 +1998,7 @@ async function harvestAndImprove(
       createWorker,
       dividedOptions,
       candidateIndex,
+      budget.maxGenerated,
     );
     return {
       solution: improved.solution,

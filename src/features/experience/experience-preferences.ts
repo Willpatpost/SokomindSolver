@@ -38,10 +38,10 @@ export type ExperiencePreferencePatch = Partial<
 export const DEFAULT_EXPERIENCE_PREFERENCES: ExperiencePreferences =
   Object.freeze({
     version: EXPERIENCE_PREFERENCES_VERSION,
-    soundEnabled: false,
-    musicEnabled: false,
-    effectsVolume: 0.72,
-    musicVolume: 0.28,
+    soundEnabled: true,
+    musicEnabled: true,
+    effectsVolume: 0.5,
+    musicVolume: 0.5,
     motion: "system",
     theme: "system",
   });

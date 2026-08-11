@@ -31,14 +31,18 @@ export interface EngineResultPayload {
   readonly error?: string;
   readonly frontier?: number;
   readonly generated?: number;
+  readonly improvements?: number;
   readonly moveVisited?: number;
+  readonly moveImprovements?: number;
   readonly path?: readonly string[] | null;
   readonly peakFrontier?: number;
   readonly performance?: Readonly<Record<string, unknown>>;
+  readonly permutationVisited?: number;
   readonly retained?: number;
   readonly status?: string;
   readonly terminationReason?: string;
   readonly visited?: number;
+  readonly windows?: number;
 }
 
 export type EngineSearchResult = EngineResultPayload;

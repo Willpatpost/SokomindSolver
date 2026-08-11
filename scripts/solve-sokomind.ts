@@ -509,12 +509,12 @@ async function main(): Promise<void> {
         }
       : {}),
     options: {
-      "sokomind-solver": parseSokomindOptions({
+      "sokomind-solver": { ...parseSokomindOptions({
         mode: job.mode,
         proofAlgorithm: job.proofAlgorithm,
         deterministic: job.deterministic,
         proofParallelism: job.parallelism,
-      }),
+      }) },
     },
   };
 

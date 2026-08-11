@@ -24,8 +24,9 @@ echo "Exit: $P1_EXIT"
 echo ""
 
 echo "=== PHASE 2 ==="
+ARTIFACT="tests/fixtures/solver-v2/baseline-v3-${SLURM_JOB_ID:-manual}-$(date -u +%Y%m%dT%H%M%SZ).json"
 npm run benchmark:solver:v2 -- \
-  --save=tests/fixtures/solver-v2/baseline-v0.json \
+  --save="$ARTIFACT" \
   2>&1
 echo ""
 

@@ -99,6 +99,21 @@ function solved(
   return result;
 }
 
+const VOLATILE_TIMING_COUNTERS = new Set([
+  "pdbBuildTimeMs",
+  "deadlockTableBuildTimeMs",
+]);
+
+function deterministicCounters(
+  counters: Readonly<Record<string, number>> | undefined,
+): Readonly<Record<string, number>> {
+  return Object.fromEntries(
+    Object.entries(counters ?? {}).filter(
+      ([name]) => !VOLATILE_TIMING_COUNTERS.has(name),
+    ),
+  );
+}
+
 function stateKey(snapshot: GameSnapshot): string {
   const boxes = snapshot.boxes
     .map(
@@ -318,7 +333,10 @@ describe("classic search strategies", () => {
     assert.deepEqual(first.solution.pushes, second.solution.pushes);
     assert.deepEqual(first.metrics.expandedStates, second.metrics.expandedStates);
     assert.deepEqual(first.metrics.generatedStates, second.metrics.generatedStates);
-    assert.deepEqual(first.metrics.counters, second.metrics.counters);
+    assert.deepEqual(
+      deterministicCounters(first.metrics.counters),
+      deterministicCounters(second.metrics.counters),
+    );
   });
 });
 

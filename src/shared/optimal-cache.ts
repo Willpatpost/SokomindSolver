@@ -15,7 +15,7 @@ export interface OptimalRecord {
 }
 
 export interface OptimalCache {
-  readonly version: 4;
+  readonly version: 5;
   readonly records: Readonly<Record<string, OptimalRecord>>;
 }
 
@@ -24,7 +24,7 @@ export type OptimalCacheMutationResult = StorageMutationResult & {
 };
 
 const EMPTY_CACHE: OptimalCache = Object.freeze({
-  version: 4,
+  version: 5,
   records: Object.freeze({}),
 });
 
@@ -57,12 +57,13 @@ function normalizeRecord(value: unknown): OptimalRecord | undefined {
 
 /**
  * Accept only records created by the corrected proof pipeline. Versions 1-3
- * are intentionally invalidated: version 3 could contain false IDA* optimality
- * certificates created by path-dependent backed-f transposition pruning.
+ * could contain false IDA* optimality certificates created by path-dependent
+ * backed-f transposition pruning. Version 4 could contain false certificates
+ * created by the unsound goal-depth macro prune.
  */
 export function normalizeOptimalCache(value: unknown): OptimalCache {
   if (!isRecord(value) || !isRecord(value.records)) return EMPTY_CACHE;
-  if (value.version !== 4) return EMPTY_CACHE;
+  if (value.version !== 5) return EMPTY_CACHE;
 
   const records: Record<string, OptimalRecord> = {};
   for (const [puzzleId, candidate] of Object.entries(value.records)) {
@@ -71,7 +72,7 @@ export function normalizeOptimalCache(value: unknown): OptimalCache {
     if (record) records[puzzleId] = record;
   }
   return Object.freeze({
-    version: 4,
+    version: 5,
     records: Object.freeze(records),
   });
 }
@@ -99,7 +100,7 @@ export function mergeOptimalCaches(
   }
   if (!changed) return first;
   return Object.freeze({
-    version: 4,
+    version: 5,
     records: Object.freeze(records),
   });
 }
@@ -177,7 +178,7 @@ export function setOptimalRecord(
   record: OptimalRecord,
 ): OptimalCache {
   return {
-    version: 4,
+    version: 5,
     records: { ...cache.records, [puzzleId]: record },
   };
 }

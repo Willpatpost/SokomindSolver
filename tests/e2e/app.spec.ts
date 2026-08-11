@@ -70,28 +70,39 @@ test("persists explicit audio and reduced-motion preferences", async ({ page }) 
   const audio = page.getByRole("button", { name: /all audio/ });
   const audioSupported = await audio.isEnabled();
   if (audioSupported) {
-    await audio.click();
+    await expect(audio).toHaveAccessibleName("Mute all audio");
     await expect(audio).toHaveAttribute("aria-pressed", "true");
   } else {
     await expect(audio).toBeDisabled();
-    await expect(audio).toHaveAttribute("aria-pressed", "false");
   }
 
   await page
     .getByRole("button", { name: "Sound and motion settings" })
     .click();
-  await page.getByRole("combobox", { name: /motion/i }).selectOption("reduced");
+  const settings = page.getByRole("dialog", { name: "Sound & motion" });
+  if (audioSupported) {
+    await expect(settings.getByRole("checkbox", { name: /all audio/i })).toBeChecked();
+    await expect(settings.getByRole("checkbox", { name: /^music/i })).toBeChecked();
+    await expect(settings.locator("output")).toHaveText(["50%", "50%"]);
+  }
+  await settings.getByRole("combobox", { name: /motion/i }).selectOption("reduced");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
+  await settings.getByRole("button", { name: "Close" }).click();
+
+  if (audioSupported) {
+    await page.getByRole("button", { name: "Mute all audio" }).click();
+    await expect(
+      page.getByRole("button", { name: "Turn on all audio" }),
+    ).toHaveAttribute("aria-pressed", "false");
+  }
 
   await page.reload();
   if (audioSupported) {
     await expect(
-      page.getByRole("button", { name: "Mute all audio" }),
-    ).toHaveAttribute("aria-pressed", "true");
-  } else {
-    await expect(
       page.getByRole("button", { name: "Turn on all audio" }),
-    ).toBeDisabled();
+    ).toHaveAttribute("aria-pressed", "false");
+  } else {
+    await expect(page.getByRole("button", { name: /all audio/ })).toBeDisabled();
   }
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
 });

@@ -2802,9 +2802,10 @@ function moveBridgeAStarSearch(payload) {
   const heuristicMemo = new Map();
   const frontier = new Heap(), bestCost = new Map(), cameFrom = new Map();
   const maxVisited = payload.maxVisited || 1500;
+  const maxGenerated = payload.maxGenerated ?? Infinity;
   const moveUpperBound = payload.moveUpperBound ?? Infinity;
   const pushUpperBound = payload.pushUpperBound ?? Infinity;
-  let visited = 0, order = 0, peakFrontier = 1;
+  let visited = 0, generated = 0, order = 0, peakFrontier = 1;
 
   initial.signature = exactPushIdentity(initial, board);
   initial.estimate = targetLayoutHeuristic(initial.boxes, targetBoxes, board, heuristicMemo);
@@ -2816,7 +2817,11 @@ function moveBridgeAStarSearch(payload) {
   bestCost.set(initial.signature, 0);
   frontier.push([initial.estimate, order++, initial]);
 
-  while (frontier.length && visited < maxVisited) {
+  while (
+    frontier.length &&
+    visited < maxVisited &&
+    generated < maxGenerated
+  ) {
     const current = frontier.pop()[2];
     if (bestCost.get(current.signature) !== current.cost) continue;
     visited++;
@@ -2829,6 +2834,7 @@ function moveBridgeAStarSearch(payload) {
           return {
             path: [...reconstructPath(cameFrom, current.signature), ...walking],
             visited,
+            generated,
             bestMoves: current.cost + walking.length,
             bestPushes: current.pushes,
             peakFrontier,
@@ -2839,6 +2845,7 @@ function moveBridgeAStarSearch(payload) {
     }
     const reachable = reachablePaths(current, board);
     for (const next of pushNeighbors(current, board, reachable)) {
+      if (generated >= maxGenerated) break;
       const child = {
         robot: next.robot,
         boxes: next.boxes,
@@ -2855,15 +2862,19 @@ function moveBridgeAStarSearch(payload) {
       bestCost.set(child.signature, child.cost);
       cameFrom.set(child.signature, {parent: current.signature, segment: next.path});
       frontier.push([child.cost + child.estimate, order++, child]);
+      generated++;
     }
     peakFrontier = Math.max(peakFrontier, frontier.length);
   }
   return {
     path: null,
     visited,
-    cutoff: frontier.length > 0,
+    generated,
+    cutoff: frontier.length > 0 || generated >= maxGenerated,
     peakFrontier,
-    terminationReason: frontier.length ? "budget" : "frontier-exhausted",
+    terminationReason: generated >= maxGenerated
+      ? "generated-budget"
+      : frontier.length ? "state-budget" : "frontier-exhausted",
   };
 }
 
@@ -2888,8 +2899,10 @@ function bridgeAStarSearch(payload) {
   let cameFrom = new Map();
   const weight = payload.weight ?? 1.4;
   const maxVisited = payload.maxVisited || 100000;
+  const maxGenerated = payload.maxGenerated ?? Infinity;
   const frontierLimit = payload.frontierLimit || 4000;
-  let visited = 0, order = 0, bestEstimate = Infinity, bestCheckpoint = null;
+  let visited = 0, generated = 0, order = 0;
+  let bestEstimate = Infinity, bestCheckpoint = null;
   let compactions = 0, peakFrontier = 0;
 
   initial.reachable = reachablePaths(initial, board);
@@ -2914,6 +2927,7 @@ function bridgeAStarSearch(payload) {
       return {
         path: reconstructPath(cameFrom, current.signature),
         visited,
+        generated,
         terminationReason: "target-reached",
         initialEstimate,
         bestEstimate: 0,
@@ -2927,9 +2941,10 @@ function bridgeAStarSearch(payload) {
         },
       };
     }
-    if (visited >= maxVisited) break;
+    if (visited >= maxVisited || generated >= maxGenerated) break;
     const currentReachable = reachablePaths(current, board);
     for (const rawNext of pushNeighbors(current, board, currentReachable)) {
+      if (generated >= maxGenerated) break;
       const next = expandPushMacro(rawNext, board, payload.forcedMacros !== false);
       if (!next) continue;
       const child = {
@@ -2962,6 +2977,7 @@ function bridgeAStarSearch(payload) {
       bestCost.set(child.signature, child.cost);
       cameFrom.set(child.signature, {parent: current.signature, segment: next.path});
       frontier.push([child.cost + weight * child.estimate, order++, child]);
+      generated++;
     }
     peakFrontier = Math.max(peakFrontier, frontier.length);
     if (frontier.length > frontierLimit * 2) {
@@ -2992,15 +3008,16 @@ function bridgeAStarSearch(payload) {
       retained: bestCost.size, peakFrontier, compactions,
       performance: performanceSnapshot(board.metrics)});
   }
-  const cutoff = visited >= maxVisited;
+  const cutoff = visited >= maxVisited || generated >= maxGenerated;
   const checkpoint = bestCheckpoint && {
     state: bestCheckpoint.state,
     path: reconstructPath(cameFrom, bestCheckpoint.signature),
     cost: bestCheckpoint.cost,
     estimate: bestCheckpoint.estimate,
   };
-  return {path: null, visited, cutoff,
-    terminationReason: cutoff ? "budget" : "frontier-exhausted",
+  return {path: null, visited, generated, cutoff,
+    terminationReason: generated >= maxGenerated ? "generated-budget" :
+      visited >= maxVisited ? "state-budget" : "frontier-exhausted",
     initialEstimate, bestEstimate, bestPushes: bestCheckpoint?.cost,
     frontier: frontier.length, retained: bestCost.size, peakFrontier, compactions,
     checkpoint};
@@ -3365,7 +3382,13 @@ function solutionPushChains(payload, path, board) {
   return chains;
 }
 
-function pushPermutationSearch(payload, path, board, maxVisited = 10000) {
+function pushPermutationSearch(
+  payload,
+  path,
+  board,
+  maxVisited = 10000,
+  maxGenerated = Infinity,
+) {
   const chains = solutionPushChains(payload, path, board);
   if (!chains) return {path: null, visited: 0};
   const totalPushes = chains.reduce((sum, chain) => sum + chain.length, 0);
@@ -3385,7 +3408,7 @@ function pushPermutationSearch(payload, path, board, maxVisited = 10000) {
   bestCost.set(initialIdentity, 0);
   frontier.push([totalPushes, order++, initial]);
 
-  while (frontier.length && visited < maxVisited) {
+  while (frontier.length && visited < maxVisited && generated < maxGenerated) {
     const state = frontier.pop()[2];
     const stateIdentity = identity(state);
     if (state.moves !== bestCost.get(stateIdentity)) continue;
@@ -3399,6 +3422,7 @@ function pushPermutationSearch(payload, path, board, maxVisited = 10000) {
     const reachable = reachablePaths(state, board);
     const occupied = ensureIndexByCell(denseBoxLayout(state.boxes, board), board);
     for (let boxIndex = 0; boxIndex < chains.length; boxIndex++) {
+      if (generated >= maxGenerated) break;
       const action = chains[boxIndex][state.progress[boxIndex]];
       if (!action) continue;
       const [boxY, boxX, label] = state.boxes[boxIndex];
@@ -3435,7 +3459,13 @@ function pushPermutationSearch(payload, path, board, maxVisited = 10000) {
     }
     peakFrontier = Math.max(peakFrontier, frontier.length);
   }
-  return {path: null, visited, generated, peakFrontier, cutoff: visited >= maxVisited};
+  return {
+    path: null,
+    visited,
+    generated,
+    peakFrontier,
+    cutoff: visited >= maxVisited || generated >= maxGenerated,
+  };
 }
 
 function solutionWindowRewriteSearch(payload) {
@@ -3454,7 +3484,8 @@ function solutionWindowRewriteSearch(payload) {
   }
   path = canonical;
   details = replaySolutionDetails(payload, path, board);
-  const maximumVisited = payload.maxVisited || 300000;
+  const maximumVisited = payload.maxVisited ?? 300000;
+  const maximumGenerated = payload.maxGenerated ?? Infinity;
   const permutationBudget = Math.min(
     payload.permutationVisited || 0,
     maximumVisited,
@@ -3467,7 +3498,8 @@ function solutionWindowRewriteSearch(payload) {
     const stride = Math.max(1, Math.floor(windowPushes / 2));
     for (let startPush = 0;
       startPush + windowPushes <= details.pushes &&
-        permutationVisited < permutationBudget;
+        permutationVisited < permutationBudget &&
+        permutationGenerated < maximumGenerated;
       startPush += stride) {
       const start = details.boundaries[startPush];
       const target = details.boundaries[startPush + windowPushes];
@@ -3480,7 +3512,7 @@ function solutionWindowRewriteSearch(payload) {
       const permutation = pushPermutationSearch({
         ...payload,
         state: serializedSearchState(start.state, board.rows),
-      }, segment, board, budget);
+      }, segment, board, budget, maximumGenerated - permutationGenerated);
       permutationVisited += permutation.visited || 0;
       permutationGenerated += permutation.generated || 0;
       permutationWindows++;
@@ -3510,7 +3542,7 @@ function solutionWindowRewriteSearch(payload) {
   }
   const windowSizes = payload.windowPushes || [8, 16, 32];
   const perWindowVisited = payload.windowVisited || 20000;
-  let visited = permutationVisited, windows = 0;
+  let visited = permutationVisited, generated = permutationGenerated, windows = 0;
   const pushWindowLimit = Math.min(
     maximumVisited,
     permutationVisited +
@@ -3520,7 +3552,11 @@ function solutionWindowRewriteSearch(payload) {
 
   for (const windowPushes of windowSizes) {
     let startPush = Math.max(0, details.pushes - windowPushes);
-    while (startPush >= 0 && visited < pushWindowLimit) {
+    while (
+      startPush >= 0 &&
+      visited < pushWindowLimit &&
+      generated < maximumGenerated
+    ) {
       const endPush = Math.min(details.pushes, startPush + windowPushes);
       if (endPush <= startPush) break;
       const start = details.boundaries[startPush];
@@ -3534,11 +3570,13 @@ function solutionWindowRewriteSearch(payload) {
         targetState: serializedSearchState(target.state, board.rows),
         upperBound: originalSegmentPushes,
         maxVisited: budget,
+        maxGenerated: maximumGenerated - generated,
         frontierLimit: payload.frontierLimit || 12000,
         forcedMacros: false,
         weight: 1,
       });
       visited += result.visited || 0;
+      generated += result.generated || 0;
       windows++;
       if (result.path) {
         const rewrittenEnd = replaySearchPath(start.state, board, result.path);
@@ -3582,7 +3620,9 @@ function solutionWindowRewriteSearch(payload) {
   const attemptedMoveWindows = new Set();
   let moveVisited = 0, moveImprovements = 0;
   for (let attempt = 0;
-    attempt < moveWindowAttempts && moveVisited < moveWindowBudget;
+    attempt < moveWindowAttempts &&
+      moveVisited < moveWindowBudget &&
+      generated < maximumGenerated;
     attempt++) {
     const rankedWindows = [];
     for (const windowPushes of moveWindowSizes) {
@@ -3620,9 +3660,11 @@ function solutionWindowRewriteSearch(payload) {
       moveUpperBound: window.segmentMoves,
       pushUpperBound: window.windowPushes + (payload.moveWindowExtraPushes ?? 4),
       maxVisited: budget,
+      maxGenerated: maximumGenerated - generated,
     });
     moveVisited += result.visited || 0;
     visited += result.visited || 0;
+    generated += result.generated || 0;
     windows++;
     if (!result.path) continue;
     const candidate = [
@@ -3642,6 +3684,7 @@ function solutionWindowRewriteSearch(payload) {
   return {
     path,
     visited,
+    generated,
     windows,
     improvements,
     moveVisited,

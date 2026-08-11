@@ -1,7 +1,7 @@
 # Sokomind Project Memory
 
 **Status:** Authoritative working memory for the current Sokomind project  
-**Last updated:** 2026-08-04  
+**Last updated:** 2026-08-11
 **Primary repository:** `Willpatpost/SokomindSolver`  
 **Active Waterfield checkout:** `/home/wpost003/alphaevolve/practice/Sokomind/Sokomind3`
 
@@ -411,136 +411,75 @@ A* uses exact BigInt identity.
 
 DFS and Greedy may retain string Zobrist keys because they do not claim proof optimality.
 
-IDA* keeps its current exact string identity in Sprint 1.
+IDA* also uses collision-free exact BigInt identity for proof search.
 
 ---
 
-## 11. Exact oracle plan
+## 11. Exact oracle
 
-Extract the existing move-level `exactStepOracle()` into:
+The independent move-level oracle is implemented in:
 
 ```text
 tests/support/exact-solver-oracle.ts
 ```
 
-The oracle must:
+The oracle:
 
 - use `stepSnapshot()` for all transitions
 - handle already-solved roots
 - return exact move and push values
-- return an explicit unsolvable result
+- returns `null` move/push values for an unsolvable state
 - use exact canonical deduplication
 - avoid duplicate authoritative implementations
 
-Suggested API:
+Current API shape:
 
 ```ts
-export type ExactStepOracleResult =
-  | {
-      readonly status: "solved";
-      readonly moves: number;
-      readonly pushes: number;
-      readonly score: number;
-    }
-  | {
-      readonly status: "unsolvable";
-    };
-
-export function exactStepOracle(
-  board: ParsedBoard,
-  startSnapshot: GameSnapshot,
-): ExactStepOracleResult;
+export interface OracleResult {
+  readonly exactMoves: number | null;
+  readonly exactPushes: number | null;
+  readonly statesExplored: number;
+}
 
 export function exactRemainingMoves(
-  board: ParsedBoard,
-  startSnapshot: GameSnapshot,
-): number;
+  board: CompiledSearchBoard,
+  initialRobot: number,
+  initialBoxes: readonly DenseBox[],
+): OracleResult;
 ```
 
-`exactRemainingMoves()` returns `Infinity` only for unsolvable states.
+It is test-only and deliberately independent of solver heuristics, deadlock
+detectors, and compiled neighbor traversal.
 
 ---
 
-## 12. Solver V2 sprint sequence
+## 12. Solver V2 implementation status
 
-### Sprint 0
+The original Sprint 0â€“14 sequence has been implemented and then audited. It
+is no longer an active task checklist. Current behavior is authoritative in
+`docs/solver-v2-progress.md`, benchmark methodology is authoritative in
+`docs/solver-v2-benchmarks.md`, and the original proposal remains in
+`docs/solver-v2-spec.md` as design history.
 
-Baseline, documentation, benchmark corpus, repository instructions.
+The August 11 audit established these important deviations from that proposal:
 
-Status: correction/finalization in progress.
-
-### Sprint 1
-
-Correctness hardening:
-
-- exact A* identity
-- corrected first-push walk bound
-- shared exact move oracle
-- exhaustive admissibility testing
-- A*/IDA* equality with oracle
-- no production adapter changes
-
-Status: not started.
-
-### Sprint 2
-
-Low-risk hot-loop performance, including removal of redundant A* child floods.
-
-### Sprint 3
-
-Proof contracts and worker protocol.
-
-### Sprint 4
-
-Incumbent-bounded exact move A*.
-
-### Sprint 5
-
-Exact move IDA* and memory policies.
-
-### Sprint 6
-
-Fast/quality/optimal modes and sequential proof.
-
-### Sprint 7
-
-Compact exact-search arena.
-
-### Sprint 8
-
-Incremental assignment.
-
-### Sprint 9
-
-Stronger proof-safe heuristics and pruning.
-
-### Sprint 10
-
-Quality-mode incumbent harvesting.
-
-### Sprint 11
-
-Production-engine state efficiency.
-
-### Sprint 12
-
-Concurrent and parallel proof.
-
-### Sprint 13
-
-Node/Waterfield execution tooling.
-
-### Sprint 14
-
-UI, rollout, and final verification.
-
-Implement and review only one sprint at a time.
+- IDA* uses contour-local exact-state best-`g` dominance and never reuses an
+  absolute backed `f` as a transposition bound.
+- Unsafe goal-depth macro pruning is disabled and affected proof-cache schemas
+  are invalidated.
+- Five disconnected local-room, local-corral, doorway, and registry scaffolds
+  were removed because they lacked proof, unique utility, or both.
+- Exact-search optimizations have internal feature controls and exercise
+  counters; an optimization is not called beneficial without controlled A/B
+  evidence.
+- The production, exact, rewrite, worker, and checkpoint paths share enforced
+  run-wide limits and replay validation.
 
 ---
 
-## 13. Sprint 0 current state
+## 13. August 11 audited state
 
-Sprint 0 introduced work around:
+Solver V2 is represented by:
 
 ```text
 CLAUDE.md
@@ -552,38 +491,20 @@ tests/fixtures/solver-v2/benchmark-corpus.ts
 tests/fixtures/solver-v2/baseline-v0.json
 ```
 
-Known recent results:
+Current validation evidence:
 
-- Build passed.
-- Typecheck passed.
-- Unit tests previously reported `628/628`.
-- Lint previously passed.
-- Generated-engine validation previously passed.
-- Multi-puzzle tests previously passed.
-- `test:solver:huge` matched deterministic route and state counts but exceeded the 90-second rewrite timing gate on the shared login node.
-- Benchmark records:
-  - 79 solved
-  - 10 classic-solver time-limit cancellations
-  - 3 child-process timeout errors
-  - 92 total records
-
-Known defects to correct:
-
-1. Error records lost resource-limit metadata.
-2. Error elapsed time was not captured correctly.
-3. Board hashes were absent.
-4. Immutable board metadata was incomplete.
-5. The 17-box puzzle was aliased to `huge` instead of directly identifiable under a canonical V2 ID.
-6. The full 17-box benchmark timed out before producing a replay-verified solved record.
-7. Fixture grouping/count requires clarification.
-8. Benchmark schema should be versioned and upgraded.
-9. Repository provenance should be documented.
-
-Suggested focused corrective commit:
-
-```text
-fix(solver): complete solver v2 baseline metadata
-```
+- TypeScript, ESLint, generated-source checks, production build, documentation
+  validation, and all nine static-delivery checks pass.
+- The unit suite passes 1,305 tests.
+- All 25 frozen known-optimum fixtures match exact A*; `expert-tetris` remains
+  a performance warning because its proof needs an extended run.
+- The independent `inter-rooms` oracle and both exact kernels agree at 28
+  moves / 7 pushes, including the all-features-off and individual-off matrix.
+- Grand Hall base, mirrored, rotated, and rewrite performance guards pass with
+  stable route and state counters.
+- The schema-3 benchmark harness records exact limits, identity, raw samples,
+  replay/proof acceptance, RSS, and immutable artifact provenance. Historical
+  `baseline-v0.json` remains evidence only and is not a current baseline.
 
 ---
 
@@ -604,7 +525,10 @@ Important rules:
 
 ---
 
-## 15. Waterfield HPC context
+## 15. Historical Waterfield HPC context
+
+This section records the August 4 cluster snapshot. Re-query SLURM before using
+node, partition, priority, or availability claims operationally.
 
 ### Intended login-node use
 

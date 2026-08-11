@@ -41,7 +41,6 @@ import {
 } from "./goal-commitment.ts";
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
-import { analyzeGoalMacros, isGoalMacroViolation } from "./goal-macros.ts";
 import { InteractionBoostEvaluator } from "./interaction-boost.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
@@ -61,6 +60,13 @@ import {
 } from "./engine.ts";
 import { delayForEventLoop } from "./scheduling.ts";
 import { objectiveScore } from "./exact-search-types.ts";
+import {
+  createExactSearchFeatureTelemetry,
+  exactSearchFeatureMask,
+  isDefaultExactSearchFeatures,
+  resolveExactSearchFeatures,
+  type ExactSearchFeatures,
+} from "./exact-search-features.ts";
 
 // ---------------------------------------------------------------------------
 // Public options
@@ -88,6 +94,8 @@ export interface ExactMoveIdaStarOptions {
    * disabled for proof-producing search.
    */
   readonly persistTransposition?: boolean;
+  /** Internal deterministic feature vector used by controlled proof A/B runs. */
+  readonly features?: Partial<ExactSearchFeatures>;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +155,6 @@ interface SearchCounters {
   patternDeadlockPrunes: number;
   corralPrunes: number;
   piCorralPrunes: number;
-  goalMacroPrunes: number;
   deadlockTablePrunes: number;
   commitmentSkips: number;
   interactionBoostTotal: number;
@@ -358,6 +365,7 @@ function createMetrics(
   heuristic: AssignmentHeuristic,
   memory: IdaMemorySnapshot,
   macroStats?: { checks: number; applications: number },
+  featureCounters?: () => Readonly<Record<string, number>>,
 ): SolverRunMetrics {
   const heuristicStats = heuristic.stats;
   return {
@@ -373,7 +381,6 @@ function createMetrics(
       patternDeadlockPrunes: counters.patternDeadlockPrunes,
       corralPrunes: counters.corralPrunes,
       piCorralPrunes: counters.piCorralPrunes,
-      goalMacroPrunes: counters.goalMacroPrunes,
       deadlockTablePrunes: counters.deadlockTablePrunes,
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
@@ -395,6 +402,7 @@ function createMetrics(
       memoryReachabilitySnapshotBytes: memory.reachabilitySnapshotBytes,
       idaStarIterations: counters.iterations,
       forcedPushMacroApplications: macroStats?.applications ?? 0,
+      ...featureCounters?.(),
     },
   };
 }
@@ -457,6 +465,16 @@ export async function runIdaStarSearch(
   options?: ExactMoveIdaStarOptions,
 ): Promise<SolverResult> {
   const startedAt = context.now();
+  const features = resolveExactSearchFeatures(options?.features);
+  const featureTelemetry = createExactSearchFeatureTelemetry();
+  if (
+    !isDefaultExactSearchFeatures(features) &&
+    (options?.checkpoint || options?.onCheckpoint || options?.checkpointContext)
+  ) {
+    throw new Error(
+      "IDA* checkpoints are available only with the default exact-search feature vector.",
+    );
+  }
   const counters: SearchCounters = {
     expanded: 0,
     generated: 0,
@@ -465,7 +483,6 @@ export async function runIdaStarSearch(
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
     piCorralPrunes: 0,
-    goalMacroPrunes: 0,
     deadlockTablePrunes: 0,
     commitmentSkips: 0,
     interactionBoostTotal: 0,
@@ -526,16 +543,27 @@ export async function runIdaStarSearch(
     });
 
     const reachability = new KeeperReachability(board);
-    const patternCache = new PatternDeadlockCache();
-    const corralDetector = new PiCorralDetector(board.cellCount);
-    const commitmentDetector = new GoalCommitmentDetector();
+    const patternCache = features.patternDeadlockPruning
+      ? new PatternDeadlockCache()
+      : null;
+    const corralDetector = features.piCorralPruning
+      ? new PiCorralDetector(board.cellCount)
+      : null;
+    const commitmentDetector = features.goalCommitmentPruning
+      ? new GoalCommitmentDetector()
+      : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
-    const boostEvaluator = new InteractionBoostEvaluator(board, board.topology);
-    const macroDetector = new ForcedPushMacroDetector(board);
-    const goalMacroAnalysis = analyzeGoalMacros(board);
-    const deadlockTableLookup = await buildDeadlockTablesAsync(board, context.signal);
+    const boostEvaluator = features.interactionBoost
+      ? new InteractionBoostEvaluator(board, board.topology)
+      : null;
+    const macroDetector = features.forcedPushMacros
+      ? new ForcedPushMacroDetector(board)
+      : null;
+    const deadlockTableLookup = features.deadlockTablePruning
+      ? await buildDeadlockTablesAsync(board, context.signal)
+      : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
@@ -557,11 +585,39 @@ export async function runIdaStarSearch(
     const packBoxKeyFromBoxes = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
-    const pdbEvaluator = await PdbHeuristicEvaluator.createAsync(board, context.signal);
+    const pdbStartedAt = context.now();
+    const pdbEvaluator = features.patternDatabase
+      ? await PdbHeuristicEvaluator.createAsync(board, context.signal)
+      : null;
+    featureTelemetry.pdbBuildTimeMs = features.patternDatabase
+      ? Math.max(0, context.now() - pdbStartedAt)
+      : 0;
+    featureTelemetry.pdbTableEntries = pdbEvaluator?.totalTableEntries ?? 0;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
     const zobristTable: ZobristTable = createZobristTable(board.cellCount, exactCodec.labelCount);
+
+    const linearConflict = (boxes: readonly DenseBox[]): number => {
+      if (!features.linearConflict) return 0;
+      featureTelemetry.linearConflictEvaluations += 1;
+      const value = heuristic.lastLinearConflict(boxes);
+      featureTelemetry.linearConflictTotal += value;
+      return value;
+    };
+    const pdbValue = (boxes: readonly DenseBox[]): number => {
+      if (!pdbEvaluator) return 0;
+      featureTelemetry.pdbEvaluations += 1;
+      return pdbEvaluator.evaluate(boxes);
+    };
+    const deadlockTableCheck = (
+      boxes: readonly DenseBox[],
+      movedCell: number,
+    ): boolean => {
+      if (!deadlockTableLookup) return false;
+      featureTelemetry.deadlockTableChecks += 1;
+      return deadlockTableLookup.check(boxes, movedCell);
+    };
 
     function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
       const tokens = exactCodec.tokensFromBoxes(boxes);
@@ -582,6 +638,26 @@ export async function runIdaStarSearch(
     let reachabilitySnapshotMemoryBytes = 0;
     let heuristicCacheEntries = 0;
     let peakEstimatedMemoryBytes = 0;
+
+    const featureCounters = (): Readonly<Record<string, number>> => ({
+      exactFeatureMask: exactSearchFeatureMask(features),
+      incrementalAssignmentRepairs: heuristic.stats.incrementalRepairs,
+      linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
+      linearConflictTotal: featureTelemetry.linearConflictTotal,
+      interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
+      pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
+      pdbTableEntries: featureTelemetry.pdbTableEntries,
+      pdbEvaluations: featureTelemetry.pdbEvaluations,
+      forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
+      piCorralChecks: corralDetector?.stats.checks ?? 0,
+      patternDeadlockChecks: patternCache?.stats.checks ?? 0,
+      deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
+      deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
+      deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
+      deadlockTableChecks: featureTelemetry.deadlockTableChecks,
+      goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
+      goalCommitments: commitmentDetector?.stats.commitments ?? 0,
+    });
 
     const currentMemory = (): IdaMemoryBreakdown =>
       estimateIdaMemory(
@@ -634,7 +710,8 @@ export async function runIdaStarSearch(
         transpositionSize,
         heuristic,
         memorySnapshot(),
-        macroDetector.stats,
+        macroDetector?.stats,
+        featureCounters,
       );
     collectCurrentMetrics = metrics;
 
@@ -778,16 +855,16 @@ export async function runIdaStarSearch(
       };
     }
     const initialLabelCosts = heuristic.lastLabelCosts;
-    const initialBoost = initialLabelCosts
+    const initialBoost = initialLabelCosts && boostEvaluator
       ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
       : 0;
-    const initialLC = heuristic.lastLinearConflict(initialBoxes);
+    const initialLC = linearConflict(initialBoxes);
     const initialHWalk = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSum = pdbEvaluator.evaluate(initialBoxes);
+    const initialPdbSum = pdbValue(initialBoxes);
     const initialH = Math.max(initialHPush + Math.max(initialLC, initialBoost), initialPdbSum) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
 
@@ -968,9 +1045,14 @@ export async function runIdaStarSearch(
               (b) => b.cell === frame.push!.boxCell,
             );
             if (movedBox) {
-              hPush = heuristic.evaluateIncremental(
-                frame.boxes, childBoxKey, parentBoxKey, movedBox.label,
-              );
+              hPush = features.incrementalAssignment
+                ? heuristic.evaluateIncremental(
+                    frame.boxes,
+                    childBoxKey,
+                    parentBoxKey,
+                    movedBox.label,
+                  )
+                : heuristic.evaluate(frame.boxes);
             } else {
               hPush = heuristic.evaluate(frame.boxes);
             }
@@ -989,7 +1071,7 @@ export async function runIdaStarSearch(
           }
 
           const labelCosts = heuristic.lastLabelCosts;
-          const interactionBoost = labelCosts
+          const interactionBoost = labelCosts && boostEvaluator
             ? boostEvaluator.evaluate(
                 frame.boxes,
                 labelCosts,
@@ -998,15 +1080,18 @@ export async function runIdaStarSearch(
             : 0;
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
-          const linearConflict = heuristic.lastLinearConflict(frame.boxes);
+          const linearConflictBoost = linearConflict(frame.boxes);
 
           const hWalk = minimumManhattanWalkToPotentialPush(
             board,
             frame.robot,
             frame.boxes,
           );
-          const pdbSum = pdbEvaluator.evaluate(frame.boxes);
-          const h = Math.max(hPush + Math.max(linearConflict, interactionBoost), pdbSum) + hWalk;
+          const pdbSum = pdbValue(frame.boxes);
+          const h = Math.max(
+            hPush + Math.max(linearConflictBoost, interactionBoost),
+            pdbSum,
+          ) + hWalk;
           frame.h = h;
 
           const f = frame.g + h;
@@ -1179,7 +1264,17 @@ export async function runIdaStarSearch(
           }
         }
 
-        if (frame.childCursor === 0 && hasPiCorralDeadlock(board, frame.boxes, occupancyBuffer, reachable, corralDetector)) {
+        if (
+          frame.childCursor === 0 &&
+          corralDetector &&
+          hasPiCorralDeadlock(
+            board,
+            frame.boxes,
+            occupancyBuffer,
+            reachable,
+            corralDetector,
+          )
+        ) {
           counters.piCorralPrunes += 1;
           popFrame();
           continue;
@@ -1213,7 +1308,9 @@ export async function runIdaStarSearch(
 
         const frozenBoxes = frame.frozenBoxes!;
         if (frame.committedBoxes === null) {
-          frame.committedBoxes = findProvenCommitments(board, frame.boxes, commitmentDetector);
+          frame.committedBoxes = commitmentDetector
+            ? findProvenCommitments(board, frame.boxes, commitmentDetector)
+            : new Set<number>();
         }
         const committedBoxes = frame.committedBoxes;
         const boxCount = frame.boxes.length;
@@ -1221,8 +1318,12 @@ export async function runIdaStarSearch(
 
         // Forced push macro: if exactly one legal push, skip child generation
         if (frame.childCursor === 0) {
-          const fpResult = macroDetector.detect(frame.boxes, occupancyBuffer, reachable);
-          if (fpResult.forced) {
+          const fpResult = macroDetector?.detect(
+            frame.boxes,
+            occupancyBuffer,
+            reachable,
+          );
+          if (fpResult?.forced) {
             const fpBoxIdx = fpResult.boxIndex!;
             const fpDir = fpResult.direction!;
             const fpBox = frame.boxes[fpBoxIdx];
@@ -1237,9 +1338,9 @@ export async function runIdaStarSearch(
               fpDeadlock =
                 createsFullyBlockedTwoByTwoDeadlock(board, fpNewBoxes, fpDest, deadlockOccupancyBuffer) ||
                 hasFreezeDeadlock(board, fpNewBoxes, deadlockOccupancyBuffer) ||
-                createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache) ||
-                isGoalMacroViolation(board, fpNewBoxes, fpDest, goalMacroAnalysis) ||
-                deadlockTableLookup.check(fpNewBoxes, fpDest);
+                (patternCache !== null &&
+                  createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache)) ||
+                deadlockTableCheck(fpNewBoxes, fpDest);
             }
 
             if (fpDeadlock) {
@@ -1373,17 +1474,15 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          if (createsPatternDeadlock(board, newBoxes, destination, patternCache)) {
+          if (
+            patternCache !== null &&
+            createsPatternDeadlock(board, newBoxes, destination, patternCache)
+          ) {
             counters.patternDeadlockPrunes += 1;
             continue;
           }
 
-          if (isGoalMacroViolation(board, newBoxes, destination, goalMacroAnalysis)) {
-            counters.goalMacroPrunes += 1;
-            continue;
-          }
-
-          if (deadlockTableLookup.check(newBoxes, destination)) {
+          if (deadlockTableCheck(newBoxes, destination)) {
             counters.deadlockTablePrunes += 1;
             continue;
           }

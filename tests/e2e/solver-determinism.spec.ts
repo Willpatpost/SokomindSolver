@@ -9,7 +9,8 @@
  *  1. Runs the solver in Node by importing the adapter directly.
  *  2. Opens the app in Chromium, discovers the solver worker URL, creates a
  *     dedicated worker, and runs the same puzzle through the worker protocol.
- *  3. Asserts identical action sequences, move/push counts, and search counters.
+ *  3. Asserts identical action sequences, move/push counts, and deterministic
+ *     search counters. Preprocessing wall-clock telemetry is descriptive.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { createSession, type PuzzleDefinition } from "../../src/core/index.ts";
@@ -68,6 +69,21 @@ interface DeterministicFingerprint {
   readonly expandedStates: number | undefined;
   readonly generatedStates: number | undefined;
   readonly counters: Readonly<Record<string, number>> | undefined;
+}
+
+const VOLATILE_TIMING_COUNTERS = new Set([
+  "pdbBuildTimeMs",
+  "deadlockTableBuildTimeMs",
+]);
+
+function deterministicCounters(
+  counters: Readonly<Record<string, number>> | undefined,
+): Readonly<Record<string, number>> {
+  return Object.fromEntries(
+    Object.entries(counters ?? {}).filter(
+      ([name]) => !VOLATILE_TIMING_COUNTERS.has(name),
+    ),
+  );
 }
 
 function requestFor(puzzle: PuzzleDefinition): SolverRequest {
@@ -282,7 +298,9 @@ test.describe("cross-environment determinism (spec criterion 17)", () => {
       expect(browserResult.pushes).toBe(nodeResult.pushes);
       expect(browserResult.expandedStates).toBe(nodeResult.expandedStates);
       expect(browserResult.generatedStates).toBe(nodeResult.generatedStates);
-      expect(browserResult.counters).toEqual(nodeResult.counters);
+      expect(deterministicCounters(browserResult.counters)).toEqual(
+        deterministicCounters(nodeResult.counters),
+      );
     });
   }
 });

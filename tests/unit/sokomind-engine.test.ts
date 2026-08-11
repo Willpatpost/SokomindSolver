@@ -157,6 +157,37 @@ describe("vendored Sokomind engine", () => {
     assert.equal(verifySolverSolution(request, solution).valid, true);
   });
 
+  it("enforces and reports the rewrite generated-state budget", () => {
+    const request = requestFor(MIXED_TYPED_PUZZLE);
+    const state = toLegacyState(request);
+    const incumbent = search({
+      algorithm: "ultimate",
+      state,
+      maxVisited: 20_000,
+      beamWidth: 160,
+      maxDepth: 80,
+    });
+    assert.ok(Array.isArray(incumbent.path));
+
+    const rewritten = search({
+      algorithm: "solution-window-rewrite",
+      state,
+      solutionPath: incumbent.path,
+      maxVisited: 1_000,
+      maxGenerated: 1,
+      permutationVisited: 500,
+      permutationWindowPushes: [1],
+      perPermutationWindowVisited: 500,
+      windowTotalVisited: 500,
+      windowPushes: [1],
+      moveWindowVisited: 500,
+      moveWindowMinimumOverhead: 1,
+    });
+
+    assert.ok(Array.isArray(rewritten.path));
+    assert.ok(Number(rewritten.generated) <= 1);
+  });
+
   it("reports injectable isolate memory separately from live engine storage", (t) => {
     const memoryRuntime = globalThis as typeof globalThis & {
       __sokomindMemoryUsage?: () => number;

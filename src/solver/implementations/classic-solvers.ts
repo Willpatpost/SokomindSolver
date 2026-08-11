@@ -69,7 +69,7 @@ export const classicAStarSolver: SolverAdapter = Object.freeze({
     displayName: "A* Search",
     description:
       "Move-optimal A* with label-aware reverse-push assignment bounds.",
-    version: "2.0.0",
+    version: "2.1.0",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {
@@ -83,7 +83,7 @@ export const classicIdaStarSolver: SolverAdapter = Object.freeze({
     displayName: "IDA* (iterative deepening)",
     description:
       "Memory-efficient move-optimal solver using iterative deepening A*.",
-    version: "2.0.0",
+    version: "2.1.0",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {

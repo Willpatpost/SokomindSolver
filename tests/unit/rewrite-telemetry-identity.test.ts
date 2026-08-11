@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { solutionImprovementPlan } from "../../src/solver/implementations/sokomind-solver.ts";
+import {
+  allocateParallelRewriteBudgets,
+  solutionImprovementPlan,
+} from "../../src/solver/implementations/sokomind-solver.ts";
 import { resolveSokomindTuning } from "../../src/solver/implementations/sokomind-tuning.ts";
 import type { SolverSolution, SolutionStep } from "../../src/solver/contracts.ts";
 
@@ -31,6 +34,44 @@ const dummyState = Object.freeze({
 });
 
 describe("rewrite worker telemetry identity", () => {
+  it("reserves disjoint parallel state and elapsed budgets", () => {
+    const budgets = allocateParallelRewriteBudgets(3, 10, 8, 5);
+
+    assert.deepEqual(budgets, [
+      { maxVisited: 4, maxGenerated: 3, maxElapsedMs: 2 },
+      { maxVisited: 3, maxGenerated: 3, maxElapsedMs: 2 },
+      { maxVisited: 3, maxGenerated: 2, maxElapsedMs: 1 },
+    ]);
+    assert.equal(
+      budgets.reduce((sum, budget) => sum + budget.maxVisited, 0),
+      10,
+    );
+    assert.equal(
+      budgets.reduce((sum, budget) => sum + budget.maxGenerated, 0),
+      8,
+    );
+    assert.equal(
+      budgets.reduce((sum, budget) => sum + budget.maxElapsedMs, 0),
+      5,
+    );
+  });
+
+  it("does not manufacture one-state shares when the budget is smaller than the lane count", () => {
+    assert.deepEqual(allocateParallelRewriteBudgets(3, 1, 2, 1), [
+      { maxVisited: 1, maxGenerated: 1, maxElapsedMs: 1 },
+      { maxVisited: 0, maxGenerated: 1, maxElapsedMs: 0 },
+      { maxVisited: 0, maxGenerated: 0, maxElapsedMs: 0 },
+    ]);
+  });
+
+  it("leaves an unspecified generated-state ceiling unbounded", () => {
+    const budgets = allocateParallelRewriteBudgets(2, 4, undefined, 2);
+    assert.deepEqual(budgets.map(({ maxGenerated }) => maxGenerated), [
+      Infinity,
+      Infinity,
+    ]);
+  });
+
   it("produces unique IDs for different candidates on the same pass", () => {
     const sol = makeSolution(200);
     const plan0 = solutionImprovementPlan(dummyState, sol, 1000, 1, profile, 0);
@@ -86,5 +127,20 @@ describe("rewrite worker telemetry identity", () => {
     const sol = makeSolution(200);
     const plan = solutionImprovementPlan(dummyState, sol, 1000, 1, profile);
     assert.match(plan.id, /c0/);
+  });
+
+  it("passes an independent generated-state budget to the rewrite engine", () => {
+    const sol = makeSolution(200);
+    const plan = solutionImprovementPlan(
+      dummyState,
+      sol,
+      1000,
+      1,
+      profile,
+      0,
+      321,
+    );
+    assert.equal(plan.payload.maxVisited, 1000);
+    assert.equal(plan.payload.maxGenerated, 321);
   });
 });

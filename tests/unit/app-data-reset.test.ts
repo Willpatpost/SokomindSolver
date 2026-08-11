@@ -209,7 +209,7 @@ test("the completed reset marker suppresses stale document mutations", async () 
   assert.ok(puzzle);
   saveSession(createSession(puzzle));
   saveOptimalCache({
-    version: 4,
+    version: 5,
     records: { "ultra-tiny": { moves: 1, pushes: 1 } },
   });
 

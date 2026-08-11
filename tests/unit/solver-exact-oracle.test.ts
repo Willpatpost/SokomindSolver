@@ -22,6 +22,7 @@ import {
 import {
   runIdaStarSearch,
 } from "../../src/solver/search/ida-star.ts";
+import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import {
   assignmentLowerBound,
   minimumManhattanWalkToPotentialPush,
@@ -31,6 +32,7 @@ import {
   type DenseBox,
 } from "../../src/solver/search/model.ts";
 import { createExactStateCodec } from "../../src/solver/search/exact-state.ts";
+import { INTER_ROOMS } from "../fixtures/solver-v2/benchmark-corpus.ts";
 import {
   exactRemainingMoves,
   allReachableStates,
@@ -459,6 +461,45 @@ describe("exact search matches oracle on all reachable states", () => {
       solvableChecked > 30,
       `Expected >30 solvable states; got ${solvableChecked}`,
     );
+  });
+});
+
+describe("inter-rooms goal-ordering regression", () => {
+  it("keeps the independent 28-move optimum in both proof engines", async () => {
+    const parsed = parsePuzzleRows([...INTER_ROOMS.rows]);
+    const board = compileSearchBoard(parsed);
+    const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+    const initialRobot = board.cellAt(
+      parsed.initialRobot.row,
+      parsed.initialRobot.column,
+    );
+    const oracle = exactRemainingMoves(board, initialRobot, initialBoxes);
+    assert.deepEqual(
+      { moves: oracle.exactMoves, pushes: oracle.exactPushes },
+      { moves: 28, pushes: 7 },
+      "the step-level oracle must preserve the frozen fixture optimum",
+    );
+
+    const request = requestForOracleState(
+      parsed,
+      board,
+      initialRobot,
+      initialBoxes,
+    );
+    const [astar, ida] = await Promise.all([
+      runExactMoveAStar(request, oracleExecutionContext()),
+      runIdaStarSearch(request, oracleExecutionContext()),
+    ]);
+
+    for (const [name, result] of [["A*", astar], ["IDA*", ida]] as const) {
+      const solved = assertSolved(result);
+      assert.equal(solved.solution.moves, oracle.exactMoves, `${name} move optimum`);
+      assert.equal(solved.solution.pushes, oracle.exactPushes, `${name} push count`);
+      assert.equal(solved.solution.optimality, "proven", `${name} proof status`);
+      assert.equal(solved.proof?.lowerBound, 28, `${name} proof lower bound`);
+      assert.equal(solved.proof?.upperBound, 28, `${name} proof upper bound`);
+      assert.equal(solved.proof?.gap, 0, `${name} proof gap`);
+    }
   });
 });
 

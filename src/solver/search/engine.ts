@@ -298,7 +298,6 @@ export async function runClassicSearch(
     patternDeadlockPrunes: 0,
     corralPrunes: 0,
     piCorralPrunes: 0,
-    goalMacroPrunes: 0,
     deadlockTablePrunes: 0,
     commitmentSkips: 0,
     interactionBoostTotal: 0,

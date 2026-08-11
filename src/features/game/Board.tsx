@@ -26,6 +26,14 @@ type PieceStyle = CSSProperties & {
   "--piece-hue"?: number;
 };
 
+type TrailStyle = CSSProperties & {
+  "--trail-opacity": number;
+  "--trail-scale": number;
+};
+
+const TRAIL_OPACITY = [0.42, 0.34, 0.27, 0.2, 0.14, 0.09] as const;
+const TRAIL_SCALE = [1, 0.88, 0.77, 0.67, 0.58, 0.5] as const;
+
 interface PieceSlotProps {
   id: string;
   puzzleId: string;
@@ -71,6 +79,7 @@ const StaticCell = memo(function StaticCell({
         <span
           className={styles.goal}
           data-generic={goal.label === "X" || undefined}
+          data-goal-label={goal.label}
           style={{ "--piece-hue": typedHue(goal.label) } as PieceStyle}
           aria-hidden="true"
         >
@@ -89,15 +98,18 @@ interface TrailDotProps {
 }
 
 const TrailDot = memo(function TrailDot({ column, row, age }: TrailDotProps) {
+  const presentationIndex = Math.min(age, TRAIL_OPACITY.length - 1);
   return (
     <span
       className={styles.trailMarker}
+      data-trail-age={age}
       style={
         {
           gridColumn: column + 1,
           gridRow: row + 1,
-          "--trail-age": age,
-        } as CSSProperties
+          "--trail-opacity": TRAIL_OPACITY[presentationIndex],
+          "--trail-scale": TRAIL_SCALE[presentationIndex],
+        } as TrailStyle
       }
     />
   );
@@ -122,6 +134,7 @@ const BoxPiece = memo(function BoxPiece({
     <span
       className={styles.box}
       data-generic={label === "X" || undefined}
+      data-box-label={label}
       data-home={onGoal || undefined}
       data-deadlocked={deadlocked || undefined}
       style={{ "--piece-hue": typedHue(label) } as PieceStyle}
@@ -157,7 +170,7 @@ const PieceSlot = memo(function PieceSlot({
   children,
 }: PieceSlotProps) {
   const elementRef = useRef<HTMLSpanElement>(null);
-  const previousRect = useRef<DOMRect | null>(null);
+  const previousPosition = useRef<Position | null>(null);
   const previousPuzzle = useRef(puzzleId);
   const animation = useRef<Animation | null>(null);
 
@@ -165,20 +178,35 @@ const PieceSlot = memo(function PieceSlot({
     const element = elementRef.current;
     if (!element) return;
 
+    animation.current?.cancel();
+    animation.current = null;
+
     const nextRect = element.getBoundingClientRect();
-    const previous = previousRect.current;
+    const priorPosition = previousPosition.current;
+    const adjacent = priorPosition !== null &&
+      Math.abs(priorPosition.row - position.row) +
+        Math.abs(priorPosition.column - position.column) === 1;
 
     if (
-      previous &&
+      priorPosition &&
       previousPuzzle.current === puzzleId &&
+      adjacent &&
       !reduceMotion
     ) {
-      const x = previous.left - nextRect.left;
-      const y = previous.top - nextRect.top;
+      const layerStyle = element.parentElement
+        ? getComputedStyle(element.parentElement)
+        : null;
+      const parsedColumnGap = Number.parseFloat(layerStyle?.columnGap ?? "0");
+      const parsedRowGap = Number.parseFloat(layerStyle?.rowGap ?? "0");
+      const columnGap = Number.isFinite(parsedColumnGap) ? parsedColumnGap : 0;
+      const rowGap = Number.isFinite(parsedRowGap) ? parsedRowGap : 0;
+      const x =
+        (priorPosition.column - position.column) * (nextRect.width + columnGap);
+      const y =
+        (priorPosition.row - position.row) * (nextRect.height + rowGap);
 
       if (Math.abs(x) > 0.5 || Math.abs(y) > 0.5) {
-        animation.current?.cancel();
-        animation.current = element.animate(
+        const nextAnimation = element.animate(
           [
             { transform: `translate3d(${x}px, ${y}px, 0)` },
             { transform: "translate3d(0, 0, 0)" },
@@ -188,10 +216,22 @@ const PieceSlot = memo(function PieceSlot({
             easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
           },
         );
+        animation.current = nextAnimation;
+        const clearCancelledAnimation = () => {
+          if (animation.current === nextAnimation) animation.current = null;
+        };
+        nextAnimation.onfinish = () => {
+          clearCancelledAnimation();
+          nextAnimation.cancel();
+        };
+        nextAnimation.oncancel = clearCancelledAnimation;
       }
     }
 
-    previousRect.current = nextRect;
+    previousPosition.current = {
+      row: position.row,
+      column: position.column,
+    };
     previousPuzzle.current = puzzleId;
   }, [position.column, position.row, puzzleId, reduceMotion]);
 
@@ -206,6 +246,8 @@ const PieceSlot = memo(function PieceSlot({
     <span
       className={styles.pieceSlot}
       data-piece-id={id}
+      data-piece-row={position.row}
+      data-piece-column={position.column}
       ref={elementRef}
       style={{
         gridColumn: position.column + 1,

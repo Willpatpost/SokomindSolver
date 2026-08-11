@@ -14,9 +14,11 @@ contract.
 - music volume;
 - motion mode: system, full, or reduced.
 
-Malformed or unavailable storage falls back safely. Sound and music are
-opt-in. Browsers require an input gesture before Web Audio can start, so the
-controller creates or resumes its context only from a control or game action.
+Malformed or unavailable storage falls back safely. For a fresh profile, sound
+effects and music are enabled with both gain controls at 50%. Explicit stored
+choices are preserved because the preference schema remains version 1.
+Browsers require an input gesture before Web Audio can start, so enabled audio
+begins only after the first control or game action.
 
 ## Procedural audio
 
@@ -62,8 +64,8 @@ is purely presentational and does not prevent further moves.
 
 The last six unique robot positions from the undo history are rendered as
 fading blue dots in a trail layer between the cell grid and piece overlay
-(`src/features/game/trail-positions.ts`). Older positions fade more than
-recent ones. The trail is suppressed when reduced motion is active, matching
+(`src/features/game/trail-positions.ts`). Older positions fade and shrink more
+than recent ones. The trail is suppressed when reduced motion is active, matching
 the same `useResolvedMotion()` gate used by piece animations.
 
 ## Move notation strip
@@ -78,6 +80,8 @@ when the log is longer, and auto-scrolls to keep the latest move visible.
 - Prefer transform and opacity.
 - Avoid perpetual blur or shadow animation.
 - Keep celebration particles bounded and deterministic.
-- Cancel old piece animations before starting replacements.
+- Cancel old piece animations before measuring replacement grid geometry.
+- Derive piece transforms from logical cell deltas, never page-level reflow.
+- Animate only adjacent logical moves; resets and multi-step undo snap in place.
 - Pause music when the page is hidden.
 - Never let sound or animation mutate game state.

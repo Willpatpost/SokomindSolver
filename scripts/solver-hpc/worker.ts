@@ -183,12 +183,12 @@ async function run(): Promise<void> {
         }
       : {}),
     options: {
-      "sokomind-solver": parseSokomindOptions({
+      "sokomind-solver": { ...parseSokomindOptions({
         mode: assignment.mode,
         proofAlgorithm: assignment.proofAlgorithm,
         deterministic: assignment.deterministic,
         proofParallelism: assignment.parallelism,
-      }),
+      }) },
     },
   };
 

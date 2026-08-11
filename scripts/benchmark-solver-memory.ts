@@ -145,7 +145,7 @@ async function main(): Promise<void> {
         if (!f) throw new Error(`Unknown fixture: ${id}`);
         return f;
       })
-    : BENCHMARK_CORPUS.flatMap((g) => g.fixtures).filter((f) => f.boxes <= 6);
+    : BENCHMARK_CORPUS.filter((fixture) => fixture.boxes <= 6);
 
   console.log(`Memory benchmark: ${fixtures.length} fixtures\n`);
   console.log(
