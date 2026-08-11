@@ -1,7 +1,7 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
 import type { DenseBox } from "./model.ts";
 import { throwIfSolverCancelled } from "../cancellation.ts";
-import { delayForEventLoop } from "./engine.ts";
+import { delayForEventLoop } from "./scheduling.ts";
 
 const MAX_REGION_CELLS = 9;
 const MAX_BOX_COUNT = 3;
@@ -287,13 +287,16 @@ export async function buildDeadlockTablesAsync(
     });
   }
 
+  throwIfSolverCancelled(signal);
+
   for (const region of regions) {
     if (Date.now() - startTime > TIME_BUDGET_MS) break;
-    throwIfSolverCancelled(signal);
     await delayForEventLoop();
+    throwIfSolverCancelled(signal);
 
     const regionId = region.cells[0];
     const deadlocks = new Set<string>();
+    let workSinceYield = 0;
 
     for (let boxCount = MIN_BOX_COUNT; boxCount <= Math.min(MAX_BOX_COUNT, region.cells.length); boxCount++) {
       if (Date.now() - startTime > TIME_BUDGET_MS) break;
@@ -303,6 +306,12 @@ export async function buildDeadlockTablesAsync(
 
       while (true) {
         if (Date.now() - startTime > TIME_BUDGET_MS) break;
+
+        if (++workSinceYield >= 512) {
+          workSinceYield = 0;
+          await delayForEventLoop();
+          throwIfSolverCancelled(signal);
+        }
 
         const cells = indices.map((i) => region.cells[i]);
 

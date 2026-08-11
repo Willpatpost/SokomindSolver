@@ -1,6 +1,6 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
 import { throwIfSolverCancelled } from "../cancellation.ts";
-import { delayForEventLoop } from "./engine.ts";
+import { delayForEventLoop } from "./scheduling.ts";
 
 export interface PatternDatabaseConfig {
   readonly goalCells: readonly number[];
@@ -239,11 +239,13 @@ export async function buildPatternDatabaseAsync(
   let head = 0;
   let itersSinceYield = 0;
 
+  throwIfSolverCancelled(signal);
+
   while (head < queue.length) {
     if (++itersSinceYield >= PDB_BFS_YIELD_INTERVAL) {
       itersSinceYield = 0;
-      throwIfSolverCancelled(signal);
       await delayForEventLoop();
+      throwIfSolverCancelled(signal);
     }
 
     const current = queue[head++];

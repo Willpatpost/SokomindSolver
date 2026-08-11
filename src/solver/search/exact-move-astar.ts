@@ -62,8 +62,8 @@ import { KeeperReachability } from "./reachability.ts";
 import {
   sortedBoxes,
   estimateStaticSearchBytes,
-  delayForEventLoop,
 } from "./engine.ts";
+import { delayForEventLoop } from "./scheduling.ts";
 
 export interface ExactIncumbent {
   readonly solution: SolverSolution;

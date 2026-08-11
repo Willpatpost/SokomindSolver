@@ -174,7 +174,7 @@ test("Sokomind Solver finds a replay-verified Grand Hall route", async ({
 });
 
 test("cancels a running Grand Hall A* search", async ({ page }) => {
-  test.skip(Boolean(process.env.CI), "Grand Hall A* search exceeds CI runner budget; covered by test:solver:huge gate");
+  test.skip(Boolean(process.env.CI), "Grand Hall A* exceeds CI budget; preprocessing cancellation covered by tests/unit/async-builders.test.ts");
   await page.goto("./#/play/huge");
   await expect(page.getByRole("heading", { name: "Grand Hall" })).toBeVisible();
 
