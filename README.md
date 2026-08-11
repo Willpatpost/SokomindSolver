@@ -6,7 +6,7 @@ hosting layer with a portable Vite build.
 
 ## Highlights
 
-- 2,194 validated puzzles, including 15 typed-box rooms
+- 2,095 validated puzzles, including 2,078 typed-box rooms
 - Responsive keyboard, touch, and mouse controls
 - Animated crates, matching goal sockets, and a characterful keeper
 - Optional procedural sound effects and ambient music with no downloaded audio
@@ -137,12 +137,11 @@ history, so long routes do not copy every earlier snapshot per move.
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Active codebase audit tracker](AUDIT-TRACKER.md)
+- [Consolidated August 11 audit](docs/AUG11AUDIT.MD)
+- [August 11 improvements roadmap](docs/AUG11IMPROVEMENTS.MD)
 - [Experience, sound, and motion](docs/experience.md)
 - [GitHub Pages deployment](docs/deployment.md)
 - [Solver integration](docs/solver-integration.md)
-- [Historical solver follow-up audit](docs/sokomind-follow-up-audit.md)
-- [Reserved final audit items](REMAINING-AUDIT-ITEMS.md)
 - [Puzzle format](docs/puzzle-format.md)
 - [Testing strategy](docs/testing.md)
 - [Persistence and sharing](docs/persistence-and-sharing.md)
@@ -166,6 +165,7 @@ can expose it. Its deterministic Grand Hall discovery route is 1,010 moves /
 304 pushes in the Node benchmark. This is a substantial quality gain, not a
 claim of optimality.
 
-The classic family remains available for comparison and move-optimal searches.
-See the solver integration guide for guarantees, tuning and benchmark details,
-and the follow-up audit for remaining risks.
+The classic family remains available for comparison and exact-search research.
+The current audit documents a release-blocking IDA* proof defect; until it is
+resolved, IDA* results must not be treated or persisted as proof of move
+optimality. See the solver integration guide for tuning and benchmark details.
