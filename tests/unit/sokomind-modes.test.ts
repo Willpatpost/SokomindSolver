@@ -329,6 +329,43 @@ describe("runSequentialProof", () => {
     }
   });
 
+  it("sequential proof consumes only remaining state budgets and merges metrics", async () => {
+    const base = requestFromRows(ONE_BOX);
+    const ctx = oracleContext();
+    const greedy = await runClassicSearch(base, ctx, { strategy: "greedy" });
+    assert.equal(greedy.status, "solved");
+    if (greedy.status !== "solved") return;
+    const discovery: SolverResult = {
+      status: "solved",
+      solution: greedy.solution,
+      metrics: {
+        elapsedMs: 5,
+        expandedStates: 7,
+        generatedStates: 9,
+      },
+    };
+    const request: SolverRequest = {
+      ...base,
+      limits: {
+        maxElapsedMs: 1_000,
+        maxExpandedStates: 20,
+        maxGeneratedStates: 30,
+      },
+    };
+    const result = await runSequentialProof(
+      request,
+      ctx,
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal" },
+      discovery,
+    );
+    assert.equal(result.status, "solved");
+    assert.ok(result.metrics.elapsedMs >= 5);
+    assert.ok((result.metrics.expandedStates ?? 0) >= 7);
+    assert.ok((result.metrics.expandedStates ?? 0) <= 20);
+    assert.ok((result.metrics.generatedStates ?? 0) >= 9);
+    assert.ok((result.metrics.generatedStates ?? 0) <= 30);
+  });
+
   it("greedy solution replays after proof", async () => {
     const req = requestFromRows(ONE_BOX);
     const ctx = oracleContext();

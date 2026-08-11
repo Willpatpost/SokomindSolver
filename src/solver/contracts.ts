@@ -183,8 +183,11 @@ export interface SolverExecutionContext {
 }
 
 /**
- * Algorithms implement this one interface. They must not import UI state,
- * browser storage, React, or worker globals.
+ * Solver kernels and composition adapters implement this interface. They must
+ * not import UI state, browser storage, or React. A composition adapter may
+ * coordinate nested workers when the host supplies that capability; kernels
+ * remain worker-global-free and every nested result crosses validation and
+ * replay boundaries before it is trusted.
  */
 export interface SolverAdapter {
   readonly metadata: SolverMetadata;

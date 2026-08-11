@@ -3,6 +3,7 @@ import {
   mergeProgress,
   tryParseProgress,
   type ProgressData,
+  type DailyCompletion,
   type PuzzleRecord,
 } from "./progress.ts";
 import { persistenceHealth } from "./persistence-health.ts";
@@ -130,6 +131,7 @@ export function mergeConcurrentProgress(
 ): ProgressData {
   let changed = false;
   const completed: Record<string, PuzzleRecord> = { ...first.completed };
+  const daily: Record<string, DailyCompletion> = { ...first.daily };
 
   for (const [puzzleId, candidate] of Object.entries(second.completed)) {
     const selected = canonicalRecord(completed[puzzleId], candidate);
@@ -138,7 +140,23 @@ export function mergeConcurrentProgress(
     changed = true;
   }
 
-  return changed ? { version: 1, completed } : first;
+  for (const [dateKey, candidate] of Object.entries(second.daily)) {
+    const current = daily[dateKey];
+    if (!current) {
+      daily[dateKey] = candidate;
+      changed = true;
+      continue;
+    }
+    const candidateWins = candidate.completedAt < current.completedAt ||
+      (candidate.completedAt === current.completedAt &&
+        candidate.puzzleId < current.puzzleId);
+    if (candidateWins) {
+      daily[dateKey] = candidate;
+      changed = true;
+    }
+  }
+
+  return changed ? { version: 2, completed, daily } : first;
 }
 
 function sameProgress(first: ProgressData, second: ProgressData): boolean {
@@ -152,12 +170,20 @@ function sameProgress(first: ProgressData, second: ProgressData): boolean {
       !secondRecord ||
       firstRecord.moves !== secondRecord.moves ||
       firstRecord.pushes !== secondRecord.pushes ||
-      firstRecord.completedAt !== secondRecord.completedAt
+      firstRecord.completedAt !== secondRecord.completedAt ||
+      firstRecord.elapsedMs !== secondRecord.elapsedMs
     ) {
       return false;
     }
   }
-  return true;
+  const firstDailyEntries = Object.entries(first.daily);
+  const secondDailyEntries = Object.entries(second.daily);
+  if (firstDailyEntries.length !== secondDailyEntries.length) return false;
+  return firstDailyEntries.every(([dateKey, record]) => {
+    const other = second.daily[dateKey];
+    return other?.puzzleId === record.puzzleId &&
+      other.completedAt === record.completedAt;
+  });
 }
 
 function serializeSnapshot(snapshot: ProgressSyncSnapshot): string {
@@ -167,6 +193,7 @@ function serializeSnapshot(snapshot: ProgressSyncSnapshot): string {
     revision: snapshot.revision,
     writerId: snapshot.writerId,
     completed: snapshot.progress.completed,
+    daily: snapshot.progress.daily,
   });
 }
 

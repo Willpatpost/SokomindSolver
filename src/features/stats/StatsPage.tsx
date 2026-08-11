@@ -7,7 +7,8 @@ import {
   getUnlockedAchievements,
 } from "@/src/features/achievements/achievements";
 import { resetAppData } from "@/src/shared/app-data-reset";
-import { tryParseProgress, normalizeProgress } from "@/src/shared/progress";
+import { summarizeProgressMerge } from "@/src/shared/progress";
+import { readProgressImportFile } from "@/src/shared/progress-import";
 import {
   createProgressWriterId,
   loadProgressSyncSnapshot,
@@ -146,68 +147,48 @@ export function StatsPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  const handleImport = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result;
-      if (typeof text !== "string") {
-        setImportStatus("Could not read file.");
-        return;
-      }
-
-      const parsed = tryParseProgress(text);
-      if (!parsed || Object.keys(parsed.completed).length === 0) {
-        setImportStatus("Invalid or empty progress file.");
-        return;
-      }
-
-      const catalogIds = PUZZLE_METADATA.map((p) => p.id);
-      const { progress: normalized, ignoredPuzzleIds } = normalizeProgress(parsed, catalogIds);
-      const knownCount = Object.keys(normalized.completed).length;
-
-      if (knownCount === 0) {
-        setImportStatus("No matching puzzles found in the file.");
-        return;
-      }
-
-      const snapshot = loadProgressSyncSnapshot();
-      const writerId = createProgressWriterId();
-      const update = persistProgressImport(snapshot, writerId, normalized);
-
-      if (!update.result.ok) {
-        setImportStatus("Storage error — could not save imported data.");
-        return;
-      }
-
-      const newRecords = Object.keys(update.snapshot.progress.completed).length
-        - Object.keys(update.previous.completed).length;
-
-      const parts: string[] = [];
-      if (newRecords > 0) {
-        parts.push(`${newRecords} new`);
-      }
-      const improved = knownCount - newRecords;
-      if (improved > 0 && update.changed) {
-        parts.push(`${improved} updated`);
-      }
-      if (ignoredPuzzleIds.length > 0) {
-        parts.push(`${ignoredPuzzleIds.length} skipped`);
-      }
-
-      if (update.changed) {
-        setImportStatus(`Imported: ${parts.join(", ")}. Reloading…`);
-        setTimeout(() => window.location.reload(), 1200);
-      } else {
-        setImportStatus("No new or better records found.");
-      }
-    };
-    reader.onerror = () => setImportStatus("Could not read file.");
-    reader.readAsText(file);
-
     if (importInputRef.current) importInputRef.current.value = "";
+    const parsed = await readProgressImportFile(
+      file,
+      PUZZLE_METADATA.map((p) => p.id),
+    );
+    if (!parsed.ok) {
+      setImportStatus(parsed.message);
+      return;
+    }
+    if (Object.keys(parsed.progress.completed).length === 0 &&
+      Object.keys(parsed.progress.daily).length === 0) {
+      setImportStatus("No matching puzzles found in the file.");
+      return;
+    }
+
+    const snapshot = loadProgressSyncSnapshot();
+    const writerId = createProgressWriterId();
+    const summary = summarizeProgressMerge(snapshot.progress, parsed.progress);
+    const update = persistProgressImport(snapshot, writerId, parsed.progress);
+
+    if (!update.result.ok) {
+      setImportStatus("Storage error — could not save imported data.");
+      return;
+    }
+
+    const rejected = summary.rejected + parsed.rejected;
+    const parts = [
+      `${summary.added} added`,
+      `${summary.improved} improved`,
+      `${summary.unchanged} unchanged`,
+      `${rejected} rejected`,
+      `${parsed.invalid} invalid`,
+    ];
+    if (update.changed) {
+      setImportStatus(`Imported: ${parts.join(", ")}. Reloading…`);
+      setTimeout(() => window.location.reload(), 1200);
+    } else {
+      setImportStatus(`No changes: ${parts.join(", ")}.`);
+    }
   }, []);
 
   useEffect(() => {

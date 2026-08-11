@@ -9,7 +9,7 @@ import {
 } from "@/src/core";
 import { decodeActionLog } from "@/src/core/action-log";
 import type { SolutionStep } from "@/src/solver";
-import type { ProgressData } from "@/src/shared/progress";
+import { toLocalDateKey, type ProgressData } from "@/src/shared/progress";
 import {
   hydrateOptimalCacheFromIDB,
   loadOptimalCache,
@@ -30,8 +30,8 @@ import { useGameKeyboard } from "@/src/features/game/use-game-keyboard";
 import { useHintController } from "@/src/features/game/use-hint-controller";
 import { useTimer } from "@/src/features/game/use-timer";
 import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
-import { computeStats } from "@/src/features/progress/compute-stats";
-import { getUnlockedAchievements } from "@/src/features/achievements/achievements";
+import { computeStats, getDailyPuzzleId } from "@/src/features/progress/compute-stats";
+import { getNewlyUnlockedAchievements } from "@/src/features/achievements/achievements";
 import { usePersistedPlay, type CompletionRecordUpdate } from "./use-persisted-play";
 import { puzzlesHash, useRouter } from "@/src/router";
 import { useSharing } from "./use-sharing";
@@ -94,7 +94,11 @@ export function usePlayController(
   const [completionPuzzleId, setCompletionPuzzleId] =
     useState<string | null>(null);
   const [completionResult, setCompletionResult] =
-    useState<CompletionRecordUpdate>({ newBest: false });
+    useState<CompletionRecordUpdate>({
+      newBest: false,
+      previousProgress: progress,
+      progress,
+    });
   const [solverPuzzleId, setSolverPuzzleId] = useState<string | null>(null);
   const [optimalCache, setOptimalCache] = useState(loadOptimalCache);
   const [deadlockedBoxIds, setDeadlockedBoxIds] = useState<ReadonlySet<string>>(
@@ -167,16 +171,25 @@ export function usePlayController(
     commitSession(next);
     if (feedback === "solved") {
       setDeadlockedBoxIds(EMPTY_BOX_SET);
-      const preSolveStats = computeStats(progress, PUZZLE_METADATA);
-      const preSolveAchievements = new Set(
-        getUnlockedAchievements(preSolveStats, progress).map((a) => a.id),
+      const completedAt = new Date();
+      const isDaily = getDailyPuzzleId(PUZZLE_METADATA, completedAt) === next.puzzle.id;
+      const result = recordSolvedSession(
+        next,
+        elapsedRef.current,
+        isDaily
+          ? { dateKey: toLocalDateKey(completedAt), completedAt }
+          : undefined,
       );
-      const result = recordSolvedSession(next, elapsedRef.current);
+      const preSolveStats = computeStats(result.previousProgress, PUZZLE_METADATA);
       setCompletionResult(result);
       setCompletionPuzzleId(next.puzzle.id);
-      const postSolveStats = computeStats(progress, PUZZLE_METADATA);
-      const newAchievements = getUnlockedAchievements(postSolveStats, progress)
-        .filter((a) => !preSolveAchievements.has(a.id));
+      const postSolveStats = computeStats(result.progress, PUZZLE_METADATA);
+      const newAchievements = getNewlyUnlockedAchievements(
+        preSolveStats,
+        result.previousProgress,
+        postSolveStats,
+        result.progress,
+      );
       if (newAchievements.length > 0) {
         const names = newAchievements.map((a) => a.title).join(", ");
         setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
@@ -195,7 +208,7 @@ export function usePlayController(
       setDeadlockedBoxIds(EMPTY_BOX_SET);
     }
     return true;
-  }, [commitSession, playCue, progress, recordSolvedSession, sessionRef]);
+  }, [commitSession, playCue, recordSolvedSession, sessionRef]);
 
   // --- Solver playback (delegated) ---
 

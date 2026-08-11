@@ -48,7 +48,7 @@ function createMockStorage(): Storage {
 
 function progress(): ProgressData {
   return {
-    version: 1,
+    version: 2,
     completed: {
       old: {
         moves: 10,
@@ -56,6 +56,7 @@ function progress(): ProgressData {
         completedAt: "2026-08-01T00:00:00.000Z",
       },
     },
+    daily: {},
   };
 }
 
@@ -208,7 +209,7 @@ test("the completed reset marker suppresses stale document mutations", async () 
   assert.ok(puzzle);
   saveSession(createSession(puzzle));
   saveOptimalCache({
-    version: 3,
+    version: 4,
     records: { "ultra-tiny": { moves: 1, pushes: 1 } },
   });
 

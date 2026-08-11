@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, type Route } from "@/src/router";
-import { MobileNav } from "@/src/shared/ui/MobileNav";
+import { MobileNav } from "@/src/features/navigation/MobileNav";
 import { ScrollToTop } from "@/src/shared/ui/ScrollToTop";
 import { LoadingSkeleton } from "@/src/shared/ui/LoadingSkeleton";
 

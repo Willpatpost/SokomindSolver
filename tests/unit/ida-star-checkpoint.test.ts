@@ -36,7 +36,7 @@ function makeCheckpoint(overrides?: Partial<IdaStarCheckpoint>): IdaStarCheckpoi
     lastExhaustedThreshold: 4,
     incumbent: null,
     partitionId: null,
-    transpositionMetadata: { policy: "clear-per-iteration" },
+    transpositionMetadata: { policy: "best-g-per-iteration" },
     counters: { expanded: 100, generated: 500, iterations: 2 },
     ...overrides,
   };
@@ -71,6 +71,20 @@ describe("createBoardContentKey", () => {
       ]),
     );
     assert.notEqual(a, b);
+  });
+
+  it("differs for different start states on the same geometry", () => {
+    const board = makeBoard();
+    const moved = {
+      robot: board.initialBoxes[0].position,
+      boxes: [
+        {
+          ...board.initialBoxes[0],
+          position: { row: 2, column: 3 },
+        },
+      ],
+    };
+    assert.notEqual(createBoardContentKey(board), createBoardContentKey(board, moved));
   });
 });
 
@@ -122,13 +136,13 @@ describe("checkpoint serialization", () => {
       incumbent: {
         solution: {
           steps: [{ direction: "down", kind: "push" }],
-          moves: 5,
+          moves: 1,
           pushes: 1,
           objective: { kind: "moves" },
-          objectiveScore: 5,
+          objectiveScore: 1,
           optimality: "unknown",
         },
-        cost: 5,
+        cost: 1,
       },
     });
     const json = serializeCheckpoint(cp);
@@ -165,7 +179,7 @@ describe("checkpoint deserialization validation", () => {
   it("rejects wrong schema version", () => {
     const cp = makeCheckpoint();
     const json = serializeCheckpoint(cp).replace(
-      '"schemaVersion":1',
+      `"schemaVersion":${IDA_STAR_CHECKPOINT_SCHEMA_VERSION}`,
       '"schemaVersion":99',
     );
     assert.throws(() => deserializeCheckpoint(json), /schema version/i);
@@ -233,7 +247,7 @@ describe("checkpoint deserialization validation", () => {
     delete json.incumbent.solution.steps;
     assert.throws(
       () => deserializeCheckpoint(JSON.stringify(json)),
-      /solution\.steps/,
+      /incumbent\.solution/,
     );
   });
 
@@ -255,7 +269,7 @@ describe("checkpoint deserialization validation", () => {
     json.incumbent.solution.moves = -1;
     assert.throws(
       () => deserializeCheckpoint(JSON.stringify(json)),
-      /solution\.moves/,
+      /incumbent\.solution/,
     );
   });
 });
@@ -275,6 +289,7 @@ describe("validateCheckpointCompatibility", () => {
       { kind: "moves" },
       9,
       1,
+      { robot: board.initialRobot, boxes: board.initialBoxes },
     );
     assert.deepEqual(result, { compatible: true });
   });
@@ -289,6 +304,7 @@ describe("validateCheckpointCompatibility", () => {
       { kind: "moves" },
       9,
       1,
+      { robot: board.initialRobot, boxes: board.initialBoxes },
     );
     assert.equal(result.compatible, false);
     if (!result.compatible) {
@@ -311,6 +327,7 @@ describe("validateCheckpointCompatibility", () => {
       { kind: "moves" },
       9,
       1,
+      { robot: differentBoard.initialRobot, boxes: differentBoard.initialBoxes },
     );
     assert.equal(result.compatible, false);
     if (!result.compatible) {
@@ -328,11 +345,35 @@ describe("validateCheckpointCompatibility", () => {
       { kind: "moves" },
       20,
       1,
+      { robot: board.initialRobot, boxes: board.initialBoxes },
     );
     assert.equal(result.compatible, false);
     if (!result.compatible) {
       assert.match(result.reason, /codec version/i);
     }
+  });
+
+  it("rejects a different start state on identical board geometry", () => {
+    const board = makeBoard();
+    const cp = makeCheckpoint();
+    const result = validateCheckpointCompatibility(
+      cp,
+      board,
+      "1.1.0",
+      { kind: "moves" },
+      9,
+      1,
+      {
+        robot: board.initialBoxes[0].position,
+        boxes: [
+          {
+            ...board.initialBoxes[0],
+            position: { row: 2, column: 3 },
+          },
+        ],
+      },
+    );
+    assert.equal(result.compatible, false);
   });
 
   it("rejects mismatched schema version", () => {
@@ -348,6 +389,7 @@ describe("validateCheckpointCompatibility", () => {
       { kind: "moves" },
       9,
       1,
+      { robot: board.initialRobot, boxes: board.initialBoxes },
     );
     assert.equal(result.compatible, false);
     if (!result.compatible) {

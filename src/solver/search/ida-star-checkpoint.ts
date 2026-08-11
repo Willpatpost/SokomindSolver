@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
-import type { ParsedBoard } from "../../core/model.ts";
+import type { GameSnapshot, ParsedBoard } from "../../core/model.ts";
 import type { SolverObjective, SolverSolution } from "../contracts.ts";
+import { isSolverSolution } from "../validation.ts";
 
-export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 1 as const;
+export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 2 as const;
 
 export interface IdaStarCheckpointCounters {
   readonly expanded: number;
@@ -25,11 +25,34 @@ export interface IdaStarCheckpoint {
   readonly lastExhaustedThreshold: number;
   readonly incumbent: IdaStarCheckpointIncumbent | null;
   readonly partitionId: string | null;
-  readonly transpositionMetadata: { readonly policy: "clear-per-iteration" | "tt-ida-star" };
+  readonly transpositionMetadata: { readonly policy: "best-g-per-iteration" };
   readonly counters: IdaStarCheckpointCounters;
 }
 
-export function createBoardContentKey(board: ParsedBoard): string {
+/** Browser-neutral deterministic 64-bit FNV-1a digest. */
+function stableHash64(value: string): string {
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  const mask = 0xffffffffffffffffn;
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    hash ^= BigInt(code & 0xff);
+    hash = (hash * prime) & mask;
+    hash ^= BigInt(code >>> 8);
+    hash = (hash * prime) & mask;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+type CheckpointStartState = Pick<GameSnapshot, "robot" | "boxes">;
+
+export function createBoardContentKey(
+  board: ParsedBoard,
+  snapshot: CheckpointStartState = {
+    robot: board.initialRobot,
+    boxes: board.initialBoxes,
+  },
+): string {
   const parts: string[] = [];
   parts.push(`${board.width}x${board.height}`);
 
@@ -48,8 +71,13 @@ export function createBoardContentKey(board: ParsedBoard): string {
     .sort();
   parts.push(floorKeys.join(";"));
 
-  const hash = createHash("sha256").update(parts.join("|")).digest("hex");
-  return hash.slice(0, 16);
+  parts.push(`R${snapshot.robot.row},${snapshot.robot.column}`);
+  const boxKeys = snapshot.boxes
+    .map((box) => `B${box.label}:${box.position.row},${box.position.column}`)
+    .sort();
+  parts.push(boxKeys.join(";"));
+
+  return stableHash64(parts.join("|"));
 }
 
 export function createExactStateCodecVersion(
@@ -57,8 +85,7 @@ export function createExactStateCodecVersion(
   labelCount: number,
 ): number {
   const combined = `codec:${cellCount}:${labelCount}`;
-  const hash = createHash("sha256").update(combined).digest();
-  return hash.readUInt32BE(0);
+  return Number.parseInt(stableHash64(combined).slice(0, 8), 16);
 }
 
 function sortKeys(obj: unknown): unknown {
@@ -122,21 +149,14 @@ export function deserializeCheckpoint(json: string): IdaStarCheckpoint {
       throw new Error("Invalid incumbent");
     }
     const inc = obj.incumbent as Record<string, unknown>;
-    if (typeof inc.cost !== "number") {
+    if (!Number.isSafeInteger(inc.cost) || (inc.cost as number) < 0) {
       throw new Error("Missing or invalid incumbent.cost");
     }
-    if (typeof inc.solution !== "object" || inc.solution === null) {
+    if (!isSolverSolution(inc.solution)) {
       throw new Error("Missing or invalid incumbent.solution");
     }
-    const sol = inc.solution as Record<string, unknown>;
-    if (!Array.isArray(sol.steps)) {
-      throw new Error("Missing or invalid incumbent.solution.steps");
-    }
-    if (typeof sol.moves !== "number" || !Number.isFinite(sol.moves) || sol.moves < 0) {
-      throw new Error("Missing or invalid incumbent.solution.moves");
-    }
-    if (typeof sol.pushes !== "number" || !Number.isFinite(sol.pushes) || sol.pushes < 0) {
-      throw new Error("Missing or invalid incumbent.solution.pushes");
+    if (inc.cost !== inc.solution.moves) {
+      throw new Error("incumbent.cost must equal incumbent.solution.moves");
     }
   }
 
@@ -144,7 +164,12 @@ export function deserializeCheckpoint(json: string): IdaStarCheckpoint {
     throw new Error("Invalid partitionId");
   }
 
-  if (typeof obj.transpositionMetadata !== "object" || obj.transpositionMetadata === null) {
+  if (
+    typeof obj.transpositionMetadata !== "object" ||
+    obj.transpositionMetadata === null ||
+    (obj.transpositionMetadata as Record<string, unknown>).policy !==
+      "best-g-per-iteration"
+  ) {
     throw new Error("Missing transpositionMetadata");
   }
 
@@ -176,6 +201,7 @@ export function validateCheckpointCompatibility(
   objective: SolverObjective,
   cellCount: number,
   labelCount: number,
+  snapshot: CheckpointStartState,
 ): CheckpointCompatibilityResult {
   if (checkpoint.schemaVersion !== IDA_STAR_CHECKPOINT_SCHEMA_VERSION) {
     return {
@@ -184,7 +210,7 @@ export function validateCheckpointCompatibility(
     };
   }
 
-  const expectedBoardKey = createBoardContentKey(board);
+  const expectedBoardKey = createBoardContentKey(board, snapshot);
   if (checkpoint.boardContentKey !== expectedBoardKey) {
     return {
       compatible: false,

@@ -11,10 +11,15 @@ share a Web Storage origin:
 
 - `sokomind.session.v1` — current puzzle plus its canonical action log;
 - `sokomind.progress.v1` — a versioned synchronization envelope containing the
-  best completed route per puzzle;
+  best completed route per puzzle plus a schema-v2 local-date daily
+  participation ledger;
 - `sokomind.experience.v1` — audio, volume, and motion preferences;
-- `sokomind.optimal.v3` — locally proven move records from the corrected
+- `sokomind.optimal.v4` — locally proven move records from the corrected
   minimum-move proof pipeline;
+- `sokomind.ratings.v1`, `sokomind.favorites.v1`, and
+  `sokomind.editor-draft.v1` — device-local preferences and the editable draft;
+- `sokomind.editor-draft-recovery.v1` — a quarantined invalid draft that can be
+  downloaded or deleted without clearing other data;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
   reset.
 
@@ -33,11 +38,12 @@ against the document's reset generation. Play waits for asynchronous
 session hydration before enabling autosave, and it will not apply a late
 hydrated record after the user has already moved. If the player navigates away
 after moving while that read is still pending, the newer in-memory attempt is
-flushed during unmount so the readiness gate cannot lose it. Optimal-cache
+flushed during unmount so the readiness gate cannot lose it. Home also performs
+a generation-fenced IndexedDB pointer lookup, so an IDB-only newest attempt
+remains discoverable through Continue. Optimal-cache
 hydration merges both storage tiers by the lower proven move count. Version 1
-and 2 optimal records are intentionally discarded because they were produced
-before the exact keeper-position A* correction and cannot be trusted as
-minimum-move proofs.
+through 3 optimal records are intentionally discarded because they predate the
+current proof correction and cannot be trusted as minimum-move proofs.
 
 Progress writes re-read the latest stored snapshot before mutation. Tabs merge
 same-generation records deterministically by move count and stable tie-breakers;
@@ -99,9 +105,21 @@ but never trusts the bad state.
 
 ## Progress backups
 
-The Progress dialog exports readable versioned JSON. Import validates the
-schema and merges records rather than replacing them. The better record is the
-one with fewer moves, and its original completion timestamp is preserved.
+The Progress dialog and Statistics page share the same bounded importer. Files
+are limited to 1 MB and 10,000 records, parsed before commit, normalized against
+the active catalog, and summarized as added, improved, unchanged, rejected, and
+invalid records. MIME type and extension remain picker hints, not trust
+boundaries. Imports merge rather than replace; the better record is the one
+with fewer moves, and its original completion timestamp is preserved.
+
+Daily participation is keyed by local calendar date and the puzzle assigned on
+that date. The daily selection changes at local midnight; calculations use the
+local year/month/day tuple so daylight-saving transitions do not create a
+23-hour or 25-hour “day.” A lifetime best from another date never clears the
+current daily challenge.
+
+Shared editor links open as read-only previews. They do not autosave or replace
+the device draft until the player explicitly chooses **Import into editor**.
 
 Reset progress writes a new empty synchronization generation after explicit
 confirmation. It does not change the current attempt or experience preferences,

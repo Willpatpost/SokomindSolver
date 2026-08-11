@@ -1,0 +1,68 @@
+[
+  {
+    "route": "home",
+    "behavior": "primary navigation and route CTAs",
+    "testFile": "tests/e2e/navigation.spec.ts",
+    "testName": "homepage shows branding and all CTAs work"
+  },
+  {
+    "route": "home",
+    "behavior": "daily participation uses the assigned local date",
+    "testFile": "tests/unit/compute-stats.test.ts",
+    "testName": "does not treat an old lifetime best as today's participation"
+  },
+  {
+    "route": "home",
+    "behavior": "Continue discovers IndexedDB-only sessions",
+    "testFile": "tests/unit/session-persistence.test.ts",
+    "testName": "discovers an IndexedDB-only resume pointer and prefers the newest tier"
+  },
+  {
+    "route": "selector",
+    "behavior": "pagination and drill-down remain addressable",
+    "testFile": "tests/e2e/navigation.spec.ts",
+    "testName": "large collections use URL-addressable accessible pagination"
+  },
+  {
+    "route": "play",
+    "behavior": "solve and personal-best flow",
+    "testFile": "tests/e2e/app.spec.ts",
+    "testName": "solves a room and reports the new personal best"
+  },
+  {
+    "route": "play",
+    "behavior": "achievement notification delta",
+    "testFile": "tests/unit/achievements.test.ts",
+    "testName": "achievement delta includes the solve that crosses a threshold exactly once"
+  },
+  {
+    "route": "editor",
+    "behavior": "shared preview preserves the saved draft",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "shared links preserve the saved draft until explicit import"
+  },
+  {
+    "route": "editor",
+    "behavior": "native text and grid undo ownership",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "native text undo is preserved while grid undo remains global"
+  },
+  {
+    "route": "editor",
+    "behavior": "invalid-draft scoped recovery",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "quarantines an invalid draft with scoped download and delete recovery"
+  },
+  {
+    "route": "editor",
+    "behavior": "latest editable draft flushes before reload",
+    "testFile": "tests/e2e/editor.mobile.spec.ts",
+    "testName": "keeps a large editor canvas scrollable and playtest controls reachable"
+  },
+  {
+    "route": "stats",
+    "behavior": "bounded progress import",
+    "testFile": "tests/e2e/stats.spec.ts",
+    "testName": "stats import enforces bounds and reports unchanged and rejected records"
+  }
+]

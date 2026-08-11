@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { PuzzleDefinition } from "../../src/core/model.ts";
 import type { ProgressData } from "../../src/shared/progress.ts";
-import { computeStats } from "../../src/features/progress/compute-stats.ts";
+import {
+  computeDailyStreak,
+  computeStats,
+  getDailyPuzzleId,
+} from "../../src/features/progress/compute-stats.ts";
+import {
+  recordDailyCompletion,
+  toLocalDateKey,
+} from "../../src/shared/progress.ts";
 
 function puzzle(overrides: Partial<PuzzleDefinition> & Pick<PuzzleDefinition, "id" | "difficulty" | "boxes">): PuzzleDefinition {
   return {
@@ -17,10 +25,10 @@ function progress(completed: Record<string, { moves: number; pushes: number; com
   for (const [id, rec] of Object.entries(completed)) {
     mapped[id] = { ...rec, completedAt: rec.completedAt ?? "2024-01-01T00:00:00Z" };
   }
-  return { version: 1, completed: mapped };
+  return { version: 2, completed: mapped, daily: {} };
 }
 
-const EMPTY: ProgressData = { version: 1, completed: {} };
+const EMPTY: ProgressData = { version: 2, completed: {}, daily: {} };
 
 describe("computeStats", () => {
   describe("empty puzzle list", () => {
@@ -262,5 +270,50 @@ describe("computeStats", () => {
       const stats = computeStats(prog, puzzles);
       assert.equal(stats.averagePushesPerPuzzle, 7);
     });
+  });
+});
+
+describe("daily challenge participation", () => {
+  const dailyPuzzles = Array.from({ length: 17 }, (_, index) =>
+    puzzle({ id: `daily-${index}`, difficulty: "beginner", boxes: 1 }));
+
+  it("does not treat an old lifetime best as today's participation", () => {
+    const today = new Date(2026, 7, 11, 12);
+    const assigned = getDailyPuzzleId(dailyPuzzles, today)!;
+    const lifetimeOnly = progress({
+      [assigned]: {
+        moves: 5,
+        pushes: 1,
+        completedAt: "2000-01-01T00:00:00.000Z",
+      },
+    });
+    assert.equal(computeDailyStreak(lifetimeOnly, dailyPuzzles, today), 0);
+  });
+
+  it("records repeated assignments independently on each local date", () => {
+    const onePuzzle = [dailyPuzzles[0]];
+    const today = new Date(2026, 7, 11, 12);
+    const yesterday = new Date(2026, 7, 10, 12);
+    let value = recordDailyCompletion(EMPTY, onePuzzle[0].id, yesterday);
+    value = recordDailyCompletion(value, onePuzzle[0].id, today);
+    assert.deepEqual(Object.keys(value.daily), [
+      toLocalDateKey(yesterday),
+      toLocalDateKey(today),
+    ]);
+    assert.equal(computeDailyStreak(value, onePuzzle, today), 2);
+  });
+
+  it("rolls selection at local midnight without DST-duration arithmetic", () => {
+    const before = new Date(2026, 2, 8, 23, 59, 59);
+    const after = new Date(2026, 2, 9, 0, 0, 1);
+    assert.notEqual(toLocalDateKey(before), toLocalDateKey(after));
+    assert.equal(
+      getDailyPuzzleId(dailyPuzzles, before),
+      getDailyPuzzleId(dailyPuzzles, new Date(2026, 2, 8, 0, 1)),
+    );
+    assert.notEqual(
+      getDailyPuzzleId(dailyPuzzles, before),
+      getDailyPuzzleId(dailyPuzzles, after),
+    );
   });
 });

@@ -143,6 +143,21 @@ expects the proof to complete rather than treating it as best-effort. Both
 modes take the same code path — the gate in the source is
 `sokomindOptions.mode !== "fast"`.
 
+Discovery, harvesting, rewriting, and proof consume one run-wide allowance.
+Elapsed, expanded, and generated work already spent is subtracted before the
+next phase begins. Concurrent proof divides finite state and memory allowances
+between partitions and uses one coordinator deadline; final metrics merge all
+phases and partitions rather than replacing discovery telemetry with proof
+telemetry.
+
+Nested proof messages are an untrusted boundary. The coordinator requires
+finite non-negative safe costs, fully structured metrics and solutions, the
+currently assigned execution identity, monotonic bounds, cost agreement, and
+successful replay on the original request before adopting a candidate. Invalid,
+mismatched, silent, failed-construction, `error`, and `messageerror` paths
+terminate their partition or worker. Completed stale/duplicate terminals are
+ignored. Every exit releases workers, listeners, timers, and abort handlers.
+
 ## Classic A\*, IDA\*, and Sokomind Solver compared
 
 Classic A\*, classic IDA\*, and the Sokomind Solver in quality/optimal mode all
@@ -167,6 +182,19 @@ requirement. It is memory-efficient: it stores only the current path (O(depth)
 instead of O(states)). It is slower in practice for moderately-sized puzzles
 because it re-expands nodes across iterations, but it can handle puzzles where
 A\* runs out of memory. It supports checkpointing for HPC and long runs.
+
+IDA\* transposition pruning is contour-local exact-state best-`g` dominance.
+The key is collision-checked against the canonical state, and a state is pruned
+only after the same exact state has been reached at an equal or lower path cost
+inside that contour. Root-relative backed `f` values are not reused because
+they are path-cost dependent. The compatibility option formerly called
+`persistTransposition` no longer carries proof-pruning entries across contours.
+
+Checkpoint schema v2 binds a resume record to the board, objective, algorithm
+version, tuning context, exact robot cell, and label-aware box positions. It
+uses a deterministic browser-neutral digest. A restored incumbent must pass
+full structural validation, agree with its declared move cost, and replay to a
+solved state before it can affect a threshold or proof.
 
 **Sokomind Solver quality/optimal** is not a single algorithm but a multi-lane
 portfolio orchestrator. The discovery phase uses the legacy engine kernel

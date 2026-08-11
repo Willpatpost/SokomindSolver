@@ -411,6 +411,14 @@ async function main(): Promise<void> {
   const tuningFp = sokomindTuningFingerprint(tuningProfile);
 
   const board: ParsedBoard = parsePuzzleRows(job.rows);
+  const initialSnapshot = {
+    puzzleId: job.puzzleId,
+    robot: board.initialRobot,
+    boxes: board.initialBoxes,
+    moves: 0,
+    pushes: 0,
+    solved: false,
+  } as const;
 
   // -------------------------------------------------------------------------
   // Checkpoint loading (Gap 1a)
@@ -430,6 +438,7 @@ async function main(): Promise<void> {
         { kind: "moves" },
         board.floor.length,
         labels.length,
+        initialSnapshot,
       );
       if (compat.compatible) {
         loadedCheckpoint = checkpoint;
@@ -485,14 +494,7 @@ async function main(): Promise<void> {
 
   const request: SolverRequest = {
     board,
-    snapshot: {
-      puzzleId: job.puzzleId,
-      robot: board.initialRobot,
-      boxes: board.initialBoxes,
-      moves: 0,
-      pushes: 0,
-      solved: false,
-    },
+    snapshot: initialSnapshot,
     objective: { kind: "moves" },
     ...(job.timeoutMs !== undefined || job.memoryMib !== undefined
       ? {

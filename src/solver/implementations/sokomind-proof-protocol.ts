@@ -3,8 +3,10 @@ import type { Box, GameSnapshot, Position } from "../../core/model.ts";
 import type {
   SolutionStep,
   SolverRequest,
+  SolverRunMetrics,
   SolverSolution,
 } from "../contracts.ts";
+import { isSolverRunMetrics, isSolverSolution } from "../validation.ts";
 import {
   compileSearchBoard,
   SEARCH_DIRECTIONS,
@@ -53,6 +55,8 @@ export interface ProofProgress {
   readonly partitionId: string;
   readonly lowerBound: number;
   readonly expandedStates: number;
+  readonly generatedStates?: number;
+  readonly counters?: Readonly<Record<string, number>>;
 }
 
 export interface ProofSolutionFound {
@@ -67,6 +71,7 @@ export interface ProofPartitionComplete {
   readonly partitionId: string;
   readonly lowerBound: number;
   readonly exhausted: boolean;
+  readonly metrics: SolverRunMetrics;
 }
 
 export interface ProofError {
@@ -102,6 +107,10 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function isNonNegativeSafeCost(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 export function isProofCommand(value: unknown): value is ProofCommand {
   if (!isRecord(value)) return false;
   if (!PROOF_COMMAND_TYPES.has(value.type)) return false;
@@ -111,8 +120,7 @@ export function isProofCommand(value: unknown): value is ProofCommand {
       return (
         typeof value.partitionId === "string" &&
         isRecord(value.request) &&
-        typeof value.initialUpperBound === "number" &&
-        Number.isFinite(value.initialUpperBound) &&
+        isNonNegativeSafeCost(value.initialUpperBound) &&
         typeof value.prefixCost === "number" &&
         Number.isSafeInteger(value.prefixCost) &&
         value.prefixCost >= 0 &&
@@ -140,22 +148,31 @@ export function isProofResult(value: unknown): value is ProofResult {
     case "proof/progress":
       return (
         typeof value.partitionId === "string" &&
-        typeof value.lowerBound === "number" &&
-        typeof value.expandedStates === "number" &&
-        Number.isSafeInteger(value.expandedStates)
+        isNonNegativeSafeCost(value.lowerBound) &&
+        Number.isSafeInteger(value.expandedStates) &&
+        (value.expandedStates as number) >= 0 &&
+        (value.generatedStates === undefined ||
+          (Number.isSafeInteger(value.generatedStates) &&
+            (value.generatedStates as number) >= 0)) &&
+        (value.counters === undefined || isSolverRunMetrics({
+          elapsedMs: 0,
+          counters: value.counters,
+        }))
       );
     case "proof/solution":
       return (
         typeof value.partitionId === "string" &&
-        isRecord(value.solution) &&
-        typeof value.totalCost === "number" &&
-        Number.isSafeInteger(value.totalCost)
+        isSolverSolution(value.solution) &&
+        Number.isSafeInteger(value.totalCost) &&
+        (value.totalCost as number) >= 0 &&
+        value.totalCost === value.solution.moves
       );
     case "proof/partition-complete":
       return (
         typeof value.partitionId === "string" &&
-        typeof value.lowerBound === "number" &&
-        typeof value.exhausted === "boolean"
+        isNonNegativeSafeCost(value.lowerBound) &&
+        typeof value.exhausted === "boolean" &&
+        isSolverRunMetrics(value.metrics)
       );
     case "proof/error":
       return (

@@ -1200,6 +1200,11 @@ export function isSolverSolution(value: unknown): value is SolverSolution {
   return isValid(collectSolutionIssues(value));
 }
 
+export function isSolverRunMetrics(value: unknown): value is SolverRunMetrics {
+  const issues: SolverValidationIssue[] = [];
+  return checkMetrics(value, "metrics", issues) && isValid(issues);
+}
+
 export function assertValidSolverSolution(
   value: unknown,
 ): asserts value is SolverSolution {

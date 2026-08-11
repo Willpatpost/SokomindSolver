@@ -21,11 +21,91 @@ function editorUrl(puzzle: SharedPuzzle): string {
   return `./#/editor?custom=${encoded}`;
 }
 
+async function openImportedEditor(page: Page, puzzle: SharedPuzzle): Promise<void> {
+  await page.goto(editorUrl(puzzle));
+  await page.getByRole("button", { name: "Import into editor" }).click();
+}
+
 const QUICK_TEST: SharedPuzzle = {
   title: "Quick editor test",
   hint: "Keep this draft intact.",
   rows: ["OOOOO", "O R O", "O X O", "O S O", "OOOOO"],
 };
+
+test("shared links preserve the saved draft until explicit import", async ({ page }) => {
+  const savedDraft = JSON.stringify({
+    width: 3,
+    height: 3,
+    cells: [["O", "O", "O"], ["O", "R", "O"], ["O", "O", "O"]],
+    title: "Private draft",
+    difficulty: "beginner",
+    hint: "Do not replace",
+  });
+  await page.addInitScript((draft) => {
+    localStorage.setItem("sokomind.editor-draft.v1", draft);
+  }, savedDraft);
+  await page.goto(editorUrl(QUICK_TEST));
+  await expect(page.getByText("Shared puzzle preview")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue(QUICK_TEST.title);
+  await expect(page.getByLabel("Title")).toBeDisabled();
+  await page.waitForTimeout(1_100);
+  expect(await page.evaluate(() =>
+    localStorage.getItem("sokomind.editor-draft.v1"))).toBe(savedDraft);
+
+  await page.getByRole("button", { name: "Back to home" }).click();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("sokomind.editor-draft.v1"))).toBe(savedDraft);
+
+  await page.goto(editorUrl(QUICK_TEST));
+  await page.getByRole("button", { name: "Import into editor" }).click();
+  await page.waitForFunction(() => {
+    const raw = localStorage.getItem("sokomind.editor-draft.v1");
+    return raw !== null && JSON.parse(raw).title === "Quick editor test";
+  });
+});
+
+test("native text undo is preserved while grid undo remains global", async ({ page }) => {
+  await page.goto("./#/editor");
+  const title = page.getByLabel("Title");
+  await title.focus();
+  await title.press("End");
+  await title.pressSequentially(" changed");
+  await page.keyboard.press("Control+z");
+  await expect(title).toHaveValue("Untitled");
+
+  await page.getByRole("button", { name: "Floor" }).click();
+  const firstCell = page.getByTestId("editor-grid").locator("button").first();
+  await firstCell.click();
+  await expect(firstCell).toHaveAttribute("data-symbol", " ");
+  await page.keyboard.press("Control+z");
+  await expect(firstCell).toHaveAttribute("data-symbol", "O");
+  await page.keyboard.press("Control+Shift+z");
+  await expect(firstCell).toHaveAttribute("data-symbol", " ");
+  await page.keyboard.press("Meta+z");
+  await expect(firstCell).toHaveAttribute("data-symbol", "O");
+});
+
+test("quarantines an invalid draft with scoped download and delete recovery", async ({ page }) => {
+  const invalid = '{"width":3,"height":3,"cells":["x"],"title":"Broken","difficulty":"beginner"}';
+  await page.addInitScript((draft) => {
+    localStorage.setItem("sokomind.editor-draft.v1", draft);
+  }, invalid);
+  await page.goto("./#/editor");
+  await expect(page.getByRole("alert")).toContainText("invalid editor draft");
+  expect(await page.evaluate(() => ({
+    active: localStorage.getItem("sokomind.editor-draft.v1"),
+    recovery: localStorage.getItem("sokomind.editor-draft-recovery.v1"),
+  }))).toEqual({ active: null, recovery: invalid });
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download invalid draft" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("sokomind-invalid-editor-draft.json");
+  await page.getByRole("button", { name: "Delete invalid draft" }).click();
+  await expect(page.getByText("An invalid editor draft was quarantined.")).toHaveCount(0);
+  expect(await page.evaluate(() =>
+    localStorage.getItem("sokomind.editor-draft-recovery.v1"))).toBeNull();
+});
 
 function createLargeTest(): SharedPuzzle {
   const rows = Array.from({ length: 20 }, (_, row) =>
@@ -84,7 +164,7 @@ async function contrastRatio(
 test("keeps the canvas readable and exposes all legal typed labels", async ({
   page,
 }) => {
-  await page.goto(editorUrl(QUICK_TEST));
+  await openImportedEditor(page, QUICK_TEST);
   await expect(page.getByRole("heading", { name: "Puzzle Editor" })).toBeVisible();
 
   const firstCell = page
@@ -135,7 +215,7 @@ test("keeps the canvas readable and exposes all legal typed labels", async ({
 test("playtest is fully playable and returns to the unchanged draft", async ({
   page,
 }) => {
-  await page.goto(editorUrl(QUICK_TEST));
+  await openImportedEditor(page, QUICK_TEST);
   await expect(page.getByLabel("Title")).toHaveValue(QUICK_TEST.title);
   await expect(page.getByLabel("Hint")).toHaveValue(QUICK_TEST.hint ?? "");
   await page.waitForFunction(
@@ -226,7 +306,7 @@ test("keeps a 20 by 20 playtest scrollable and uses the full tablet width", asyn
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(editorUrl(createLargeTest()));
+  await openImportedEditor(page, createLargeTest());
   await page.getByRole("button", { name: "Test puzzle" }).click();
 
   const playtestViewport = page.getByTestId("editor-playtest-viewport");
@@ -238,7 +318,7 @@ test("keeps a 20 by 20 playtest scrollable and uses the full tablet width", asyn
   expect(overflow.overflowY).toBe("auto");
 
   await page.setViewportSize({ width: 700, height: 800 });
-  await page.goto(editorUrl(QUICK_TEST));
+  await openImportedEditor(page, QUICK_TEST);
   await page.getByRole("button", { name: "Test puzzle" }).click();
   const tabletLayout = await page
     .getByTestId("editor-playtest-layout")
@@ -264,7 +344,7 @@ test("shares URL-safe data, reports failures, and keeps the dark primary legible
 }) => {
   test.skip(browserName !== "chromium", "clipboard permissions only supported in Chromium");
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto(editorUrl(QUICK_TEST));
+  await openImportedEditor(page, QUICK_TEST);
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "dark";
   });
@@ -312,7 +392,7 @@ test("does not publish a stale clipboard result after the draft changes", async 
       },
     });
   });
-  await page.goto(editorUrl(QUICK_TEST));
+  await openImportedEditor(page, QUICK_TEST);
 
   await page.getByRole("button", { name: "Share (copy URL)" }).click();
   await expect(page.getByLabel("Share link")).toBeVisible();

@@ -1,6 +1,9 @@
 import { isSolverCancellation, throwIfSolverCancelled } from "../cancellation.ts";
 import type { IdaStarCheckpoint } from "./ida-star-checkpoint.ts";
-import { IDA_STAR_CHECKPOINT_SCHEMA_VERSION } from "./ida-star-checkpoint.ts";
+import {
+  createBoardContentKey,
+  IDA_STAR_CHECKPOINT_SCHEMA_VERSION,
+} from "./ida-star-checkpoint.ts";
 import type {
   SolutionStep,
   SolverExecutionContext,
@@ -79,15 +82,10 @@ export interface ExactMoveIdaStarOptions {
     readonly partitionId: string | null;
   };
   /**
-   * When false, the transposition table is cleared at the start of each
-   * IDA* contour. This is the conservative-correct behavior for proof-
-   * producing runs: root-relative backed-f values are path-dependent and
-   * cannot safely prune cheaper re-visits across contours without a formal
-   * correctness proof.
-   *
-   * When true, the TT persists across contours for faster convergence.
-   * This is acceptable for bounded/first-found searches where optimality
-   * is not claimed. Defaults to false (contour-scoped) for safety.
+   * Retained for request compatibility. Exact IDA* always uses a contour-local
+   * best-g dominance table: backed f-values are path-dependent and are never
+   * safe transposition bounds. Persistence across contours is deliberately
+   * disabled for proof-producing search.
    */
   readonly persistTransposition?: boolean;
 }
@@ -498,6 +496,28 @@ export async function runIdaStarSearch(
     throwIfSolverCancelled(context.signal);
     const board = compileSearchBoard(request.board);
 
+    if (resumeCheckpoint) {
+      const expectedStateKey = createBoardContentKey(request.board, request.snapshot);
+      if (resumeCheckpoint.boardContentKey !== expectedStateKey) {
+        throw new Error("IDA* checkpoint does not match the requested start state.");
+      }
+      if (resumeCheckpoint.objective.kind !== request.objective.kind) {
+        throw new Error("IDA* checkpoint objective does not match the request.");
+      }
+      if (resumeCheckpoint.incumbent) {
+        const { cost, solution } = resumeCheckpoint.incumbent;
+        const verification = verifySolverSolution(request, solution);
+        if (cost !== solution.moves) {
+          throw new Error("IDA* checkpoint incumbent cost does not match its route.");
+        }
+        if (!verification.valid) {
+          throw new Error(
+            `IDA* checkpoint incumbent is invalid: ${verification.message}`,
+          );
+        }
+      }
+    }
+
     context.reportProgress({
       phase: "preparing",
       elapsedMs: Math.max(0, context.now() - startedAt),
@@ -801,9 +821,8 @@ export async function runIdaStarSearch(
       : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
         ? 3_000_000
         : 2_000_000;
-    const transposition = new Map<number, { bigintKey: bigint; f: number }>();
+    const transposition = new Map<number, { bigintKey: bigint; bestG: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
-    const persistTT = options?.persistTransposition === true;
 
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {
@@ -820,7 +839,7 @@ export async function runIdaStarSearch(
             ? { solution: incumbentSolution, cost: U }
             : null,
           partitionId: ctx.partitionId,
-          transpositionMetadata: { policy: persistTT ? "tt-ida-star" : "clear-per-iteration" },
+          transpositionMetadata: { policy: "best-g-per-iteration" },
           counters: {
             expanded: counters.expanded,
             generated: counters.generated,
@@ -833,10 +852,11 @@ export async function runIdaStarSearch(
       counters.iterations += 1;
       let nextLimit = Number.POSITIVE_INFINITY;
 
-      if (!persistTT) {
-        transposition.clear();
-        transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
-      }
+      // Best-g dominance is contour-local. Persisting visited-state costs across
+      // contours risks mixing partially explored path contexts and is not
+      // required for correctness.
+      transposition.clear();
+      transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
       transpositionSize = transposition.size;
 
       // Path stack: current DFS path from root to active node.
@@ -1010,25 +1030,25 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          // TT-IDA* check: stored backed_f is a proven lower bound
+          // Collision-checked, contour-local graph dominance. A prior arrival
+          // at the exact same state with no greater path cost dominates this
+          // arrival. Do not store or reuse backed f-values here: those are
+          // root/path-relative and caused false optimality certificates.
           const ttEntry = transposition.get(frame.zobristKey);
-          const storedF = (ttEntry !== undefined && ttEntry.bigintKey === frame.exactKey) ? ttEntry.f : undefined;
-          if (storedF !== undefined && storedF > fLimit) {
+          const storedBestG =
+            ttEntry !== undefined && ttEntry.bigintKey === frame.exactKey
+              ? ttEntry.bestG
+              : undefined;
+          if (storedBestG !== undefined && storedBestG <= frame.g) {
             counters.duplicates += 1;
-            nextLimit = Math.min(nextLimit, storedF);
             popFrame();
-            if (pathStack.length > 0) {
-              pathStack[pathStack.length - 1].minChildF = Math.min(
-                pathStack[pathStack.length - 1].minChildF, storedF,
-              );
-            }
             continue;
           }
-          // Store initial f-value; backed-up value is written on backtrack
           const oldTTSize = transposition.size;
-          if (storedF === undefined || f > storedF) {
-            transposition.set(frame.zobristKey, { bigintKey: frame.exactKey, f });
-          }
+          transposition.set(frame.zobristKey, {
+            bigintKey: frame.exactKey,
+            bestG: frame.g,
+          });
           if (transposition.size > oldTTSize) {
             transpositionSize = transposition.size;
             transpositionMemoryBytes += estimateTranspositionEntryBytes();
@@ -1414,16 +1434,11 @@ export async function runIdaStarSearch(
           break; // Process child before continuing with siblings
         }
 
-        // No more children: backtrack with TT-IDA* f-value propagation
+        // No more children: backtrack and propagate the contour cutoff only.
         if (!foundChild) {
           const backFrame = pathStack[pathStack.length - 1];
           if (backFrame.expanded) {
             const backedF = Math.max(backFrame.g + backFrame.h, backFrame.minChildF);
-            const existingEntry = transposition.get(backFrame.zobristKey);
-            const existingF = (existingEntry !== undefined && existingEntry.bigintKey === backFrame.exactKey) ? existingEntry.f : undefined;
-            if (existingF === undefined || backedF > existingF) {
-              transposition.set(backFrame.zobristKey, { bigintKey: backFrame.exactKey, f: backedF });
-            }
             nextLimit = Math.min(nextLimit, backedF);
           }
           popFrame();

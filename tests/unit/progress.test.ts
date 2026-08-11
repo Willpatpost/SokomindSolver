@@ -6,12 +6,26 @@ import {
   normalizeProgress,
   parseProgress,
   recordCompletion,
+  recordDailyCompletion,
+  summarizeProgressMerge,
   tryParseProgress,
 } from "../../src/shared/progress.ts";
 
 test("invalid persisted progress fails closed", () => {
   assert.deepEqual(parseProgress("not json"), EMPTY_PROGRESS);
   assert.deepEqual(parseProgress('{"version":2,"completed":{}}'), EMPTY_PROGRESS);
+});
+
+test("migrates v1 lifetime progress into v2 without inventing daily participation", () => {
+  const migrated = parseProgress(JSON.stringify({
+    version: 1,
+    completed: {
+      room: { moves: 4, pushes: 1, completedAt: "2026-08-01T00:00:00.000Z" },
+    },
+  }));
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.completed.room?.moves, 4);
+  assert.deepEqual(migrated.daily, {});
 });
 
 test("distinguishes invalid imports and merges only better records", () => {
@@ -93,4 +107,38 @@ test("normalization preserves progress identity when every record is known", () 
 
   assert.equal(normalized.progress, imported);
   assert.deepEqual(normalized.ignoredPuzzleIds, []);
+});
+
+test("daily participation is date-indexed and merges without replacing an existing date", () => {
+  const firstDate = new Date(2026, 7, 10, 12);
+  const secondDate = new Date(2026, 7, 11, 12);
+  const first = recordDailyCompletion(EMPTY_PROGRESS, "room-a", firstDate);
+  const second = recordDailyCompletion(EMPTY_PROGRESS, "room-b", secondDate);
+  const merged = mergeProgress(first, second);
+  assert.equal(Object.keys(merged.daily).length, 2);
+
+  const conflict = recordDailyCompletion(EMPTY_PROGRESS, "other", firstDate);
+  assert.equal(
+    mergeProgress(first, conflict).daily["2026-08-10"]?.puzzleId,
+    "room-a",
+  );
+});
+
+test("merge summaries distinguish added, improved, unchanged, and rejected records", () => {
+  let current = recordCompletion(EMPTY_PROGRESS, "same", 10, 3);
+  current = recordCompletion(current, "better", 20, 4);
+  current = recordCompletion(current, "worse", 8, 2);
+  let imported = recordCompletion(EMPTY_PROGRESS, "added", 5, 1);
+  imported = recordCompletion(imported, "better", 15, 4);
+  imported = recordCompletion(imported, "worse", 12, 2);
+  imported = {
+    ...imported,
+    completed: { ...imported.completed, same: current.completed.same },
+  };
+  assert.deepEqual(summarizeProgressMerge(current, imported), {
+    added: 1,
+    improved: 1,
+    unchanged: 1,
+    rejected: 1,
+  });
 });

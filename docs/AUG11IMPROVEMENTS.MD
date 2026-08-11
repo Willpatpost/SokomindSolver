@@ -4,10 +4,11 @@
 editor, solver, content, platform, and engineering workflow.  
 **Companion audit:** [`AUG11AUDIT.MD`](AUG11AUDIT.MD)
 
-This is a roadmap, not an issue tracker. Release-blocking correctness work in
-the audit takes precedence. The ideas below should be selected using measured
-player or engineering outcomes rather than implemented as an undifferentiated
-feature list.
+This is a roadmap, not an issue tracker. The companion audit is closed; its
+oracle, replay, recovery, budget, protocol, and browser controls remain
+non-negotiable regression gates. The ideas below should be selected using
+measured player or engineering outcomes rather than implemented as an
+undifferentiated feature list.
 
 ## Product principles
 
@@ -42,8 +43,8 @@ feature list.
 
 ### Make the first decision obvious
 
-- Present one primary **Continue** or **Start playing** action based on a
-  reconciled recoverable session.
+- Give the existing reconciled **Continue** or **Start playing** action stronger
+  visual priority than the secondary destinations.
 - Keep Daily Challenge, Browse, and Editor as strong secondary actions rather
   than equally weighted choices.
 - Show a compact resume preview: puzzle title, difficulty, moves, pushes, and
@@ -103,12 +104,12 @@ feature list.
 
 ## 3. Daily challenge, progress, and stats
 
-### Rebuild Daily Challenge around participation
+### Extend Daily Challenge participation
 
-- Use date-indexed daily records rather than inferring participation from the
-  puzzle's lifetime best.
-- Define local-time rollover, travel/timezone changes, repeated assignments,
-  and offline completion behavior.
+- Build richer rewards and history views on the date-indexed participation
+  ledger without conflating them with the puzzle's lifetime best.
+- Explain local-time rollover and travel/timezone behavior in the UI, including
+  how an offline completion will be assigned.
 - Show the next rollover time and whether today's completion is safely stored.
 
 ### Make progress more informative
@@ -123,15 +124,14 @@ feature list.
 ### Improve achievements
 
 - Explain every achievement's requirement and current progress.
-- Queue unlock notifications from explicit old/new snapshots so multiple
-  milestones can be announced once and reviewed later.
+- Add a persistent notification history so already-deduplicated milestone
+  unlocks can be reviewed after their toast disappears.
 - Avoid achievements that reward excessive grinding over meaningful learning.
 
 ### Make import/export trustworthy
 
-- Use one versioned schema and one bounded parser everywhere.
-- Preview added, improved, unchanged, rejected, and invalid records before
-  commit.
+- Add a dry-run preview of the existing added, improved, unchanged, rejected,
+  and invalid merge categories before commit.
 - Offer a downloadable backup before destructive reset or incompatible schema
   migration.
 
@@ -167,10 +167,10 @@ feature list.
 
 - Support named draft slots, duplicate, rename, last-saved time, and a small
   local version history.
-- Open shared puzzles as previews and require explicit import into a chosen
-  draft.
-- Quarantine malformed drafts and let users export or delete only the damaged
-  record.
+- Let an explicitly imported shared preview choose a named destination once
+  multiple draft slots exist.
+- Extend the existing scoped quarantine with recovery metadata and a guided
+  repair view for damaged records.
 
 ### Improve construction tools
 
@@ -199,19 +199,19 @@ feature list.
 
 ## 6. Solver correctness and explainability
 
-### Establish a proof trust boundary
+### Expose the proof trust boundary
 
-- Centralize the rule that only finite, replay-valid, cost-consistent results
-  may influence an incumbent or proof.
-- Keep proof generation separate from proof validation. The validator should
-  distrust every worker, checkpoint, and cache record.
+- Surface the existing finite, replay-valid, cost-consistent trust checks in
+  diagnostic output so proof failures are understandable.
+- Add exportable proof diagnostics without exposing mutable worker,
+  checkpoint, or cache internals as trusted data.
 - Display `found`, `bounded`, and `proven` as distinct states with plain-language
   explanations.
 
-### Make resource behavior understandable
+### Make run-wide resource behavior understandable
 
-- Report one run-wide elapsed/state/memory ledger across discovery, rewrite,
-  and proof phases.
+- Present the existing run-wide elapsed/state/memory ledger across discovery,
+  rewrite, and proof phases in the advanced UI.
 - Show why a run ended: solved, proven, time limit, state limit, memory limit,
   cancelled, worker failed, or unsupported.
 - Provide basic presets and an advanced details panel instead of exposing every
@@ -228,12 +228,11 @@ feature list.
 
 ## 7. Solver efficiency roadmap
 
-Correct AUD-001 through AUD-004 before measuring or adopting new pruning.
+Preserve the closed audit's exact-oracle, replay, budget, and protocol gates
+before measuring or adopting new pruning.
 
 ### Safe exact-search improvements
 
-- Use exact-state best-`g` dominance for IDA* and retain collision-checked state
-  identity.
 - Investigate contour-local allocation reuse, compact stacks, and parent/action
   arenas without changing search order or proof semantics.
 - Reuse keeper reachability and occupancy buffers where generation ownership is
@@ -272,11 +271,10 @@ Correct AUD-001 through AUD-004 before measuring or adopting new pruning.
 
 ### Checkpointing
 
-- Bind checkpoints to schema, algorithm version, objective, exact snapshot,
-  board rules, and tuning parameters.
 - Make writes atomic and bounded, retain only a small recent set, and expose
   checkpoint age and compatibility in CLI output.
-- Use the same portable digest representation in Node and browser environments.
+- Add checkpoint inspection and migration tooling around the portable v2
+  representation; never migrate an incumbent without replay validation.
 
 ## 8. Catalog and puzzle-quality improvements
 
@@ -338,51 +336,47 @@ content question is quality and diversity within the now-large generated set.
 
 ### Strengthen boundaries
 
-- Replace regex-only import checks with AST-aware architecture rules.
-- Move shared solver UI types out of the controller and eliminate type cycles.
-- Formalize nested-worker creation and environment capabilities in the adapter
-  contract.
+- Extend the AST-aware architecture gate to cover stylesheet ownership,
+  generated imports, and newly introduced source layers.
+- Add a small dependency-graph report to CI so boundary changes are easy to
+  review before they become cycles.
+- Keep nested-worker capabilities explicit when adding adapters or execution
+  environments, and keep search kernels free of worker globals.
 - Continue decomposing generated-engine source by responsibility while keeping
   the generated artifact freshness gate.
 
 ### Strengthen tests
 
-- Add component behavior coverage for every route rather than relying on
-  imported-file percentages.
+- Expand the required route behavior matrix with component coverage where it
+  provides faster diagnostics than browser-only tests.
 - Maintain deterministic oracle, replay, mirror, rotation, typed-label, partial-
   state, cancellation, memory, and worker-failure matrices.
-- Add fault injection for localStorage, IndexedDB, service-worker caches, worker
-  construction, malformed messages, and checkpoint corruption.
+- Extend current storage and worker fault injection to IndexedDB transaction
+  ordering, service-worker cache failures, and upgrade interruption.
 - Treat flaky native-process exits as tracked CI signals with captured crash
   metadata rather than silently retrying forever.
 
 ### Make documentation executable
 
-- Validate all Markdown files recursively and case-insensitively.
-- Check normal links, anchors, source paths, npm scripts, route examples, and
-  generated catalog counts.
+- Extend the recursive Markdown link/anchor/path validator to npm scripts,
+  route examples, and generated catalog counts.
 - Generate small fact tables from source where possible.
 - Keep one active audit and one improvements roadmap; retain specs and progress
   logs as history without treating them as current issue status.
 
 ## Suggested delivery sequence
 
-### Phase 0 — Trust and recovery
-
-- Close audit P0/P1 solver findings.
-- Protect editor drafts and correct daily participation.
-- Unify persistence health and targeted recovery.
-
 ### Phase 1 — Player flow
 
 - Improve Continue, recent puzzles, selector continuity, tutorial progression,
   and mobile board fit.
-- Repair achievement and import feedback.
+- Add richer daily history, achievement progress, and pre-commit import
+  previews.
 
 ### Phase 2 — Editor and solver usability
 
-- Add draft slots, safe share import, stronger construction tools, and clearer
-  solver proof/resource presentation.
+- Add draft slots, stronger construction tools, and clearer solver
+  proof/resource presentation.
 
 ### Phase 3 — Measured efficiency
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SolverLogEntry, SolverUiPhase } from "./useSolverController";
+import type { SolverLogEntry, SolverUiPhase } from "./solver-ui-types";
 
 const MAX_LOG_ENTRIES = 80;
 

@@ -1,6 +1,17 @@
-import { STORAGE_KEYS, readStoredValue, writeStoredValue } from "./storage";
+import { STORAGE_KEYS, readStoredValue, writeStoredValue } from "./storage.ts";
+import { trackPersistenceResult } from "./persistence-health.ts";
 
 export type FavoriteSet = ReadonlySet<string>;
+
+function persistFavorites(serialized: string): void {
+  const retry = () => {
+    trackPersistenceResult(
+      writeStoredValue(STORAGE_KEYS.favorites, serialized),
+      retry,
+    );
+  };
+  retry();
+}
 
 export function loadFavorites(): FavoriteSet {
   const raw = readStoredValue(STORAGE_KEYS.favorites);
@@ -18,7 +29,7 @@ export function saveFavorite(puzzleId: string): FavoriteSet {
   const current = loadFavorites();
   const next = new Set(current);
   next.add(puzzleId);
-  writeStoredValue(STORAGE_KEYS.favorites, JSON.stringify([...next]));
+  persistFavorites(JSON.stringify([...next]));
   return next;
 }
 
@@ -26,7 +37,7 @@ export function removeFavorite(puzzleId: string): FavoriteSet {
   const current = loadFavorites();
   const next = new Set(current);
   next.delete(puzzleId);
-  writeStoredValue(STORAGE_KEYS.favorites, JSON.stringify([...next]));
+  persistFavorites(JSON.stringify([...next]));
   return next;
 }
 

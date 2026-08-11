@@ -714,6 +714,28 @@ describe("SolverWorkerHost - uncovered paths", () => {
     host.dispose();
   });
 
+  it("serializes monotonicity failures with the symbolic code and prose message", async () => {
+    const transport = new MockTransport();
+    const registry = new SolverRegistry([
+      testAdapter(async (_request, context) => {
+        context.reportProgress({ phase: "searching", elapsedMs: 1, lowerBound: 10 });
+        context.reportProgress({ phase: "searching", elapsedMs: 2, lowerBound: 9 });
+        return solvedResult();
+      }),
+    ]);
+    const host = new SolverWorkerHost(registry, transport);
+    host.start();
+    transport.emit(runCommand("serialized-monotonicity"));
+    await flushMicrotasks();
+
+    const failure = transport.posted.find((event) =>
+      event.type === "solver/failure" && event.jobId === "serialized-monotonicity");
+    assert.ok(failure && failure.type === "solver/failure");
+    assert.equal(failure.error.code, "ERR_SOLVER_MONOTONICITY");
+    assert.match(failure.error.message, /lowerBound decreased/iu);
+    host.dispose();
+  });
+
   // Invalid solver result (invalid status field)
   it("emits failure when solver returns invalid result structure", async () => {
     const transport = new MockTransport();

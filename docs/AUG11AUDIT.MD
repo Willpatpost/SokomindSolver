@@ -1,543 +1,398 @@
 # Sokomind Consolidated Project Audit — August 11, 2026
 
-**Status:** Authoritative open-issue audit  
-**Repository snapshot:** `main` at `2a8d819`  
-**Audit date:** 2026-08-11  
-**Scope:** Application architecture, game core, catalog, persistence, editor,
-solver and proof systems, workers, PWA behavior, accessibility, tests, CI,
-documentation, security, and dependency health.
+**Status:** Remediated — all 20 recorded findings are closed in this working tree
+**Base revision:** `89bc98d` (`main`)
+**Audit and remediation date:** 2026-08-11
+**Scope:** Architecture, game core, catalog, persistence, editor, solver and
+proof systems, workers, PWA behavior, accessibility, tests, CI, documentation,
+security, and dependencies.
 
-This document replaces the repository's older audit reports and issue trackers.
-It intentionally contains only findings that are open on the audited snapshot,
-plus the evidence and acceptance criteria needed to close them. Resolved or
-obsolete findings have not been carried forward as active work.
-
-Future-facing product and engineering opportunities live in
-[`AUG11IMPROVEMENTS.MD`](AUG11IMPROVEMENTS.MD). Solver specifications, sprint
-history, benchmarks, and project memory remain separate durable references.
+This is the authoritative audit record. It replaces the older audit trackers
+listed at the end of the file. It retains the former gaps, their risk, the
+implemented fix, and the regression evidence; it does not present fixed or
+obsolete claims as outstanding work. Future product and engineering ideas are
+kept in [`AUG11IMPROVEMENTS.MD`](AUG11IMPROVEMENTS.MD).
 
 ## Executive verdict
 
-Sokomind has a strong overall architecture: immutable game rules, bounded and
-validated catalog loading, worker-isolated search, independent replay checking,
-a robust static/PWA deployment model, and an unusually broad automated test
-suite. No backend, account system, analytics, or external telemetry is present.
-The dependency audit found no known vulnerabilities.
+The release-blocking false-optimality defect and every P1–P3 finding discovered
+in the August 11 audit have been remediated. IDA* now uses sound contour-local
+exact-state best-`g` dominance, checkpoint and worker inputs are treated as
+untrusted, proof phases share run-wide resources, and cached proofs from the
+unsafe schema are invalidated.
 
-The current release must not advertise every IDA* result as proven
-move-optimal. A reproducible transposition-table error allows Classic IDA* and
-the IDA* proof path selected by Sokomind to return a legal but suboptimal route
-with a false `lowerBound === upperBound` certificate. Independent replay proves
-route legality, but it cannot prove minimum cost, so the existing outer worker
-validation does not catch this defect.
+Product-state fixes add date-indexed daily participation, non-destructive
+shared-editor previews, IndexedDB resume discovery, visible/retryable
+persistence failures, correct achievement deltas, bounded imports, and scoped
+draft quarantine. Architectural and test controls now enforce source layers,
+browser-safe worker closures, route behavior coverage, and repository-wide
+Markdown links and anchors.
 
-There are also high-priority checkpoint, proof-protocol, resource-accounting,
-daily-challenge, and editor-draft problems. These should be addressed before
-new solver optimizations or large product features.
-
-## Priority definitions
-
-| Priority | Meaning |
-|---|---|
-| **P0** | Release-blocking correctness or integrity failure. |
-| **P1** | High-impact correctness, data-loss, or resource-contract failure. |
-| **P2** | Material reliability, recovery, accessibility, or UX defect. |
-| **P3** | Maintainability, test-gate, documentation, or lower-impact defect. |
+No backend, account system, analytics, advertising, or third-party telemetry is
+present. The audit found no known dependency vulnerability.
 
 ## Current project map
 
 ```text
 index.html
   -> src/main.tsx
-     -> catalog shard URL configuration
-     -> cross-tab reset coordination
-     -> service-worker registration and updates
+     -> catalog URLs, reset coordination, service worker
      -> ErrorBoundary -> ExperienceProvider -> App
         -> RouterProvider -> AppShell
            -> Home / Selector / Play / Editor / Stats
 
-Home + Selector
-  -> compact generated metadata only
-
-Play
-  -> one validated 50-board shard
-  -> immutable GameSession and canonical U/D/L/R action log
-  -> autosave, progress, sharing, solver playback
-
 Persistence
-  -> localStorage for preferences, progress, favorites, ratings, and drafts
-  -> generation-fenced IndexedDB mirrors for sessions and optimal records
+  -> localStorage preferences, progress, favorites, ratings, editor draft
+  -> IndexedDB mirrored sessions and optimal records
+  -> persistence-health reporting and retry callbacks
 
 Solver UI
   -> SolverWorkerClient
-  -> outer solver.worker.ts / SolverWorkerHost / SolverRegistry
+  -> outer solver worker / host / registry
   -> Classic DFS, Greedy, exact A*, exact IDA*
-  -> Sokomind adapter
-       -> nested engine workers
-       -> sequential or partitioned proof workers
-  -> result validation
-  -> independent replay through the core game engine
+  -> Sokomind discovery / rewrite / exact proof workers
+  -> strict result validation and independent core replay
 ```
 
-## Current inventory
+## Resolution index
 
-| Area | Current state |
-|---|---|
-| Runtime | React 19.2, TypeScript 5.9, Vite 8.1, static GitHub Pages PWA |
-| Source | 190 TypeScript/TSX files |
-| Solver | 81 files, approximately 35,700 lines including generated engine code |
-| Feature/UI | 75 files, approximately 11,100 lines |
-| Catalog | 2,095 puzzles in 42 lazy board shards |
-| Difficulty distribution | 10 tutorial, 451 beginner, 434 intermediate, 400 advanced, 400 expert, 400 master |
-| Content origin | 37 originals and 2,058 generated puzzles |
-| Typed-box coverage | 2,078 puzzles contain at least one labeled box |
-| Runtime services | No backend, telemetry, advertising, or third-party analytics |
-
-## Open issue index
-
-| ID | Priority | Area | Finding |
+| ID | Former priority | Area | Resolution |
 |---|---|---|---|
-| AUD-001 | P0 | Solver | IDA* can certify a suboptimal route as move-optimal |
-| AUD-002 | P1 | Solver/checkpoints | Checkpoint compatibility ignores the actual start state |
-| AUD-003 | P1 | Solver/resources | Proof phases reset run-wide budgets and under-report work |
-| AUD-004 | P1 | Solver/protocol | Nested proof validation accepts unsafe bounds and solutions |
-| AUD-005 | P1 | Progress | Daily completion and streaks ignore the completion date |
-| AUD-006 | P1 | Editor | Shared editor links overwrite the sole saved draft |
-| AUD-007 | P2 | Solver/workers | Concurrent proof lacks a deadline and complete cleanup |
-| AUD-008 | P2 | Solver/browser | Browser checkpoint code depends on `node:crypto` |
-| AUD-009 | P2 | Persistence | IndexedDB-only sessions cannot be discovered from Home |
-| AUD-010 | P2 | Persistence | Favorites, ratings, and drafts silently ignore write failure |
-| AUD-011 | P2 | Achievements | Unlock notifications compare the same stale progress state |
-| AUD-012 | P2 | Editor/accessibility | Global undo and redo override native text editing |
-| AUD-013 | P2 | Import/export | Stats import is unbounded and misreports merged records |
-| AUD-014 | P2 | Editor/recovery | Draft deserialization is too shallow to be safe |
-| AUD-015 | P3 | Solver/errors | Monotonicity errors reverse error code and message |
-| AUD-016 | P3 | Tests | High coverage percentages do not protect page behavior |
-| AUD-017 | P3 | Architecture | Boundary enforcement is narrower than documented layering |
-| AUD-018 | P3 | Architecture | Solver UI hooks retain avoidable type-only cycles |
-| AUD-019 | P3 | Documentation | Documentation validation misses links and architectural drift |
-
-## Detailed findings and fixes
-
-### AUD-001 — P0 — IDA* can certify a suboptimal route as move-optimal
-
-**Evidence**
-
-The following board was checked with the exact test oracle, exact move A*, and
-IDA* with both contour-scoped and persistent transposition modes:
-
-```text
-OOOOOO
-O    O
-O   XO
-O X  O
-O RSSO
-OOOOOO
-```
-
-| Search | Moves | Pushes | Replay | Reported proof |
-|---|---:|---:|---|---|
-| Exact oracle | 11 | 4 | N/A | Exact optimum |
-| Exact move A* | 11 | 4 | Valid | `LB=UB=11`, proven |
-| IDA*, contour-scoped TT | 13 | 6 | Valid | `LB=UB=13`, proven |
-| IDA*, persistent TT | 13 | 6 | Valid | Proven |
-
-The failure is in `src/solver/search/ida-star.ts`. Around line 1013, an exact
-state hit reuses an absolute root-relative backed `f` value. The same state can
-be reached with a different path cost `g`, making that stored value unsafe for
-the new path. Lines around 1421 back the value into the table, and lines around
-1440 use the resulting threshold jump to declare the incumbent optimal.
-Clearing the table between contours does not prevent unsafe reuse within a
-single contour.
-
-This affects the public Classic IDA* adapter and the automatic Sokomind proof
-selection used for low-memory and larger-board runs. A false proven result can
-also be written to the persistent optimal cache.
-
-**Required fix**
-
-1. Immediately disable backed-`f` transposition pruning in proof-producing
-   IDA*, or temporarily mark IDA* output as bounded/unproven.
-2. Replace it with collision-checked exact-state best-`g` dominance: prune only
-   when the same exact state was previously reached at a cost less than or equal
-   to the current `g`.
-3. Do not introduce relative backed bounds without a separate soundness proof;
-   path exclusions can still make them unsafe.
-4. Bump or invalidate the persisted optimal-cache schema after the fix.
-
-**Acceptance criteria**
-
-- The board above returns 11 moves and 4 pushes under A* and every IDA* mode.
-- A deterministic generated tiny-board sweep matches an independent exact
-  oracle for solution cost and unsolvability.
-- Every result marked `optimality: "proven"` has a finite proof with
-  `lowerBound === upperBound === solution.moves`.
-- Old optimal-cache records cannot survive the corrected proof generation.
-
-### AUD-002 — P1 — Checkpoint compatibility ignores the actual start state
-
-`createBoardContentKey()` in `src/solver/search/ida-star-checkpoint.ts` hashes
-dimensions, walls, goals, and floor topology but omits the request snapshot's
-robot and label-aware box positions. Different states on the same geometry can
-therefore share a checkpoint identity.
-
-A direct reproduction loaded a one-move checkpoint from one state into a
-different two-move state with identical geometry. Compatibility returned true,
-and IDA* returned the checkpoint route as a one-move proven solution even
-though replay on the requested state ended unsolved. The Node CLI accepts this
-checkpoint path.
-
-**Fix:** version the checkpoint schema; fingerprint the exact request snapshot,
-including robot and label-aware boxes; replay and validate every restored
-incumbent; require `incumbent.cost === solution.moves`; reject incompatible or
-malformed records before they affect thresholds.
-
-**Acceptance:** same-geometry/different-state checkpoints are rejected, altered
-incumbents are rejected, and valid same-state resume remains deterministic.
-
-### AUD-003 — P1 — Proof phases reset budgets and under-report work
-
-The Sokomind discovery phase derives remaining limits, but optimal proof is
-invoked with the original request. Sequential proof can receive the full time
-limit again, while expanded/generated/memory allowances are not reduced.
-Concurrent partitions each receive full request limits, multiplying the
-effective allowance by worker count. Successful results then replace or omit
-discovery/proof telemetry rather than reporting the entire run.
-
-Relevant code is in `src/solver/implementations/sokomind-solver.ts` around line
-1958 and `src/solver/implementations/sokomind-proof.ts` around lines 50, 291,
-320, and 109.
-
-**Fix:** use one coordinator-owned `BudgetTracker`; pass a remaining-budget view
-to every phase; partition state and memory allowances across concurrent
-workers; enforce one wall-clock deadline; merge discovery and proof counters,
-current memory, peak memory, and elapsed time.
-
-**Acceptance:** end-to-end tests must consume most of each limit during
-discovery, enter proof, and show that total work never exceeds the original
-contract except for a documented bounded polling interval.
-
-### AUD-004 — P1 — Nested proof validation accepts unsafe messages
-
-`isProofResult()` in
-`src/solver/implementations/sokomind-proof-protocol.ts` checks bounds with
-`typeof value === "number"`. That accepts `Infinity`, `NaN`, and negative
-values. The coordinator treats `lowerBound >= bestCost` as proof completion, so
-`Infinity` can create a false finite optimal certificate. A `proof/solution`
-payload is also accepted as a shallow record and later cast to
-`SolverSolution` without full structural or replay validation.
-
-The older bounded-versus-exhausted protocol bug has dedicated regression tests,
-but the boundary remains too permissive for malformed, stale, or mismatched
-worker messages.
-
-**Fix:** require finite non-negative safe costs; fully validate solution and
-metric structures; verify candidate replay before adoption; require
-`totalCost === solution.moves`; bind every message to the worker's currently
-assigned partition and execution identity; reject duplicate or stale terminal
-messages.
-
-**Acceptance:** non-finite, negative, shallow, stale, wrong-partition, and
-cost-mismatched messages terminate that partition as failed and can never
-produce an optimal public result.
-
-### AUD-005 — P1 — Daily streaks ignore completion dates
-
-`computeDailyStreak()` in `src/features/progress/compute-stats.ts` checks only
-whether the puzzle assigned to a date has ever been completed. Home similarly
-marks today's challenge cleared if that puzzle was completed on another date.
-The progress schema stores a single best completion per puzzle, so it cannot
-represent repeated daily participation.
-
-A reproduction assigned the latest three daily puzzle IDs records with
-`completedAt` in the year 2000; the current streak was still reported as three.
-
-**Fix:** add a versioned date-indexed daily participation record keyed by local
-calendar date and the assigned puzzle ID. Record participation only when that
-day's route is solved on that day. Define timezone rollover and clock-change
-semantics explicitly.
-
-**Acceptance:** historical solves do not clear today's challenge; repeated
-assignment can be completed on multiple dates; timezone-boundary tests cover
-forward and backward local-date transitions.
-
-### AUD-006 — P1 — Shared editor links overwrite the saved draft
-
-The editor first loads `sokomind.editor-draft.v1`. A valid custom-share route
-then dispatches the shared puzzle into the same state. The generic one-second
-autosave in `src/features/editor/use-editor-state.ts` writes that imported
-puzzle over the sole local draft. The shared load path in
-`src/features/editor-page/EditorPage.tsx` does not mark the document dirty, so
-leaving produces no warning.
-
-**Fix:** treat a shared puzzle as a read-only preview until the user explicitly
-chooses **Import into editor**; preserve the prior draft in a separate slot or
-version history; display the target draft name before replacement.
-
-**Acceptance:** opening and closing a shared URL leaves the saved draft byte-for-
-byte unchanged, and explicit import is covered by browser tests for replace,
-cancel, and recovery behavior.
-
-### AUD-007 — P2 — Concurrent proof lacks a deadline and complete cleanup
-
-The coordinator promise in `sokomind-proof.ts` has no remaining-time timer or
-silence watchdog. Invalid messages are ignored while their partition remains
-pending. `messageerror` is represented by the worker abstraction but not
-registered in the coordinator. Workers are constructed before lifecycle
-cleanup ownership is established, so a later factory failure can leak an
-already-created worker.
-
-A mock worker that emitted one malformed message remained pending past a
-one-millisecond elapsed limit until externally aborted.
-
-**Fix:** establish lifecycle ownership with `try/finally`; register `error` and
-`messageerror`; convert malformed messages to partition failures; apply one
-remaining deadline plus a bounded silence watchdog; remove all listeners,
-timers, and abort handlers on every exit.
-
-### AUD-008 — P2 — Browser checkpoint code imports `node:crypto`
-
-`src/solver/search/ida-star-checkpoint.ts` imports `createHash` from
-`node:crypto`. Vite externalizes that module in the browser worker bundle. The
-default UI does not currently supply checkpoint callbacks, so the failure is
-dormant, but enabling that supported path would call a missing browser shim.
-
-**Fix:** use a browser-neutral deterministic digest implementation, or split
-Node checkpoint serialization from the browser search graph. Add a static
-bundle test that rejects Node built-ins in every browser worker dependency
-closure.
-
-### AUD-009 — P2 — IndexedDB-only sessions are not discoverable
-
-`saveSession()` can successfully mirror a session to IndexedDB when
-localStorage fails. Home's Continue action reads only the localStorage puzzle
-pointer. IndexedDB hydration begins only after Play has already selected a
-puzzle and its resolver accepts only that puzzle, so a valid IDB-only session
-for another puzzle is unreachable through normal navigation.
-
-**Fix:** maintain a generation-fenced IndexedDB resume index or perform a
-bounded startup lookup before resolving Continue. Reconcile localStorage and
-IndexedDB by generation, timestamp, schema, and puzzle availability.
-
-### AUD-010 — P2 — Some persistence failures are silently accepted
-
-The shared storage adapter returns success/failure, but favorites and ratings
-ignore it. Editor draft autosave bypasses the adapter and swallows exceptions.
-The UI still updates optimistically, while the global persistence warning only
-observes failures explicitly reported to it.
-
-**Fix:** route every owned key through one reporting adapter; retain optimistic
-UI only with a visible unsaved state and retry; expose scoped recovery actions;
-update the persistence inventory and tests for every owned key.
-
-### AUD-011 — P2 — Achievement unlock notifications use stale progress
-
-The solve callback in `src/features/play/use-play-controller.ts` computes
-pre-solve statistics, schedules `recordSolvedSession()`, then computes
-post-solve statistics from the same closed-over `progress` object. The two
-achievement sets are identical during the callback, so the triggering toast is
-empty even though the achievement appears later on Stats.
-
-**Fix:** make the progress update return the new immutable snapshot or compute
-it before scheduling state; derive the achievement delta from explicit old and
-new values; deduplicate toasts by achievement ID.
-
-### AUD-012 — P2 — Editor undo and redo override native text editing
-
-The window-level Cmd/Ctrl+Z/Y handler in
-`src/features/editor-page/EditorPage.tsx` always prevents the browser default,
-including inside title, hint, and import textareas. The game keyboard handler
-already demonstrates the correct editable-target exclusion.
-
-**Fix:** ignore shortcuts from inputs, textareas, selects, and contenteditable
-targets unless a dedicated editor command mode owns focus. Add browser tests
-for text undo, grid undo, focus changes, and macOS/Windows modifier variants.
-
-### AUD-013 — P2 — Stats import is unbounded and misreports changes
-
-Stats reads and parses an arbitrary-size selected file, while the existing
-Progress dialog enforces a one-megabyte limit. Its merge summary counts every
-known record that was not new as “updated” whenever any record changes,
-including unchanged or worse imported records.
-
-**Fix:** share one bounded import parser; validate MIME/extension only as hints,
-enforce byte and record limits, parse before committing, and have the merge
-operation return explicit `added`, `improved`, `unchanged`, `rejected`, and
-`invalid` counts.
-
-### AUD-014 — P2 — Editor draft deserialization is shallow
-
-Draft loading accepts unchecked dimensions and difficulty values and casts
-nested cells without validating their shape or symbols. A malformed value such
-as `cells: ["x"]` can reach rendering code that assumes `row.map`, causing the
-global error boundary to offer a full application-data reset.
-
-**Fix:** reuse the editor share/schema validator for stored drafts; validate
-integer dimensions, row count and width, symbols, metadata, and maximum size;
-quarantine only the invalid draft; provide a download/delete recovery choice
-without clearing unrelated progress.
-
-### AUD-015 — P3 — Monotonicity errors reverse code and message
-
-`SolverWorkerRuntimeError` takes `(code, message)`, but the three monotonicity
-checks in `src/solver/worker-host.ts` pass the prose message first and
-`ERR_SOLVER_MONOTONICITY` second. Remote clients receive a sentence as the code
-and the symbolic code as the displayed message.
-
-**Fix:** correct argument order and add assertions for the serialized remote
-error code and user-facing message.
-
-### AUD-016 — P3 — Coverage gates do not protect page behavior
-
-The all-files c8 gate permits 58% line/statement coverage. The 92% focused Node
-gate reports only imported files, so unimported TSX pages and hooks do not lower
-its percentage. Browser tests are extensive but do not contribute line
-coverage. The daily, achievement, editor, and Stats defects align with these
-untested route-level paths.
-
-**Fix:** define route/feature coverage floors, import every critical page into a
-component-test harness, and track browser coverage or explicit behavior
-matrices. Add regression tests for every P1/P2 UI finding before closure.
-
-### AUD-017 — P3 — Boundary enforcement is narrower than the architecture
-
-The documented layering is mostly respected in the current tree, but
-`tests/unit/module-boundaries.test.ts` checks only three solver/search rules and
-recognizes primarily `from "..."` imports. Side-effect and dynamic imports can
-evade it. Core, catalog, router, feature, and general solver boundaries are not
-encoded as enforceable policy.
-
-The `SolverAdapter` comment also says adapters must not use worker globals,
-while the production Sokomind adapter intentionally constructs nested workers.
-
-**Fix:** use an AST-aware dependency rule; encode allowed layer edges; cover
-static, dynamic, and side-effect imports; either formalize worker creation as an
-adapter capability or narrow the contract to algorithm kernels.
-
-### AUD-018 — P3 — Solver UI hooks retain type-only cycles
-
-`useSolverController` imports worker, progress, and log hooks, while those hooks
-import `SolverLogEntry`, `SolverUiPhase`, or `SolverRunFingerprint` back from
-the controller. Type erasure prevents a runtime cycle today, but the extraction
-remains coupled to its orchestrator.
-
-**Fix:** move shared solver UI types to a neutral `solver-ui-types.ts` module and
-add a dependency-cycle check for feature modules.
-
-### AUD-019 — P3 — Documentation validation misses real drift
-
-The current docs checker scans a narrow class of backticked paths in direct
-children of `docs/`. It does not validate normal Markdown links, the root
-README, nested docs, headings/anchors, or uppercase `.MD` files. It previously
-passed despite broken audit links, an incorrect puzzle count, nonexistent
-routes, and obsolete component names.
-
-`docs/architecture.md`, `docs/persistence-and-sharing.md`, and portions of the
-solver documentation still need reconciliation with the current router,
-provider ownership, persistence keys, nested-worker design, and proof risks.
-
-**Fix:** make documentation validation recursive and case-insensitive; parse
-Markdown links and anchors; include root Markdown files; generate catalog facts
-where practical; add a small source-backed architecture invariant table.
+| AUD-001 | P0 | Solver | Closed — sound IDA* dominance and optimal-cache v4 |
+| AUD-002 | P1 | Checkpoints | Closed — exact-state checkpoint v2 and incumbent replay |
+| AUD-003 | P1 | Resources | Closed — one remaining-budget ledger and merged telemetry |
+| AUD-004 | P1 | Protocol | Closed — deep validation, identity binding, and replay |
+| AUD-005 | P1 | Progress | Closed — schema-v2 date-indexed daily participation |
+| AUD-006 | P1 | Editor | Closed — read-only shared preview and explicit import |
+| AUD-007 | P2 | Workers | Closed — deadlines, watchdogs, and complete cleanup |
+| AUD-008 | P2 | Browser | Closed — browser-neutral checkpoint digest and closure gate |
+| AUD-009 | P2 | Persistence | Closed — IndexedDB resume discovery and reconciliation |
+| AUD-010 | P2 | Persistence | Closed — reported failures and exact-payload retry |
+| AUD-011 | P2 | Achievements | Closed — old/new snapshot delta and deduplication |
+| AUD-012 | P2 | Accessibility | Closed — native text shortcut ownership preserved |
+| AUD-013 | P2 | Imports | Closed — shared bounded parser and accurate merge counts |
+| AUD-014 | P2 | Recovery | Closed — deep draft validation and scoped quarantine |
+| AUD-015 | P3 | Errors | Closed — correct symbolic code/message serialization |
+| AUD-016 | P3 | Tests | Closed — route behavior matrix and stronger all-source floor |
+| AUD-017 | P3 | Architecture | Closed — AST-aware layer and worker-closure enforcement |
+| AUD-018 | P3 | Architecture | Closed — neutral solver UI types and cycle gate |
+| AUD-019 | P3 | Documentation | Closed — recursive link/anchor/path validation and reconciled docs |
+| AUD-020 | P2 | Editor persistence | Closed — latest draft flushes on page exit/reload |
+
+## Detailed findings and implemented fixes
+
+### AUD-001 — False move-optimal certificate from IDA*
+
+**Former gap:** A repeated exact state could reuse an absolute root-relative
+backed `f` value from a more expensive path. That value was unsafe for the new
+`g`, allowing a legal 13-move route to be certified when the exact optimum was
+11 moves.
+
+**Fix:** IDA* now stores collision-checked exact state plus the lowest `g` seen
+in the current contour. It prunes only when the prior `g` is no greater than the
+current one, clears proof-pruning state between contours, and no longer backs
+path-dependent `f` values into the transposition table. Optimal-cache schema v4
+invalidates all v1–v3 proof records.
+
+**Evidence:** the original two-box counterexample returns 11 moves / 4 pushes
+under exact A*, contour-scoped IDA*, and the compatibility persistent mode. A
+deterministic generated tiny-board sweep compares all modes with an independent
+step-level exact oracle and validates every finite proof bound.
+
+### AUD-002 — Checkpoint identity omitted the start snapshot
+
+**Former gap:** checkpoints were keyed by board geometry but not the request's
+robot and label-aware box positions, so one state could restore another state's
+incumbent.
+
+**Fix:** checkpoint schema v2 fingerprints geometry, objective, solver/tuning
+context, robot position, and label-aware boxes. Parsing deeply validates the
+record. A restored solution must have `cost === moves` and independently replay
+to solved on the current request before it can affect search.
+
+**Evidence:** same-geometry/different-state and altered-incumbent fixtures are
+rejected; valid same-state resume remains deterministic.
+
+### AUD-003 — Proof phases reset budgets and lost telemetry
+
+**Former gap:** discovery, sequential proof, and each concurrent partition
+could receive fresh full limits, while returned metrics omitted earlier work.
+
+**Fix:** elapsed, expanded, and generated discovery usage is subtracted before
+proof. Sequential proof receives only the remainder. Concurrent proof divides
+finite state, generated-state, and memory allowances across partitions and
+uses one coordinator deadline. Terminal metrics merge discovery plus every
+proof partition, including current and peak memory.
+
+**Evidence:** focused tests spend budgets in discovery before entering proof,
+assert reduced proof limits, and verify aggregate counters rather than
+phase-local replacements.
+
+### AUD-004 — Nested proof messages were too shallowly validated
+
+**Former gap:** non-finite/negative bounds and shallow solution records could
+cross the nested worker boundary and influence an optimal result.
+
+**Fix:** protocol guards require finite non-negative safe costs, complete
+solutions, complete metrics, and cost consistency. Messages are bound to the
+worker's active partition/execution, bounds must remain monotonic, and every
+candidate is replayed against the original request before adoption. Malformed
+or mismatched identities fail the worker; completed duplicate/stale terminal
+messages are ignored and cannot affect a new partition.
+
+**Evidence:** malformed bounds/solutions, wrong identities, replay-invalid
+candidates, and cost mismatches cannot produce a public solved/proven result.
+
+### AUD-005 — Daily streaks used lifetime puzzle completion
+
+**Former gap:** a puzzle solved years earlier counted as completed on any date
+when that puzzle was assigned as the daily challenge.
+
+**Fix:** progress schema v2 adds a local-date participation ledger containing
+the assigned puzzle. Schema v1 migrates safely with an empty ledger. A solve is
+recorded only when the puzzle matches that local date's assignment. Daily
+selection uses a DST-safe local calendar ordinal; Home refreshes at local
+midnight and when a suspended tab becomes visible.
+
+**Evidence:** historical bests do not clear today, repeated one-puzzle
+assignments are recorded on separate dates, and rollover tests cover local-date
+transitions without 24-hour duration arithmetic.
+
+### AUD-006 — Shared editor URLs overwrote the saved draft
+
+**Former gap:** opening a valid share URL loaded it into the autosaved editor
+state and replaced the only local draft without an explicit decision.
+
+**Fix:** shared URLs open as disabled, read-only previews with autosave
+suppressed. The page names the preserved draft and requires **Import into
+editor** before navigating to the ordinary editable route and saving the shared
+puzzle.
+
+**Evidence:** desktop and mobile browser flows explicitly import shares; a new
+browser regression confirms that opening/leaving a preview preserves the draft
+byte-for-byte until import.
+
+### AUD-007 — Concurrent proof could hang or leak workers
+
+**Former gap:** the coordinator lacked a hard remaining-time timer and silence
+watchdog, ignored malformed/message-error paths, and could leak an early worker
+when later construction failed.
+
+**Fix:** lifecycle ownership begins during construction and finishes through a
+single cleanup path. The coordinator registers `error` and `messageerror`,
+fails malformed active messages, enforces one deadline and bounded silence
+watchdog, and removes workers, listeners, timers, and abort handlers on every
+exit.
+
+**Evidence:** silence, message-error, malformed-message, abort, and partial
+factory-failure tests all terminate and assert worker cleanup.
+
+### AUD-008 — Browser checkpoint code imported `node:crypto`
+
+**Former gap:** enabling checkpoint callbacks in a browser worker would reach a
+Vite-externalized Node built-in.
+
+**Fix:** checkpoint identity uses a deterministic portable 64-bit FNV-1a
+digest. The module boundary suite computes browser worker dependency closures
+and rejects Node built-ins.
+
+### AUD-009 — IndexedDB-only sessions were undiscoverable from Home
+
+**Former gap:** a session mirror could succeed only in IndexedDB, while Home's
+Continue target read only the localStorage pointer.
+
+**Fix:** Home begins with the synchronous local pointer and performs a bounded
+IndexedDB pointer lookup. The resolver validates puzzle availability and
+reconciles both tiers by newest valid generation/timestamp before upgrading the
+Continue target.
+
+**Evidence:** an IndexedDB-only session is discoverable and the newest valid
+tier wins.
+
+### AUD-010 — Preference and draft write failures were silent
+
+**Former gap:** favorites, ratings, and editor drafts optimistically updated
+while ignoring storage failure and never activating global persistence health.
+
+**Fix:** every owned key reports failure through the shared health store.
+Favorites, ratings, and editor draft saves register retry callbacks carrying
+the exact failed serialized payload. The global warning displays an unsaved
+state and offers **Retry saving now**.
+
+**Evidence:** fault-injection tests cover reporting, exact-payload retry,
+successful recovery, and health clearing for each persistence family.
+
+### AUD-011 — Achievement toasts compared stale progress
+
+**Former gap:** both pre- and post-solve achievement sets were computed from
+the same closed-over progress object.
+
+**Fix:** `recordSolvedSession` returns explicit immutable before/after
+snapshots. The controller derives newly unlocked IDs from those values through
+a pure helper and suppresses IDs already emitted.
+
+**Evidence:** the first solve that crosses a threshold emits the achievement
+exactly once.
+
+### AUD-012 — Editor shortcuts overrode native text undo
+
+**Former gap:** the window Cmd/Ctrl+Z/Y listener always prevented default,
+including title, hint, and import fields.
+
+**Fix:** global editor commands ignore input, textarea, select, and editable
+content targets and are disabled during a shared preview. Grid-focused undo and
+redo remain available for both Ctrl and Meta modifier variants.
+
+**Evidence:** browser coverage distinguishes native title-field undo from
+global grid undo.
+
+### AUD-013 — Stats import was unbounded and misreported changes
+
+**Former gap:** Stats parsed arbitrary file sizes and counted unchanged/worse
+known records as updated.
+
+**Fix:** Stats and Progress dialog share one parser with a 1 MiB byte limit, a
+10,000-record limit, deep validation, and parse-before-commit semantics. Merge
+reporting distinguishes added, improved, unchanged, rejected, and invalid
+records; MIME and extension are hints, not trust boundaries.
+
+**Evidence:** unit tests cover pre-read byte rejection, record limits, malformed
+data, catalog rejection, and every merge category.
+
+### AUD-014 — Editor draft deserialization was shallow
+
+**Former gap:** malformed dimensions, difficulty, rows, or nested cells could
+reach rendering and trigger a whole-app recovery prompt.
+
+**Fix:** draft parsing now validates 3–20 integer dimensions, exact row count
+and width, allowed symbols, and bounded metadata. An invalid draft is copied to
+the dedicated recovery key before the active key is removed. The editor offers
+download or deletion of only the quarantined draft.
+
+**Evidence:** deep parser fixtures plus browser download/delete recovery keep
+unrelated progress and preferences intact.
+
+### AUD-015 — Monotonicity errors reversed code and message
+
+**Former gap:** `SolverWorkerRuntimeError` call sites passed prose as the code
+and the symbolic constant as the user-facing message.
+
+**Fix:** argument order is corrected for all monotonicity checks.
+
+**Evidence:** worker-host tests assert serialized
+`ERR_SOLVER_MONOTONICITY` and the corresponding explanatory message.
+
+### AUD-016 — Coverage gates did not protect page behavior
+
+**Former gap:** the all-source gate allowed 58% line/statement coverage while
+the high focused percentage omitted unimported TSX; browser behavior was not
+represented in the coverage contract.
+
+**Fix:** the all-source line/statement floor is raised to 60%. More
+importantly, `tests/critical-route-behaviors.json` is a required, executable
+matrix covering Home, Selector, Play, Editor, and Stats. Every audited P1/P2 UI
+path has a named unit or browser regression, and a unit gate prevents matrix
+entries from drifting away from their test source.
+
+### AUD-017 — Boundary enforcement was narrower than documented layers
+
+**Former gap:** regular-expression checks covered only a few solver imports and
+missed export, type-only, side-effect, `require`, and dynamic imports.
+
+**Fix:** the boundary test uses the TypeScript AST for all import forms. It
+encodes allowed core/catalog/router/shared/solver/feature edges, rejects feature
+cycles, retains low-level solver constraints, and audits browser worker
+dependency closures. The adapter contract now permits composition adapters to
+coordinate nested workers while prohibiting worker globals in algorithm
+kernels.
+
+### AUD-018 — Solver UI hooks retained type-only cycles
+
+**Former gap:** extracted worker/progress/log hooks imported their shared types
+back from `useSolverController`.
+
+**Fix:** `solver-ui-types.ts` is the neutral type owner; the controller and all
+child hooks depend on it. The feature graph cycle gate protects the result.
+
+### AUD-019 — Documentation checks missed real drift
+
+**Former gap:** the checker scanned only selected backticked paths in direct
+`docs/` children, missing ordinary Markdown links, anchors, root files, nested
+files, and uppercase `.MD` documents.
+
+**Fix:** validation is recursive and case-insensitive across root and docs
+Markdown. It parses ordinary relative links and headings/anchors as well as
+backticked repository paths. Architecture, persistence, testing, and solver
+integration documents now match provider/router ownership, persistence schema,
+nested workers, proof budgets, checkpoint v2, and sound IDA* behavior.
+
+### AUD-020 — Debounced editor changes could be lost on immediate reload
+
+**Discovered during remediation:** an editable draft changed immediately before
+reload could be lost because the one-second autosave timer had not fired. This
+became visible in the mobile editor reload/playtest regression.
+
+**Fix:** the editor retains refs to the latest state and current autosave
+ownership and synchronously flushes an editable draft on `pagehide`. Read-only
+shared previews remain excluded, so the fix does not reintroduce AUD-006.
+
+**Evidence:** the mobile browser test edits and resizes an imported draft,
+reloads immediately, and then successfully starts its preserved playtest.
 
 ## Validation evidence
 
-The following checks were run against the audited snapshot:
-
 | Check | Result |
 |---|---|
-| Dependency install/audit | 192 packages installed; 193 audited; 0 vulnerabilities |
 | TypeScript | Passed |
 | ESLint | Passed |
 | Generated solver freshness | Passed |
 | Generated catalog freshness | Passed |
-| Unit tests | 1,324 passed |
-| Static production-build tests | 9 passed |
-| All-source typed coverage | 64.17% lines/statements, 84.48% branches, 87.41% functions |
-| Focused typed coverage rerun | 93.02% lines, 87.39% branches, 93.84% functions |
-| Solver multi-fixture performance | Passed all four fixtures |
-| Huge solver performance | Passed base, mirrored, rotated, and rewrite cases in about 47.3 seconds total |
-| Chromium desktop | 52 browser tests passed |
-| WebKit/mobile Safari | 51 passed, 5 expected skips |
-| Mobile Chrome/service worker | 9 passed |
+| Unit suite | 1,359 passed, 0 failed |
+| All-source typed coverage gate | Passed above 65% lines/statements (60% floor) |
+| Focused typed and generated-engine coverage | Passed |
+| Critical route behavior matrix | Passed for Home, Selector, Play, Editor, Stats |
+| Markdown links, anchors, and paths | Passed |
+| Production build and static artifact | Passed; 9 static checks |
+| Chromium desktop browser matrix | 56 passed |
+| Mobile Chrome editor regression | Passed |
+| WebKit editor matrix | 8 passed, 1 expected clipboard skip |
+| Mobile Safari editor regression | Passed |
+| Dependency advisory audit | 0 vulnerabilities |
+| Grand Hall performance guard | Passed base, mirrored, rotated, and rewrite cases in 44.2 s total |
 
-One initial focused-coverage wrapper run suffered a transient Windows native
-process exit `0xC0000005` in the Node-runner timeout test. That test passed in
-isolation and the full focused suite passed immediately on rerun. Firefox could
-not launch in the audit environment because its software compositor failed
-before page execution; no application assertion ran, so this is an environment
-limitation rather than a recorded product failure.
+The remaining cross-browser and long-running solver performance commands remain
+normal release gates and should be recorded whenever this working tree is
+released.
 
 ## Security, privacy, PWA, and accessibility assessment
 
 No critical security or privacy defect was found. Positive controls include:
 
 - no runtime backend, analytics, advertising, or third-party telemetry;
-- a production CSP restricted to same-origin application resources with
-  objects disabled;
+- a same-origin production CSP with objects disabled;
 - production source maps disabled;
-- bounded and deeply validated custom-share payloads;
+- bounded, deeply validated custom-share and progress-import payloads;
 - revisioned service-worker manifests with SHA-256 shell validation;
 - scope-safe cache cleanup and preservation of the last good shell;
 - SHA-pinned GitHub Actions with narrow permissions;
 - route focus management, live announcements, skip navigation, reduced-motion
-  support, native dialog primitives, and representative axe coverage.
+  support, native dialogs, and representative axe coverage.
 
-The editor shortcut problem in AUD-012 is the principal accessibility defect
-found during this pass.
+The editor shortcut accessibility defect is closed by editable-target ownership
+and browser regression tests.
 
-## Remediation order
+## Residual risk and future work
 
-### Release gate
-
-1. Fix AUD-001 and invalidate all old optimal-cache entries.
-2. Fix AUD-002 and version checkpoint compatibility.
-3. Fix AUD-003 and AUD-004 so proof has one trusted budget and protocol.
-4. Add oracle, malformed-message, checkpoint, and end-to-end budget tests.
-
-### Data and product correctness
-
-5. Fix AUD-005 and migrate daily participation data.
-6. Fix AUD-006 before promoting editor share links.
-7. Fix AUD-009, AUD-010, and AUD-014 as one persistence/recovery program.
-
-### Reliability and UX
-
-8. Add proof-worker deadlines and cleanup for AUD-007.
-9. Resolve AUD-008 and the smaller UX defects AUD-011 through AUD-013.
-10. Correct AUD-015.
-
-### Engineering controls
-
-11. Expand coverage and boundary enforcement for AUD-016 through AUD-018.
-12. Repair documentation and its validator under AUD-019.
-
-## Outdated findings deliberately retired
-
-The consolidation removed closed or obsolete claims rather than preserving
-them as confusing “open” history. In particular:
-
-- the old catalog difficulty skew is gone; the current tiers are broadly
-  balanced;
-- the old 10x10/four-box Boxoban dominance is gone; current generated content
-  spans many sizes and box counts;
-- the old lack of labeled-box content is reversed; 2,078 puzzles now exercise
-  typed boxes;
-- the event-loop scheduling dependency cycle was removed by the neutral
-  `search/scheduling.ts` module;
-- asynchronous PDB and deadlock-table builders and their direct cancellation
-  tests now exist;
-- GitHub Actions are pinned, dependency audit is enforced, generated artifacts
-  have freshness checks, and Huge performance is a blocking gate;
-- resolved Solver V2 spec scaffolding, naming, metrics, oracle, and benchmark
-  items remain documented in the spec/progress history rather than as open
-  defects;
-- the prior assertion that contour-scoped IDA* transposition alone made proof
-  safe is superseded by AUD-001's within-contour counterexample.
+There are no outstanding findings in this audit. Exact-search changes must
+continue to pass independent oracle and replay checks; cache/checkpoint schema
+changes must remain fail-closed; and route behavior entries must stay linked to
+executable tests. Optional product, UX, efficiency, content, accessibility, and
+maintainability work belongs in
+[`AUG11IMPROVEMENTS.MD`](AUG11IMPROVEMENTS.MD), not in this closed-issue ledger.
 
 ## Consolidation record
 
-This file replaces and removes the following superseded documents:
+This file replaces these superseded trackers:
 
 - REMAINING-AUDIT-ITEMS.md
 - docs/COMPLETE-PROJECT-ANALYSIS.md
@@ -545,14 +400,6 @@ This file replaces and removes the following superseded documents:
 - docs/sokomind-follow-up-audit.md
 - docs/solver-v2-audit-report.md
 
-The following remain intentionally separate because they are specifications,
-implementation history, benchmarks, operational guidance, or durable project
-context rather than active audit trackers:
-
-- `docs/solver-v2-spec.md`
-- `docs/solver-v2-progress.md`
-- `docs/solver-v2-benchmarks.md`
-- `docs/solver-integration.md`
-- `docs/sokomind-project-memory.md`
-- the focused architecture, testing, deployment, persistence, experience, and
-  puzzle-format guides.
+Solver specifications, implementation history, benchmarks, operational
+guidance, and project context remain separate because they are not active audit
+trackers.

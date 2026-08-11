@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
-  normalizeProgress,
-  tryParseProgress,
+  summarizeProgressMerge,
   type ProgressData,
 } from "@/src/shared/progress";
+import { readProgressImportFile } from "@/src/shared/progress-import";
 import { Modal } from "@/src/shared/ui/Modal";
 import { computeStats, type StatsPuzzle } from "./compute-stats";
 import styles from "./ProgressDialog.module.css";
@@ -49,26 +49,22 @@ export function ProgressDialog({
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
-    if (file.size > 1_000_000) {
-      setMessage("That file is too large to be a Sokomind progress file.");
+    const imported = await readProgressImportFile(file, knownPuzzleIds);
+    if (!imported.ok) {
+      setMessage(imported.message);
       return;
     }
 
-    const imported = tryParseProgress(await file.text());
-    if (!imported) {
-      setMessage("That file does not contain valid Sokomind progress.");
-      return;
-    }
-
-    const normalized = normalizeProgress(imported, knownPuzzleIds);
-    onImport(normalized.progress);
-
-    const ignored = normalized.ignoredPuzzleIds.length;
-    setMessage(
-      ignored > 0
-        ? `Progress imported. ${ignored} unavailable ${ignored === 1 ? "record was" : "records were"} ignored; better records were kept.`
-        : "Progress imported. Better records were kept.",
-    );
+    const summary = summarizeProgressMerge(progress, imported.progress);
+    onImport(imported.progress);
+    setMessage([
+      "Progress imported:",
+      `${summary.added} added,`,
+      `${summary.improved} improved,`,
+      `${summary.unchanged} unchanged,`,
+      `${summary.rejected + imported.rejected} rejected,`,
+      `${imported.invalid} invalid.`,
+    ].join(" "));
   }
 
   return (

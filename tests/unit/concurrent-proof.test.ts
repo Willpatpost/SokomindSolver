@@ -129,10 +129,40 @@ describe("proof protocol type guards", () => {
       isProofResult({
         type: "proof/solution",
         partitionId: "abc",
-        solution: { steps: [], moves: 5 },
-        totalCost: 7,
+        solution: {
+          steps: [{ direction: "right", kind: "walk" }],
+          moves: 1,
+          pushes: 0,
+          objective: { kind: "moves" },
+          objectiveScore: 1,
+          optimality: "unknown",
+        },
+        totalCost: 1,
       }),
     );
+  });
+
+  it("isProofResult rejects non-finite bounds and shallow solutions", () => {
+    assert.equal(isProofResult({
+      type: "proof/progress",
+      partitionId: "abc",
+      lowerBound: Number.POSITIVE_INFINITY,
+      expandedStates: 1,
+    }), false);
+    for (const lowerBound of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN]) {
+      assert.equal(isProofResult({
+        type: "proof/partition-complete",
+        partitionId: "abc",
+        lowerBound,
+        exhausted: true,
+      }), false);
+    }
+    assert.equal(isProofResult({
+      type: "proof/solution",
+      partitionId: "abc",
+      solution: { steps: [], moves: 0 },
+      totalCost: 0,
+    }), false);
   });
 
   it("isProofResult accepts valid partition-complete", () => {
@@ -142,6 +172,7 @@ describe("proof protocol type guards", () => {
         partitionId: "abc",
         lowerBound: 3,
         exhausted: true,
+        metrics: { elapsedMs: 1 },
       }),
     );
   });
@@ -169,6 +200,12 @@ describe("proof protocol type guards", () => {
         exhausted: "yes",
       }),
     );
+    assert.equal(isProofResult({
+      type: "proof/partition-complete",
+      partitionId: "abc",
+      lowerBound: 3,
+      exhausted: true,
+    }), false);
   });
 });
 
@@ -180,8 +217,8 @@ describe("first-push partitioning", () => {
   it("enumerates partitions for a simple 1-box puzzle", () => {
     const request = makeRequest([
       "OOOOOO",
-      "OR X O",
-      "O   SO",
+      "O R  O",
+      "O X SO",
       "OOOOOO",
     ]);
     const partitions = enumerateFirstPushPartitions(request);
@@ -434,6 +471,7 @@ class MockProofWorker implements SokomindProofWorker {
   readonly receivedCommands: ProofCommand[] = [];
   #messageListeners: MockMessageListener[] = [];
   #errorListeners: MockErrorListener[] = [];
+  #messageErrorListeners: MockErrorListener[] = [];
   #terminated = false;
   #respondFn?: (command: ProofStartPartition) => void;
 
@@ -451,12 +489,19 @@ class MockProofWorker implements SokomindProofWorker {
 
   addEventListener(type: string, listener: MockMessageListener | MockErrorListener): void {
     if (type === "message") this.#messageListeners.push(listener as MockMessageListener);
-    if (type === "error" || type === "messageerror") this.#errorListeners.push(listener as MockErrorListener);
+    if (type === "error") this.#errorListeners.push(listener as MockErrorListener);
+    if (type === "messageerror") this.#messageErrorListeners.push(listener as MockErrorListener);
   }
 
   removeEventListener(type: string, listener: MockMessageListener | MockErrorListener): void {
     if (type === "message") {
       this.#messageListeners = this.#messageListeners.filter((l) => l !== listener);
+    }
+    if (type === "error") {
+      this.#errorListeners = this.#errorListeners.filter((l) => l !== listener);
+    }
+    if (type === "messageerror") {
+      this.#messageErrorListeners = this.#messageErrorListeners.filter((l) => l !== listener);
     }
   }
 
@@ -465,14 +510,27 @@ class MockProofWorker implements SokomindProofWorker {
   }
 
   emit(data: unknown): void {
+    const record = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : null;
+    const normalized = record?.type === "proof/partition-complete" &&
+      record.metrics === undefined
+      ? { ...record, metrics: { elapsedMs: 0 } }
+      : data;
     for (const listener of this.#messageListeners) {
-      listener({ data });
+      listener({ data: normalized });
     }
   }
 
   emitError(): void {
     for (const listener of this.#errorListeners) {
       listener({ message: "worker crash" });
+    }
+  }
+
+  emitMessageError(): void {
+    for (const listener of this.#messageErrorListeners) {
+      listener({ message: "clone failure" });
     }
   }
 
@@ -613,8 +671,8 @@ describe("concurrent proof coordinator", () => {
   it("solution broadcast sends update-upper-bound to all workers", async () => {
     const request = makeRequest([
       "OOOOOO",
-      "OR X O",
-      "O   SO",
+      "O R  O",
+      "O X SO",
       "OOOOOO",
     ]);
 
@@ -629,13 +687,25 @@ describe("concurrent proof coordinator", () => {
             w.emit({
               type: "proof/solution",
               partitionId: cmd.partitionId,
-              solution: makeSolution(8, 4),
-              totalCost: 8,
+              solution: {
+                steps: [
+                  { direction: "left", kind: "walk" },
+                  { direction: "down", kind: "walk" },
+                  { direction: "right", kind: "push" },
+                  { direction: "right", kind: "push" },
+                ],
+                moves: 4,
+                pushes: 2,
+                objective: { kind: "moves" },
+                objectiveScore: 4,
+                optimality: "unknown",
+              },
+              totalCost: 4,
             });
             w.emit({
               type: "proof/partition-complete",
               partitionId: cmd.partitionId,
-              lowerBound: 8,
+              lowerBound: 4,
               exhausted: true,
             });
           });
@@ -644,7 +714,7 @@ describe("concurrent proof coordinator", () => {
             w.emit({
               type: "proof/partition-complete",
               partitionId: cmd.partitionId,
-              lowerBound: 8,
+              lowerBound: 4,
               exhausted: true,
             });
           });
@@ -1048,5 +1118,238 @@ describe("concurrent proof coordinator", () => {
       );
     }
     assertValidSolverResult(result);
+  });
+
+  it("fails malformed messages instead of waiting indefinitely", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const worker = new MockProofWorker(() => {
+      queueMicrotask(() => worker.emit({ type: "malformed" }));
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1, silenceTimeoutMs: 20 },
+    );
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") assert.equal(result.solution.optimality, "unknown");
+    assert.equal(worker.terminated, true);
+  });
+
+  it("fails a worker that sends a wrong partition identity", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const wrong = new MockProofWorker(() => {
+      queueMicrotask(() => wrong.emit({
+        type: "proof/partition-complete",
+        partitionId: "not-the-active-partition",
+        lowerBound: 1,
+        exhausted: true,
+        metrics: { elapsedMs: 1 },
+      }));
+    });
+    const wrongResult = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => wrong, proofParallelism: 1 },
+    );
+    assert.equal(wrongResult.status, "solved");
+    if (wrongResult.status === "solved") {
+      assert.equal(wrongResult.solution.optimality, "unknown");
+    }
+  });
+
+  it("bounds silent workers with a watchdog and handles messageerror", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const silent = new MockProofWorker();
+    const started = performance.now();
+    const timed = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 5 },
+    );
+    assert.equal(timed.status, "solved");
+    assert.ok(performance.now() - started < 500);
+    assert.equal(silent.terminated, true);
+
+    const broken = new MockProofWorker(() => {
+      queueMicrotask(() => broken.emitMessageError());
+    });
+    const cloneFailure = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => broken, proofParallelism: 1, silenceTimeoutMs: 20 },
+    );
+    assert.equal(cloneFailure.status, "solved");
+    if (cloneFailure.status === "solved") {
+      assert.equal(cloneFailure.solution.optimality, "unknown");
+    }
+  });
+
+  it("enforces one remaining wall-clock deadline across silent partitions", async () => {
+    const request: SolverRequest = {
+      ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
+      limits: { maxElapsedMs: 110 },
+    };
+    const silent = new MockProofWorker();
+    const started = performance.now();
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 1_000 },
+    );
+    assert.equal(result.status, "solved");
+    assert.ok(performance.now() - started < 500);
+    assert.equal(silent.terminated, true);
+  });
+
+  it("terminates already-created workers when a later factory call fails", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const first = new MockProofWorker();
+    let calls = 0;
+    const discovery = makeDiscoveryResult(10, 5);
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 2 },
+      discovery,
+      {
+        proofParallelism: 2,
+        createProofWorker: () => {
+          if (calls++ === 0) return first;
+          throw new Error("factory failure");
+        },
+      },
+    );
+    assert.equal(result, discovery);
+    assert.equal(first.terminated, true);
+  });
+
+  it("rejects replay-invalid candidate solutions", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const worker = new MockProofWorker((command) => {
+      queueMicrotask(() => worker.emit({
+        type: "proof/solution",
+        partitionId: command.partitionId,
+        solution: makeSolution(1, 0),
+        totalCost: 1,
+      }));
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1, silenceTimeoutMs: 20 },
+    );
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.moves, 10);
+      assert.equal(result.solution.optimality, "unknown");
+    }
+    assert.equal(
+      worker.receivedCommands.some((command) => command.type === "solver/update-upper-bound"),
+      false,
+    );
+  });
+
+  it("partitions remaining limits and merges discovery plus proof metrics", async () => {
+    const request: SolverRequest = {
+      ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
+      limits: {
+        maxElapsedMs: 1_000,
+        maxExpandedStates: 100,
+        maxGeneratedStates: 200,
+        maxMemoryBytes: 1_000,
+      },
+    };
+    const discovery: SolverResult = {
+      ...makeDiscoveryResult(10, 5),
+      metrics: { elapsedMs: 100, expandedStates: 40, generatedStates: 50 },
+    };
+    const starts: ProofStartPartition[] = [];
+    const createWorker = () => {
+      const worker = new MockProofWorker((command) => {
+        starts.push(command);
+        queueMicrotask(() => worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: 10,
+          exhausted: true,
+          metrics: {
+            elapsedMs: 2,
+            expandedStates: command.request.limits?.maxExpandedStates ?? 0,
+            generatedStates: command.request.limits?.maxGeneratedStates ?? 0,
+            peakFrontierSize: 3,
+          },
+        }));
+      });
+      return worker;
+    };
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 2 },
+      discovery,
+      { createProofWorker: createWorker, proofParallelism: 2 },
+    );
+    assert.ok(starts.length > 0);
+    assert.ok(starts.every((command) =>
+      (command.request.limits?.maxElapsedMs ?? 0) <= 900 &&
+      (command.request.limits?.maxMemoryBytes ?? 0) <= 500));
+    assert.equal(result.status, "solved");
+    assert.ok((result.metrics.expandedStates ?? 0) <= 100);
+    assert.ok((result.metrics.generatedStates ?? 0) <= 200);
+    assert.ok((result.metrics.expandedStates ?? 0) >= 40);
+    assert.ok((result.metrics.generatedStates ?? 0) >= 50);
+  });
+
+  it("retains the latest progress metrics when a partition times out", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const discovery: SolverResult = {
+      ...makeDiscoveryResult(10, 5),
+      metrics: { elapsedMs: 100, expandedStates: 40, generatedStates: 50 },
+    };
+    const worker = new MockProofWorker((command) => {
+      queueMicrotask(() => worker.emit({
+        type: "proof/progress",
+        partitionId: command.partitionId,
+        lowerBound: 1,
+        expandedStates: 7,
+        generatedStates: 9,
+        counters: { peakEstimatedMemoryBytes: 256 },
+      }));
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      discovery,
+      { createProofWorker: () => worker, proofParallelism: 1, silenceTimeoutMs: 5 },
+    );
+    assert.equal(result.status, "solved");
+    assert.ok((result.metrics.expandedStates ?? 0) >= 47);
+    assert.ok((result.metrics.generatedStates ?? 0) >= 59);
+    assert.ok((result.metrics.counters?.peakEstimatedMemoryBytes ?? 0) >= 256);
   });
 });

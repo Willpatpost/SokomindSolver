@@ -1,9 +1,20 @@
-import { readStoredValue, writeStoredValue, STORAGE_KEYS } from "./storage";
+import { readStoredValue, writeStoredValue, STORAGE_KEYS } from "./storage.ts";
+import { trackPersistenceResult } from "./persistence-health.ts";
 
 export type DifficultyRating = "easy" | "right" | "hard";
 
 export interface RatingsData {
   readonly [puzzleId: string]: DifficultyRating;
+}
+
+function persistRatings(serialized: string): void {
+  const retry = () => {
+    trackPersistenceResult(
+      writeStoredValue(STORAGE_KEYS.ratings, serialized),
+      retry,
+    );
+  };
+  retry();
 }
 
 export function loadRatings(): RatingsData {
@@ -30,6 +41,6 @@ export function saveRating(
 ): RatingsData {
   const current = loadRatings();
   const next = { ...current, [puzzleId]: rating };
-  writeStoredValue(STORAGE_KEYS.ratings, JSON.stringify(next));
+  persistRatings(JSON.stringify(next));
   return next;
 }

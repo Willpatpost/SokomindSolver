@@ -240,6 +240,42 @@ export function loadSessionPuzzleId(
 }
 
 /**
+ * Resolves the newest lightweight resume pointer across localStorage and the
+ * generation-fenced IndexedDB mirror. This is intentionally board-free so an
+ * entry screen can discover an IDB-only session before choosing a Play route.
+ */
+export async function loadSessionPuzzleIdFromIDB(
+  isKnownPuzzleId: PuzzleIdPredicate,
+): Promise<string | null> {
+  const local = parseSavedSession(readStoredValue(STORAGE_KEYS.session));
+  let selected = local &&
+    !isImplausiblyFuture(local) &&
+    isKnownPuzzleId(local.puzzleId)
+    ? local
+    : null;
+
+  try {
+    const raw = await idbFencedGet<unknown>(
+      IDB_KEY,
+      DOCUMENT_APP_RESET_GENERATION,
+    );
+    const indexed = parseSavedSessionFromUnknown(raw);
+    if (
+      indexed &&
+      !isImplausiblyFuture(indexed) &&
+      isKnownPuzzleId(indexed.puzzleId) &&
+      (!selected || savedAt(indexed) > savedAt(selected))
+    ) {
+      selected = indexed;
+    }
+  } catch {
+    // IndexedDB is an optional resilience layer; keep the synchronous result.
+  }
+
+  return selected?.puzzleId ?? loadSessionPuzzleId(isKnownPuzzleId);
+}
+
+/**
  * Saves the session to both localStorage (for instant sync restore on
  * reload) and IndexedDB (for quota resilience with large action logs).
  */

@@ -8,7 +8,7 @@ import {
 import {
   errorMessage, isAStar, WORKER_STARTUP_TIMEOUT_MS, type SolverSharedState,
 } from "./solver-internals";
-import type { SolverLogEntry } from "./useSolverController";
+import type { SolverLogEntry } from "./solver-ui-types";
 
 interface UseSolverWorkerOptions extends SolverSharedState {
   readonly open: boolean;

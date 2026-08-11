@@ -23,7 +23,7 @@
     "pretest:unit": "npm run check:sokomind-solver && npm run check:catalog",
     "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "test:coverage": "npm run test:coverage:typed && npm run test:coverage:typed:focused && npm run test:coverage:engine",
-    "test:coverage:typed": "c8 --all --extension .ts --extension .tsx --include \"src/**/*.ts\" --include \"src/**/*.tsx\" --exclude \"src/**/*.d.ts\" --exclude-after-remap --check-coverage --lines 58 --statements 58 --functions 80 --branches 78 --reporter text node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:coverage:typed": "c8 --all --extension .ts --extension .tsx --include \"src/**/*.ts\" --include \"src/**/*.tsx\" --exclude \"src/**/*.d.ts\" --exclude-after-remap --check-coverage --lines 60 --statements 60 --functions 80 --branches 78 --reporter text node --experimental-strip-types --test tests/unit/*.test.ts",
     "test:coverage:typed:focused": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-include=src/**/*.ts --test-coverage-include=src/**/*.tsx --test-coverage-exclude=src/**/*.d.ts --test-coverage-lines=92 --test-coverage-functions=93 --test-coverage-branches=84 tests/unit/*.test.ts",
     "test:coverage:engine": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-include=src/solver/implementations/sokomind-engine/engine.generated.js --test-coverage-lines=41 --test-coverage-functions=56 --test-coverage-branches=63 tests/unit/*.test.ts",
     "test:unit:coverage": "npm run test:coverage",

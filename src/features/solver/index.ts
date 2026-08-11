@@ -2,8 +2,10 @@ export { SolverDialog, type SolverDialogProps } from "./SolverDialog";
 export {
   TIME_LIMIT_OPTIONS,
   useSolverController,
-  type SolverLogEntry,
   type SolverPlaybackRequest,
-  type SolverRunFingerprint,
-  type SolverUiPhase,
 } from "./useSolverController";
+export type {
+  SolverLogEntry,
+  SolverRunFingerprint,
+  SolverUiPhase,
+} from "./solver-ui-types";

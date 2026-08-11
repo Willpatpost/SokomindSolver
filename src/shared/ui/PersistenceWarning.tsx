@@ -22,6 +22,11 @@ export function PersistenceWarning() {
         Keep this tab open and check your browser&apos;s storage or privacy
         settings. Sokomind will retry when your data changes again.
       </span>
+      {health.canRetry ? (
+        <button type="button" onClick={persistenceHealth.retryFailures}>
+          Retry saving now
+        </button>
+      ) : null}
     </aside>
   );
 }

@@ -8,19 +8,11 @@ consumers of the core rather than alternate owners of game state.
 
 ```text
 index.html
-    |
-src/main.tsx
-    |-- ExperienceProvider
-    `-- App
-         |-- AmbientBackdrop
-         `-- GameApp
-              |-- GameHeader
-              |-- PuzzleLibrary
-              |-- Board
-              |-- GameSidebar / GameControls
-              |-- ProgressDialog
-              |-- SolverDialog
-              `-- shared modal dialogs and celebration
+  -> src/main.tsx
+     -> ErrorBoundary -> ExperienceProvider -> App
+        -> AmbientBackdrop + persistence/update notices
+        -> RouterProvider -> AppShell
+           -> Home / Selector / Play / Editor / Stats
 ```
 
 Vite compiles this graph into `dist/`. There is no server entry point, runtime
@@ -42,8 +34,9 @@ artifact can live below a GitHub repository path.
   resulting session.
 - `src/features/experience` owns presentation preferences, Web Audio, reduced
   motion, ambience, and celebration. None of those effects change game rules.
+- `src/router` owns hash parsing, route state, navigation, and route links.
 - `src/shared` contains the fail-safe storage boundary, exact session
-  persistence, hash routes, progress records, and reusable modal primitives.
+  persistence, progress records, and reusable modal primitives.
 - `src/main.tsx` is the composition root. It is the only place that must know
   which application-wide providers exist.
 
@@ -54,6 +47,21 @@ its ported classic-script kernel under `sokomind-engine`, generated in the
 original dependency order and executed only in an isolated nested module
 worker. Future solver families should keep their own implementation modules and
 promote primitives only when multiple implementations genuinely require them.
+
+These source-backed invariants are enforced by
+`tests/unit/module-boundaries.test.ts` using the TypeScript AST:
+
+| Layer | Allowed internal dependencies |
+|---|---|
+| `core` | `core` |
+| `catalog` | `catalog`, `core` |
+| `router` | `router`, `catalog`, `core` |
+| `shared` | `shared`, `core` |
+| `solver` | `solver`, `core` |
+| `features` | feature and lower-level application layers |
+
+The gate recognizes static, side-effect, type, and dynamic imports and rejects
+cycles between feature modules.
 
 ## Game state
 
@@ -81,6 +89,8 @@ Storage access is centralized, namespaced, versioned, and exception-safe:
 - `sokomind.progress.v1`
 - `sokomind.experience.v1`
 - `sokomind.session.v1`
+- `sokomind.optimal.v4`
+- `sokomind.editor-draft.v1`
 
 Session coordinates are never deserialized directly; saved actions replay
 through the core. Puzzle progress never depends on sound or motion preferences.

@@ -1,5 +1,5 @@
 import { DIFFICULTIES, type Difficulty } from "../../core/model.ts";
-import type { ProgressData } from "../../shared/progress.ts";
+import { toLocalDateKey, type ProgressData } from "../../shared/progress.ts";
 
 const DIFFICULTY_ORDER = DIFFICULTIES;
 
@@ -52,8 +52,11 @@ export interface StatsPuzzle {
   readonly boxes: number;
 }
 
-function toDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+function shiftLocalDays(date: Date, amount: number): Date {
+  const shifted = new Date(date);
+  shifted.setHours(12, 0, 0, 0);
+  shifted.setDate(shifted.getDate() + amount);
+  return shifted;
 }
 
 function computeStreak(progress: ProgressData): StreakInfo {
@@ -61,7 +64,7 @@ function computeStreak(progress: ProgressData): StreakInfo {
   for (const record of Object.values(progress.completed)) {
     const date = new Date(record.completedAt);
     if (!Number.isFinite(date.getTime())) continue;
-    completionDays.add(toDateKey(date));
+    completionDays.add(toLocalDateKey(date));
   }
 
   if (completionDays.size === 0) {
@@ -69,8 +72,9 @@ function computeStreak(progress: ProgressData): StreakInfo {
   }
 
   const sortedDays = [...completionDays].sort();
-  const today = toDateKey(new Date());
-  const yesterday = toDateKey(new Date(Date.now() - 86_400_000));
+  const todayDate = new Date();
+  const today = toLocalDateKey(todayDate);
+  const yesterday = toLocalDateKey(shiftLocalDays(todayDate, -1));
 
   let longest = 1;
   let currentRun = 1;
@@ -94,10 +98,10 @@ function computeStreak(progress: ProgressData): StreakInfo {
   let current = 0;
   if (activeTodayOrYesterday) {
     current = 1;
-    let checkDate = new Date(lastDay + "T00:00:00");
+    let checkDate = new Date(lastDay + "T12:00:00");
     for (;;) {
-      checkDate = new Date(checkDate.getTime() - 86_400_000);
-      if (completionDays.has(toDateKey(checkDate))) {
+      checkDate = shiftLocalDays(checkDate, -1);
+      if (completionDays.has(toLocalDateKey(checkDate))) {
         current++;
       } else {
         break;
@@ -113,7 +117,13 @@ export function getDailyPuzzleId(
   date: Date = new Date(),
 ): string | undefined {
   if (puzzles.length === 0) return undefined;
-  const daysSinceEpoch = Math.floor(date.getTime() / 86_400_000);
+  // Selection changes at local midnight. Converting the local Y/M/D tuple to
+  // a UTC ordinal avoids DST-length days while preserving local semantics.
+  const daysSinceEpoch = Math.floor(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ) / 86_400_000);
   const index = ((daysSinceEpoch * 2654435761) >>> 0) % puzzles.length;
   return puzzles[index].id;
 }
@@ -121,15 +131,16 @@ export function getDailyPuzzleId(
 export function computeDailyStreak(
   progress: ProgressData,
   puzzles: readonly StatsPuzzle[],
+  now: Date = new Date(),
 ): number {
   if (puzzles.length === 0) return 0;
-  const today = new Date();
   let streak = 0;
 
   for (let daysBack = 0; daysBack <= 365; daysBack++) {
-    const date = new Date(today.getTime() - daysBack * 86_400_000);
+    const date = shiftLocalDays(now, -daysBack);
+    const dateKey = toLocalDateKey(date);
     const dailyId = getDailyPuzzleId(puzzles, date);
-    if (!dailyId || !progress.completed[dailyId]) break;
+    if (!dailyId || progress.daily[dateKey]?.puzzleId !== dailyId) break;
     streak++;
   }
   return streak;

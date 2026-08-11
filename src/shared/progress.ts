@@ -12,8 +12,15 @@ export interface PuzzleRecord {
 }
 
 export interface ProgressData {
-  readonly version: 1;
+  readonly version: 2;
   readonly completed: Readonly<Record<string, PuzzleRecord>>;
+  /** Daily participation is intentionally separate from lifetime bests. */
+  readonly daily: Readonly<Record<string, DailyCompletion>>;
+}
+
+export interface DailyCompletion {
+  readonly puzzleId: string;
+  readonly completedAt: string;
 }
 
 export interface NormalizedProgress {
@@ -21,10 +28,24 @@ export interface NormalizedProgress {
   readonly ignoredPuzzleIds: readonly string[];
 }
 
+export interface ProgressMergeSummary {
+  readonly added: number;
+  readonly improved: number;
+  readonly unchanged: number;
+  readonly rejected: number;
+}
+
 export const EMPTY_PROGRESS: ProgressData = Object.freeze({
-  version: 1,
+  version: 2,
   completed: Object.freeze({}),
+  daily: Object.freeze({}),
 });
+
+const LOCAL_DATE_KEY = /^\d{4}-\d{2}-\d{2}$/u;
+
+export function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 function isBetterRecord(
   candidate: Pick<PuzzleRecord, "moves" | "pushes">,
@@ -52,6 +73,21 @@ function isPuzzleRecord(value: unknown): value is PuzzleRecord {
   );
 }
 
+function isDailyCompletion(value: unknown): value is DailyCompletion {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<DailyCompletion>;
+  const completedAt = typeof record.completedAt === "string"
+    ? Date.parse(record.completedAt)
+    : Number.NaN;
+  return (
+    typeof record.puzzleId === "string" &&
+    record.puzzleId.length > 0 &&
+    record.puzzleId.length <= 100 &&
+    Number.isFinite(completedAt) &&
+    new Date(completedAt).toISOString() === record.completedAt
+  );
+}
+
 export function tryParseProgress(value: string | null): ProgressData | null {
   if (!value) return null;
 
@@ -59,6 +95,7 @@ export function tryParseProgress(value: string | null): ProgressData | null {
     const parsed = JSON.parse(value) as {
       version?: unknown;
       completed?: unknown;
+      daily?: unknown;
     };
     if (
       (parsed.version !== 1 && parsed.version !== 2) ||
@@ -73,7 +110,15 @@ export function tryParseProgress(value: string | null): ProgressData | null {
         isPuzzleRecord(entry[1]),
       ),
     );
-    return { version: 1, completed };
+    const daily = parsed.version === 2 && parsed.daily && typeof parsed.daily === "object"
+      ? Object.fromEntries(
+          Object.entries(parsed.daily).filter(
+            (entry): entry is [string, DailyCompletion] =>
+              LOCAL_DATE_KEY.test(entry[0]) && isDailyCompletion(entry[1]),
+          ),
+        )
+      : {};
+    return { version: 2, completed, daily };
   } catch {
     return null;
   }
@@ -109,9 +154,25 @@ export function normalizeProgress(
     }
   }
 
+  const daily = Object.fromEntries(
+    Object.entries(progress.daily).filter(([, record]) => {
+      if (knownIds.has(record.puzzleId)) return true;
+      if (!ignoredPuzzleIds.includes(record.puzzleId)) {
+        ignoredPuzzleIds.push(record.puzzleId);
+      }
+      return false;
+    }),
+  );
+  const changed = Object.keys(completed).length !== Object.keys(progress.completed).length ||
+    Object.keys(daily).length !== Object.keys(progress.daily).length;
+
   return {
-    progress: ignoredPuzzleIds.length > 0
-      ? { version: 1, completed }
+    progress: changed
+      ? {
+          version: 2,
+          completed,
+          daily,
+        }
       : progress,
     ignoredPuzzleIds: Object.freeze(ignoredPuzzleIds),
   };
@@ -135,10 +196,42 @@ export function recordCompletion(
   if (!isBetterRecord(candidate, current)) return progress;
 
   return {
-    version: 1,
+    version: 2,
     completed: {
       ...progress.completed,
       [puzzleId]: candidate,
+    },
+    daily: progress.daily,
+  };
+}
+
+/**
+ * Records participation for an explicitly selected local calendar day. The
+ * caller is responsible for confirming that `puzzleId` was assigned on that
+ * date; keeping that catalog policy outside shared persistence avoids a layer
+ * dependency. A wall-clock solve is accepted only for its own local date.
+ */
+export function recordDailyCompletion(
+  progress: ProgressData,
+  puzzleId: string,
+  completedAt: Date = new Date(),
+  dateKey = toLocalDateKey(completedAt),
+): ProgressData {
+  if (dateKey !== toLocalDateKey(completedAt) || !LOCAL_DATE_KEY.test(dateKey)) {
+    return progress;
+  }
+  const existing = progress.daily[dateKey];
+  if (existing?.puzzleId === puzzleId) return progress;
+
+  return {
+    version: 2,
+    completed: progress.completed,
+    daily: {
+      ...progress.daily,
+      [dateKey]: {
+        puzzleId,
+        completedAt: completedAt.toISOString(),
+      },
     },
   };
 }
@@ -151,6 +244,7 @@ export function mergeProgress(
   const completed: Record<string, PuzzleRecord> = {
     ...current.completed,
   };
+  const daily: Record<string, DailyCompletion> = { ...current.daily };
 
   for (const [puzzleId, record] of Object.entries(imported.completed)) {
     if (!isBetterRecord(record, completed[puzzleId])) continue;
@@ -158,5 +252,52 @@ export function mergeProgress(
     changed = true;
   }
 
-  return changed ? { version: 1, completed } : current;
+  for (const [dateKey, record] of Object.entries(imported.daily)) {
+    if (daily[dateKey]) continue;
+    daily[dateKey] = record;
+    changed = true;
+  }
+
+  return changed ? { version: 2, completed, daily } : current;
+}
+
+export function summarizeProgressMerge(
+  current: ProgressData,
+  imported: ProgressData,
+): ProgressMergeSummary {
+  let added = 0;
+  let improved = 0;
+  let unchanged = 0;
+  let rejected = 0;
+  for (const [puzzleId, candidate] of Object.entries(imported.completed)) {
+    const existing = current.completed[puzzleId];
+    if (!existing) {
+      added++;
+    } else if (candidate.moves < existing.moves) {
+      improved++;
+    } else if (
+      candidate.moves === existing.moves &&
+      candidate.pushes === existing.pushes &&
+      candidate.completedAt === existing.completedAt &&
+      candidate.elapsedMs === existing.elapsedMs
+    ) {
+      unchanged++;
+    } else {
+      rejected++;
+    }
+  }
+  for (const [dateKey, candidate] of Object.entries(imported.daily)) {
+    const existing = current.daily[dateKey];
+    if (!existing) {
+      added++;
+    } else if (
+      existing.puzzleId === candidate.puzzleId &&
+      existing.completedAt === candidate.completedAt
+    ) {
+      unchanged++;
+    } else {
+      rejected++;
+    }
+  }
+  return Object.freeze({ added, improved, unchanged, rejected });
 }

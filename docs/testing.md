@@ -81,6 +81,11 @@ known-good cache remains active.
 Axe scans representative light/dark views and solver controls against WCAG
 A/AA rules.
 
+`tests/critical-route-behaviors.json` is the required behavior matrix for Home,
+Selector, Play, Editor, and Stats. Its unit gate verifies that every entry still
+names an executable regression test. This keeps route behavior visible even
+though Playwright coverage is not merged into the Node line-coverage report.
+
 The cross-platform runner owns the preview server directly so Windows and CI
 both shut down cleanly. Prefer roles and visible labels over implementation
 selectors.
@@ -96,7 +101,8 @@ major-version automated fixes.
 
 `npm run test:coverage` enforces three independent non-regression gates. The
 `c8 --all` pass includes every TypeScript and TSX source file, including files
-that no test imports. A focused typed-source pass keeps a higher floor for code
+that no test imports, with 60% line/statement, 80% function, and 78% branch
+floors. A focused typed-source pass keeps a higher floor for code
 exercised by the unit suite, while the generated-engine pass prevents aggregate
 gains from hiding a drop at the vendored boundary.
 

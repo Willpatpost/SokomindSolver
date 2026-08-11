@@ -7,7 +7,7 @@ import {
   MEBIBYTE, PROGRESS_LOG_INTERVAL_MS, progressLogMessage, sessionKey,
   type SolverSharedState,
 } from "./solver-internals";
-import type { SolverLogEntry, SolverRunFingerprint } from "./useSolverController";
+import type { SolverLogEntry, SolverRunFingerprint } from "./solver-ui-types";
 
 export interface UseSolverProgressOptions extends SolverSharedState {
   session: GameSession; open: boolean; uiPhase: string;

@@ -252,8 +252,8 @@ export class SolverWorkerHost {
             progress.lowerBound < prev.lowerBound
           ) {
             throw new SolverWorkerRuntimeError(
-              `Progress lowerBound decreased from ${prev.lowerBound} to ${progress.lowerBound}`,
               "ERR_SOLVER_MONOTONICITY",
+              `Progress lowerBound decreased from ${prev.lowerBound} to ${progress.lowerBound}`,
             );
           }
           if (
@@ -262,8 +262,8 @@ export class SolverWorkerHost {
             progress.upperBound > prev.upperBound
           ) {
             throw new SolverWorkerRuntimeError(
-              `Progress upperBound increased from ${prev.upperBound} to ${progress.upperBound}`,
               "ERR_SOLVER_MONOTONICITY",
+              `Progress upperBound increased from ${prev.upperBound} to ${progress.upperBound}`,
             );
           }
           if (
@@ -272,8 +272,8 @@ export class SolverWorkerHost {
             progress.gap > prev.gap
           ) {
             throw new SolverWorkerRuntimeError(
-              `Progress gap increased from ${prev.gap} to ${progress.gap}`,
               "ERR_SOLVER_MONOTONICITY",
+              `Progress gap increased from ${prev.gap} to ${progress.gap}`,
             );
           }
         }

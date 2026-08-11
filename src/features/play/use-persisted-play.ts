@@ -13,6 +13,7 @@ import {
   type PuzzleDefinition,
 } from "@/src/core";
 import {
+  recordDailyCompletion,
   recordCompletion,
   type ProgressData,
   type PuzzleRecord,
@@ -43,6 +44,13 @@ import {
 export interface CompletionRecordUpdate {
   readonly previousBest?: PuzzleRecord;
   readonly newBest: boolean;
+  readonly previousProgress: ProgressData;
+  readonly progress: ProgressData;
+}
+
+export interface DailySolveContext {
+  readonly dateKey: string;
+  readonly completedAt: Date;
 }
 
 function createInitialSession(
@@ -249,23 +257,40 @@ export function usePersistedPlay(
   }, [commitProgressSnapshot, writerId]);
 
   const recordSolvedSession = useCallback(
-    (solved: GameSession, elapsedMs?: number): CompletionRecordUpdate => {
+    (
+      solved: GameSession,
+      elapsedMs?: number,
+      daily?: DailySolveContext,
+    ): CompletionRecordUpdate => {
       const current = progressSyncRef.current ?? loadProgressSyncSnapshot();
       const update = persistProgressUpdate(
         current,
         writerId,
-        (stored) => recordCompletion(
-          stored,
-          solved.puzzle.id,
-          solved.moves,
-          solved.pushes,
-          elapsedMs,
-        ),
+        (stored) => {
+          const completed = recordCompletion(
+            stored,
+            solved.puzzle.id,
+            solved.moves,
+            solved.pushes,
+            elapsedMs,
+          );
+          return daily
+            ? recordDailyCompletion(
+                completed,
+                solved.puzzle.id,
+                daily.completedAt,
+                daily.dateKey,
+              )
+            : completed;
+        },
       );
       commitProgressSnapshot(update.snapshot);
+      const previousBest = update.previous.completed[solved.puzzle.id];
       return Object.freeze({
-        previousBest: update.previous.completed[solved.puzzle.id],
-        newBest: update.changed,
+        previousBest,
+        newBest: update.snapshot.progress.completed[solved.puzzle.id] !== previousBest,
+        previousProgress: update.previous,
+        progress: update.snapshot.progress,
       });
     },
     [commitProgressSnapshot, writerId],

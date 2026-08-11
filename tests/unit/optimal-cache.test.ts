@@ -12,7 +12,7 @@ import {
   type OptimalRecord,
 } from "../../src/shared/optimal-cache.ts";
 
-const EMPTY_CACHE: OptimalCache = { version: 3, records: {} };
+const EMPTY_CACHE: OptimalCache = { version: 4, records: {} };
 
 test("isOptimal compares only the proven move count", () => {
   assert.equal(isOptimal(EMPTY_CACHE, "missing", 10), false);
@@ -36,7 +36,7 @@ test("setOptimalRecord creates, overwrites, and preserves entries", () => {
 
   assert.deepEqual(cache.records["p1"], replacement);
   assert.deepEqual(cache.records["p2"], other);
-  assert.equal(cache.version, 3);
+  assert.equal(cache.version, 4);
 });
 
 test("invalidates optimal records from pre-proof cache schemas", () => {
@@ -52,7 +52,7 @@ test("invalidates optimal records from pre-proof cache schemas", () => {
 
 test("current cache parsing drops malformed records safely", () => {
   const normalized = normalizeOptimalCache({
-    version: 3,
+    version: 4,
     records: {
       valid: { moves: 11, pushes: 4 },
       impossible: { moves: 2, pushes: 3 },
@@ -62,7 +62,7 @@ test("current cache parsing drops malformed records safely", () => {
   });
 
   assert.deepEqual(normalized, {
-    version: 3,
+    version: 4,
     records: {
       valid: { moves: 11, pushes: 4 },
     },
@@ -81,7 +81,7 @@ test("merges stale tab snapshots without losing either proof", () => {
   });
   assert.deepEqual(
     mergeOptimalCaches(merged, {
-      version: 3,
+      version: 4,
       records: { p1: { moves: 18, pushes: 9 } },
     }).records.p1,
     { moves: 18, pushes: 9 },

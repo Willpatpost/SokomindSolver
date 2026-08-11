@@ -1,5 +1,5 @@
-import type { AggregateStats } from "@/src/features/progress/compute-stats";
-import type { ProgressData } from "@/src/shared/progress";
+import type { AggregateStats } from "../progress/compute-stats.ts";
+import type { ProgressData } from "../../shared/progress.ts";
 
 export interface AchievementDef {
   readonly id: string;
@@ -138,4 +138,17 @@ export function getUnlockedAchievements(
   progress: ProgressData,
 ): readonly AchievementDef[] {
   return ACHIEVEMENTS.filter((a) => a.check(stats, progress));
+}
+
+export function getNewlyUnlockedAchievements(
+  previousStats: AggregateStats,
+  previousProgress: ProgressData,
+  nextStats: AggregateStats,
+  nextProgress: ProgressData,
+): readonly AchievementDef[] {
+  const previousIds = new Set(
+    getUnlockedAchievements(previousStats, previousProgress).map(({ id }) => id),
+  );
+  return getUnlockedAchievements(nextStats, nextProgress)
+    .filter(({ id }) => !previousIds.has(id));
 }

@@ -145,7 +145,48 @@ const REPEATED_STATE_BOARDS = [
       "OOOOOOO",
     ],
   },
+  {
+    name: "audit regression: alternate-cost exact-state arrival",
+    rows: [
+      "OOOOOO",
+      "O    O",
+      "O   XO",
+      "O X  O",
+      "O RSSO",
+      "OOOOOO",
+    ],
+  },
 ];
+
+function generatedTinyBoards(count: number): readonly string[][] {
+  let seed = 0x51a2c3d4;
+  const next = () => {
+    seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+    return seed;
+  };
+  const boards: string[][] = [];
+  const seen = new Set<string>();
+  while (boards.length < count) {
+    const positions = Array.from({ length: 3 }, () => ({
+      row: 1 + (next() % 3),
+      column: 1 + (next() % 3),
+    }));
+    const keys = positions.map(({ row, column }) => `${row},${column}`);
+    if (new Set(keys).size !== keys.length) continue;
+    const key = keys.join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const grid: string[][] = Array.from({ length: 5 }, (_, row) =>
+      Array.from({ length: 5 }, (_, column) =>
+        row === 0 || row === 4 || column === 0 || column === 4 ? "O" : " "));
+    const [robot, box, goal] = positions;
+    grid[robot.row][robot.column] = "R";
+    grid[box.row][box.column] = "X";
+    grid[goal.row][goal.column] = "S";
+    boards.push(grid.map((row) => row.join("")));
+  }
+  return boards;
+}
 
 describe("TT-IDA* differential correctness", () => {
   for (const { name, rows } of REPEATED_STATE_BOARDS) {
@@ -277,6 +318,29 @@ describe("TT-IDA* differential correctness", () => {
             `"${name}": ${label} (${moves} moves) disagrees with ${solvedResults[0].label} (${firstMoves} moves)`,
           );
         }
+      }
+    }
+  });
+
+  it("matches the independent oracle across a deterministic generated tiny-board sweep", async () => {
+    for (const [index, rows] of generatedTinyBoards(16).entries()) {
+      const board = makeBoard(rows);
+      const compiled = compileSearchBoard(board);
+      const oracle = exactRemainingMoves(
+        compiled,
+        compiled.cellAt(board.initialRobot.row, board.initialRobot.column),
+        toDenseBoxes(compiled, board.initialBoxes),
+      );
+      const result = await runIdaStarSearch(
+        makeRequest(board),
+        makeContext(),
+        { persistTransposition: false },
+      );
+      assertAgreement(`generated tiny board ${index}`, oracle.exactMoves, result);
+      if (result.status === "solved") {
+        assert.equal(result.solution.optimality, "proven");
+        assert.equal(result.proof?.lowerBound, result.solution.moves);
+        assert.equal(result.proof?.upperBound, result.solution.moves);
       }
     }
   });

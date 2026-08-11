@@ -17,6 +17,11 @@
   display: block;
 }
 
+.warning button {
+  margin-top: 9px;
+  min-height: 32px;
+}
+
 .warning strong {
   margin-bottom: 3px;
   font-size: 0.82rem;

@@ -37,3 +37,23 @@ test("deduplicates repeated failures and clears only the recovered key", () => {
   assert.deepEqual(store.getSnapshot().failures, []);
   assert.equal(notifications, 4);
 });
+
+test("offers scoped retry callbacks only while retryable failures remain", () => {
+  const store = createPersistenceHealthStore();
+  let attempts = 0;
+  const retry = () => {
+    attempts++;
+    store.report({ ok: true, key: "draft", operation: "write" });
+  };
+  store.report({
+    ok: false,
+    key: "draft",
+    operation: "write",
+    reason: "quota-exceeded",
+  }, retry);
+  assert.equal(store.getSnapshot().canRetry, true);
+  store.retryFailures();
+  assert.equal(attempts, 1);
+  assert.equal(store.getSnapshot().canRetry, false);
+  assert.deepEqual(store.getSnapshot().failures, []);
+});

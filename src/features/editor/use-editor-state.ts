@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { trackPersistenceResult } from "@/src/shared/persistence-health";
+import {
+  STORAGE_KEYS,
+  readStoredValue,
+  removeStoredValue,
+  writeStoredValue,
+  type StorageMutationResult,
+} from "@/src/shared/storage";
 import {
   createInitialState,
   editorReducer,
   type EditorAction,
   type EditorState,
 } from "./editor-model";
+import { parseEditorDraft, serializeEditorDraft } from "./editor-draft";
 
 const MAX_UNDO = 50;
-const DRAFT_KEY = "sokomind.editor-draft.v1";
 const SAVE_DELAY = 1000;
 
 interface HistoryState {
@@ -54,56 +62,36 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
   }
 }
 
-function saveDraft(state: EditorState): void {
-  try {
-    const serializable = {
-      width: state.width,
-      height: state.height,
-      cells: state.cells,
-      title: state.title,
-      difficulty: state.difficulty,
-      hint: state.hint,
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(serializable));
-  } catch {
-    // Storage may be full or unavailable
-  }
+export function saveEditorDraft(state: EditorState): StorageMutationResult {
+  const serialized = serializeEditorDraft(state);
+  const retry = () => {
+    trackPersistenceResult(
+      writeStoredValue(STORAGE_KEYS.editorDraft, serialized),
+      retry,
+    );
+  };
+  const result = writeStoredValue(STORAGE_KEYS.editorDraft, serialized);
+  return trackPersistenceResult(result, retry);
 }
 
 function loadDraft(): EditorState | null {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (
-      typeof parsed.width !== "number" ||
-      typeof parsed.height !== "number" ||
-      !Array.isArray(parsed.cells) ||
-      typeof parsed.title !== "string" ||
-      typeof parsed.difficulty !== "string"
-    ) {
-      return null;
-    }
-    return {
-      width: parsed.width,
-      height: parsed.height,
-      cells: parsed.cells as string[][],
-      title: parsed.title,
-      difficulty: parsed.difficulty as EditorState["difficulty"],
-      hint: typeof parsed.hint === "string" ? parsed.hint : "",
-      selectedTool: "O",
-    };
-  } catch {
-    return null;
+  const raw = readStoredValue(STORAGE_KEYS.editorDraft);
+  const draft = parseEditorDraft(raw);
+  if (draft || !raw) return draft;
+
+  // Preserve the raw payload for scoped recovery instead of allowing a bad
+  // nested shape to reach rendering or asking the user to reset all app data.
+  const backup = trackPersistenceResult(
+    writeStoredValue(STORAGE_KEYS.editorDraftRecovery, raw),
+  );
+  if (backup.ok) {
+    trackPersistenceResult(removeStoredValue(STORAGE_KEYS.editorDraft));
   }
+  return null;
 }
 
 export function clearEditorDraft(): void {
-  try {
-    localStorage.removeItem(DRAFT_KEY);
-  } catch {
-    // silently ignore
-  }
+  trackPersistenceResult(removeStoredValue(STORAGE_KEYS.editorDraft));
 }
 
 function createInitialHistory(): HistoryState {
@@ -118,11 +106,18 @@ export interface EditorStateResult {
   readonly redo: () => void;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
+  readonly recoveryDraft: string | null;
+  readonly clearRecoveryDraft: () => void;
 }
 
-export function useEditorState(): EditorStateResult {
+export function useEditorState(options: { readonly autosave?: boolean } = {}): EditorStateResult {
   const [history, rawDispatch] = useReducer(historyReducer, undefined, createInitialHistory);
+  const [recoveryDraft, setRecoveryDraft] = useState(
+    () => readStoredValue(STORAGE_KEYS.editorDraftRecovery),
+  );
   const saveTimerRef = useRef<number | undefined>(undefined);
+  const latestStateRef = useRef(history.current);
+  const autosaveEnabledRef = useRef(options.autosave !== false);
 
   const dispatch = useCallback(
     (action: EditorAction) => rawDispatch({ type: "dispatch", action }),
@@ -133,12 +128,33 @@ export function useEditorState(): EditorStateResult {
 
   const currentState = history.current;
   useEffect(() => {
+    latestStateRef.current = currentState;
+    autosaveEnabledRef.current = options.autosave !== false;
+  }, [currentState, options.autosave]);
+
+  useEffect(() => {
+    if (options.autosave === false) return;
     window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      saveDraft(currentState);
+      saveEditorDraft(currentState);
     }, SAVE_DELAY);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [currentState]);
+  }, [currentState, options.autosave]);
+
+  useEffect(() => {
+    const flushDraft = () => {
+      if (autosaveEnabledRef.current) saveEditorDraft(latestStateRef.current);
+    };
+    window.addEventListener("pagehide", flushDraft);
+    return () => window.removeEventListener("pagehide", flushDraft);
+  }, []);
+
+  const clearRecoveryDraft = useCallback(() => {
+    const result = trackPersistenceResult(
+      removeStoredValue(STORAGE_KEYS.editorDraftRecovery),
+    );
+    if (result.ok) setRecoveryDraft(null);
+  }, []);
 
   return {
     state: history.current,
@@ -147,5 +163,7 @@ export function useEditorState(): EditorStateResult {
     redo,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
+    recoveryDraft,
+    clearRecoveryDraft,
   };
 }

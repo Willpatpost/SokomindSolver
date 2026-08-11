@@ -12,6 +12,7 @@ test("keeps a large editor canvas scrollable and playtest controls reachable", a
     "utf8",
   ).toString("base64url");
   await page.goto(`./#/editor?custom=${encoded}`);
+  await page.getByRole("button", { name: "Import into editor" }).click();
 
   const firstCell = page
     .getByTestId("editor-grid")

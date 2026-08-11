@@ -74,8 +74,16 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 export function EditorPage({ customData }: EditorPageProps) {
-  const editor = useEditorState();
+  const sharedPuzzle = useMemo(
+    () => customData
+      ? decodeCustomPuzzle(`#custom=${encodeURIComponent(customData)}`)
+      : null,
+    [customData],
+  );
+  const isSharedPreview = Boolean(sharedPuzzle);
+  const editor = useEditorState({ autosave: !isSharedPreview });
   const { state, dispatch } = editor;
+  const [savedDraftTitle] = useState(state.title);
   const [playtestDraft, setPlaytestDraft] = useState<PlaytestDraft | null>(
     null,
   );
@@ -111,6 +119,11 @@ export function EditorPage({ customData }: EditorPageProps) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(
+        "input, textarea, select, [contenteditable]:not([contenteditable='false'])",
+      )) return;
+      if (isSharedPreview) return;
       if (event.key === "z" && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
         event.preventDefault();
         editor.undo();
@@ -127,7 +140,7 @@ export function EditorPage({ customData }: EditorPageProps) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editor]);
+  }, [editor, isSharedPreview]);
 
   const handleBackClick = useCallback(() => {
     if (isDirtyRef.current) {
@@ -142,13 +155,6 @@ export function EditorPage({ customData }: EditorPageProps) {
     navigate(homeHash());
   }, [navigate]);
 
-  const sharedPuzzle = useMemo(
-    () =>
-      customData
-        ? decodeCustomPuzzle(`#custom=${encodeURIComponent(customData)}`)
-        : null,
-    [customData],
-  );
   const customDataError =
     customData && !sharedPuzzle
       ? "This shared puzzle link is invalid or incomplete. Your current draft was left unchanged."
@@ -173,6 +179,33 @@ export function EditorPage({ customData }: EditorPageProps) {
       dispatch({ type: "load", puzzle: sharedPuzzle });
     }
   }, [dispatch, sharedPuzzle]);
+
+  const handleImportShared = useCallback(() => {
+    if (!sharedPuzzle) return;
+    setPlaytestDraft(null);
+    setShareResult(null);
+    setNotice(null);
+    isDirtyRef.current = true;
+    draftRevisionRef.current += 1;
+    setNotice({
+      kind: "success",
+      message: "Shared puzzle imported into your saved draft.",
+    });
+    navigate(editorHash());
+  }, [navigate, sharedPuzzle]);
+
+  const handleDownloadRecovery = useCallback(() => {
+    if (!editor.recoveryDraft) return;
+    const url = URL.createObjectURL(new Blob(
+      [editor.recoveryDraft],
+      { type: "application/json" },
+    ));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "sokomind-invalid-editor-draft.json";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, [editor.recoveryDraft]);
 
   const applyEditorAction = useCallback(
     (action: EditorAction) => {
@@ -352,6 +385,31 @@ export function EditorPage({ customData }: EditorPageProps) {
           </p>
         ) : null}
 
+        {isSharedPreview ? (
+          <section className={styles.recoveryNotice} role="status">
+            <strong>Shared puzzle preview</strong>
+            <span>
+              Your saved draft “{savedDraftTitle}” is unchanged.
+            </span>
+            <button type="button" onClick={handleImportShared}>
+              Import into editor
+            </button>
+          </section>
+        ) : null}
+
+        {editor.recoveryDraft ? (
+          <section className={styles.recoveryNotice} role="alert">
+            <strong>An invalid editor draft was quarantined.</strong>
+            <span>Download it for recovery or delete only that draft.</span>
+            <button type="button" onClick={handleDownloadRecovery}>
+              Download invalid draft
+            </button>
+            <button type="button" onClick={editor.clearRecoveryDraft}>
+              Delete invalid draft
+            </button>
+          </section>
+        ) : null}
+
         {activePlaytest ? (
           <div
             className={`${styles.content} ${styles.playtestContent}`}
@@ -368,7 +426,11 @@ export function EditorPage({ customData }: EditorPageProps) {
             </div>
           </div>
         ) : (
-          <div className={styles.content}>
+          <fieldset
+            className={`${styles.content} ${styles.editorFieldset}`}
+            disabled={isSharedPreview}
+            aria-label={isSharedPreview ? "Read-only shared puzzle preview" : undefined}
+          >
             <div className={styles.sidebar}>
               <EditorToolbar
                 selectedTool={state.selectedTool}
@@ -578,7 +640,7 @@ export function EditorPage({ customData }: EditorPageProps) {
                 </label>
               ) : null}
             </div>
-          </div>
+          </fieldset>
         )}
       </div>
 

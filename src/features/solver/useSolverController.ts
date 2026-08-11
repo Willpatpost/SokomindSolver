@@ -5,6 +5,10 @@ import { useSolverLog } from "./use-solver-log";
 import { useSolverProgress } from "./use-solver-progress";
 import { useSolverWorker } from "./use-solver-worker";
 import { fingerprintFor, fingerprintKey } from "./solver-internals";
+import type {
+  SolverRunFingerprint,
+  SolverUiPhase,
+} from "./solver-ui-types";
 
 export const TIME_LIMIT_OPTIONS = Object.freeze([
   { value: 5_000, label: "5 seconds" },
@@ -21,28 +25,6 @@ export const MEMORY_LIMIT_OPTIONS = Object.freeze([
   { value: 768, label: "Desktop (768 MiB)" },
   { value: 1_536, label: "Large desktop (1.5 GiB)" },
 ] as const);
-
-export interface SolverRunFingerprint {
-  readonly puzzleId: string;
-  readonly actionLog: string;
-}
-
-export type SolverUiPhase =
-  | "loading"
-  | "ready"
-  | "running"
-  | "cancelling"
-  | "solved"
-  | "unsolved"
-  | "cancelled"
-  | "error";
-
-export interface SolverLogEntry {
-  readonly id: number;
-  readonly elapsedMs: number;
-  readonly message: string;
-  readonly tone: "info" | "success" | "warning" | "error";
-}
 
 interface UseSolverControllerOptions {
   readonly open: boolean;

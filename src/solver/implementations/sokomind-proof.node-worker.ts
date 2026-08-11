@@ -86,6 +86,8 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
         partitionId,
         lowerBound: (progress.lowerBound ?? 0) + prefixCost,
         expandedStates: progress.expandedStates ?? 0,
+        generatedStates: progress.generatedStates,
+        counters: progress.counters,
       } satisfies ProofProgress);
     },
     now: performance.now.bind(performance),
@@ -152,6 +154,7 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       partitionId,
       lowerBound: (result.proof?.lowerBound ?? 0) + prefixCost,
       exhausted: result.proof?.kind === "optimal",
+      metrics: result.metrics,
     } satisfies ProofPartitionComplete);
   } else if (result.status === "unsolved") {
     postResult({
@@ -160,6 +163,7 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       lowerBound:
         (result.proof?.lowerBound ?? 0) + prefixCost,
       exhausted: result.reason === "exhausted",
+      metrics: result.metrics,
     } satisfies ProofPartitionComplete);
   } else {
     postResult({
@@ -167,6 +171,7 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       partitionId,
       lowerBound: prefixCost,
       exhausted: false,
+      metrics: result.metrics,
     } satisfies ProofPartitionComplete);
   }
 }

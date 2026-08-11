@@ -80,6 +80,35 @@
   min-height: 500px;
 }
 
+.editorFieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.editorFieldset:disabled {
+  opacity: 0.72;
+}
+
+.recoveryNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgb(180 130 45 / 0.35);
+  border-radius: 10px;
+  background: rgb(255 247 221 / 0.8);
+  color: var(--ink-800);
+  font-size: 0.82rem;
+}
+
+.recoveryNotice button {
+  min-height: 32px;
+}
+
 .playtestContent {
   grid-template-columns: minmax(0, 1fr);
 }

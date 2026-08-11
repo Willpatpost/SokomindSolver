@@ -1,69 +1,100 @@
 #!/usr/bin/env node
 
-/**
- * Scans Markdown documentation for backticked source-path references
- * (e.g. `src/solver/foo.ts`) and checks that each referenced file exists.
- *
- * Usage:
- *   node scripts/validate-doc-paths.mjs          # reports stale paths
- *   node scripts/validate-doc-paths.mjs --ci      # exits 1 if any stale
- */
-
+/** Validate local Markdown links, anchors, and backticked repository paths. */
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DOCS_DIR = join(ROOT, "docs");
 const CI_MODE = process.argv.includes("--ci");
+const PATH_RE = /`((?:src|tests|scripts|docs)\/[\w./@+-]+\.[A-Za-z0-9]+)`/gu;
+const LINK_RE = /!?\[[^\]]*\]\((<[^>]+>|[^\s)]+)(?:\s+["'][^)]*["'])?\)/gu;
 
-// Match backticked strings that look like relative file paths.
-// Captures paths starting with src/, tests/, scripts/, or docs/ and
-// containing at least one file extension (.ts, .tsx, .js, .mjs, .json, .md, etc.).
-const PATH_RE = /`((?:src|tests|scripts|docs)\/[^`\s]+?\.\w+)`/g;
-
-// Paths known to be examples or patterns, not real files.
-const IGNORE = new Set([
-  // Placeholder examples in docs
-]);
-
-async function collectMarkdownFiles(dir) {
-  const entries = await readdir(dir, { withFileTypes: true });
+async function collectMarkdownFiles(directory) {
   const files = [];
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(join(dir, entry.name));
-    }
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await collectMarkdownFiles(path));
+    else if (entry.isFile() && /\.md$/iu.test(entry.name)) files.push(path);
   }
   return files;
 }
 
-async function fileExists(path) {
-  try {
-    const s = await stat(path);
-    return s.isFile();
-  } catch {
-    return false;
-  }
+async function exists(path) {
+  try { await stat(path); return true; } catch { return false; }
 }
 
-async function validateFile(filePath) {
-  const content = await readFile(filePath, "utf-8");
-  const lines = content.split("\n");
-  const issues = [];
+function markdownSlug(text) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/<[^>]*>/gu, "")
+    .replace(/[`*_~]/gu, "")
+    .replace(/[^\p{Letter}\p{Number}\s-]/gu, "")
+    .replace(/\s+/gu, "-")
+    .replace(/-+/gu, "-");
+}
 
-  for (let i = 0; i < lines.length; i++) {
-    let match;
-    PATH_RE.lastIndex = 0;
-    while ((match = PATH_RE.exec(lines[i])) !== null) {
-      const refPath = match[1];
-      if (IGNORE.has(refPath)) continue;
-      const absPath = join(ROOT, refPath);
-      if (!(await fileExists(absPath))) {
-        issues.push({
-          file: filePath.replace(ROOT + "/", ""),
-          line: i + 1,
-          path: refPath,
-        });
+async function headingsFor(file, cache) {
+  if (cache.has(file)) return cache.get(file);
+  const headings = new Set();
+  const duplicates = new Map();
+  const content = await readFile(file, "utf8");
+  for (const line of content.split(/\r?\n/u)) {
+    const match = /^(?: {0,3})#{1,6}\s+(.+?)\s*#*\s*$/u.exec(line);
+    if (!match) continue;
+    const base = markdownSlug(match[1]);
+    const duplicate = duplicates.get(base) ?? 0;
+    duplicates.set(base, duplicate + 1);
+    headings.add(duplicate === 0 ? base : `${base}-${duplicate}`);
+  }
+  cache.set(file, headings);
+  return headings;
+}
+
+function lineNumberAt(content, offset) {
+  return content.slice(0, offset).split("\n").length;
+}
+
+async function validateFile(file, headingCache) {
+  const content = await readFile(file, "utf8");
+  const issues = [];
+  const report = (offset, path, reason) => issues.push({
+    file: relative(ROOT, file),
+    line: lineNumberAt(content, offset),
+    path,
+    reason,
+  });
+
+  for (const match of content.matchAll(PATH_RE)) {
+    const target = resolve(ROOT, match[1]);
+    if (!await exists(target)) report(match.index, match[1], "path not found");
+  }
+
+  for (const match of content.matchAll(LINK_RE)) {
+    const raw = match[1].replace(/^<|>$/gu, "");
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(raw)) continue;
+    const [encodedPath, encodedAnchor] = raw.split("#", 2);
+    let linkPath;
+    let anchor;
+    try {
+      linkPath = decodeURIComponent(encodedPath);
+      anchor = encodedAnchor === undefined ? undefined : decodeURIComponent(encodedAnchor);
+    } catch {
+      report(match.index, raw, "invalid URL encoding");
+      continue;
+    }
+    const target = linkPath
+      ? resolve(dirname(file), linkPath.split(/[?]/u, 1)[0])
+      : file;
+    if (!await exists(target)) {
+      report(match.index, raw, "link target not found");
+      continue;
+    }
+    if (anchor !== undefined && anchor !== "" && /\.md$/iu.test(target)) {
+      const headings = await headingsFor(target, headingCache);
+      if (!headings.has(anchor.toLowerCase())) {
+        report(match.index, raw, "heading anchor not found");
       }
     }
   }
@@ -71,31 +102,28 @@ async function validateFile(filePath) {
 }
 
 async function main() {
-  const mdFiles = await collectMarkdownFiles(DOCS_DIR);
+  const rootFiles = (await readdir(ROOT, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && /\.md$/iu.test(entry.name))
+    .map((entry) => join(ROOT, entry.name));
+  const mdFiles = [...rootFiles, ...await collectMarkdownFiles(DOCS_DIR)].sort();
+  const headingCache = new Map();
   const allIssues = [];
-
-  for (const file of mdFiles.sort()) {
-    const issues = await validateFile(file);
-    allIssues.push(...issues);
+  for (const file of mdFiles) {
+    allIssues.push(...await validateFile(file, headingCache));
   }
 
   if (allIssues.length === 0) {
-    console.log(`Checked ${mdFiles.length} docs — all referenced paths exist.`);
-    process.exit(0);
+    console.log(`Checked ${mdFiles.length} Markdown files — all local links, anchors, and paths resolve.`);
+    return;
   }
-
-  console.log(`Found ${allIssues.length} stale path reference(s):\n`);
-  for (const { file, line, path } of allIssues) {
-    console.log(`  ${file}:${line}  \`${path}\` not found`);
+  console.log(`Found ${allIssues.length} documentation reference issue(s):\n`);
+  for (const { file, line, path, reason } of allIssues) {
+    console.log(`  ${file}:${line}  ${path} — ${reason}`);
   }
-  console.log();
-
-  if (CI_MODE) {
-    process.exit(1);
-  }
+  if (CI_MODE) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(2);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 2;
 });

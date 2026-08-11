@@ -42,7 +42,7 @@ function progress(
   records: Readonly<Record<string, { moves: number; pushes: number; completedAt?: string }>>,
 ): ProgressData {
   return {
-    version: 1,
+    version: 2,
     completed: Object.fromEntries(
       Object.entries(records).map(([puzzleId, record]) => [
         puzzleId,
@@ -52,6 +52,7 @@ function progress(
         },
       ]),
     ),
+    daily: {},
   };
 }
 
@@ -76,9 +77,11 @@ afterEach(() => {
 });
 
 test("parses legacy progress and validates revision envelopes", () => {
-  const legacy = parseProgressSyncSnapshot(JSON.stringify(progress({
-    room: { moves: 10, pushes: 3 },
-  })));
+  const legacyProgress = progress({ room: { moves: 10, pushes: 3 } });
+  const legacy = parseProgressSyncSnapshot(JSON.stringify({
+    version: 1,
+    completed: legacyProgress.completed,
+  }));
   assert.equal(legacy?.generation, 0);
   assert.equal(legacy?.revision, 0);
   assert.equal(legacy?.progress.completed.room?.moves, 10);

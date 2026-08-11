@@ -7,6 +7,7 @@ import {
   hydrateSessionFromIDB,
   loadSession,
   loadSessionPuzzleId,
+  loadSessionPuzzleIdFromIDB,
   MAX_SAVED_SESSION_FUTURE_SKEW_MS,
   parseSavedSession,
   restoreSession,
@@ -344,6 +345,35 @@ test("ignores and replaces an implausibly future IndexedDB session", async () =>
   const stored = memory.values.get(STORAGE_KEYS.session) as SavedSession;
   assert.equal(stored.actionLog, "");
   assert.ok(Date.parse(stored.updatedAt) < Date.parse(future.updatedAt));
+});
+
+test("discovers an IndexedDB-only resume pointer and prefers the newest tier", async () => {
+  const now = Date.now();
+  const indexed: SavedSession = {
+    version: 1,
+    puzzleId: "ultra-tiny",
+    actionLog: "D",
+    updatedAt: new Date(now).toISOString(),
+  };
+  const memory = createMemoryIndexedDB([[STORAGE_KEYS.session, indexed]]);
+  const localStorage = installEnvironment(memory.factory);
+
+  assert.equal(loadSessionPuzzleId(() => true), null);
+  assert.equal(await loadSessionPuzzleIdFromIDB(() => true), "ultra-tiny");
+
+  localStorage.setItem(STORAGE_KEYS.session, JSON.stringify({
+    ...indexed,
+    puzzleId: "tiny",
+    updatedAt: new Date(now - 1_000).toISOString(),
+  }));
+  assert.equal(await loadSessionPuzzleIdFromIDB(() => true), "ultra-tiny");
+
+  localStorage.setItem(STORAGE_KEYS.session, JSON.stringify({
+    ...indexed,
+    puzzleId: "tiny",
+    updatedAt: new Date(now + 1_000).toISOString(),
+  }));
+  assert.equal(await loadSessionPuzzleIdFromIDB(() => true), "tiny");
 });
 
 test("clearing a session removes both persistence copies", async () => {

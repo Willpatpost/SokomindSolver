@@ -5,7 +5,11 @@ import {
   type PuzzleMetadata,
 } from "@/src/catalog/puzzle-metadata";
 import { useStoredProgress } from "@/src/shared/use-stored-progress";
-import { loadSessionPuzzleId } from "@/src/shared/session-persistence";
+import {
+  loadSessionPuzzleId,
+  loadSessionPuzzleIdFromIDB,
+} from "@/src/shared/session-persistence";
+import { toLocalDateKey } from "@/src/shared/progress";
 import { computeStats, computeDailyStreak, getDailyPuzzleId } from "@/src/features/progress/compute-stats";
 import { ExperienceControls } from "@/src/features/experience";
 import { HowToPlay } from "@/src/features/help/HowToPlay";
@@ -47,9 +51,53 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 export function HomePage() {
   const { navigate } = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [dailyNow, setDailyNow] = useState(() => new Date());
+  const isKnownPuzzleId = useCallback(
+    (puzzleId: string) => getPuzzleMetadataById(puzzleId) !== undefined,
+    [],
+  );
+  const [continueTarget, setContinueTarget] = useState<string | null>(() =>
+    loadSessionPuzzleId(isKnownPuzzleId),
+  );
 
   useEffect(() => {
     document.title = "Sokomind";
+  }, []);
+
+  useEffect(() => {
+    let timer: number | undefined;
+
+    const refreshForCurrentLocalDate = () => {
+      setDailyNow((previous) => {
+        const next = new Date();
+        return toLocalDateKey(previous) === toLocalDateKey(next)
+          ? previous
+          : next;
+      });
+    };
+    const scheduleRollover = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 50);
+      timer = window.setTimeout(() => {
+        refreshForCurrentLocalDate();
+        scheduleRollover();
+      }, Math.min(60_000, nextMidnight.getTime() - now.getTime()));
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshForCurrentLocalDate();
+      }
+    };
+
+    scheduleRollover();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", refreshForCurrentLocalDate);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", refreshForCurrentLocalDate);
+    };
   }, []);
 
   const progress = useStoredProgress();
@@ -58,11 +106,13 @@ export function HomePage() {
     [progress],
   );
 
-  const continueTarget = useMemo(() => {
-    return loadSessionPuzzleId(
-      (puzzleId) => getPuzzleMetadataById(puzzleId) !== undefined,
-    );
-  }, []);
+  useEffect(() => {
+    let active = true;
+    void loadSessionPuzzleIdFromIDB(isKnownPuzzleId).then((puzzleId) => {
+      if (active && puzzleId) setContinueTarget(puzzleId);
+    });
+    return () => { active = false; };
+  }, [isKnownPuzzleId]);
 
   const nextUnsolved = useMemo(() => {
     const completed = new Set(Object.keys(progress.completed));
@@ -70,18 +120,19 @@ export function HomePage() {
   }, [progress]);
 
   const dailyPuzzleId = useMemo(
-    () => getDailyPuzzleId(PUZZLE_METADATA),
-    [],
+    () => getDailyPuzzleId(PUZZLE_METADATA, dailyNow),
+    [dailyNow],
   );
   const dailyPuzzleMeta = dailyPuzzleId
     ? getPuzzleMetadataById(dailyPuzzleId)
     : undefined;
   const dailyCompleted = dailyPuzzleId
-    ? progress.completed[dailyPuzzleId] !== undefined
+    ? progress.daily[toLocalDateKey(dailyNow)]?.puzzleId === dailyPuzzleId
     : false;
+  const dailyBest = dailyPuzzleId ? progress.completed[dailyPuzzleId] : undefined;
   const dailyStreak = useMemo(
-    () => computeDailyStreak(progress, PUZZLE_METADATA),
-    [progress],
+    () => computeDailyStreak(progress, PUZZLE_METADATA, dailyNow),
+    [dailyNow, progress],
   );
 
   const continueId =
@@ -189,7 +240,9 @@ export function HomePage() {
             </div>
             <span className={styles.dailyStatus} data-done={dailyCompleted || undefined}>
               {dailyCompleted
-                ? `Cleared · ${progress.completed[dailyPuzzleId].moves}m`
+                ? dailyBest
+                  ? `Cleared · ${dailyBest.moves}m`
+                  : "Cleared"
                 : "Play"}
             </span>
           </button>

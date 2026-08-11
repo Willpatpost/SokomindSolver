@@ -17,8 +17,8 @@ import {
   MEMORY_LIMIT_OPTIONS,
   TIME_LIMIT_OPTIONS,
   useSolverController,
-  type SolverRunFingerprint,
 } from "./useSolverController";
+import type { SolverRunFingerprint } from "./solver-ui-types";
 import styles from "./SolverDialog.module.css";
 
 export interface SolverDialogProps {
