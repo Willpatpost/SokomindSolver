@@ -47,6 +47,10 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm run lint
 
+      - name: Doc path validation
+        if: github.event_name != 'pull_request'
+        run: npm run lint:docs
+
       - name: Test and build
         if: github.event_name != 'pull_request'
         run: npm test

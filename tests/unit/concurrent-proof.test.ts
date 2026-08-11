@@ -21,10 +21,12 @@ import {
 } from "../../src/solver/implementations/sokomind-proof.ts";
 import { DEFAULT_SOKOMIND_REQUEST_OPTIONS } from "../../src/solver/implementations/sokomind-options.ts";
 import type {
+  SolutionStep,
   SolverRequest,
   SolverResult,
   SolverSolution,
 } from "../../src/solver/contracts.ts";
+import { assertValidSolverResult } from "../../src/solver/validation.ts";
 
 function makeRequest(rows: string[]): SolverRequest {
   const parsed = parsePuzzleRows(rows);
@@ -480,8 +482,15 @@ class MockProofWorker implements SokomindProofWorker {
 }
 
 function makeSolution(moves: number, pushes: number): SolverSolution {
+  const steps: SolutionStep[] = [];
+  for (let i = 0; i < moves - pushes; i++) {
+    steps.push({ direction: "right", kind: "walk" });
+  }
+  for (let i = 0; i < pushes; i++) {
+    steps.push({ direction: "right", kind: "push" });
+  }
   return {
-    steps: [],
+    steps,
     moves,
     pushes,
     objective: { kind: "moves" },
@@ -559,6 +568,7 @@ describe("concurrent proof coordinator", () => {
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "bounded");
     }
+    assertValidSolverResult(result);
   });
 
   it("all partitions exhausted produces optimal proof", async () => {
@@ -593,7 +603,11 @@ describe("concurrent proof coordinator", () => {
       assert.equal(result.solution.optimality, "proven");
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "optimal");
+      assert.equal(result.proof!.lowerBound, 10);
+      assert.equal(result.proof!.upperBound, 10);
+      assert.equal(result.proof!.gap, 0);
     }
+    assertValidSolverResult(result);
   });
 
   it("solution broadcast sends update-upper-bound to all workers", async () => {
@@ -618,6 +632,12 @@ describe("concurrent proof coordinator", () => {
               solution: makeSolution(8, 4),
               totalCost: 8,
             });
+            w.emit({
+              type: "proof/partition-complete",
+              partitionId: cmd.partitionId,
+              lowerBound: 8,
+              exhausted: true,
+            });
           });
         } else {
           queueMicrotask(() => {
@@ -634,7 +654,7 @@ describe("concurrent proof coordinator", () => {
       return w;
     };
 
-    await runConcurrentProof(
+    const result = await runConcurrentProof(
       request,
       makeContext(),
       { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 2 },
@@ -651,6 +671,7 @@ describe("concurrent proof coordinator", () => {
         "each worker should receive upper-bound updates when a solution is found",
       );
     }
+    assertValidSolverResult(result);
   });
 
   it("cancellation terminates all workers", async () => {
@@ -791,6 +812,7 @@ describe("concurrent proof coordinator", () => {
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "bounded");
     }
+    assertValidSolverResult(result);
   });
 
   it("exhausted partitions with no better solution prove optimality", async () => {
@@ -825,8 +847,11 @@ describe("concurrent proof coordinator", () => {
       assert.equal(result.solution.optimality, "proven");
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "optimal");
+      assert.equal(result.proof!.lowerBound, 10);
+      assert.equal(result.proof!.upperBound, 10);
       assert.equal(result.proof!.gap, 0);
     }
+    assertValidSolverResult(result);
   });
 
   it("mixed exhausted and bound-dominated partitions prove optimality", async () => {
@@ -873,6 +898,7 @@ describe("concurrent proof coordinator", () => {
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "optimal");
     }
+    assertValidSolverResult(result);
   });
 
   it("failed partition prevents optimal claim even if others exhausted", async () => {
@@ -918,6 +944,7 @@ describe("concurrent proof coordinator", () => {
       assert.ok(result.proof);
       assert.equal(result.proof!.kind, "bounded");
     }
+    assertValidSolverResult(result);
   });
 
   it("progress updates raise partition lower bounds", async () => {
@@ -959,5 +986,67 @@ describe("concurrent proof coordinator", () => {
     if (result.status === "solved") {
       assert.equal(result.solution.optimality, "proven");
     }
+    assertValidSolverResult(result);
+  });
+
+  it("bounded partition (solved + limit-hit) is not marked exhausted", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR X O",
+      "O   SO",
+      "OOOOOO",
+    ]);
+
+    let partitionIndex = 0;
+    const worker = new MockProofWorker((cmd) => {
+      const idx = partitionIndex++;
+      queueMicrotask(() => {
+        if (idx === 0) {
+          worker.emit({
+            type: "proof/solution",
+            partitionId: cmd.partitionId,
+            solution: makeSolution(9, 4),
+            totalCost: 9,
+          });
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 5,
+            exhausted: false,
+          });
+        } else {
+          worker.emit({
+            type: "proof/partition-complete",
+            partitionId: cmd.partitionId,
+            lowerBound: 4,
+            exhausted: false,
+          });
+        }
+      });
+    });
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.solution.optimality, "unknown");
+      assert.ok(result.proof);
+      assert.equal(result.proof!.kind, "bounded");
+      assert.ok(
+        Number.isFinite(result.proof!.lowerBound),
+        "lowerBound must be finite",
+      );
+      assert.ok(
+        result.proof!.lowerBound! <= result.proof!.upperBound!,
+        "lowerBound must not exceed upperBound",
+      );
+    }
+    assertValidSolverResult(result);
   });
 });

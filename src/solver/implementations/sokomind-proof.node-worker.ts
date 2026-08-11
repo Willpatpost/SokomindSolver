@@ -147,6 +147,12 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       solution: fullSolution,
       totalCost: fullSolution.moves,
     } satisfies ProofSolutionFound);
+    postResult({
+      type: "proof/partition-complete",
+      partitionId,
+      lowerBound: (result.proof?.lowerBound ?? 0) + prefixCost,
+      exhausted: result.proof?.kind === "optimal",
+    } satisfies ProofPartitionComplete);
   } else if (result.status === "unsolved") {
     postResult({
       type: "proof/partition-complete",

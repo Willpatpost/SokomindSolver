@@ -191,11 +191,8 @@ export function estimateStaticSearchBytes(board: CompiledSearchBoard): number {
   );
 }
 
-export function delayForEventLoop(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
+import { delayForEventLoop } from "./scheduling.ts";
+export { delayForEventLoop } from "./scheduling.ts";
 
 function createMetrics(
   context: SolverExecutionContext,

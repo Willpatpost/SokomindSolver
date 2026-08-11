@@ -50,13 +50,13 @@ import {
   movedBoxes,
   fillOccupancy,
   fillDeadlockOccupancy,
-  delayForEventLoop,
   estimateStaticSearchBytes,
   OPPOSITE_DIRECTION,
   PROGRESS_INTERVAL_MS,
   YIELD_INTERVAL_MS,
   YIELD_WORK_INTERVAL,
 } from "./engine.ts";
+import { delayForEventLoop } from "./scheduling.ts";
 import { objectiveScore } from "./exact-search-types.ts";
 
 // ---------------------------------------------------------------------------
