@@ -256,7 +256,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **353,000 gzip bytes**
+- All scripts and styles: **365,000 gzip bytes**
 - Largest asset: **70,000 gzip bytes**
 - Solver worker: **48,000 gzip bytes**
 - Nested engine worker: **60,000 gzip bytes**
