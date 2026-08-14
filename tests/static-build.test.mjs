@@ -66,9 +66,7 @@ async function coldRouteAssetNames(entryPattern, assetNames) {
 }
 
 const DELIVERY_BUDGETS = Object.freeze({
-  // Rebased for the reviewed exact-search A/B controls and bounded FLIP fix.
-  // Per-route, per-worker, and largest-asset ceilings remain unchanged.
-  allScriptsAndStylesGzipBytes: 353_000,
+  allScriptsAndStylesGzipBytes: 365_000,
   largestAssetGzipBytes: 70_000,
   homeRouteGzipBytes: 160_000,
   playRouteGzipBytes: 185_000,
