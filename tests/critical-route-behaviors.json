@@ -18,10 +18,22 @@
     "testName": "discovers an IndexedDB-only resume pointer and prefers the newest tier"
   },
   {
+    "route": "home",
+    "behavior": "experience controls remain usable at the supported minimum width",
+    "testFile": "tests/e2e/minimum-width.spec.ts",
+    "testName": "home experience controls remain clickable at 320 pixels"
+  },
+  {
     "route": "selector",
     "behavior": "pagination and drill-down remain addressable",
     "testFile": "tests/e2e/navigation.spec.ts",
     "testName": "large collections use URL-addressable accessible pagination"
+  },
+  {
+    "route": "selector",
+    "behavior": "returning from Play restores page, filters, scroll, and row focus",
+    "testFile": "tests/e2e/navigation.spec.ts",
+    "testName": "puzzle lists restore filters, page, scroll, and row focus after play"
   },
   {
     "route": "play",
@@ -36,10 +48,28 @@
     "testName": "achievement delta includes the solve that crosses a threshold exactly once"
   },
   {
+    "route": "play",
+    "behavior": "progress mutations report durable failure without changing visible state",
+    "testFile": "tests/e2e/persistence.spec.ts",
+    "testName": "progress dialog reports failed imports and resets without changing visible progress"
+  },
+  {
+    "route": "play",
+    "behavior": "failed lazy puzzle shards can be retried locally",
+    "testFile": "tests/e2e/load-recovery.spec.ts",
+    "testName": "a failed puzzle shard has a local retry path"
+  },
+  {
     "route": "editor",
     "behavior": "shared preview preserves the saved draft",
     "testFile": "tests/e2e/editor.spec.ts",
     "testName": "shared links preserve the saved draft until explicit import"
+  },
+  {
+    "route": "editor",
+    "behavior": "same-tab shared preview preserves a pending edit before autosave",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "entering a shared preview preserves a sub-second edit in the mounted editor"
   },
   {
     "route": "editor",
@@ -55,14 +85,26 @@
   },
   {
     "route": "editor",
-    "behavior": "latest editable draft flushes before reload",
-    "testFile": "tests/e2e/editor.mobile.spec.ts",
-    "testName": "keeps a large editor canvas scrollable and playtest controls reachable"
+    "behavior": "named draft CRUD, migration, persistence, and active selection",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "named drafts migrate, create, duplicate, rename, switch, delete, and reload"
+  },
+  {
+    "route": "editor",
+    "behavior": "pending edits flush on implicit exits but explicit discard remains authoritative",
+    "testFile": "tests/e2e/editor.spec.ts",
+    "testName": "sub-second editor changes survive every implicit route exit while discard remains explicit"
   },
   {
     "route": "stats",
     "behavior": "bounded progress import",
     "testFile": "tests/e2e/stats.spec.ts",
     "testName": "stats import enforces bounds and reports unchanged and rejected records"
+  },
+  {
+    "route": "stats",
+    "behavior": "progress reset preserves every non-progress ownership domain",
+    "testFile": "tests/e2e/stats.spec.ts",
+    "testName": "reset all progress preserves every non-progress ownership domain"
   }
 ]

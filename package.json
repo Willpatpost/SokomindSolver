@@ -11,6 +11,8 @@
     "check:sokomind-solver": "node scripts/prepare-sokomind-engine.mjs --check",
     "prepare:catalog": "node --experimental-strip-types scripts/prepare-puzzle-metadata.mjs",
     "check:catalog": "node --experimental-strip-types scripts/prepare-puzzle-metadata.mjs --check",
+    "prepare:project-reference": "node --experimental-strip-types scripts/generate-project-reference.mjs",
+    "check:project-reference": "node --experimental-strip-types scripts/generate-project-reference.mjs --check",
     "predev": "npm run prepare:sokomind-solver && npm run prepare:catalog",
     "dev": "vite",
     "prebuild": "npm run prepare:sokomind-solver && npm run prepare:catalog",
@@ -30,6 +32,10 @@
     "test:solver:huge": "node --experimental-strip-types --test tests/performance/sokomind-solver-huge.test.ts",
     "test:solver:oracle": "node --experimental-strip-types --test tests/unit/solver-exact-oracle.test.ts",
     "test:solver:optimal": "node --experimental-strip-types --test tests/unit/solver-optimal.test.ts",
+    "test:solver:known": "node --experimental-strip-types --test tests/performance/solver-known-optima.test.ts",
+    "test:solver:known:extended": "node --experimental-strip-types --test tests/performance/solver-known-optima-extended.test.ts",
+    "test:solver:parallel": "node --experimental-strip-types --test tests/performance/solver-parallel-proof.test.ts",
+    "test:solver:proof-regressions": "npm run test:solver:known && npm run test:solver:parallel",
     "test:solver:multi": "node --experimental-strip-types --test tests/performance/sokomind-solver-multi.test.ts",
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
@@ -38,7 +44,7 @@
     "test:static": "node --test tests/static-build.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "lint:docs": "node scripts/validate-doc-paths.mjs --ci",
+    "lint:docs": "node scripts/validate-doc-paths.mjs --ci && npm run check:project-reference",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

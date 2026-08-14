@@ -25,6 +25,7 @@
 
 .settings {
   position: fixed;
+  z-index: 60;
   top: 18px;
   right: 18px;
 }

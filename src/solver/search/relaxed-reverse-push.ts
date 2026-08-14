@@ -1,4 +1,8 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 export interface PatternBox {
   readonly cell: number;
@@ -9,6 +13,16 @@ export interface ReversePushTableResult {
   readonly status: "ready" | "cutoff";
   readonly states: ReadonlyMap<string, number>;
   readonly visited: number;
+  readonly estimatedRetainedBytes: number;
+}
+
+export type RetainedBudgetCheck = (estimatedRetainedBytes: number) => void;
+
+function estimateReversePushTableBytes(
+  stateCount: number,
+  boxCount: number,
+): number {
+  return 256 + stateCount * (160 + boxCount * 32);
 }
 
 function patternSignature(
@@ -38,6 +52,8 @@ export function relaxedReversePushTable(
   board: CompiledSearchBoard,
   targetBoxes: readonly PatternBox[],
   maxStates: number,
+  budget?: ExactPreprocessingBudget,
+  retainedBudgetCheck?: RetainedBudgetCheck,
 ): ReversePushTableResult {
   const n = board.cellCount;
   const goalSig = patternSignature(targetBoxes, n);
@@ -46,7 +62,24 @@ export function relaxedReversePushTable(
   let head = 0;
   let cutoff = false;
 
+  checkExactPreprocessingBudget(
+    budget,
+    estimateReversePushTableBytes(states.size, targetBoxes.length),
+  );
+  retainedBudgetCheck?.(
+    estimateReversePushTableBytes(states.size, targetBoxes.length),
+  );
+
   while (head < queue.length && head < maxStates) {
+    if ((head & 63) === 0) {
+      checkExactPreprocessingBudget(
+        budget,
+        estimateReversePushTableBytes(states.size, targetBoxes.length),
+      );
+      retainedBudgetCheck?.(
+        estimateReversePushTableBytes(states.size, targetBoxes.length),
+      );
+    }
     const current = queue[head];
     const pushes = states.get(patternSignature(current, n))!;
     head++;
@@ -80,6 +113,9 @@ export function relaxedReversePushTable(
           cutoff = true;
           continue;
         }
+        retainedBudgetCheck?.(
+          estimateReversePushTableBytes(states.size + 1, targetBoxes.length),
+        );
         states.set(sig, pushes + 1);
         queue.push(predecessor);
       }
@@ -91,6 +127,10 @@ export function relaxedReversePushTable(
     status: complete ? "ready" : "cutoff",
     states,
     visited: head,
+    estimatedRetainedBytes: estimateReversePushTableBytes(
+      states.size,
+      targetBoxes.length,
+    ),
   };
 }
 

@@ -23,6 +23,7 @@ import {
   sokomindTuningPayload,
 } from "../src/solver/implementations/sokomind-tuning.ts";
 import { createNodeSolverAdapter } from "../src/solver/node-runner.ts";
+import { collectProofIssues } from "../src/solver/proof.ts";
 import { verifySolverSolution } from "../src/solver/verification.ts";
 import { runExactMoveAStar } from "../src/solver/search/exact-move-astar.ts";
 import {
@@ -41,11 +42,19 @@ import {
   type BenchmarkFixture,
   type BenchmarkFixtureGroup,
 } from "../tests/fixtures/solver-v2/benchmark-corpus.ts";
-import { KNOWN_OPTIMA_BY_FIXTURE_ID } from "../tests/fixtures/solver-v2/known-optima.ts";
+import {
+  KNOWN_FIXTURE_OUTCOMES_BY_ID,
+  type KnownFixtureOutcome,
+} from "../tests/fixtures/solver-v2/known-optima.ts";
 
 export const BENCHMARK_SCHEMA_VERSION = 3 as const;
 export const DEFAULT_TIMED_RUNS = 5;
 export const DEFAULT_WARMUP_RUNS = 0;
+/**
+ * The solver owns its configured elapsed cutoff. This watchdog is only a
+ * last-resort escape hatch if the solver fails to observe that cutoff.
+ */
+export const BENCHMARK_ABORT_GRACE_MS = 5_000;
 
 export const CLASSIC_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxElapsedMs: 60_000,
@@ -303,7 +312,19 @@ export function isProfileEligible(
   fixture: BenchmarkFixture,
   profile: BenchmarkProfile,
 ): boolean {
-  return !profile.classicEligibleOnly || isClassicEligible(fixture);
+  if (profile.classicEligibleOnly && !isClassicEligible(fixture)) return false;
+  return !profile.requiresKnownOptimum ||
+    KNOWN_FIXTURE_OUTCOMES_BY_ID[fixture.fixtureId] !== undefined;
+}
+
+export function benchmarkWatchdogDelayMs(
+  maximumElapsedMs: number | undefined,
+): number | undefined {
+  if (maximumElapsedMs === undefined) return undefined;
+  return Math.min(
+    2_147_483_647,
+    Math.max(0, maximumElapsedMs) + BENCHMARK_ABORT_GRACE_MS,
+  );
 }
 
 export function benchmarkRequest(
@@ -400,6 +421,8 @@ export interface BenchmarkSample {
   readonly elapsedMs: number;
   readonly counters?: Readonly<Record<string, number>>;
   readonly verified?: boolean;
+  readonly proofValid?: boolean;
+  readonly knownOutcomeKind?: KnownFixtureOutcome["kind"];
   readonly knownOptimalMoves?: number;
   readonly knownOptimalPushes?: number;
   readonly matchesKnownOptimum?: boolean;
@@ -472,10 +495,10 @@ export async function runBenchmarkSample(
 ): Promise<BenchmarkSample> {
   const request = benchmarkRequest(fixture, profile);
   const controller = new AbortController();
-  const maximumElapsed = profile.limits.maxElapsedMs;
-  const timeout = maximumElapsed === undefined
+  const watchdogDelay = benchmarkWatchdogDelayMs(profile.limits.maxElapsedMs);
+  const timeout = watchdogDelay === undefined
     ? undefined
-    : setTimeout(() => controller.abort(), maximumElapsed);
+    : setTimeout(() => controller.abort(), watchdogDelay);
   const context: SolverExecutionContext = {
     signal: controller.signal,
     reportProgress() {},
@@ -495,7 +518,7 @@ export async function runBenchmarkSample(
   const elapsedMs = Math.round(performance.now() - startedAt);
   const rssAfterBytes = process.memoryUsage.rss();
   const peakRssBytes = process.resourceUsage().maxRSS * 1024;
-  const knownOptimum = KNOWN_OPTIMA_BY_FIXTURE_ID[fixture.fixtureId];
+  const knownOutcome = KNOWN_FIXTURE_OUTCOMES_BY_ID[fixture.fixtureId];
   const exactFeatures = featureRun
     ? resolveExactSearchFeatures({ [featureRun.feature]: featureRun.enabled })
     : undefined;
@@ -529,10 +552,15 @@ export async function runBenchmarkSample(
     rssBeforeBytes,
     rssAfterBytes,
     peakRssBytes,
-    ...(knownOptimum
+    ...(knownOutcome
       ? {
-          knownOptimalMoves: knownOptimum.moves,
-          knownOptimalPushes: knownOptimum.pushes,
+          knownOutcomeKind: knownOutcome.kind,
+          ...(knownOutcome.kind === "solved"
+            ? {
+                knownOptimalMoves: knownOutcome.moves,
+                knownOptimalPushes: knownOutcome.pushes,
+              }
+            : {}),
         }
       : {}),
     ...(featureRun
@@ -559,19 +587,23 @@ export async function runBenchmarkSample(
     peakFrontierSize: metrics.peakFrontierSize,
     estimatedMemoryBytes: metrics.counters?.estimatedMemoryBytes,
     counters: metrics.counters ? Object.freeze({ ...metrics.counters }) : undefined,
-    lowerBound: result.proof?.lowerBound,
+    lowerBound: result.proof?.lowerBound ?? metrics.counters?.lowerBound,
     upperBound: result.proof?.upperBound,
     gap: result.proof?.gap,
   } as const;
   if (result.status === "solved") {
     const verification = verifySolverSolution(request, result.solution);
-    const matchesKnownOptimum = knownOptimum === undefined
+    const proofValid = collectProofIssues(result.proof, result.solution).length === 0;
+    const matchesKnownOptimum = knownOutcome === undefined
       ? undefined
-      : result.solution.moves === knownOptimum.moves;
+      : knownOutcome.kind === "solved" &&
+        result.solution.moves === knownOutcome.moves;
     const accepted = verification.valid &&
       (!profile.requiresKnownOptimum ||
-        (result.solution.optimality === "proven" &&
-          (knownOptimum === undefined || matchesKnownOptimum === true)));
+        (knownOutcome?.kind === "solved" &&
+          result.solution.optimality === "proven" &&
+          proofValid &&
+          matchesKnownOptimum === true));
     return Object.freeze({
       ...base,
       status: "solved" as const,
@@ -579,26 +611,38 @@ export async function runBenchmarkSample(
       moves: result.solution.moves,
       pushes: result.solution.pushes,
       verified: verification.valid,
+      proofValid,
       matchesKnownOptimum,
       accepted,
       ...(!accepted
         ? {
             detail: !verification.valid
               ? verification.message
-              : knownOptimum
-                ? `Expected a proven ${knownOptimum.moves}-move optimum`
-                : "Expected a replay-valid proven optimum",
+              : knownOutcome === undefined
+                ? "No independent frozen outcome is available"
+                : knownOutcome.kind === "unsolvable"
+                  ? "Independent truth marks this fixture unsolvable"
+                  : !proofValid
+                    ? "Expected a structurally valid optimal proof"
+                    : `Expected the frozen ${knownOutcome.moves}-move optimum`,
           }
         : {}),
     });
   }
   if (result.status === "unsolved") {
+    const proofValid = collectProofIssues(result.proof, null).length === 0;
+    const independentlyProvenUnsolvable =
+      knownOutcome?.kind === "unsolvable" &&
+      result.reason === "exhausted" &&
+      result.proof?.kind === "unsolvable" &&
+      proofValid;
     return Object.freeze({
       ...base,
       status: "unsolved" as const,
       reason: result.reason,
       detail: result.detail,
-      accepted: result.reason === "exhausted" && !profile.requiresKnownOptimum,
+      proofValid,
+      accepted: independentlyProvenUnsolvable,
     });
   }
   return Object.freeze({ ...base, status: "cancelled" as const, accepted: false });
@@ -623,6 +667,20 @@ export interface BenchmarkSampleSummary {
   readonly samples: readonly BenchmarkSample[];
 }
 
+const FEATURE_EXERCISE_COUNTER: Readonly<
+  Record<ExactSearchFeatureKey, string>
+> = Object.freeze({
+  incrementalAssignment: "incrementalAssignmentRepairs",
+  linearConflict: "linearConflictEvaluations",
+  interactionBoost: "interactionBoostEvaluations",
+  patternDatabase: "pdbEvaluations",
+  forcedPushMacros: "forcedPushMacroChecks",
+  piCorralPruning: "piCorralChecks",
+  patternDeadlockPruning: "patternDeadlockChecks",
+  deadlockTablePruning: "deadlockTableChecks",
+  goalCommitmentPruning: "goalCommitmentChecks",
+});
+
 function median(values: readonly number[]): number {
   const ordered = [...values].sort((left, right) => left - right);
   const middle = Math.floor(ordered.length / 2);
@@ -632,6 +690,9 @@ function median(values: readonly number[]): number {
 }
 
 function deterministicSignature(sample: BenchmarkSample): string {
+  const featureCounter = sample.featureUnderTest === undefined
+    ? undefined
+    : sample.counters?.[FEATURE_EXERCISE_COUNTER[sample.featureUnderTest]];
   return stableJson({
     status: sample.status,
     optimality: sample.optimality,
@@ -643,7 +704,10 @@ function deterministicSignature(sample: BenchmarkSample): string {
     expandedStates: sample.expandedStates,
     generatedStates: sample.generatedStates,
     verified: sample.verified,
+    proofValid: sample.proofValid,
     matchesKnownOptimum: sample.matchesKnownOptimum,
+    exactFeatureMask: sample.counters?.exactFeatureMask,
+    featureCounter,
   });
 }
 
@@ -693,6 +757,195 @@ export function summarizeBenchmarkSamples(
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function assertBenchmarkChildSampleShape(value: unknown): asserts value is BenchmarkSample {
+  if (!isRecord(value)) throw new Error("Benchmark child record must be an object");
+  const requiredStrings = [
+    "runIdentity",
+    "fixtureId",
+    "boardHash",
+    "profileId",
+    "solverId",
+    "solverVersion",
+  ] as const;
+  for (const name of requiredStrings) {
+    if (typeof value[name] !== "string" || value[name].length === 0) {
+      throw new Error(`Benchmark child field ${name} must be a non-empty string`);
+    }
+  }
+  if (!["primary-v2", "legacy-regression", "supplemental"].includes(
+    value.fixtureGroup as string,
+  )) {
+    throw new Error("Benchmark child field fixtureGroup is invalid");
+  }
+  const requiredNonNegative = [
+    "width",
+    "height",
+    "floorCount",
+    "boxCount",
+    "rssBeforeBytes",
+    "rssAfterBytes",
+    "peakRssBytes",
+    "elapsedMs",
+  ] as const;
+  for (const name of requiredNonNegative) {
+    if (!isFiniteNonNegative(value[name])) {
+      throw new Error(`Benchmark child field ${name} must be finite and non-negative`);
+    }
+  }
+  for (const name of ["width", "height", "floorCount", "boxCount"] as const) {
+    if (!Number.isSafeInteger(value[name])) {
+      throw new Error(`Benchmark child field ${name} must be a safe integer`);
+    }
+  }
+  if (!isRecord(value.configuration)) {
+    throw new Error("Benchmark child field configuration must be an object");
+  }
+  if (typeof value.configuration.deterministic !== "boolean") {
+    throw new Error("Benchmark child configuration.deterministic must be boolean");
+  }
+  if (
+    !Number.isSafeInteger(value.configuration.workerCount) ||
+    (value.configuration.workerCount as number) < 1
+  ) {
+    throw new Error("Benchmark child configuration.workerCount must be a positive integer");
+  }
+  if (!isRecord(value.configuration.limits)) {
+    throw new Error("Benchmark child configuration.limits must be an object");
+  }
+  for (const name of [
+    "maxElapsedMs",
+    "maxExpandedStates",
+    "maxGeneratedStates",
+    "maxMemoryBytes",
+  ] as const) {
+    const metric = value.configuration.limits[name];
+    if (metric !== undefined && !isFiniteNonNegative(metric)) {
+      throw new Error(
+        `Benchmark child configuration.limits.${name} must be finite and non-negative`,
+      );
+    }
+  }
+  if (!["solved", "unsolved", "cancelled", "error"].includes(value.status as string)) {
+    throw new Error("Benchmark child field status is invalid");
+  }
+  if (typeof value.accepted !== "boolean") {
+    throw new Error("Benchmark child field accepted must be boolean");
+  }
+  const optionalNumbers = [
+    "moves",
+    "pushes",
+    "lowerBound",
+    "upperBound",
+    "gap",
+    "expandedStates",
+    "generatedStates",
+    "peakFrontierSize",
+    "estimatedMemoryBytes",
+    "knownOptimalMoves",
+    "knownOptimalPushes",
+  ] as const;
+  for (const name of optionalNumbers) {
+    if (value[name] !== undefined && !isFiniteNonNegative(value[name])) {
+      throw new Error(`Benchmark child field ${name} must be finite and non-negative`);
+    }
+  }
+  for (const name of [
+    "moves",
+    "pushes",
+    "lowerBound",
+    "upperBound",
+    "gap",
+    "expandedStates",
+    "generatedStates",
+    "peakFrontierSize",
+    "estimatedMemoryBytes",
+    "knownOptimalMoves",
+    "knownOptimalPushes",
+  ] as const) {
+    if (value[name] !== undefined && !Number.isSafeInteger(value[name])) {
+      throw new Error(`Benchmark child field ${name} must be a safe integer`);
+    }
+  }
+  for (const name of ["verified", "proofValid", "matchesKnownOptimum"] as const) {
+    if (value[name] !== undefined && typeof value[name] !== "boolean") {
+      throw new Error(`Benchmark child field ${name} must be boolean`);
+    }
+  }
+  for (const name of ["reason", "detail"] as const) {
+    if (value[name] !== undefined && typeof value[name] !== "string") {
+      throw new Error(`Benchmark child field ${name} must be a string`);
+    }
+  }
+  if (
+    value.knownOutcomeKind !== undefined &&
+    value.knownOutcomeKind !== "solved" &&
+    value.knownOutcomeKind !== "unsolvable"
+  ) {
+    throw new Error("Benchmark child field knownOutcomeKind is invalid");
+  }
+  if (value.counters !== undefined) {
+    if (!isRecord(value.counters)) {
+      throw new Error("Benchmark child field counters must be an object");
+    }
+    for (const [name, metric] of Object.entries(value.counters)) {
+      if (!isFiniteNonNegative(metric)) {
+        throw new Error(
+          `Benchmark child counter ${name} must be finite and non-negative`,
+        );
+      }
+    }
+  }
+  if (value.featureUnderTest !== undefined && !isFeatureKey(value.featureUnderTest as string)) {
+    throw new Error("Benchmark child field featureUnderTest is invalid");
+  }
+  if (
+    (value.featureUnderTest === undefined) !==
+    (value.featureEnabled === undefined)
+  ) {
+    throw new Error(
+      "Benchmark child featureUnderTest and featureEnabled must appear together",
+    );
+  }
+  if (value.featureEnabled !== undefined && typeof value.featureEnabled !== "boolean") {
+    throw new Error("Benchmark child field featureEnabled must be boolean");
+  }
+  if (value.status === "solved") {
+    if (!Number.isSafeInteger(value.moves) || (value.moves as number) < 0) {
+      throw new Error("Benchmark child solved sample requires non-negative integer moves");
+    }
+    if (!Number.isSafeInteger(value.pushes) || (value.pushes as number) < 0) {
+      throw new Error("Benchmark child solved sample requires non-negative integer pushes");
+    }
+    if (value.optimality !== "unknown" && value.optimality !== "proven") {
+      throw new Error("Benchmark child solved sample has invalid optimality");
+    }
+    if (typeof value.verified !== "boolean" || typeof value.proofValid !== "boolean") {
+      throw new Error(
+        "Benchmark child solved sample requires verified and proofValid booleans",
+      );
+    }
+  } else if (value.status === "unsolved") {
+    if (typeof value.reason !== "string" || value.reason.length === 0) {
+      throw new Error("Benchmark child unsolved sample requires a reason");
+    }
+    if (typeof value.proofValid !== "boolean") {
+      throw new Error("Benchmark child unsolved sample requires proofValid");
+    }
+  } else if (value.status === "error") {
+    if (typeof value.detail !== "string" || value.detail.length === 0) {
+      throw new Error("Benchmark child error sample requires detail");
+    }
+  }
+}
+
 export function parseChildSample(
   stdout: string,
   expectedFixtureId: string,
@@ -713,10 +966,8 @@ export function parseChildSample(
   } catch {
     throw new Error("Benchmark child emitted malformed JSON");
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("Benchmark child record must be an object");
-  }
-  const sample = parsed as BenchmarkSample;
+  assertBenchmarkChildSampleShape(parsed);
+  const sample = parsed;
   const expectedIdentity = benchmarkRunIdentity(
     expectedFixtureId,
     expectedProfileId,
@@ -734,20 +985,6 @@ export function parseChildSample(
   return sample;
 }
 
-const FEATURE_EXERCISE_COUNTER: Readonly<
-  Record<ExactSearchFeatureKey, string>
-> = Object.freeze({
-  incrementalAssignment: "incrementalAssignmentRepairs",
-  linearConflict: "linearConflictEvaluations",
-  interactionBoost: "interactionBoostEvaluations",
-  patternDatabase: "pdbEvaluations",
-  forcedPushMacros: "forcedPushMacroChecks",
-  piCorralPruning: "piCorralChecks",
-  patternDeadlockPruning: "patternDeadlockChecks",
-  deadlockTablePruning: "deadlockTableChecks",
-  goalCommitmentPruning: "goalCommitmentChecks",
-});
-
 export interface BenchmarkFeatureComparison {
   readonly fixtureId: string;
   readonly profileId: BenchmarkProfileId;
@@ -756,6 +993,9 @@ export interface BenchmarkFeatureComparison {
   readonly knownOptimumAvailable: boolean;
   readonly featureExercised: boolean;
   readonly disabledCounterZero: boolean;
+  readonly elapsedQualification: "improved" | "neutral" | "regressed";
+  readonly rssQualification: "improved" | "neutral" | "regressed";
+  readonly resourceVeto: boolean;
   readonly classification:
     | "improvement"
     | "regression"
@@ -769,6 +1009,31 @@ export interface BenchmarkFeatureComparison {
   readonly medianElapsedDeltaMs: number;
   readonly control: BenchmarkSampleSummary;
   readonly withoutFeature: BenchmarkSampleSummary;
+}
+
+export const FEATURE_AB_ELAPSED_REVIEW_MS = 25;
+export const FEATURE_AB_ELAPSED_REVIEW_RATIO = 0.1;
+export const FEATURE_AB_RSS_REVIEW_BYTES = 8 * 1024 * 1024;
+export const FEATURE_AB_RSS_REVIEW_RATIO = 0.1;
+export const PROMOTABLE_BASELINE_MIN_TIMED_RUNS = DEFAULT_TIMED_RUNS;
+
+export interface BenchmarkGitSnapshot {
+  readonly commit: string;
+  /** Empty means clean; "unknown" means the status command failed. */
+  readonly status: string;
+}
+
+export function hasStableCleanBenchmarkGitProvenance(
+  start: BenchmarkGitSnapshot,
+  end: BenchmarkGitSnapshot,
+): boolean {
+  const knownCommit = (commit: string): boolean =>
+    /^[0-9a-f]{40}$/iu.test(commit.trim());
+  return knownCommit(start.commit) &&
+    knownCommit(end.commit) &&
+    start.commit.trim().toLowerCase() === end.commit.trim().toLowerCase() &&
+    start.status === "" &&
+    end.status === "";
 }
 
 function finiteMetric(value: number | undefined): number {
@@ -791,14 +1056,12 @@ export function compareFeatureSummaries(
   }
   const feature = control.featureUnderTest;
   const exerciseCounter = FEATURE_EXERCISE_COUNTER[feature];
-  const controlCounter = finiteMetric(
-    control.representative.counters?.[exerciseCounter],
+  const featureExercised = control.samples.every(
+    (sample) => finiteMetric(sample.counters?.[exerciseCounter]) > 0,
   );
-  const withoutCounter = finiteMetric(
-    withoutFeature.representative.counters?.[exerciseCounter],
+  const disabledCounterZero = withoutFeature.samples.every(
+    (sample) => finiteMetric(sample.counters?.[exerciseCounter]) === 0,
   );
-  const featureExercised = controlCounter > 0;
-  const disabledCounterZero = withoutCounter === 0;
   const correctnessAccepted = control.accepted && withoutFeature.accepted;
   const expandedDelta =
     finiteMetric(withoutFeature.representative.expandedStates) -
@@ -806,15 +1069,41 @@ export function compareFeatureSummaries(
   const generatedDelta =
     finiteMetric(withoutFeature.representative.generatedStates) -
     finiteMetric(control.representative.generatedStates);
+  const medianElapsedDeltaMs =
+    withoutFeature.elapsedMs.median - control.elapsedMs.median;
+  const peakRssDeltaBytes =
+    withoutFeature.representative.peakRssBytes -
+    control.representative.peakRssBytes;
+  const elapsedReviewThreshold = Math.max(
+    FEATURE_AB_ELAPSED_REVIEW_MS,
+    Math.abs(withoutFeature.elapsedMs.median) * FEATURE_AB_ELAPSED_REVIEW_RATIO,
+  );
+  const rssReviewThreshold = Math.max(
+    FEATURE_AB_RSS_REVIEW_BYTES,
+    Math.abs(withoutFeature.representative.peakRssBytes) *
+      FEATURE_AB_RSS_REVIEW_RATIO,
+  );
+  const elapsedQualification = medianElapsedDeltaMs > elapsedReviewThreshold
+    ? "improved"
+    : medianElapsedDeltaMs < -elapsedReviewThreshold
+      ? "regressed"
+      : "neutral";
+  const rssQualification = peakRssDeltaBytes > rssReviewThreshold
+    ? "improved"
+    : peakRssDeltaBytes < -rssReviewThreshold
+      ? "regressed"
+      : "neutral";
+  const resourceVeto =
+    elapsedQualification === "regressed" || rssQualification === "regressed";
   let classification: BenchmarkFeatureComparison["classification"];
   if (!correctnessAccepted || !disabledCounterZero) {
     classification = "invalid-correctness";
   } else if (!featureExercised) {
     classification = "inconclusive-not-exercised";
   } else if (expandedDelta === 0 && generatedDelta === 0) {
-    classification = "no-effect";
+    classification = resourceVeto ? "regression" : "no-effect";
   } else if (expandedDelta >= 0 && generatedDelta >= 0) {
-    classification = "improvement";
+    classification = resourceVeto ? "mixed" : "improvement";
   } else if (expandedDelta <= 0 && generatedDelta <= 0) {
     classification = "regression";
   } else {
@@ -826,21 +1115,39 @@ export function compareFeatureSummaries(
     feature,
     accepted: correctnessAccepted && disabledCounterZero && featureExercised,
     knownOptimumAvailable:
-      control.representative.knownOptimalMoves !== undefined &&
-      withoutFeature.representative.knownOptimalMoves !== undefined,
+      control.representative.knownOutcomeKind !== undefined &&
+      withoutFeature.representative.knownOutcomeKind !== undefined,
     featureExercised,
     disabledCounterZero,
+    elapsedQualification,
+    rssQualification,
+    resourceVeto,
     classification,
     expandedDelta,
     generatedDelta,
-    peakRssDeltaBytes:
-      withoutFeature.representative.peakRssBytes -
-      control.representative.peakRssBytes,
-    medianElapsedDeltaMs:
-      withoutFeature.elapsedMs.median - control.elapsedMs.median,
+    peakRssDeltaBytes,
+    medianElapsedDeltaMs,
     control,
     withoutFeature,
   });
+}
+
+export function isPromotableBenchmarkBaseline(input: {
+  readonly partial: boolean;
+  readonly compareFeature?: ExactSearchFeatureKey;
+  readonly summaryCount: number;
+  readonly expectedPairs: number;
+  readonly allAccepted: boolean;
+  readonly timedRuns: number;
+  readonly gitStart: BenchmarkGitSnapshot;
+  readonly gitEnd: BenchmarkGitSnapshot;
+}): boolean {
+  return !input.partial &&
+    input.compareFeature === undefined &&
+    input.summaryCount === input.expectedPairs &&
+    input.allAccepted &&
+    input.timedRuns >= PROMOTABLE_BASELINE_MIN_TIMED_RUNS &&
+    hasStableCleanBenchmarkGitProvenance(input.gitStart, input.gitEnd);
 }
 
 export function expectedBenchmarkPairs(

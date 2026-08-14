@@ -132,7 +132,13 @@ export function SolverDialog({
                 <span data-state={solver.uiPhase}>{solver.uiPhase}</span>
               </div>
 
-              <div className={styles.fields}>
+              <details className={styles.advancedSettings}>
+                <summary>
+                  <span>Advanced settings</span>
+                  <small>Algorithm, limits, and search mode</small>
+                </summary>
+                <div className={styles.advancedContent}>
+                  <div className={styles.fields}>
                 <label>
                   <span>Algorithm</span>
                   <select
@@ -206,7 +212,7 @@ export function SolverDialog({
                     <option value="optimal">Optimal</option>
                   </select>
                 </label>
-              </div>
+                  </div>
 
               {solver.selectedSolver ? (
                 <p className={styles.description}>
@@ -214,11 +220,13 @@ export function SolverDialog({
                 </p>
               ) : null}
 
-              <p className={styles.note}>
-                All searches evaluate routes by total movement. A* and IDA*
-                prove a minimum; the other searches return their best verified
-                route. Pushes remain statistics, not an objective.
-              </p>
+                  <p className={styles.note}>
+                    All searches evaluate routes by total movement. A* and IDA*
+                    prove a minimum; the other searches return their best verified
+                    route. Pushes remain statistics, not an objective.
+                  </p>
+                </div>
+              </details>
 
               <div className={styles.primaryActions}>
                 <button

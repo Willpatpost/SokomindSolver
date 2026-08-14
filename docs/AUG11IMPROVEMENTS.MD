@@ -39,6 +39,26 @@ undifferentiated feature list.
 - The main experience risk is not missing breadth; it is making the existing
   breadth easier to understand, trust, navigate, and recover.
 
+## Foundations delivered in the August 14 follow-up
+
+- Selector return routes now preserve page, filters, scroll, focus, and a
+  recent-puzzle continuation for the current SPA session.
+- The editor now has bounded named drafts, migration, create/duplicate/rename/
+  delete operations, last-saved times, safe shared imports, starter templates,
+  and a narrow-screen sticky tool palette.
+- Progress-only reset, awaited mutation outcomes, and true repeat-completion
+  activity close the main local-data honesty gaps.
+- A dedicated 320 x 568 browser project, semantic mobile links, selected-state
+  feedback, offline status, and retryable shard/lazy/worker failures strengthen
+  the small-screen and recovery baseline.
+- Exact preprocessing shares the run budget, frozen optimum gates are
+  executable, benchmark promotion requires clean median-five evidence, and
+  A/B decisions can veto time or RSS regressions.
+- [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md) is the source-checked index of
+  important modules, APIs, schemas, defaults, and engineering contracts.
+
+The sections below describe what remains beyond those foundations.
+
 ## 1. Home, navigation, and onboarding
 
 ### Make the first decision obvious
@@ -61,11 +81,12 @@ undifferentiated feature list.
 
 ### Improve route continuity
 
-- Preserve selector filters, page, scroll position, and focused puzzle when
-  navigating into Play and back.
-- Make browser Back behavior predictable from nested selector routes, custom
-  editor links, solver dialogs, and completion dialogs.
-- Add a small recent-puzzles list independent of best-record progress.
+- Extend the current SPA-session selector/recent context across reload only if
+  the additional local-storage ownership has a clear recovery policy.
+- Continue testing browser Back behavior from custom editor links, solver
+  dialogs, and completion dialogs as those flows evolve.
+- Expand the single recent-puzzle continuation into a bounded history only if
+  it improves discovery without crowding Home.
 
 ### Success measures
 
@@ -165,10 +186,10 @@ undifferentiated feature list.
 
 ### Treat drafts as documents
 
-- Support named draft slots, duplicate, rename, last-saved time, and a small
-  local version history.
-- Let an explicitly imported shared preview choose a named destination once
-  multiple draft slots exist.
+- Add a small local version history on top of the delivered named draft slots,
+  with explicit retention and storage-pressure behavior.
+- Let an explicitly imported shared preview choose an existing destination as
+  well as the current safe default of creating a new draft.
 - Extend the existing scoped quarantine with recovery metadata and a guided
   repair view for damaged records.
 
@@ -253,8 +274,8 @@ before measuring or adopting new pruning.
 
 - Measure incremental assignment repair and pattern-database hit rate by puzzle
   family before increasing cache size.
-- Bound preprocessing by the same run ledger and preserve responsive
-  cancellation after every event-loop yield.
+- Measure the now-budgeted preprocessing cost and hit rate by fixture family;
+  keep its cancellation checkpoints responsive as constructors evolve.
 - Cache immutable board topology across repeated runs, but never snapshot-
   dependent state under a board-only key.
 
@@ -312,8 +333,8 @@ content question is quality and diversity within the now-large generated set.
   first puzzle load, editor paint, solver-dialog updates, and route transitions.
 - Keep board shards lazy and consider idle prefetch only for the visibly likely
   next puzzle and only on suitable connections.
-- Surface offline readiness and update availability without interrupting an
-  active solve or draft.
+- Extend the delivered offline/update notices with per-puzzle cache-readiness
+  detail without interrupting an active solve or draft.
 - Test service-worker upgrades with old IndexedDB/localStorage schemas and an
   in-progress session, not just a clean install.
 - Add a storage-management view showing approximate local usage, recoverable
@@ -358,9 +379,10 @@ content question is quality and diversity within the now-large generated set.
 
 ### Make documentation executable
 
-- Extend the recursive Markdown link/anchor/path validator to npm scripts,
-  route examples, and generated catalog counts.
-- Generate small fact tables from source where possible.
+- Keep the generated project-reference facts and recursive links, anchors,
+  paths, commands, and encoding checks current as new source domains appear.
+- Generate additional fact tables only for stable contracts whose source owner
+  is unambiguous.
 - Keep one active audit and one improvements roadmap; retain specs and progress
   logs as history without treating them as current issue status.
 
@@ -368,14 +390,14 @@ content question is quality and diversity within the now-large generated set.
 
 ### Phase 1 — Player flow
 
-- Improve Continue, recent puzzles, selector continuity, tutorial progression,
-  and mobile board fit.
+- Build on delivered recent-puzzle and selector continuity with tutorial
+  progression, stronger Continue context, and mobile board fit.
 - Add richer daily history, achievement progress, and pre-commit import
   previews.
 
 ### Phase 2 — Editor and solver usability
 
-- Add draft slots, stronger construction tools, and clearer solver
+- Add draft version history, stronger construction tools, and clearer solver
   proof/resource presentation.
 
 ### Phase 3 — Measured efficiency

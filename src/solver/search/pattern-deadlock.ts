@@ -154,6 +154,18 @@ export class PatternDeadlockCache {
     this.#patternCache.clear();
   }
 
+  /**
+   * Reports whether this board has any destination for which the bounded
+   * pattern search can run. This is a static geometry check: when it is false,
+   * every call to {@link check} would return before inspecting the boxes.
+   */
+  hasEligibleWindow(board: CompiledSearchBoard): boolean {
+    for (let cell = 0; cell < board.cellCount; cell++) {
+      if (this.#getWindowInfo(board, cell).eligible) return true;
+    }
+    return false;
+  }
+
   #getWindowInfo(board: CompiledSearchBoard, centerCell: number): WindowInfo {
     const cached = this.#windowCache.get(centerCell);
     if (cached !== undefined) return cached;

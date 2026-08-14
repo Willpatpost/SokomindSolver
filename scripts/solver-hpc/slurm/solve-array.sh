@@ -12,10 +12,22 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths. Both overrides are optional; the checkout is derived from this file by
+# default so the job is not tied to one account or cluster layout.
 # ---------------------------------------------------------------------------
-export PATH="/home/wpost003/local/node-v22.16.0-linux-x64/bin:$PATH"
-PROJECT_DIR="/home/wpost003/alphaevolve/practice/Sokomind/Sokomind3"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${SOKOMIND_PROJECT_DIR:-$(cd -- "$SCRIPT_DIR/../../.." && pwd)}"
+if [[ -n "${SOKOMIND_NODE_DIR:-}" ]]; then
+  export PATH="$SOKOMIND_NODE_DIR:$PATH"
+fi
+if [[ ! -f "$PROJECT_DIR/package.json" ]]; then
+  echo "ERROR: SOKOMIND_PROJECT_DIR does not contain package.json: $PROJECT_DIR" >&2
+  exit 2
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERROR: Node.js must be available on PATH (or set SOKOMIND_NODE_DIR)." >&2
+  exit 2
+fi
 cd "$PROJECT_DIR"
 
 # Manifest and output dir: set via sbatch --export or env vars

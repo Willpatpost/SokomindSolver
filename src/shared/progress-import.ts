@@ -25,6 +25,14 @@ function objectRecordCount(value: unknown): number | null {
     : null;
 }
 
+function activityRecordCount(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  return Object.values(value as Record<string, unknown>).reduce<number>(
+    (count, entries) => count + (Array.isArray(entries) ? entries.length : 1),
+    0,
+  );
+}
+
 export function parseProgressImport(
   text: string,
   knownPuzzleIds: Iterable<string>,
@@ -45,33 +53,50 @@ export function parseProgressImport(
   const root = raw as Record<string, unknown>;
   const rawCompletedCount = objectRecordCount(root.completed);
   const rawDailyCount = objectRecordCount(root.daily) ?? 0;
+  const hasActivity = root.activity !== undefined;
+  const rawActivityCount = activityRecordCount(root.activity);
   if (rawCompletedCount === null) {
     return { ok: false, message: "That file does not contain valid Sokomind progress." };
   }
-  if (rawCompletedCount + rawDailyCount > MAX_PROGRESS_IMPORT_RECORDS) {
+  if (
+    rawCompletedCount + rawDailyCount + rawActivityCount >
+      MAX_PROGRESS_IMPORT_RECORDS
+  ) {
     return { ok: false, message: "That progress file contains too many records." };
   }
 
   const parsed = tryParseProgress(text);
   if (!parsed || (Object.keys(parsed.completed).length === 0 &&
-    Object.keys(parsed.daily).length === 0)) {
+    Object.keys(parsed.daily).length === 0 &&
+    Object.keys(parsed.activity).length === 0)) {
     return { ok: false, message: "That file contains no valid progress records." };
   }
 
   const normalized = normalizeProgress(parsed, knownPuzzleIds);
   const validParsedCount = Object.keys(parsed.completed).length;
   const validDailyCount = Object.keys(parsed.daily).length;
+  const validActivityCount = hasActivity
+    ? Object.values(parsed.activity).reduce((count, ids) => count + ids.length, 0)
+    : 0;
   const normalizedRecordCount =
     Object.keys(normalized.progress.completed).length +
-    Object.keys(normalized.progress.daily).length;
+    Object.keys(normalized.progress.daily).length +
+    (hasActivity
+      ? Object.values(normalized.progress.activity).reduce(
+          (count, ids) => count + ids.length,
+          0,
+        )
+      : 0);
   return {
     ok: true,
     progress: normalized.progress,
     invalid: Math.max(
       0,
-      rawCompletedCount + rawDailyCount - validParsedCount - validDailyCount,
+      rawCompletedCount + rawDailyCount + rawActivityCount -
+        validParsedCount - validDailyCount - validActivityCount,
     ),
-    rejected: validParsedCount + validDailyCount - normalizedRecordCount,
+    rejected: validParsedCount + validDailyCount + validActivityCount -
+      normalizedRecordCount,
   };
 }
 

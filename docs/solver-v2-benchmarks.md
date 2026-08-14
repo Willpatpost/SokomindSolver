@@ -1,6 +1,6 @@
 # Solver V2 Benchmarking
 
-Last reconciled: August 11, 2026
+Last reconciled: August 14, 2026
 
 The V2 harness measures production solver paths and controlled exact-search
 feature variants. Its JSON is evidence, not a substitute for replay and proof.
@@ -94,7 +94,11 @@ the disabled side reports zero exercise for the selected mechanism. A benefit
 classification additionally requires a nonzero control-side exercise counter.
 Results are classified as improvement, regression, mixed, no effect,
 inconclusive/not exercised, or invalid correctness. Expanded/generated deltas
-are deterministic; timing uses the sample median.
+are deterministic; timing uses the sample median. Median elapsed and peak RSS
+receive explicit qualification thresholds. A material regression in either is
+a resource veto: it prevents an apparent state-count reduction from being
+accepted as an uncomplicated improvement, and conflicting directions are
+reported as mixed evidence.
 
 The current `inter-rooms` PDB smoke results were replay-valid and proven on
 both sides, with identical work: A* expanded 312 and generated 1,433 states,
@@ -111,7 +115,9 @@ groups, and optional A/B comparisons.
 
 - the full 43-fixture/default-profile matrix was requested;
 - every eligible pair is present exactly once as a sample group;
-- all groups are deterministic and accepted; and
+- all groups are deterministic and accepted;
+- at least five timed samples were captured per group;
+- Git resolved a full commit identity and the worktree was clean; and
 - the run is not a feature-ablation capture.
 
 Partial smoke runs remain useful evidence but cannot be mislabeled as full

@@ -32,21 +32,27 @@ export interface ProofCheckpointOptions {
   readonly solverVersion?: string;
 }
 
-function remainingProofLimits(
+export function remainingProofLimits(
   request: SolverRequest,
   consumed: SolverRunMetrics,
 ): SolverRequest["limits"] | null {
   const limits = request.limits;
   if (!limits) return undefined;
+  // Solver limits are integer protocol values. Rounding down also makes the
+  // hand-off deadline-safe when the discovery clock reports fractional ms.
   const maxElapsedMs = limits.maxElapsedMs === undefined
     ? undefined
-    : Math.max(0, limits.maxElapsedMs - consumed.elapsedMs);
+    : Math.max(0, Math.floor(limits.maxElapsedMs - consumed.elapsedMs));
   const maxExpandedStates = limits.maxExpandedStates === undefined
     ? undefined
-    : Math.max(0, limits.maxExpandedStates - (consumed.expandedStates ?? 0));
+    : Math.max(0, Math.floor(
+        limits.maxExpandedStates - (consumed.expandedStates ?? 0),
+      ));
   const maxGeneratedStates = limits.maxGeneratedStates === undefined
     ? undefined
-    : Math.max(0, limits.maxGeneratedStates - (consumed.generatedStates ?? 0));
+    : Math.max(0, Math.floor(
+        limits.maxGeneratedStates - (consumed.generatedStates ?? 0),
+      ));
   if (maxElapsedMs === 0 || maxExpandedStates === 0 || maxGeneratedStates === 0) {
     return null;
   }
@@ -128,8 +134,12 @@ export async function runSequentialProof(
     cost: discoveryResult.solution.moves,
   };
 
-  const proofLimits = remainingProofLimits(request, discoveryResult.metrics);
-  if (proofLimits === null) return discoveryResult;
+  const proofPlanningStartedAt = context.now();
+  const initialProofLimits = remainingProofLimits(request, discoveryResult.metrics);
+  if (initialProofLimits === null) return discoveryResult;
+  const proofDeadline = initialProofLimits?.maxElapsedMs === undefined
+    ? Number.POSITIVE_INFINITY
+    : proofPlanningStartedAt + initialProofLimits.maxElapsedMs;
 
   const board = compileSearchBoard(request.board);
   const boxCount = request.snapshot.boxes.length;
@@ -141,6 +151,22 @@ export async function runSequentialProof(
     algorithm = options.proofAlgorithm;
   }
 
+  const proofLaunchAt = context.now();
+  const proofPlanningElapsedMs = Math.max(
+    0,
+    proofLaunchAt - proofPlanningStartedAt,
+  );
+  const launchElapsedMs = initialProofLimits?.maxElapsedMs === undefined
+    ? undefined
+    : Math.max(0, Math.floor(proofDeadline - proofLaunchAt));
+  if (launchElapsedMs === 0) return discoveryResult;
+  const proofLimits = initialProofLimits === undefined
+    ? undefined
+    : {
+        ...initialProofLimits,
+        ...(launchElapsedMs === undefined ? {} : { maxElapsedMs: launchElapsedMs }),
+      };
+
   const proofRequest: SolverRequest = {
     ...request,
     limits: proofLimits,
@@ -151,7 +177,10 @@ export async function runSequentialProof(
     reportProgress(progress) {
       context.reportProgress({
         ...progress,
-        elapsedMs: discoveryResult.metrics.elapsedMs + progress.elapsedMs,
+        elapsedMs:
+          discoveryResult.metrics.elapsedMs +
+          proofPlanningElapsedMs +
+          progress.elapsedMs,
         ...(progress.expandedStates === undefined
           ? {}
           : {
@@ -202,7 +231,10 @@ export async function runSequentialProof(
 
   const combinedMetrics = mergeProofMetrics(
     discoveryResult.metrics,
-    proofResult.metrics,
+    {
+      ...proofResult.metrics,
+      elapsedMs: proofPlanningElapsedMs + proofResult.metrics.elapsedMs,
+    },
   );
   if (proofResult.status === "solved") {
     return withMetrics(proofResult, combinedMetrics);
@@ -267,8 +299,12 @@ export async function runConcurrentProof(
     return discoveryResult;
   }
 
-  const proofLimits = remainingProofLimits(request, discoveryResult.metrics);
-  if (proofLimits === null) return discoveryResult;
+  const proofPlanningStartedAt = context.now();
+  const initialProofLimits = remainingProofLimits(request, discoveryResult.metrics);
+  if (initialProofLimits === null) return discoveryResult;
+  const proofDeadline = initialProofLimits?.maxElapsedMs === undefined
+    ? Number.POSITIVE_INFINITY
+    : proofPlanningStartedAt + initialProofLimits.maxElapsedMs;
 
   const board = compileSearchBoard(request.board);
   const boxCount = request.snapshot.boxes.length;
@@ -285,6 +321,17 @@ export async function runConcurrentProof(
   if (partitions.length === 0) {
     return discoveryResult;
   }
+
+  const launchElapsedMs = initialProofLimits?.maxElapsedMs === undefined
+    ? undefined
+    : Math.max(0, Math.floor(proofDeadline - context.now()));
+  if (launchElapsedMs === 0) return discoveryResult;
+  const proofLimits = initialProofLimits === undefined
+    ? undefined
+    : {
+        ...initialProofLimits,
+        ...(launchElapsedMs === undefined ? {} : { maxElapsedMs: launchElapsedMs }),
+      };
 
   if (
     (proofLimits?.maxExpandedStates !== undefined &&
@@ -367,7 +414,7 @@ export async function runConcurrentProof(
               ),
             }),
       };
-  const proofStartedAt = context.now();
+  const proofStartedAt = proofPlanningStartedAt;
 
   return new Promise<SolverResult>((resolve) => {
     let settled = false;
@@ -378,13 +425,79 @@ export async function runConcurrentProof(
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
     const aggregateProofMetrics = (): SolverRunMetrics => {
-      const completed = trackers.flatMap((tracker) =>
-        tracker.metrics ? [tracker.metrics] : []);
+      const completedTrackers = trackers.filter(
+        (tracker): tracker is PartitionTracker & { metrics: SolverRunMetrics } =>
+          tracker.metrics !== undefined,
+      );
+      const completed = completedTrackers.map((tracker) => tracker.metrics);
       const counters: Record<string, number> = {};
-      for (const metric of completed) {
+      const perWorkerMaxCounters = new Map<SokomindProofWorker, Record<string, number>>();
+      const retainedStructureCounters = new Set([
+        "retainedStates",
+        "peakRetainedStates",
+        "frontierSize",
+        "estimatedMemoryBytes",
+        "currentEstimatedMemoryBytes",
+        "peakEstimatedMemoryBytes",
+        "memoryStaticBytes",
+        "memoryTranspositionBytes",
+        "memoryHeuristicCacheBytes",
+        "memoryDfsStackBytes",
+        "memoryReachabilitySnapshotBytes",
+        "pdbTableEntries",
+        "pdbRetainedBytes",
+        "interactionBoostRetainedBytes",
+        "interactionBoostSearchCacheRetainedBytes",
+        "deadlockTableRegions",
+        "deadlockTablePatterns",
+        "deadlockTableRetainedBytes",
+        "preprocessingRetainedBytes",
+      ]);
+      const globalMaximumCounters = new Set(["maxDepth"]);
+      let featureMask: number | undefined;
+      let featureMaskMismatch = false;
+      for (const tracker of completedTrackers) {
+        const metric = tracker.metrics;
         for (const [name, value] of Object.entries(metric.counters ?? {})) {
+          if (name === "exactFeatureMask") {
+            if (featureMask === undefined) featureMask = value;
+            else if (featureMask !== value) featureMaskMismatch = true;
+            continue;
+          }
+          if (name === "lowerBound") continue;
+          if (globalMaximumCounters.has(name)) {
+            counters[name] = Math.max(counters[name] ?? 0, value);
+            continue;
+          }
+          if (retainedStructureCounters.has(name)) {
+            const maxima = perWorkerMaxCounters.get(tracker.worker) ?? {};
+            maxima[name] = Math.max(maxima[name] ?? 0, value);
+            perWorkerMaxCounters.set(tracker.worker, maxima);
+            continue;
+          }
           counters[name] = (counters[name] ?? 0) + value;
         }
+      }
+      for (const maxima of perWorkerMaxCounters.values()) {
+        for (const [name, value] of Object.entries(maxima)) {
+          counters[name] = (counters[name] ?? 0) + value;
+        }
+      }
+      if (featureMask !== undefined) counters.exactFeatureMask = featureMask;
+      if (featureMaskMismatch) counters.exactFeatureMaskMismatch = 1;
+      if (trackers.length > 0) {
+        counters.lowerBound = Math.min(...trackers.map(partitionLowerBound));
+      }
+
+      const perWorkerPeakFrontier = new Map<SokomindProofWorker, number>();
+      for (const tracker of completedTrackers) {
+        perWorkerPeakFrontier.set(
+          tracker.worker,
+          Math.max(
+            perWorkerPeakFrontier.get(tracker.worker) ?? 0,
+            tracker.metrics.peakFrontierSize ?? 0,
+          ),
+        );
       }
       return {
         elapsedMs: Math.max(
@@ -400,8 +513,8 @@ export async function runConcurrentProof(
           (sum, metric) => sum + (metric.generatedStates ?? 0),
           0,
         ),
-        peakFrontierSize: completed.reduce(
-          (sum, metric) => sum + (metric.peakFrontierSize ?? 0),
+        peakFrontierSize: [...perWorkerPeakFrontier.values()].reduce(
+          (sum, peak) => sum + peak,
           0,
         ),
         counters,
@@ -695,6 +808,10 @@ export async function runConcurrentProof(
     context.signal.addEventListener("abort", onAbort, { once: true });
 
     if (proofLimits?.maxElapsedMs !== undefined) {
+      const deadlineDelayMs = Math.max(
+        0,
+        Math.floor(proofDeadline - context.now()),
+      );
       deadlineTimer = setTimeout(() => {
         for (const tracker of trackers) {
           if (!tracker.completed) {
@@ -703,7 +820,7 @@ export async function runConcurrentProof(
           }
         }
         checkTermination();
-      }, Math.max(1, proofLimits.maxElapsedMs));
+      }, Math.max(1, deadlineDelayMs));
     }
 
     // Dispatch only the first partition to each worker; subsequent

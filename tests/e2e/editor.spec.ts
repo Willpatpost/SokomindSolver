@@ -26,6 +26,20 @@ async function openImportedEditor(page: Page, puzzle: SharedPuzzle): Promise<voi
   await page.getByRole("button", { name: "Import into editor" }).click();
 }
 
+async function storedEditorTitle(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem("sokomind.editor-draft.v1");
+    if (!raw) return null;
+    const value = JSON.parse(raw) as {
+      title?: string;
+      activeId?: string;
+      drafts?: Array<{ id: string; state?: { title?: string } }>;
+    };
+    if (value.title) return value.title;
+    return value.drafts?.find((draft) => draft.id === value.activeId)?.state?.title ?? null;
+  });
+}
+
 const QUICK_TEST: SharedPuzzle = {
   title: "Quick editor test",
   hint: "Keep this draft intact.",
@@ -60,8 +74,204 @@ test("shared links preserve the saved draft until explicit import", async ({ pag
   await page.getByRole("button", { name: "Import into editor" }).click();
   await page.waitForFunction(() => {
     const raw = localStorage.getItem("sokomind.editor-draft.v1");
-    return raw !== null && JSON.parse(raw).title === "Quick editor test";
+    if (!raw) return false;
+    const value = JSON.parse(raw) as {
+      version?: number;
+      activeId?: string;
+      drafts?: Array<{ id: string; state?: { title?: string } }>;
+    };
+    return value.version === 2 && value.drafts?.length === 2 &&
+      value.drafts.some((draft) => draft.state?.title === "Private draft") &&
+      value.drafts.find((draft) => draft.id === value.activeId)?.state?.title ===
+        "Quick editor test";
   });
+});
+
+test("entering a shared preview preserves a sub-second edit in the mounted editor", async ({
+  page,
+}) => {
+  await page.goto("./#/editor");
+  await page.getByLabel("Title").fill("Pending private edit");
+
+  const sharedUrl = editorUrl(QUICK_TEST);
+  const sharedHash = sharedUrl.slice(sharedUrl.indexOf("#"));
+  await page.evaluate((hash) => { window.location.hash = hash; }, sharedHash);
+  await expect(page.getByText("Shared puzzle preview")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue(QUICK_TEST.title);
+  await expect.poll(() => storedEditorTitle(page)).toBe("Pending private edit");
+
+  await page.evaluate(() => { window.location.hash = "#/editor"; });
+  await expect(page.getByLabel("Title")).toHaveValue("Pending private edit");
+});
+
+test("named drafts migrate, create, duplicate, rename, switch, delete, and reload", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.evaluate(() => {
+    localStorage.setItem("sokomind.editor-draft.v1", JSON.stringify({
+      width: 3,
+      height: 3,
+      cells: [["O", "O", "O"], ["O", "R", "O"], ["O", "O", "O"]],
+      title: "Legacy puzzle",
+      difficulty: "beginner",
+      hint: "",
+    }));
+    window.location.hash = "#/editor";
+  });
+  const selector = page.getByRole("combobox", { name: "Local draft" });
+  await expect(selector.locator("option")).toHaveCount(1);
+  await expect(selector.locator("option")).toHaveText(["Legacy puzzle"]);
+
+  await page.getByLabel("Draft name").fill("Primary draft");
+  await page.getByRole("button", { name: "Rename draft" }).click();
+  await expect(selector.locator("option")).toHaveText(["Primary draft"]);
+  await page.getByLabel("Title").fill("Primary puzzle");
+  await page.getByRole("button", { name: "Duplicate draft" }).click();
+  await expect(selector.locator("option")).toHaveText([
+    "Primary draft",
+    "Primary draft copy",
+  ]);
+  await expect(page.getByLabel("Title")).toHaveValue("Primary puzzle");
+
+  await page.getByLabel("Title").fill("Copy puzzle");
+  await selector.selectOption({ label: "Primary draft" });
+  await expect(page.getByLabel("Title")).toHaveValue("Primary puzzle");
+  await selector.selectOption({ label: "Primary draft copy" });
+  await expect(page.getByLabel("Title")).toHaveValue("Copy puzzle");
+
+  await page.getByRole("button", { name: "New draft" }).click();
+  await expect(selector.locator("option")).toHaveCount(3);
+  await expect(page.getByLabel("Title")).toHaveValue("Untitled");
+  await page.getByRole("button", { name: "Delete draft" }).click();
+  await page.getByRole("dialog", { name: "Delete this draft?" })
+    .getByRole("button", { name: "Delete draft" }).click();
+  await expect(selector.locator("option")).toHaveCount(2);
+  await expect(page.getByLabel("Title")).toHaveValue("Primary puzzle");
+
+  await page.reload();
+  await expect(page.getByLabel("Title")).toHaveValue("Primary puzzle");
+  await expect(page.getByText(/^Last saved /u)).toBeVisible();
+});
+
+test("failed named-draft mutations and shared imports preserve the prior active draft", async ({
+  page,
+}) => {
+  const state = (title: string) => ({
+    width: 3,
+    height: 3,
+    cells: [["O", "O", "O"], ["O", "R", "O"], ["O", "O", "O"]],
+    title,
+    difficulty: "beginner",
+    hint: "",
+  });
+  const persisted = JSON.stringify({
+    version: 2,
+    activeId: "draft-primary",
+    drafts: [
+      {
+        id: "draft-primary",
+        name: "Primary",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+        state: state("Stored primary"),
+      },
+      {
+        id: "draft-secondary",
+        name: "Secondary",
+        updatedAt: "2026-08-14T12:01:00.000Z",
+        state: state("Stored secondary"),
+      },
+    ],
+  });
+  await page.addInitScript((raw) => {
+    const originalSetItem = Storage.prototype.setItem;
+    originalSetItem.call(localStorage, "sokomind.editor-draft.v1", raw);
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key === "sokomind.editor-draft.v1") {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  }, persisted);
+
+  await page.goto("./#/editor");
+  const selector = page.getByRole("combobox", { name: "Local draft" });
+  await page.getByLabel("Title").fill("Unsaved primary");
+  await selector.selectOption("draft-secondary");
+  await expect(selector).toHaveValue("draft-primary");
+  await expect(page.getByLabel("Title")).toHaveValue("Unsaved primary");
+
+  await page.getByLabel("Draft name").fill("Renamed");
+  await page.getByRole("button", { name: "Rename draft" }).click();
+  await page.getByRole("button", { name: "New draft" }).click();
+  await page.getByRole("button", { name: "Duplicate draft" }).click();
+  await expect(selector.locator("option")).toHaveText(["Primary", "Secondary"]);
+  await page.getByRole("button", { name: "Delete draft" }).click();
+  await page.getByRole("dialog", { name: "Delete this draft?" })
+    .getByRole("button", { name: "Delete draft" }).click();
+  await expect(selector).toHaveValue("draft-primary");
+  await expect(page.getByRole("status").filter({ hasText: "not changed" }))
+    .toBeVisible();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("sokomind.editor-draft.v1"))).toBe(persisted);
+
+  await page.goto(editorUrl(QUICK_TEST));
+  await page.getByRole("button", { name: "Import into editor" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "not changed" }))
+    .toBeVisible();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("sokomind.editor-draft.v1"))).toBe(persisted);
+
+  // Removing the preview route without importing restores the prior active
+  // document in the same mounted editor instead of autosaving preview data.
+  await page.evaluate(() => { window.location.hash = "#/editor"; });
+  await expect(page.getByLabel("Title")).toHaveValue("Stored primary");
+  await expect(selector).toHaveValue("draft-primary");
+});
+
+test("sub-second editor changes survive every implicit route exit while discard remains explicit", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("./#/editor");
+  const title = page.getByLabel("Title");
+
+  await title.fill("Mobile navigation draft");
+  await page.getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Home" }).click();
+  await expect.poll(() => storedEditorTitle(page)).toBe("Mobile navigation draft");
+
+  await page.getByRole("link", { name: "Editor" }).click();
+  await page.getByLabel("Title").fill("Escape route draft");
+  await page.getByRole("heading", { name: "Puzzle Editor" }).click();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedEditorTitle(page)).toBe("Escape route draft");
+
+  await page.getByRole("link", { name: "Editor" }).click();
+  await page.getByLabel("Title").fill("Browser back draft");
+  await page.goBack();
+  await expect.poll(() => storedEditorTitle(page)).toBe("Browser back draft");
+
+  await page.getByRole("link", { name: "Editor" }).click();
+  await page.getByLabel("Title").fill("Hash route draft");
+  await page.evaluate(() => { window.location.hash = "#/stats"; });
+  await expect.poll(() => storedEditorTitle(page)).toBe("Hash route draft");
+
+  await page.getByRole("link", { name: "Editor" }).click();
+  await page.getByLabel("Title").evaluate((input) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    valueSetter?.call(input, "Discard this change");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Back to home"]',
+    )?.click();
+  });
+  await page.getByRole("dialog", { name: "Leave the editor?" })
+    .getByRole("button", { name: "Leave" }).click();
+  await expect.poll(() => storedEditorTitle(page)).toBe("Hash route draft");
 });
 
 test("native text undo is preserved while grid undo remains global", async ({ page }) => {

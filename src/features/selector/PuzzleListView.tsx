@@ -29,6 +29,7 @@ export interface PuzzleListViewProps {
   readonly navigate: RouterValue["navigate"];
   readonly pageNumber?: number;
   readonly directDifficultyView?: boolean;
+  readonly restoreContext?: boolean;
 }
 
 export function PuzzleListView({
@@ -42,6 +43,7 @@ export function PuzzleListView({
   navigate,
   pageNumber,
   directDifficultyView = false,
+  restoreContext = false,
 }: PuzzleListViewProps) {
   const handleListKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -81,6 +83,7 @@ export function PuzzleListView({
     query,
     filteredPuzzles,
     visiblePuzzles,
+    recentPuzzle,
     nextUnsolved,
     indexMap,
     viewLabel,
@@ -93,6 +96,7 @@ export function PuzzleListView({
     handleSearchChange,
     handleBoxFilterChange,
     handleCompletionFilterChange,
+    rememberPuzzleFocus,
   } = usePuzzleListState({
     difficulty,
     collection,
@@ -101,6 +105,7 @@ export function PuzzleListView({
     navigate,
     pageNumber,
     directDifficultyView,
+    restoreContext,
   });
 
   return (
@@ -146,11 +151,29 @@ export function PuzzleListView({
           )}
         </nav>
 
+        {restoreContext && recentPuzzle ? (
+          <aside className={styles.recentPuzzle} aria-label="Recently played puzzle">
+            <span>
+              <small>Back where you left off</small>
+              <strong>{recentPuzzle.title}</strong>
+            </span>
+            <Link
+              href={playHash(recentPuzzle.id)}
+              onClick={() => rememberPuzzleFocus(recentPuzzle.id)}
+            >
+              Continue
+            </Link>
+          </aside>
+        ) : null}
+
         {nextUnsolved && (
           <button
             type="button"
             className={styles.nextButton}
-            onClick={() => navigate(playHash(nextUnsolved))}
+            onClick={() => {
+              rememberPuzzleFocus(nextUnsolved);
+              navigate(playHash(nextUnsolved));
+            }}
           >
             Play next unsolved in {viewLabel}
           </button>
@@ -200,10 +223,14 @@ export function PuzzleListView({
                     type="button"
                     className={styles.puzzleItem}
                     data-testid="puzzle-row"
+                    data-puzzle-id={puzzle.id}
                     data-solved={complete || undefined}
                     data-optimal={optimal || undefined}
                     title={tooltip}
-                    onClick={() => navigate(playHash(puzzle.id))}
+                    onClick={() => {
+                      rememberPuzzleFocus(puzzle.id);
+                      navigate(playHash(puzzle.id));
+                    }}
                   >
                     <PuzzleMinimap
                       width={puzzle.width}

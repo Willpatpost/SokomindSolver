@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   EMPTY_PROGRESS,
+  MAX_ACTIVITY_DAYS,
   mergeProgress,
   normalizeProgress,
   parseProgress,
   recordCompletion,
   recordDailyCompletion,
   summarizeProgressMerge,
+  toLocalDateKey,
   tryParseProgress,
 } from "../../src/shared/progress.ts";
 
@@ -26,6 +28,10 @@ test("migrates v1 lifetime progress into v2 without inventing daily participatio
   assert.equal(migrated.version, 2);
   assert.equal(migrated.completed.room?.moves, 4);
   assert.deepEqual(migrated.daily, {});
+  assert.deepEqual(
+    migrated.activity[toLocalDateKey(new Date("2026-08-01T00:00:00.000Z"))],
+    ["room"],
+  );
 });
 
 test("distinguishes invalid imports and merges only better records", () => {
@@ -74,6 +80,27 @@ test("drops impossible records before they can outrank valid completions", () =>
   assert.deepEqual(Object.keys(parsed?.completed ?? {}), ["valid"]);
 });
 
+test("drops impossible local calendar dates from activity and daily records", () => {
+  const parsed = tryParseProgress(JSON.stringify({
+    version: 2,
+    completed: {},
+    daily: {
+      "2026-02-30": {
+        puzzleId: "room",
+        completedAt: "2026-02-28T12:00:00.000Z",
+      },
+    },
+    activity: {
+      "2026-99-99": ["room"],
+      "2026-02-29": ["room"],
+      "2026-02-28": ["room"],
+    },
+  }));
+
+  assert.deepEqual(parsed?.daily, {});
+  assert.deepEqual(parsed?.activity, { "2026-02-28": ["room"] });
+});
+
 test("completion records retain the route with the fewest moves", () => {
   const first = recordCompletion(EMPTY_PROGRESS, "tiny", 30, 8);
   const slower = recordCompletion(first, "tiny", 35, 8);
@@ -86,6 +113,32 @@ test("completion records retain the route with the fewest moves", () => {
   assert.equal(fewerMoves.completed.tiny.moves, 20);
 });
 
+test("completion activity tracks repeat play independently from lifetime bests", () => {
+  const firstDate = new Date(2026, 2, 7, 12);
+  const secondDate = new Date(2026, 2, 8, 12);
+  const first = recordCompletion(EMPTY_PROGRESS, "tiny", 20, 5, undefined, firstDate);
+  const repeated = recordCompletion(first, "tiny", 30, 6, undefined, secondDate);
+  const duplicate = recordCompletion(repeated, "tiny", 40, 7, undefined, secondDate);
+
+  assert.equal(repeated.completed.tiny, first.completed.tiny);
+  assert.deepEqual(repeated.activity[toLocalDateKey(firstDate)], ["tiny"]);
+  assert.deepEqual(repeated.activity[toLocalDateKey(secondDate)], ["tiny"]);
+  assert.equal(duplicate, repeated);
+});
+
+test("completion activity retains at most one year of local calendar days", () => {
+  let value = EMPTY_PROGRESS;
+  const start = new Date(2025, 0, 1, 12);
+  for (let offset = 0; offset < MAX_ACTIVITY_DAYS + 4; offset++) {
+    const date = new Date(start);
+    date.setDate(date.getDate() + offset);
+    value = recordCompletion(value, "tiny", 20, 5, undefined, date);
+  }
+
+  assert.equal(Object.keys(value.activity).length, MAX_ACTIVITY_DAYS);
+  assert.equal(value.activity[toLocalDateKey(start)], undefined);
+});
+
 test("normalizes imported progress against known puzzle ids and reports stale records", () => {
   const imported = recordCompletion(
     recordCompletion(EMPTY_PROGRESS, "known", 12, 4),
@@ -96,6 +149,10 @@ test("normalizes imported progress against known puzzle ids and reports stale re
   const normalized = normalizeProgress(imported, ["known", "another-known"]);
 
   assert.deepEqual(Object.keys(normalized.progress.completed), ["known"]);
+  assert.deepEqual(
+    Object.values(normalized.progress.activity).flat(),
+    ["known"],
+  );
   assert.equal(normalized.progress.completed.known, imported.completed.known);
   assert.deepEqual(normalized.ignoredPuzzleIds, ["retired-room"]);
   assert.ok(Object.isFrozen(normalized.ignoredPuzzleIds));

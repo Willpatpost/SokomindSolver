@@ -96,3 +96,22 @@ export function findProvenCommitments(
 ): ReadonlySet<number> {
   return detector.findProvenCommitments(board, boxes);
 }
+
+/**
+ * Returns true only when the static board contains a goal on which a matching
+ * box could satisfy the commitment rule. If false, the detector cannot commit
+ * a box in any reachable state because labels and board geometry are fixed.
+ */
+export function hasPotentialGoalCommitment(
+  board: CompiledSearchBoard,
+): boolean {
+  for (let cell = 0; cell < board.cellCount; cell++) {
+    if (
+      board.goalLabelByCell[cell] !== null &&
+      isStaticallyImmovable(board, cell)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}

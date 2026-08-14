@@ -1,8 +1,14 @@
 # Sokomind Consolidated Project Audit — August 11, 2026
 
-**Status:** Remediated — all 30 recorded findings are closed in this working tree
-**Base revision:** `19cdf79` (`main`)
-**Audit and remediation date:** 2026-08-11
+**Status:** Remediated through August 14 — all 44 recorded findings are closed
+in this working tree
+
+**Original audit base:** `19cdf79` (`main`)
+
+**Follow-up remediation base:** `abc8ab7` (`main`)
+
+**Audit and remediation dates:** 2026-08-11 through 2026-08-14
+
 **Scope:** Architecture, game core, catalog, persistence, editor, solver and
 proof systems, workers, PWA behavior, accessibility, tests, CI, documentation,
 security, and dependencies.
@@ -16,7 +22,7 @@ kept in [`AUG11IMPROVEMENTS.MD`](AUG11IMPROVEMENTS.MD).
 ## Executive verdict
 
 The release-blocking false-optimality defect and every P1–P3 finding discovered
-in the August 11 audit have been remediated. IDA* now uses sound contour-local
+in the August 11 audit and August 14 follow-up have been remediated. IDA* now uses sound contour-local
 exact-state best-`g` dominance, checkpoint and worker inputs are treated as
 untrusted, proof phases share run-wide resources, and cached proofs from the
 unsafe schema are invalidated.
@@ -24,7 +30,10 @@ unsafe schema are invalidated.
 Product-state fixes add date-indexed daily participation, non-destructive
 shared-editor previews, IndexedDB resume discovery, visible/retryable
 persistence failures, correct achievement deltas, bounded imports, and scoped
-draft quarantine. Architectural and test controls now enforce source layers,
+draft quarantine. The follow-up added true repeat-completion activity, named
+draft documents, progress-only reset, honest mutation outcomes, narrow-screen
+contracts, selector continuity, and explicit offline recovery. Architectural
+and test controls now enforce source layers,
 browser-safe worker closures, route behavior coverage, and repository-wide
 Markdown links and anchors.
 
@@ -88,6 +97,20 @@ Solver UI
 | AUD-028 | P2 | Light theme | Closed — hue-dependent box and goal variables resolve on each piece |
 | AUD-029 | P3 | Move trail | Closed — six-step opacity and size decay is explicit and testable |
 | AUD-030 | P2 | Animation | Closed — clean-target adjacent-only FLIP animation |
+| AUD-031 | P0 | A* proof cutoff | Closed — active-node lower bounds survive every resource cutoff |
+| AUD-032 | P1 | Sequential proof limits | Closed — derived limits are clamped integer remainders |
+| AUD-033 | P0 | Parallel proof | Closed — numeric caps cannot masquerade as replayable incumbents |
+| AUD-034 | P1 | Preprocessing resources | Closed — time, memory, cancellation, and telemetry cover preprocessing |
+| AUD-035 | P2 | Parallel telemetry | Closed — work is summed and memory peaks use an explicit conservative policy |
+| AUD-036 | P2 | Benchmark decisions | Closed — elapsed/RSS vetoes and clean median-five promotion rules |
+| AUD-037 | P1 | Progress reset | Closed — Stats resets progress ownership only |
+| AUD-038 | P1 | Mutation feedback | Closed — dialogs await and report durable import/reset outcomes |
+| AUD-039 | P1 | Editor durability | Closed — pending edits flush on every route/page exit except explicit discard |
+| AUD-040 | P2 | Activity statistics | Closed — repeat completions and DST-safe local calendar ordinals |
+| AUD-041 | P2 | Narrow UI/a11y | Closed — 320-pixel layout, selected states, unique labels, semantic links |
+| AUD-042 | P2 | Navigation/recovery | Closed — selector continuity, offline/lazy retry, safe update placement |
+| AUD-043 | P2 | Editor documents | Closed — bounded named drafts, migration, CRUD, and safe share import |
+| AUD-044 | P2 | Engineering controls | Closed — executable gates, CI ownership, dependency policy, portable HPC, living reference |
 
 ## Detailed findings and implemented fixes
 
@@ -508,6 +531,211 @@ the animation reference.
 **Evidence:** rapid-input browser coverage inspects the keeper keyframes,
 rejects any diagonal or longer-than-one-cell translation, then verifies the
 settled slot is centered on its declared grid cell with no active animation.
+
+### AUD-031 — A* cutoff could omit the active subtree from its proof bound
+
+**Former gap:** A* removed the minimum-`f` node from the heap before expanding
+it. If a resource limit fired during that expansion, finalization looked only
+at the remaining heap and could overstate the lower bound by forgetting the
+still-unresolved active subtree.
+
+**Fix:** the active node's `f` remains the terminal lower-bound candidate until
+its expansion completes. Limit and cancellation paths preserve that value and
+return a bounded incumbent unless the full open-subtree invariant proves the
+incumbent.
+
+**Evidence:** focused tests cut off before and during expansion and require
+finite, ordered bounds without a false optimal certificate.
+
+### AUD-032 — Sequential proof received fractional protocol limits
+
+**Former gap:** discovery elapsed time is fractional, so subtracting it from an
+integer request timeout produced an invalid non-integer `maxElapsedMs` for the
+exact proof request.
+
+**Fix:** every derived elapsed, expanded, and generated remainder is floored,
+clamped at zero, and treated as exhausted before launch when no positive share
+remains. Time spent choosing and compiling the proof is subtracted again from
+the launch allowance.
+
+**Evidence:** the production sequential inter-rooms command no longer fails
+request validation and proves the 28-move / 7-push optimum.
+
+### AUD-033 — A parallel numeric cap was treated as a solution incumbent
+
+**Former gap:** a partition's numeric exclusive upper bound could enter an
+exact kernel through the route-carrying incumbent interface. The coordinator
+could then report the discovery route under bounds established for a different
+cost, producing a bounded 29-move result where direct exact A* proved 28.
+
+**Fix:** exact A* and IDA* now distinguish a replay-validated `incumbent` from
+an `upperBound` that carries no route. A numeric cap can prune and prove that a
+partition contains no cheaper solution, but it cannot create a public solved
+result. Workers emit a solution only after reconstructing and replaying one.
+
+**Evidence:** the production two-worker Node adapter deterministically returns
+the replay-valid, proven 28-move / 7-push inter-rooms route with equal bounds.
+
+### AUD-034 — Exact preprocessing was outside resource enforcement
+
+**Former gap:** pattern-database and deadlock-table construction occurred before
+ordinary search checks, so a tiny elapsed or memory limit could be exceeded
+without timely termination and terminal counters omitted retained tables.
+
+**Fix:** both exact kernels pass one preprocessing budget through heuristic,
+PDB, pattern, and deadlock-table construction. It checks cancellation,
+deadline, and retained memory during construction; limit exits are terminal and
+include preprocessing memory and feature telemetry.
+
+**Evidence:** one-millisecond and constrained-memory regressions terminate
+without entering unbounded search, while successful runs retain the relevant
+construction and memory counters.
+
+### AUD-035 — Parallel telemetry mixed additive work with sequential peaks
+
+**Former gap:** summing every partition's retained-state and memory peak could
+claim that sequential partitions occupied memory simultaneously, while taking
+one maximum could hide work performed across partitions.
+
+**Fix:** expanded/generated and event counters remain additive. Retained
+structures and frontier/memory peaks take the maximum across sequential
+partitions assigned to one worker, then conservatively sum those maxima across
+concurrent workers. Elapsed time is coordinator wall time, not a sum of worker
+durations.
+
+**Evidence:** coordinator tests exercise multiple partitions per worker and
+assert the documented additive/max/sum policy separately.
+
+### AUD-036 — Benchmark acceptance ignored time, RSS, and capture provenance
+
+**Former gap:** an apparent state-count win could be labelled an improvement
+despite a material median-time or peak-RSS regression, and a partial, one-run,
+dirty-worktree capture could be mistaken for a promotion baseline.
+
+**Fix:** controlled comparisons now qualify median elapsed time and peak RSS,
+apply either as a resource veto, and classify conflicting signals as mixed.
+`promotableBaseline` additionally requires the complete matrix, accepted
+deterministic groups, at least five timed samples, a known commit, and a clean
+worktree.
+
+**Evidence:** unit comparisons cover apparent node wins vetoed by elapsed/RSS
+regressions and every promotion prerequisite. Raw samples remain in schema 3.
+
+### AUD-037 — Stats reset owned unrelated application data
+
+**Former gap:** the Statistics danger-zone action called the full recovery
+reset, deleting preferences, favorites, ratings, drafts, sessions, timers, and
+solver records despite describing a progress reset.
+
+**Fix:** Stats now advances only the progress synchronization generation and
+writes empty progress. Full-data recovery remains a separate error-boundary
+operation with its own ownership and language.
+
+**Evidence:** unit and browser tests seed every owned local/session key, reset
+progress, and require byte-for-byte preservation outside the progress record.
+
+### AUD-038 — Import/reset dialogs announced success before durable writes
+
+**Former gap:** the Progress dialog treated callbacks as fire-and-forget and
+closed or announced success even when storage rejected the write.
+
+**Fix:** callbacks return the typed persistence outcome. The dialog awaits the
+operation, disables competing mutations, preserves visible progress on
+failure, and reports quota, security, or availability causes without a false
+success message.
+
+**Evidence:** browser fault injection rejects both import and reset writes and
+confirms that the displayed and stored record set does not change.
+
+### AUD-039 — Sub-second editor changes could vanish on SPA navigation
+
+**Former gap:** the one-second autosave timer was cleared during route unmount,
+and only `pagehide` flushed the newest state. Fast in-app navigation could lose
+the last edits.
+
+**Fix:** the editor keeps the newest state in a layout-synchronized ref and
+flushes pending data during both page exit and effect cleanup. An explicit
+discard pauses the timer and suppresses that one flush; cancelling discard
+resumes it.
+
+**Evidence:** rapid keyboard, mobile, Escape, Back, and hash-navigation tests
+cover save, cancel, and explicit-discard outcomes.
+
+### AUD-040 — Statistics represented best-record dates, not play activity
+
+**Former gap:** a repeat completion that did not improve the personal best was
+invisible, and heat-map day stepping assumed every local day lasted 24 hours.
+
+**Fix:** progress schema 2 now carries a bounded local-date activity ledger of
+distinct completed puzzles. Every solve records activity independently of the
+best route. Heat maps and streak adjacency use UTC ordinals of local calendar
+tuples, and stored date keys must round-trip to real calendar dates.
+
+**Evidence:** repeat/worse solves appear on their actual days; DST-boundary and
+impossible-date regressions neither skip nor invent activity.
+
+### AUD-041 — Narrow layouts and control semantics had avoidable failures
+
+**Former gap:** at 320 pixels Home settings could be covered, Play actions and
+Help/Share clipped, completion feedback lacked selected state, random actions
+shared names, and mobile navigation used scripted buttons instead of links.
+
+**Fix:** compact layouts wrap and reserve safe areas, Play adds a touch cue,
+completion choices expose `aria-pressed`, random labels include difficulty,
+and mobile navigation uses canonical links. Solver technical controls move
+under an Advanced disclosure while remaining keyboard-accessible.
+
+**Evidence:** a dedicated 320 x 568 Playwright project, semantic assertions,
+and representative axe scans cover the corrected surfaces.
+
+### AUD-042 — Route continuity and recoverable loading were incomplete
+
+**Former gap:** returning from Play lost selector page/filter/scroll/focus,
+update notices could cover header actions, and offline shard or lazy-module
+failures offered little recovery guidance.
+
+**Fix:** the router retains the exact selector return hash and SPA-session list
+context, restores the originating row, and offers a recent-puzzle continuation.
+The update notice respects bottom safe areas; network state is explicit; puzzle
+shards, workers, and lazy screens expose retry-oriented failure paths.
+
+**Evidence:** browser routes restore query, page, focus, and scroll, exercise
+offline-to-online state, retry a failed shard, and keep every narrow action in
+the viewport.
+
+### AUD-043 — One editor draft was still a product-level data-loss bottleneck
+
+**Former gap:** even after shared previews became non-destructive, the device
+still had one editable document and no way to create, duplicate, rename,
+switch, or delete drafts safely.
+
+**Fix:** the existing key now stores a deeply validated schema-v2 collection of
+up to 25 named drafts with one active ID and last-saved timestamps. The legacy
+single payload migrates in place. CRUD operations commit storage before
+changing visible state, and shared imports create a new destination while
+preserving the prior active document.
+
+**Evidence:** round-trip, migration, limit, storage-failure, CRUD, reload, and
+shared-import regressions cover the store and UI.
+
+### AUD-044 — Assurance workflows and documentation could drift silently
+
+**Former gap:** route coverage accepted skipped/todo names, CI duplicated the
+same suite across jobs, major dependency upgrades were blanket-ignored, cluster
+scripts embedded one machine layout, Markdown checks missed root links and npm
+commands, and important constants were copied among narrative documents.
+
+**Fix:** the route matrix accepts only direct executable tests; workflows have
+explicit non-overlapping owners; standard and parallel proof gates run in CI
+with the extended optimum scheduled separately; Dependabot surfaces majors as
+individual reviews; SLURM scripts derive the checkout and accept environment
+overrides; documentation validation covers root/docs links, anchors, paths,
+commands, and encoding. [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md) maps
+important APIs and generates volatile facts directly from source.
+
+**Evidence:** synthetic skip/todo rejection, workflow/package commands, shell
+syntax, and the source-reference freshness check are executable repository
+gates.
 
 ## Validation evidence
 

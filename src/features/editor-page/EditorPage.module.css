@@ -109,6 +109,63 @@
   min-height: 32px;
 }
 
+.starterGuide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--sage-700), transparent 66%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sage-500), transparent 92%);
+}
+
+.starterGuide h2,
+.starterGuide p {
+  margin: 0;
+}
+
+.starterGuide h2 {
+  margin-top: 2px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.starterGuide p {
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.starterActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.starterActions button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--sage-700);
+  border-radius: 9px;
+  color: var(--sage-700);
+  background: var(--paper-50);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.starterActions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--blue-500), transparent 30%);
+  outline-offset: 2px;
+}
+
 .playtestContent {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -118,6 +175,10 @@
   min-width: 0;
   align-content: start;
   gap: 16px;
+}
+
+.mobileStickyTools {
+  min-width: 0;
 }
 
 .sizeControls {
@@ -535,6 +596,25 @@
 
   .sidebar:first-child {
     grid-template-columns: 1fr;
+    position: sticky;
+    z-index: 12;
+    top: max(6px, env(safe-area-inset-top));
+    margin: 0 -4px;
+    padding: 8px;
+    border: 1px solid rgb(23 25 22 / 0.1);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--paper-50), transparent 4%);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .starterGuide {
+    display: grid;
+    align-items: start;
+  }
+
+  .starterActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .playtestContent {
@@ -545,6 +625,11 @@
 :global(html[data-theme="dark"]) .backButton {
   border-color: rgb(255 255 255 / 0.1);
   background: rgb(34 36 32 / 0.6);
+}
+
+:global(html[data-theme="dark"]) .sidebar:first-child {
+  border-color: rgb(255 255 255 / 0.1);
+  background: color-mix(in srgb, var(--paper-100), transparent 4%);
 }
 
 :global(html[data-theme="dark"]) .backButton:hover {

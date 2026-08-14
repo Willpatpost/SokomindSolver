@@ -8,6 +8,10 @@ import {
   type ReversePushTableResult,
 } from "./relaxed-reverse-push.ts";
 import type { BoardTopology, Room } from "./topology.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 const ROOM_PATTERN_MAX_STATES = 12_000;
 const ROOM_PATTERN_SELECTION_LIMIT = 512;
@@ -37,12 +41,20 @@ export class RoomPatternHeuristic {
   readonly tables: readonly PatternTable[];
   readonly stats: RoomPatternStats = { builds: 0, states: 0, hits: 0 };
   readonly #board: CompiledSearchBoard;
+  readonly #estimatedRetainedBytes: number;
 
-  constructor(board: CompiledSearchBoard, topology: BoardTopology) {
+  constructor(
+    board: CompiledSearchBoard,
+    topology: BoardTopology,
+    budget?: ExactPreprocessingBudget,
+  ) {
     this.#board = board;
     const tables: PatternTable[] = [];
+    let estimatedRetainedBytes = 0;
+    checkExactPreprocessingBudget(budget);
     for (const room of topology.rooms) {
       for (const partition of roomPatternGoalPartitions(room, board)) {
+        checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
         const targetBoxes: PatternBox[] = partition.map((goalCell) => ({
           cell: goalCell,
           label: board.goalLabelByCell[goalCell]!,
@@ -52,15 +64,30 @@ export class RoomPatternHeuristic {
           board,
           targetBoxes,
           ROOM_PATTERN_MAX_STATES,
+          budget
+            ? {
+                ...budget,
+                baseMemoryBytes:
+                  budget.baseMemoryBytes + estimatedRetainedBytes,
+              }
+            : undefined,
         );
         this.stats.builds++;
         this.stats.states += result.visited;
         if (result.states.size > 0) {
           tables.push({ labels, targetBoxes, result, room });
+          estimatedRetainedBytes +=
+            result.estimatedRetainedBytes + 256 + targetBoxes.length * 32;
         }
       }
     }
     this.tables = tables;
+    this.#estimatedRetainedBytes = estimatedRetainedBytes;
+    checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
+  }
+
+  get estimatedRetainedBytes(): number {
+    return this.#estimatedRetainedBytes;
   }
 
   candidates(
@@ -131,6 +158,15 @@ function roomPatternGoalPartitions(
   }
 
   return partitions.filter((p) => p.length >= MIN_PARTITION_GOALS);
+}
+
+export function hasPotentialRoomPattern(
+  board: CompiledSearchBoard,
+  topology: BoardTopology,
+): boolean {
+  return topology.rooms.some(
+    (room) => roomPatternGoalPartitions(room, board).length > 0,
+  );
 }
 
 interface BoxEntry {

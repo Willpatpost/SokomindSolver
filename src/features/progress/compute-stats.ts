@@ -52,6 +52,41 @@ export interface StatsPuzzle {
   readonly boxes: number;
 }
 
+export interface ActivityHeatDay {
+  readonly date: string;
+  readonly count: number;
+}
+
+const DAY_MS = 86_400_000;
+
+function dateKeyFromUtcOrdinal(ordinal: number): string {
+  const date = new Date(ordinal * DAY_MS);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function dateKeyOrdinal(dateKey: string): number {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+}
+
+/** Build local-calendar cells without assuming every local day is 24 hours. */
+export function buildActivityHeatMap(
+  progress: ProgressData,
+  today: Date = new Date(),
+  requestedDays = 90,
+): readonly ActivityHeatDay[] {
+  const dayCount = Math.min(366, Math.max(0, Math.floor(requestedDays)));
+  const todayOrdinal = Math.floor(Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  ) / DAY_MS);
+  return Array.from({ length: dayCount }, (_, index) => {
+    const date = dateKeyFromUtcOrdinal(todayOrdinal - dayCount + index + 1);
+    return { date, count: progress.activity[date]?.length ?? 0 };
+  });
+}
+
 function shiftLocalDays(date: Date, amount: number): Date {
   const shifted = new Date(date);
   shifted.setHours(12, 0, 0, 0);
@@ -60,12 +95,11 @@ function shiftLocalDays(date: Date, amount: number): Date {
 }
 
 function computeStreak(progress: ProgressData): StreakInfo {
-  const completionDays = new Set<string>();
-  for (const record of Object.values(progress.completed)) {
-    const date = new Date(record.completedAt);
-    if (!Number.isFinite(date.getTime())) continue;
-    completionDays.add(toLocalDateKey(date));
-  }
+  const completionDays = new Set(
+    Object.entries(progress.activity)
+      .filter(([, puzzleIds]) => puzzleIds.length > 0)
+      .map(([dateKey]) => dateKey),
+  );
 
   if (completionDays.size === 0) {
     return { current: 0, longest: 0, activeTodayOrYesterday: false };
@@ -79,11 +113,8 @@ function computeStreak(progress: ProgressData): StreakInfo {
   let longest = 1;
   let currentRun = 1;
   for (let i = 1; i < sortedDays.length; i++) {
-    const prev = new Date(sortedDays[i - 1] + "T00:00:00");
-    const curr = new Date(sortedDays[i] + "T00:00:00");
-    const diffDays = Math.round(
-      (curr.getTime() - prev.getTime()) / 86_400_000,
-    );
+    const diffDays = dateKeyOrdinal(sortedDays[i]) -
+      dateKeyOrdinal(sortedDays[i - 1]);
     if (diffDays === 1) {
       currentRun++;
     } else {

@@ -637,3 +637,45 @@ describe("bounded proof lb == U guard", () => {
     assert.equal(result.proof!.lowerBound, result.proof!.upperBound);
   });
 });
+
+describe("IDA* numeric caps and preprocessing budgets", () => {
+  it("does not turn a numeric cap into a fabricated solution", async () => {
+    const request = requestFromRows(["OOOOO", "ORXSO", "OOOOO"]);
+    const optimum = assertSolved(await runIdaStarSearch(request, oracleContext()));
+    const result = await runIdaStarSearch(request, oracleContext(), {
+      upperBound: optimum.solution.moves,
+    });
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "exhausted");
+    assert.equal(result.proof, undefined);
+    assert.equal(result.metrics.counters?.lowerBound, optimum.solution.moves);
+  });
+
+  it("enforces elapsed and memory limits while building exact features", async () => {
+    let clock = 0;
+    const elapsed = await runIdaStarSearch(
+      { ...requestFromRows(BOARD_ROWS), limits: { maxElapsedMs: 3 } },
+      {
+        signal: new AbortController().signal,
+        reportProgress: () => undefined,
+        now: () => ++clock,
+      },
+    );
+    assert.equal(elapsed.status, "unsolved");
+    if (elapsed.status === "unsolved") {
+      assert.equal(elapsed.reason, "limit-reached");
+      assert.match(elapsed.detail ?? "", /preprocessing/i);
+    }
+
+    const memory = await runIdaStarSearch(
+      { ...requestFromRows(BOARD_ROWS), limits: { maxMemoryBytes: 1 } },
+      oracleContext(),
+    );
+    assert.equal(memory.status, "unsolved");
+    if (memory.status === "unsolved") {
+      assert.equal(memory.reason, "limit-reached");
+      assert.ok((memory.metrics.counters?.estimatedMemoryBytes ?? 0) > 1);
+    }
+  });
+});

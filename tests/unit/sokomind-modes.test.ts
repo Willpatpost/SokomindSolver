@@ -7,7 +7,10 @@ import {
   DEFAULT_SOKOMIND_REQUEST_OPTIONS,
 } from "../../src/solver/implementations/sokomind-options.ts";
 
-import { runSequentialProof } from "../../src/solver/implementations/sokomind-proof.ts";
+import {
+  remainingProofLimits,
+  runSequentialProof,
+} from "../../src/solver/implementations/sokomind-proof.ts";
 import { parsePuzzleRows } from "../../src/core/index.ts";
 import type {
   SolverExecutionContext,
@@ -364,6 +367,40 @@ describe("runSequentialProof", () => {
     assert.ok((result.metrics.expandedStates ?? 0) <= 20);
     assert.ok((result.metrics.generatedStates ?? 0) >= 9);
     assert.ok((result.metrics.generatedStates ?? 0) <= 30);
+  });
+
+  it("rounds fractional real-clock discovery usage into valid remaining limits", async () => {
+    const base = requestFromRows(ONE_BOX);
+    const discovery = await runClassicSearch(base, oracleContext(), {
+      strategy: "greedy",
+    });
+    assert.equal(discovery.status, "solved");
+    if (discovery.status !== "solved") return;
+    const request: SolverRequest = {
+      ...base,
+      limits: { maxElapsedMs: 1_000 },
+    };
+    const fractionalDiscovery: SolverResult = {
+      ...discovery,
+      metrics: { ...discovery.metrics, elapsedMs: 0.25 },
+    };
+    assert.equal(
+      remainingProofLimits(request, fractionalDiscovery.metrics)?.maxElapsedMs,
+      999,
+    );
+    const result = await runSequentialProof(
+      request,
+      oracleContext(),
+      {
+        ...DEFAULT_SOKOMIND_REQUEST_OPTIONS,
+        mode: "optimal",
+        proofAlgorithm: "astar",
+      },
+      fractionalDiscovery,
+    );
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
   });
 
   it("greedy solution replays after proof", async () => {

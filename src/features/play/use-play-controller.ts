@@ -9,7 +9,7 @@ import {
 } from "@/src/core";
 import { decodeActionLog } from "@/src/core/action-log";
 import type { SolutionStep } from "@/src/solver";
-import { toLocalDateKey, type ProgressData } from "@/src/shared/progress";
+import { toLocalDateKey } from "@/src/shared/progress";
 import {
   hydrateOptimalCacheFromIDB,
   loadOptimalCache,
@@ -445,7 +445,7 @@ export function usePlayController(
     performReset,
     requestReset,
     selectPuzzle,
-    importProgress: (imported: ProgressData) => importProgress(imported),
+    importProgress,
     resetProgress,
     handleShare,
     playSolverSolution,

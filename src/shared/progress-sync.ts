@@ -1,6 +1,8 @@
 import {
   EMPTY_PROGRESS,
+  mergeCompletionActivity,
   mergeProgress,
+  sameCompletionActivity,
   tryParseProgress,
   type ProgressData,
   type DailyCompletion,
@@ -132,6 +134,7 @@ export function mergeConcurrentProgress(
   let changed = false;
   const completed: Record<string, PuzzleRecord> = { ...first.completed };
   const daily: Record<string, DailyCompletion> = { ...first.daily };
+  const activity = mergeCompletionActivity(first.activity, second.activity);
 
   for (const [puzzleId, candidate] of Object.entries(second.completed)) {
     const selected = canonicalRecord(completed[puzzleId], candidate);
@@ -156,7 +159,8 @@ export function mergeConcurrentProgress(
     }
   }
 
-  return changed ? { version: 2, completed, daily } : first;
+  if (activity !== first.activity) changed = true;
+  return changed ? { version: 2, completed, daily, activity } : first;
 }
 
 function sameProgress(first: ProgressData, second: ProgressData): boolean {
@@ -179,11 +183,12 @@ function sameProgress(first: ProgressData, second: ProgressData): boolean {
   const firstDailyEntries = Object.entries(first.daily);
   const secondDailyEntries = Object.entries(second.daily);
   if (firstDailyEntries.length !== secondDailyEntries.length) return false;
-  return firstDailyEntries.every(([dateKey, record]) => {
+  const sameDaily = firstDailyEntries.every(([dateKey, record]) => {
     const other = second.daily[dateKey];
     return other?.puzzleId === record.puzzleId &&
       other.completedAt === record.completedAt;
   });
+  return sameDaily && sameCompletionActivity(first.activity, second.activity);
 }
 
 function serializeSnapshot(snapshot: ProgressSyncSnapshot): string {
@@ -194,6 +199,7 @@ function serializeSnapshot(snapshot: ProgressSyncSnapshot): string {
     writerId: snapshot.writerId,
     completed: snapshot.progress.completed,
     daily: snapshot.progress.daily,
+    activity: snapshot.progress.activity,
   });
 }
 
@@ -280,6 +286,13 @@ export function persistProgressReset(
     changed: true,
     result: writeProgressSyncSnapshot(snapshot),
   };
+}
+
+/** Reset only solved-progress ownership; full-app recovery remains resetAppData. */
+export function resetStoredProgress(
+  writerId = createProgressWriterId(),
+): PersistedProgressUpdate {
+  return persistProgressReset(loadProgressSyncSnapshot(), writerId);
 }
 
 export function reconcileProgressSnapshots(

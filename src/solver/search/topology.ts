@@ -1,4 +1,8 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 export interface Room {
   readonly gate: number;
@@ -14,14 +18,21 @@ export interface BoardTopology {
 
 const MAX_ROOM_FRACTION = 0.72;
 
-export function analyzeTopology(board: CompiledSearchBoard): BoardTopology {
-  const articulations = findArticulationPoints(board);
-  const rooms = findRooms(board, articulations);
-  const tunnels = findTunnels(board);
+export function analyzeTopology(
+  board: CompiledSearchBoard,
+  budget?: ExactPreprocessingBudget,
+): BoardTopology {
+  checkExactPreprocessingBudget(budget, board.cellCount * 64 + 512);
+  const articulations = findArticulationPoints(board, budget);
+  const rooms = findRooms(board, articulations, budget);
+  const tunnels = findTunnels(board, budget);
   return { articulations, rooms, tunnels };
 }
 
-function findArticulationPoints(board: CompiledSearchBoard): ReadonlySet<number> {
+function findArticulationPoints(
+  board: CompiledSearchBoard,
+  budget?: ExactPreprocessingBudget,
+): ReadonlySet<number> {
   const n = board.cellCount;
   const disc = new Int32Array(n).fill(-1);
   const low = new Int32Array(n);
@@ -34,12 +45,18 @@ function findArticulationPoints(board: CompiledSearchBoard): ReadonlySet<number>
   const stack: { cell: number; neighborIdx: number; children: number }[] = [];
 
   for (let start = 0; start < n; start++) {
+    if ((start & 31) === 0) {
+      checkExactPreprocessingBudget(budget, n * 24 + 256);
+    }
     if (disc[start] >= 0) continue;
 
     disc[start] = low[start] = time++;
     stack.push({ cell: start, neighborIdx: 0, children: 0 });
 
     while (stack.length > 0) {
+      if ((time & 31) === 0) {
+        checkExactPreprocessingBudget(budget, n * 24 + stack.length * 32);
+      }
       const frame = stack[stack.length - 1];
       const neighbors = board.neighbors[frame.cell];
       let pushed = false;
@@ -87,6 +104,7 @@ function findArticulationPoints(board: CompiledSearchBoard): ReadonlySet<number>
 function findRooms(
   board: CompiledSearchBoard,
   articulations: ReadonlySet<number>,
+  budget?: ExactPreprocessingBudget,
 ): readonly Room[] {
   const n = board.cellCount;
   const maxCells = Math.floor(n * MAX_ROOM_FRACTION);
@@ -94,6 +112,7 @@ function findRooms(
   const candidates: Room[] = [];
 
   for (const gate of articulations) {
+    checkExactPreprocessingBudget(budget, n * 16 + candidates.length * 160);
     visited.fill(0);
     visited[gate] = 1;
 
@@ -107,6 +126,12 @@ function findRooms(
       cells.add(seedCell);
 
       for (let head = 0; head < queue.length; head++) {
+        if ((head & 31) === 0) {
+          checkExactPreprocessingBudget(
+            budget,
+            n * 16 + candidates.length * 160 + queue.length * 8,
+          );
+        }
         const current = queue[head];
         const neighbors = board.neighbors[current];
         for (let d = 0; d < neighbors.length; d++) {
@@ -147,9 +172,15 @@ function findRooms(
   return rooms;
 }
 
-function findTunnels(board: CompiledSearchBoard): ReadonlySet<number> {
+function findTunnels(
+  board: CompiledSearchBoard,
+  budget?: ExactPreprocessingBudget,
+): ReadonlySet<number> {
   const tunnels = new Set<number>();
   for (let cell = 0; cell < board.cellCount; cell++) {
+    if ((cell & 31) === 0) {
+      checkExactPreprocessingBudget(budget, board.cellCount * 16);
+    }
     const neighbors = board.neighbors[cell];
     let floorCount = 0;
     const floorDirs: number[] = [];

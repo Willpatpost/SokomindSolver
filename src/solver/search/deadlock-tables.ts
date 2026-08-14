@@ -2,6 +2,10 @@ import type { CompiledSearchBoard } from "./compiled-board.ts";
 import type { DenseBox } from "./model.ts";
 import { throwIfSolverCancelled } from "../cancellation.ts";
 import { delayForEventLoop } from "./scheduling.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 const MAX_REGION_CELLS = 9;
 const MAX_BOX_COUNT = 3;
@@ -13,6 +17,7 @@ export interface DeadlockTableStats {
   readonly regionCount: number;
   readonly patternCount: number;
   readonly buildTimeMs: number;
+  readonly estimatedRetainedBytes: number;
 }
 
 interface SubGrid {
@@ -32,11 +37,29 @@ function configKey(
   return parts.join(";");
 }
 
-function findWallAdjacentRegions(board: CompiledSearchBoard): SubGrid[] {
+function estimateDeadlockTableBytes(
+  regions: readonly SubGrid[],
+  patternCount: number,
+): number {
+  return 512 +
+    regions.reduce((sum, region) => sum + 128 + region.cells.length * 24, 0) +
+    patternCount * 128;
+}
+
+function findWallAdjacentRegions(
+  board: CompiledSearchBoard,
+  budget?: ExactPreprocessingBudget,
+): SubGrid[] {
   const regions: SubGrid[] = [];
   const seen = new Set<string>();
 
   for (let cell = 0; cell < board.cellCount; cell++) {
+    if ((cell & 31) === 0) {
+      checkExactPreprocessingBudget(
+        budget,
+        estimateDeadlockTableBytes(regions, 0),
+      );
+    }
     const neighbors = board.neighbors[cell];
     let hasWall = false;
     for (let d = 0; d < 4; d++) {
@@ -84,6 +107,8 @@ function isDeadlockedBFS(
   region: SubGrid,
   initialCells: readonly number[],
   labels: readonly string[],
+  budget?: ExactPreprocessingBudget,
+  retainedBytes = 0,
 ): boolean {
   const goalSolved = (cells: readonly number[], lbls: readonly string[]): boolean => {
     for (let i = 0; i < cells.length; i++) {
@@ -102,6 +127,12 @@ function isDeadlockedBFS(
 
   let head = 0;
   while (head < queue.length) {
+    if ((head & 63) === 0) {
+      checkExactPreprocessingBudget(
+        budget,
+        retainedBytes + seen.size * (64 + initialCells.length * 16),
+      );
+    }
     if (seen.size > BFS_STATE_LIMIT) return false;
 
     const current = queue[head++];
@@ -165,6 +196,10 @@ export class DeadlockTableLookup {
     return this.#stats;
   }
 
+  get estimatedRetainedBytes(): number {
+    return this.#stats.estimatedRetainedBytes;
+  }
+
   check(
     boxes: readonly DenseBox[],
     movedCell: number,
@@ -212,6 +247,7 @@ export function buildDeadlockTables(
       regionCount: 0,
       patternCount: 0,
       buildTimeMs: Date.now() - startTime,
+      estimatedRetainedBytes: 0,
     });
   }
 
@@ -264,15 +300,17 @@ export function buildDeadlockTables(
     regionCount: regions.length,
     patternCount,
     buildTimeMs: Date.now() - startTime,
+    estimatedRetainedBytes: estimateDeadlockTableBytes(regions, patternCount),
   });
 }
 
 export async function buildDeadlockTablesAsync(
   board: CompiledSearchBoard,
   signal: AbortSignal,
+  budget?: ExactPreprocessingBudget,
 ): Promise<DeadlockTableLookup> {
   const startTime = Date.now();
-  const regions = findWallAdjacentRegions(board);
+  const regions = findWallAdjacentRegions(board, budget);
 
   const deadlockSets = new Map<number, Set<string>>();
   const cellToRegions = new Map<number, SubGrid[]>();
@@ -284,15 +322,23 @@ export async function buildDeadlockTablesAsync(
       regionCount: 0,
       patternCount: 0,
       buildTimeMs: Date.now() - startTime,
+      estimatedRetainedBytes: 0,
     });
   }
 
   throwIfSolverCancelled(signal);
+  checkExactPreprocessingBudget(budget);
+
+  const retainedRegions: SubGrid[] = [];
 
   for (const region of regions) {
     if (Date.now() - startTime > TIME_BUDGET_MS) break;
     await delayForEventLoop();
     throwIfSolverCancelled(signal);
+    checkExactPreprocessingBudget(
+      budget,
+      estimateDeadlockTableBytes(retainedRegions, patternCount),
+    );
 
     const regionId = region.cells[0];
     const deadlocks = new Set<string>();
@@ -311,16 +357,31 @@ export async function buildDeadlockTablesAsync(
           workSinceYield = 0;
           await delayForEventLoop();
           throwIfSolverCancelled(signal);
+          checkExactPreprocessingBudget(
+            budget,
+            estimateDeadlockTableBytes(retainedRegions, patternCount),
+          );
         }
 
         const cells = indices.map((i) => region.cells[i]);
 
         for (const label of allLabels) {
           const labels = new Array<string>(boxCount).fill(label);
-          if (isDeadlockedBFS(board, region, cells, labels)) {
+          if (isDeadlockedBFS(
+            board,
+            region,
+            cells,
+            labels,
+            budget,
+            estimateDeadlockTableBytes(retainedRegions, patternCount),
+          )) {
             const key = configKey(cells, labels);
             deadlocks.add(key);
             patternCount++;
+            checkExactPreprocessingBudget(
+              budget,
+              estimateDeadlockTableBytes(retainedRegions, patternCount),
+            );
           }
         }
 
@@ -341,11 +402,16 @@ export async function buildDeadlockTablesAsync(
       existing.push(region);
       cellToRegions.set(cell, existing);
     }
+    retainedRegions.push(region);
   }
 
   return new DeadlockTableLookup(deadlockSets, cellToRegions, {
-    regionCount: regions.length,
+    regionCount: retainedRegions.length,
     patternCount,
     buildTimeMs: Date.now() - startTime,
+    estimatedRetainedBytes: estimateDeadlockTableBytes(
+      retainedRegions,
+      patternCount,
+    ),
   });
 }

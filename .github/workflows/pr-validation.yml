@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # deploy-pages.yml owns the PR build, browser matrix, and Huge gate. This
+    # job owns source, coverage, and representative solver correctness.
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,20 +41,14 @@ jobs:
       - name: Doc path validation
         run: npm run lint:docs
 
-      - name: Unit tests
-        run: npm run test:unit
-
+      # The coverage command executes the complete unit suite while enforcing
+      # all-source, focused-source, and generated-engine floors. Running the
+      # same suite in a separate step only duplicated work.
       - name: Coverage gate
         run: npm run test:coverage
 
-      - name: Oracle correctness tests
-        run: npm run test:solver:oracle
-
-      - name: Optimality proof tests
-        run: npm run test:solver:optimal
-
-      - name: Build
-        run: npm run build
-
       - name: Multi-puzzle solver regression
         run: npm run test:solver:multi
+
+      - name: Frozen optimum and parallel proof regressions
+        run: npm run test:solver:proof-regressions

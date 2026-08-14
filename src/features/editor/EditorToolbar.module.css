@@ -155,11 +155,21 @@
 
 @media (max-width: 640px) {
   .toolbar {
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    align-items: start;
+    gap: 10px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .group {
+    flex: 0 0 auto;
   }
 
   .typedGroup {
-    grid-column: 1 / -1;
+    flex: 0 0 230px;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 }
 

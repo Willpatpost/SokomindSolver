@@ -3,6 +3,7 @@ import { useRouter, type Route } from "@/src/router";
 import { MobileNav } from "@/src/features/navigation/MobileNav";
 import { ScrollToTop } from "@/src/shared/ui/ScrollToTop";
 import { LoadingSkeleton } from "@/src/shared/ui/LoadingSkeleton";
+import { NetworkStatus } from "@/src/shared/ui/NetworkStatus";
 
 const HomePage = lazy(() =>
   import("@/src/features/home/HomePage").then((m) => ({ default: m.HomePage })),
@@ -126,7 +127,8 @@ export function AppShell() {
       if (!heading.hasAttribute("tabindex")) {
         heading.setAttribute("tabindex", "-1");
       }
-      heading.focus();
+      heading.dataset.routeFocusTarget = "";
+      heading.focus({ preventScroll: true });
       return true;
     }
 
@@ -195,6 +197,7 @@ export function AppShell() {
         aria-atomic="true"
         className="sr-only"
       />
+      <NetworkStatus />
       <Suspense fallback={<LoadingFallback />}>
         <div
           key={identity}

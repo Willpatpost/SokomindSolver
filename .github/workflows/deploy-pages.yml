@@ -51,9 +51,11 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm run lint:docs
 
-      - name: Test and build
+      # Coverage below executes the complete unit suite. Keep artifact
+      # production/static verification here without running those tests twice.
+      - name: Build and verify static artifact
         if: github.event_name != 'pull_request'
-        run: npm test
+        run: npm run build && npm run test:static
 
       - name: Build (PR only)
         if: github.event_name == 'pull_request'
@@ -81,6 +83,10 @@ jobs:
       - name: Multi-puzzle solver performance gate
         if: github.event_name != 'pull_request'
         run: npm run test:solver:multi
+
+      - name: Frozen optimum and parallel proof regressions
+        if: github.event_name != 'pull_request'
+        run: npm run test:solver:proof-regressions
 
       - name: Grand Hall solver performance gate
         run: npm run test:solver:huge

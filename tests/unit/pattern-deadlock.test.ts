@@ -123,6 +123,21 @@ function exactRemainingPushes(
 }
 
 describe("pattern deadlock detection", () => {
+  it("statically rejects boards whose local windows all exceed the floor cap", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O R   O",
+      "O X X O",
+      "O     O",
+      "O S S O",
+      "O     O",
+      "OOOOOOO",
+    ]));
+    const cache = new PatternDeadlockCache();
+
+    assert.equal(cache.hasEligibleWindow(board), false);
+  });
+
   it("detects a known deadlock: two boxes stuck in a corridor", () => {
     // Two boxes in a dead-end corridor with goals at the other end.
     // Neither box can reach its goal because they block each other.

@@ -1299,6 +1299,11 @@ describe("concurrent proof coordinator", () => {
             expandedStates: command.request.limits?.maxExpandedStates ?? 0,
             generatedStates: command.request.limits?.maxGeneratedStates ?? 0,
             peakFrontierSize: 3,
+            counters: {
+              exactFeatureMask: 511,
+              heuristicCalls: 2,
+              estimatedMemoryBytes: 100,
+            },
           },
         }));
       });
@@ -1320,6 +1325,83 @@ describe("concurrent proof coordinator", () => {
     assert.ok((result.metrics.generatedStates ?? 0) <= 200);
     assert.ok((result.metrics.expandedStates ?? 0) >= 40);
     assert.ok((result.metrics.generatedStates ?? 0) >= 50);
+    assert.equal(result.metrics.counters?.["proof.exactFeatureMask"], 511);
+    assert.equal(
+      result.metrics.counters?.["proof.heuristicCalls"],
+      starts.length * 2,
+    );
+    assert.equal(
+      result.metrics.peakFrontierSize,
+      Math.min(2, starts.length) * 3,
+    );
+  });
+
+  it("takes per-worker retained peaks across sequential partitions before summing workers", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR   O",
+      "O XX O",
+      "O SS O",
+      "OOOOOO",
+    ]);
+    assert.equal(enumerateFirstPushPartitions(request).length, 4);
+    const perWorkerMetrics = [
+      [
+        { retained: 10, memory: 100, peakMemory: 110, frontier: 3, calls: 2 },
+        { retained: 7, memory: 150, peakMemory: 160, frontier: 8, calls: 3 },
+      ],
+      [
+        { retained: 20, memory: 80, peakMemory: 90, frontier: 5, calls: 4 },
+        { retained: 12, memory: 120, peakMemory: 130, frontier: 4, calls: 5 },
+      ],
+    ] as const;
+    const startsByWorker = [0, 0];
+    let nextWorker = 0;
+    const createWorker = () => {
+      const workerIndex = nextWorker++;
+      const worker = new MockProofWorker((command) => {
+        const localIndex = startsByWorker[workerIndex]++;
+        const metric = perWorkerMetrics[workerIndex][localIndex];
+        assert.ok(metric, `unexpected partition ${localIndex} on worker ${workerIndex}`);
+        queueMicrotask(() => worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: 10,
+          exhausted: true,
+          metrics: {
+            elapsedMs: 1,
+            expandedStates: 1,
+            generatedStates: 2,
+            peakFrontierSize: metric.frontier,
+            counters: {
+              exactFeatureMask: 511,
+              heuristicCalls: metric.calls,
+              retainedStates: metric.retained,
+              estimatedMemoryBytes: metric.memory,
+              peakEstimatedMemoryBytes: metric.peakMemory,
+            },
+          },
+        }));
+      });
+      return worker;
+    };
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 2 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: createWorker, proofParallelism: 2 },
+    );
+    assert.deepEqual(startsByWorker, [2, 2]);
+    assert.equal(result.status, "solved");
+    assert.equal(result.metrics.peakFrontierSize, 13);
+    assert.equal(result.metrics.counters?.["proof.retainedStates"], 30);
+    assert.equal(result.metrics.counters?.["proof.estimatedMemoryBytes"], 270);
+    assert.equal(result.metrics.counters?.["proof.peakEstimatedMemoryBytes"], 290);
+    assert.equal(result.metrics.counters?.heuristicCalls, undefined);
+    assert.equal(result.metrics.counters?.["proof.heuristicCalls"], 14);
+    assert.equal(result.metrics.counters?.proofExpandedStates, 4);
+    assert.equal(result.metrics.counters?.proofGeneratedStates, 8);
   });
 
   it("retains the latest progress metrics when a partition times out", async () => {

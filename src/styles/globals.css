@@ -82,6 +82,22 @@ button,
   outline-offset: 3px;
 }
 
+[data-route-focus-target]:focus {
+  outline: none;
+}
+
+[data-route-focus-target]:focus-visible {
+  border-radius: 4px;
+  outline: 3px solid color-mix(in srgb, var(--blue-500), transparent 45%);
+  outline-offset: 5px;
+}
+
+@media (forced-colors: active) {
+  [data-route-focus-target]:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
 .skip-to-content {
   position: fixed;
   z-index: 200;

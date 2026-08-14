@@ -1,4 +1,5 @@
 import {
+  Link,
   useRouter,
   homeHash,
   puzzlesHash,
@@ -21,7 +22,7 @@ const PUZZLE_PAGES = new Set([
 ]);
 
 export function MobileNav() {
-  const { route, navigate } = useRouter();
+  const { route } = useRouter();
   if (route.page === "play") return null;
 
   return (
@@ -30,17 +31,16 @@ export function MobileNav() {
         const active = item.page === route.page ||
           (item.page === "puzzles" && PUZZLE_PAGES.has(route.page));
         return (
-          <button
+          <Link
             key={item.page}
-            type="button"
+            href={item.hash}
             className={styles.item}
             data-active={active || undefined}
-            onClick={() => navigate(item.hash)}
             aria-current={active ? "page" : undefined}
           >
             <span className={styles.icon} aria-hidden="true">{item.icon}</span>
             <span className={styles.label}>{item.label}</span>
-          </button>
+          </Link>
         );
       })}
     </nav>

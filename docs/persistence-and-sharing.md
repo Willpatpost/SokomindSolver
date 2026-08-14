@@ -12,12 +12,13 @@ share a Web Storage origin:
 - `sokomind.session.v1` — current puzzle plus its canonical action log;
 - `sokomind.progress.v1` — a versioned synchronization envelope containing the
   best completed route per puzzle plus a schema-v2 local-date daily
-  participation ledger;
+  participation ledger and a bounded local-date completion-activity ledger;
 - `sokomind.experience.v1` — audio, volume, and motion preferences;
 - `sokomind.optimal.v4` — locally proven move records from the corrected
   minimum-move proof pipeline;
 - `sokomind.ratings.v1`, `sokomind.favorites.v1`, and
-  `sokomind.editor-draft.v1` — device-local preferences and the editable draft;
+  `sokomind.editor-draft.v1` — device-local preferences and a schema-v2,
+  bounded named-draft store;
 - `sokomind.editor-draft-recovery.v1` — a quarantined invalid draft that can be
   downloaded or deleted without clearing other data;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
@@ -41,9 +42,9 @@ after moving while that read is still pending, the newer in-memory attempt is
 flushed during unmount so the readiness gate cannot lose it. Home also performs
 a generation-fenced IndexedDB pointer lookup, so an IDB-only newest attempt
 remains discoverable through Continue. Optimal-cache
-hydration merges both storage tiers by the lower proven move count. Version 1
-through 3 optimal records are intentionally discarded because they predate the
-current proof correction and cannot be trusted as minimum-move proofs.
+hydration merges both storage tiers by the lower proven move count. Optimal
+payload schemas 1 through 4 are intentionally discarded because they predate
+the current proof corrections and cannot be trusted as minimum-move proofs.
 
 Progress writes re-read the latest stored snapshot before mutation. Tabs merge
 same-generation records deterministically by move count and stable tie-breakers;
@@ -119,8 +120,11 @@ local year/month/day tuple so daylight-saving transitions do not create a
 current daily challenge.
 
 Shared editor links open as read-only previews. They do not autosave or replace
-the device draft until the player explicitly chooses **Import into editor**.
+any device draft until the player explicitly chooses **Import into editor**
+and selects or creates the destination document.
 
 Reset progress writes a new empty synchronization generation after explicit
 confirmation. It does not change the current attempt or experience preferences,
-and open tabs converge on the reset generation.
+editor drafts, favorites, ratings, or solver records, and open tabs converge on
+the reset generation. The separate error-recovery full-data reset owns all app
+keys and uses stronger confirmation language.

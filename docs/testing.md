@@ -9,10 +9,12 @@ Run every repository gate before merging:
 ```sh
 npm run typecheck
 npm run lint
+npm run lint:docs
 npm run audit
 npm test
 npm run test:coverage
 npm run test:browser
+npm run test:solver:proof-regressions
 npm run test:solver:multi
 npm run test:solver:huge
 ```
@@ -83,8 +85,16 @@ A/AA rules.
 
 `tests/critical-route-behaviors.json` is the required behavior matrix for Home,
 Selector, Play, Editor, and Stats. Its unit gate verifies that every entry still
-names an executable regression test. This keeps route behavior visible even
-though Playwright coverage is not merged into the Node line-coverage report.
+names a direct executable `test`/`it` declaration. Skipped, todo, suite, hook,
+and dynamically inferred names cannot satisfy the matrix. This keeps route
+behavior visible even though Playwright coverage is not merged into the Node
+line-coverage report.
+
+The dedicated `minimum-width-chrome` project runs the narrow-layout contract at
+320 x 568 pixels. It checks Home settings, all Play actions and guidance,
+semantic mobile navigation, explicit offline state, and the editor starter/tool
+flow without horizontal overflow. Desktop projects exclude that file so the
+same assertions are not multiplied across unrelated viewports.
 
 The cross-platform runner owns the preview server directly so Windows and CI
 both shut down cleanly. Prefer roles and visible labels over implementation
@@ -106,6 +116,13 @@ floors. A focused typed-source pass keeps a higher floor for code
 exercised by the unit suite, while the generated-engine pass prevents aggregate
 gains from hiding a drop at the vendored boundary.
 
+`test:solver:known` runs production exact A* against every ordinary entry in
+the frozen optimum manifest; `test:solver:parallel` independently exercises
+the production two-worker inter-rooms proof path. They form
+`test:solver:proof-regressions` in pull-request and default-branch CI. The much
+slower `test:solver:known:extended` fixture runs in the scheduled/manual
+Extended Solver Proof workflow.
+
 `test:solver:multi` covers representative difficulty tiers;
 `test:solver:huge` separately gates Grand Hall discovery, rewrite, orientation
 parity, replay validity, and total wall-clock budgets. Each synchronous solver
@@ -125,6 +142,11 @@ fixtures; they do not reuse push macros, solver state keys, or heuristic code.
 The A* assignment bound is also checked exhaustively across every two-box and
 keeper placement on a tiny board. Every returned route is replayed through the
 immutable core before it can reach the UI.
+
+Exact preprocessing is part of the same elapsed and memory budget as search.
+Cutoff tests therefore cover pattern databases and deadlock tables as well as
+frontier expansion, and require retained preprocessing memory/counters to
+remain visible in terminal metrics.
 
 ## Required invariants
 

@@ -7,7 +7,6 @@ import type {
 import { compileSearchBoard } from "../search/compiled-board.ts";
 import {
   runExactMoveAStar,
-  type ExactIncumbent,
   type UpperBoundChannel,
 } from "../search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../search/ida-star.ts";
@@ -29,6 +28,8 @@ import {
 let abortController: AbortController | null = null;
 let pendingUpperBound: number | undefined;
 let activePrefixCost = 0;
+let activeUpperBound = Number.POSITIVE_INFINITY;
+let lastReportedLowerBound = 0;
 
 function postResult(result: ProofResult): void {
   self.postMessage(result);
@@ -39,6 +40,9 @@ function createUpperBoundChannel(): UpperBoundChannel {
     poll(): number | undefined {
       const value = pendingUpperBound;
       pendingUpperBound = undefined;
+      if (value !== undefined && value < activeUpperBound) {
+        activeUpperBound = value;
+      }
       return value;
     },
   };
@@ -65,6 +69,8 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
   abortController = new AbortController();
   pendingUpperBound = undefined;
   activePrefixCost = prefixCost;
+  activeUpperBound = initialUpperBound;
+  lastReportedLowerBound = prefixCost;
 
   const channel = createUpperBoundChannel();
 
@@ -77,10 +83,14 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
       const now = performance.now();
       if (now - lastProgressMs < PROGRESS_THROTTLE_MS) return;
       lastProgressMs = now;
+      lastReportedLowerBound = Math.max(
+        lastReportedLowerBound,
+        (progress.lowerBound ?? 0) + prefixCost,
+      );
       postResult({
         type: "proof/progress",
         partitionId,
-        lowerBound: (progress.lowerBound ?? 0) + prefixCost,
+        lowerBound: lastReportedLowerBound,
         expandedStates: progress.expandedStates ?? 0,
         generatedStates: progress.generatedStates,
         counters: progress.counters,
@@ -103,28 +113,16 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
     );
   }
 
-  const incumbent: ExactIncumbent = {
-    solution: {
-      steps: [],
-      moves: initialUpperBound,
-      pushes: 0,
-      objective: { kind: "moves" },
-      objectiveScore: initialUpperBound,
-      optimality: "unknown",
-    },
-    cost: initialUpperBound,
-  };
-
   let result: SolverResult;
   try {
     if (selectedAlgorithm === "astar") {
       result = await runExactMoveAStar(request, context, {
-        incumbent,
+        upperBound: initialUpperBound,
         upperBoundChannel: channel,
       });
     } else {
       result = await runIdaStarSearch(request, context, {
-        incumbent,
+        upperBound: initialUpperBound,
         upperBoundChannel: channel,
         persistTransposition: false,
       });
@@ -149,7 +147,10 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
     postResult({
       type: "proof/partition-complete",
       partitionId,
-      lowerBound: (result.proof?.lowerBound ?? 0) + prefixCost,
+      lowerBound: Math.max(
+        lastReportedLowerBound,
+        (result.proof?.lowerBound ?? 0) + prefixCost,
+      ),
       exhausted: result.proof?.kind === "optimal",
       metrics: result.metrics,
     } satisfies ProofPartitionComplete);
@@ -157,8 +158,12 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
     postResult({
       type: "proof/partition-complete",
       partitionId,
-      lowerBound:
-        (result.proof?.lowerBound ?? 0) + prefixCost,
+      lowerBound: Math.max(
+        lastReportedLowerBound,
+        (result.proof?.lowerBound ??
+          result.metrics.counters?.lowerBound ??
+          (result.reason === "exhausted" ? activeUpperBound : 0)) + prefixCost,
+      ),
       exhausted: result.reason === "exhausted",
       metrics: result.metrics,
     } satisfies ProofPartitionComplete);
@@ -166,7 +171,7 @@ async function runPartition(command: ProofStartPartition): Promise<void> {
     postResult({
       type: "proof/partition-complete",
       partitionId,
-      lowerBound: prefixCost,
+      lowerBound: lastReportedLowerBound,
       exhausted: false,
       metrics: result.metrics,
     } satisfies ProofPartitionComplete);

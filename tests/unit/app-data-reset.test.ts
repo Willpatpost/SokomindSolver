@@ -57,6 +57,7 @@ function progress(): ProgressData {
       },
     },
     daily: {},
+    activity: {},
   };
 }
 

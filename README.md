@@ -136,6 +136,8 @@ history, so long routes do not copy every earlier snapshot per move.
 
 ## Documentation
 
+- [Living project reference](docs/PROJECT-REFERENCE.md) — authoritative owners,
+  contracts, source-derived versions, routes, storage keys, and validation
 - [Architecture](docs/architecture.md)
 - [Consolidated August 11 audit](docs/AUG11AUDIT.MD)
 - [August 11 improvements roadmap](docs/AUG11IMPROVEMENTS.MD)
@@ -166,6 +168,7 @@ can expose it. Its deterministic Grand Hall discovery route is 1,010 moves /
 claim of optimality.
 
 The classic family remains available for comparison and exact-search research.
-The current audit documents a release-blocking IDA* proof defect; until it is
-resolved, IDA* results must not be treated or persisted as proof of move
-optimality. See the solver integration guide for tuning and benchmark details.
+Its A* and IDA* results are accepted as move-optimal proof only after exact
+request/progress validation, canonical route replay, and proof-bound checks.
+Current safeguards, feature controls, and performance caveats live in the
+project reference and Solver V2 progress guide.

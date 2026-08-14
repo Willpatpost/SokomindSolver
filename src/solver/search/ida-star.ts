@@ -38,10 +38,15 @@ import {
 import {
   findProvenCommitments,
   GoalCommitmentDetector,
+  hasPotentialGoalCommitment,
 } from "./goal-commitment.ts";
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
-import { InteractionBoostEvaluator } from "./interaction-boost.ts";
+import {
+  hasPotentialInteractionBoost,
+  InteractionBoostEvaluator,
+  isExactInteractionSearchLimitError,
+} from "./interaction-boost.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -67,6 +72,11 @@ import {
   resolveExactSearchFeatures,
   type ExactSearchFeatures,
 } from "./exact-search-features.ts";
+import {
+  checkExactPreprocessingBudget,
+  isExactPreprocessingLimitError,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 // ---------------------------------------------------------------------------
 // Public options
@@ -76,6 +86,8 @@ export type IdaReachabilityPolicy = "all" | "periodic" | "none";
 
 export interface ExactMoveIdaStarOptions {
   readonly incumbent?: ExactIncumbent;
+  /** Exclusive move-cost ceiling. Unlike an incumbent, this carries no route. */
+  readonly upperBound?: number;
   readonly reachabilityPolicy?: IdaReachabilityPolicy;
   readonly snapshotPeriod?: number;
   readonly upperBoundChannel?: import("./exact-move-astar.ts").UpperBoundChannel;
@@ -496,11 +508,19 @@ export async function runIdaStarSearch(
   let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
 
   const resumeCheckpoint = options?.checkpoint ?? null;
+  const numericUpperBound = options?.upperBound ?? Infinity;
+  if (
+    numericUpperBound !== Infinity &&
+    (!Number.isSafeInteger(numericUpperBound) || numericUpperBound < 0)
+  ) {
+    throw new Error("IDA* upper bound must be a non-negative safe integer.");
+  }
+  const suppliedIncumbent = resumeCheckpoint?.incumbent ?? options?.incumbent;
+  let U = Math.min(suppliedIncumbent?.cost ?? Infinity, numericUpperBound);
   let incumbentSolution: SolverSolution | null =
-    resumeCheckpoint?.incumbent?.solution ??
-    options?.incumbent?.solution ?? null;
-  let U = resumeCheckpoint?.incumbent?.cost ??
-    options?.incumbent?.cost ?? Infinity;
+    suppliedIncumbent && suppliedIncumbent.cost <= U
+      ? suppliedIncumbent.solution
+      : null;
   let lastExhaustedThreshold = resumeCheckpoint?.lastExhaustedThreshold ?? 0;
 
   if (resumeCheckpoint) {
@@ -511,7 +531,40 @@ export async function runIdaStarSearch(
 
   try {
     throwIfSolverCancelled(context.signal);
-    const board = compileSearchBoard(request.board);
+    const deadline = request.limits?.maxElapsedMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : startedAt + request.limits.maxElapsedMs;
+    const compilationBudget: ExactPreprocessingBudget = {
+      signal: context.signal,
+      now: context.now,
+      deadline,
+      maxMemoryBytes: request.limits?.maxMemoryBytes,
+      baseMemoryBytes: 0,
+    };
+    const board = compileSearchBoard(request.board, compilationBudget);
+    if (options?.incumbent) {
+      const { cost, solution } = options.incumbent;
+      if (cost !== solution.moves || !Number.isSafeInteger(cost) || cost < 0) {
+        throw new Error("IDA* incumbent cost does not match its route.");
+      }
+      const verification = verifySolverSolution(request, solution);
+      if (!verification.valid) {
+        throw new Error(`IDA* incumbent is invalid: ${verification.message}`);
+      }
+    }
+    const baseStaticMemoryBytes = estimateIdaStaticBytes(
+      board,
+      request.snapshot.boxes.length,
+    );
+    const preprocessingBudget: ExactPreprocessingBudget = {
+      signal: context.signal,
+      now: context.now,
+      deadline,
+      maxMemoryBytes: request.limits?.maxMemoryBytes,
+      baseMemoryBytes: baseStaticMemoryBytes,
+    };
+    checkExactPreprocessingBudget(preprocessingBudget);
+    let estimateInteractionSearchBaseMemory = () => baseStaticMemoryBytes;
 
     if (resumeCheckpoint) {
       const expectedStateKey = createBoardContentKey(request.board, request.snapshot);
@@ -543,26 +596,47 @@ export async function runIdaStarSearch(
     });
 
     const reachability = new KeeperReachability(board);
-    const patternCache = features.patternDeadlockPruning
+    const patternCacheCandidate = features.patternDeadlockPruning
       ? new PatternDeadlockCache()
+      : null;
+    const patternCache = patternCacheCandidate?.hasEligibleWindow(board)
+      ? patternCacheCandidate
       : null;
     const corralDetector = features.piCorralPruning
       ? new PiCorralDetector(board.cellCount)
       : null;
-    const commitmentDetector = features.goalCommitmentPruning
+    const commitmentDetector =
+      features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
       ? new GoalCommitmentDetector()
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
-    const boostEvaluator = features.interactionBoost
-      ? new InteractionBoostEvaluator(board, board.topology)
+    const boostEvaluator =
+      features.interactionBoost &&
+        hasPotentialInteractionBoost(board, board.topology)
+      ? new InteractionBoostEvaluator(
+          board,
+          board.topology,
+          preprocessingBudget,
+          {
+            signal: context.signal,
+            now: context.now,
+            deadline,
+            maxMemoryBytes: request.limits?.maxMemoryBytes,
+            baseMemoryBytes: () => estimateInteractionSearchBaseMemory(),
+          },
+        )
       : null;
     const macroDetector = features.forcedPushMacros
       ? new ForcedPushMacroDetector(board)
       : null;
     const deadlockTableLookup = features.deadlockTablePruning
-      ? await buildDeadlockTablesAsync(board, context.signal)
+      ? await buildDeadlockTablesAsync(
+          board,
+          context.signal,
+          preprocessingBudget,
+        )
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
@@ -587,7 +661,13 @@ export async function runIdaStarSearch(
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
     const pdbStartedAt = context.now();
     const pdbEvaluator = features.patternDatabase
-      ? await PdbHeuristicEvaluator.createAsync(board, context.signal)
+      ? await PdbHeuristicEvaluator.createAsync(board, context.signal, {
+          ...preprocessingBudget,
+          baseMemoryBytes:
+            baseStaticMemoryBytes +
+            (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+            (boostEvaluator?.preprocessingRetainedBytes ?? 0),
+        })
       : null;
     featureTelemetry.pdbBuildTimeMs = features.patternDatabase
       ? Math.max(0, context.now() - pdbStartedAt)
@@ -629,15 +709,29 @@ export async function runIdaStarSearch(
       return zobristTable.hashFromTokens(tokens, robotCell);
     }
 
-    const staticMemoryBytes = estimateIdaStaticBytes(
-      board,
-      initialBoxes.length,
-    );
+    const preprocessingStaticMemoryBytes = baseStaticMemoryBytes +
+      (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+      (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+      (pdbEvaluator?.estimatedRetainedBytes ?? 0);
+    const currentStaticMemoryBytes = () =>
+      preprocessingStaticMemoryBytes +
+      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
     let transpositionMemoryBytes = 0;
     let dfsStackMemoryBytes = 0;
     let reachabilitySnapshotMemoryBytes = 0;
     let heuristicCacheEntries = 0;
     let peakEstimatedMemoryBytes = 0;
+    estimateInteractionSearchBaseMemory = () =>
+      estimateIdaCurrentBytes(
+        preprocessingStaticMemoryBytes,
+        transpositionMemoryBytes,
+        estimateHeuristicCacheBytes(
+          heuristicCacheEntries,
+          initialBoxes.length,
+        ),
+        dfsStackMemoryBytes,
+        reachabilitySnapshotMemoryBytes,
+      );
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
       exactFeatureMask: exactSearchFeatureMask(features),
@@ -645,23 +739,37 @@ export async function runIdaStarSearch(
       linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
       linearConflictTotal: featureTelemetry.linearConflictTotal,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
+      interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
+      interactionBoostRetainedBytes:
+        boostEvaluator?.estimatedRetainedBytes ?? 0,
+      interactionBoostSearchCacheRetainedBytes:
+        boostEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
+      pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
       patternDeadlockChecks: patternCache?.stats.checks ?? 0,
+      patternDeadlockApplicable: patternCache === null ? 0 : 1,
       deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
       deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
       deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
+      deadlockTableRetainedBytes:
+        deadlockTableLookup?.estimatedRetainedBytes ?? 0,
+      preprocessingRetainedBytes:
+        (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+        (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+        (boostEvaluator?.preprocessingRetainedBytes ?? 0),
       deadlockTableChecks: featureTelemetry.deadlockTableChecks,
       goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
       goalCommitments: commitmentDetector?.stats.commitments ?? 0,
+      goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
     });
 
     const currentMemory = (): IdaMemoryBreakdown =>
       estimateIdaMemory(
-        staticMemoryBytes,
+        currentStaticMemoryBytes(),
         transpositionMemoryBytes,
         heuristicCacheEntries,
         initialBoxes.length,
@@ -681,7 +789,7 @@ export async function runIdaStarSearch(
     };
     const recordCurrentMemory = (): number => {
       const currentBytes = estimateIdaCurrentBytes(
-        staticMemoryBytes,
+        currentStaticMemoryBytes(),
         transpositionMemoryBytes,
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
@@ -739,11 +847,11 @@ export async function runIdaStarSearch(
         counters: m.counters,
         detail,
         ...(incumbentInfo() ? { incumbent: incumbentInfo() } : {}),
-        ...(incumbentSolution
+        ...(U < Infinity
           ? {
-              lowerBound: lastExhaustedThreshold,
+              lowerBound: Math.min(lastExhaustedThreshold, U),
               upperBound: U,
-              gap: U - lastExhaustedThreshold,
+              gap: U - Math.min(lastExhaustedThreshold, U),
             }
           : {}),
       });
@@ -793,6 +901,19 @@ export async function runIdaStarSearch(
       };
     };
 
+    const finishCapExhausted = (lb: number): SolverResult => {
+      const m = metrics();
+      return {
+        status: "unsolved",
+        reason: "exhausted",
+        detail: `No solution exists below the exclusive move bound ${U}.`,
+        metrics: {
+          ...m,
+          counters: { ...m.counters, lowerBound: Math.min(lb, U) },
+        },
+      };
+    };
+
     report("preparing", "Preparing IDA* push search");
     throwIfSolverCancelled(context.signal);
 
@@ -807,6 +928,9 @@ export async function runIdaStarSearch(
 
     // Already solved?
     if (isSolved(board, initialBoxes)) {
+      if (U === 0 && !incumbentSolution) {
+        return finishCapExhausted(0);
+      }
       report("verifying", "Verifying candidate solution");
       throwIfSolverCancelled(context.signal);
       const solution: SolverSolution = {
@@ -867,6 +991,11 @@ export async function runIdaStarSearch(
     const initialPdbSum = pdbValue(initialBoxes);
     const initialH = Math.max(initialHPush + Math.max(initialLC, initialBoost), initialPdbSum) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
+    if (initialH >= U) {
+      return incumbentSolution
+        ? finishSolvedOptimal()
+        : finishCapExhausted(U);
+    }
 
     const initialExactKey = exactKey(initialRobot, initialBoxes);
     const initialZobristKey = zobristKey(initialRobot, initialBoxes);
@@ -1018,7 +1147,12 @@ export async function runIdaStarSearch(
           await delayForEventLoop();
           throwIfSolverCancelled(context.signal);
           const channelU = options?.upperBoundChannel?.poll();
-          if (channelU !== undefined && channelU < U) U = channelU;
+          if (channelU !== undefined && channelU < U) {
+            U = channelU;
+            if (incumbentSolution && incumbentSolution.moves > U) {
+              incumbentSolution = null;
+            }
+          }
           lastYieldAt = context.now();
           workSinceYield = 0;
           if (elapsedLimitReached()) {
@@ -1561,6 +1695,9 @@ export async function runIdaStarSearch(
         if (incumbentSolution) {
           return finishSolvedOptimal();
         }
+        if (U < Infinity) {
+          return finishCapExhausted(U);
+        }
         return {
           status: "unsolved",
           reason: "exhausted",
@@ -1591,6 +1728,9 @@ export async function runIdaStarSearch(
     if (incumbentSolution) {
       return finishSolvedOptimal();
     }
+    if (U < Infinity) {
+      return finishCapExhausted(U);
+    }
     return {
       status: "unsolved",
       reason: "exhausted",
@@ -1598,6 +1738,74 @@ export async function runIdaStarSearch(
       proof: makeUnsolvableProof(),
     };
   } catch (error) {
+    if (
+      isExactPreprocessingLimitError(error) ||
+      isExactInteractionSearchLimitError(error)
+    ) {
+      const collected = collectCurrentMetrics?.();
+      const estimatedMemoryBytes = Math.max(
+        error.estimatedMemoryBytes,
+        collected?.counters?.estimatedMemoryBytes ?? 0,
+      );
+      const limitMetrics: SolverRunMetrics = collected
+        ? {
+            ...collected,
+            counters: {
+              ...collected.counters,
+              estimatedMemoryBytes,
+              currentEstimatedMemoryBytes: estimatedMemoryBytes,
+              peakEstimatedMemoryBytes: Math.max(
+                estimatedMemoryBytes,
+                collected.counters?.peakEstimatedMemoryBytes ?? 0,
+              ),
+            },
+          }
+        : {
+            elapsedMs: Math.max(0, context.now() - startedAt),
+            expandedStates: counters.expanded,
+            generatedStates: counters.generated,
+            peakFrontierSize: counters.peakStackDepth,
+            counters: {
+              estimatedMemoryBytes,
+              currentEstimatedMemoryBytes: estimatedMemoryBytes,
+              peakEstimatedMemoryBytes: estimatedMemoryBytes,
+              exactFeatureMask: exactSearchFeatureMask(features),
+            },
+          };
+      if (incumbentSolution && U < Infinity) {
+        const proven = lastExhaustedThreshold >= U;
+        return {
+          status: "solved",
+          solution: proven
+            ? { ...incumbentSolution, optimality: "proven" }
+            : incumbentSolution,
+          metrics: limitMetrics,
+          proof: proven
+            ? {
+                objective: request.objective,
+                kind: "optimal",
+                algorithm: "move-ida-star",
+                lowerBound: U,
+                upperBound: U,
+                gap: 0,
+              }
+            : {
+                objective: request.objective,
+                kind: "bounded",
+                algorithm: "move-ida-star",
+                lowerBound: lastExhaustedThreshold,
+                upperBound: U,
+                gap: U - lastExhaustedThreshold,
+              },
+        };
+      }
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: error.message,
+        metrics: limitMetrics,
+      };
+    }
     if (isSolverCancellation(error) || context.signal.aborted) {
       let cancellationMetrics = collectCurrentMetrics?.();
       if (!cancellationMetrics) {

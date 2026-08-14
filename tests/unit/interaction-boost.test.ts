@@ -4,7 +4,10 @@ import { describe, it } from "node:test";
 import { parsePuzzleRows } from "../../src/core/index.ts";
 import { compileSearchBoard, type CompiledSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { assignmentLowerBound } from "../../src/solver/search/heuristic.ts";
-import { InteractionBoostEvaluator } from "../../src/solver/search/interaction-boost.ts";
+import {
+  hasPotentialInteractionBoost,
+  InteractionBoostEvaluator,
+} from "../../src/solver/search/interaction-boost.ts";
 import { maximumDisjointSelection } from "../../src/solver/search/disjoint-selection.ts";
 import type { HeuristicCandidate } from "../../src/solver/search/room-pattern-heuristic.ts";
 import { minimumAssignmentCost } from "../../src/solver/search/assignment.ts";
@@ -127,6 +130,48 @@ function exactRemainingPushes(
 }
 
 describe("interaction boost heuristic", () => {
+  it("reports repeated-label open boards as statically inapplicable", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O R   O",
+      "O X X O",
+      "O     O",
+      "O S S O",
+      "O     O",
+      "OOOOOOO",
+    ]));
+    assert.equal(
+      hasPotentialInteractionBoost(board, board.topology),
+      false,
+    );
+  });
+
+  it("checks the exact preprocessing budget during boost construction", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "OaA   O",
+      "OOO OOO",
+      "O   bBO",
+      "OR    O",
+      "OOOOOOO",
+    ]));
+    assert.equal(
+      hasPotentialInteractionBoost(board, board.topology),
+      true,
+    );
+    let clock = 0;
+
+    assert.throws(
+      () => new InteractionBoostEvaluator(board, board.topology, {
+        signal: new AbortController().signal,
+        now: () => ++clock,
+        deadline: 3,
+        baseMemoryBytes: 0,
+      }),
+      /preprocessing/i,
+    );
+  });
+
   it("produces non-negative boost", () => {
     const parsed = parsePuzzleRows([
       "OOOOOOO",

@@ -23,6 +23,8 @@ import {
   benchmarkRunIdentity,
   compareFeatureSummaries,
   expectedBenchmarkPairs,
+  hasStableCleanBenchmarkGitProvenance,
+  isPromotableBenchmarkBaseline,
   isProfileEligible,
   parseBenchmarkArguments,
   parseChildSample,
@@ -31,6 +33,7 @@ import {
   summarizeBenchmarkSamples,
   type BenchmarkProfileId,
   type BenchmarkFeatureRun,
+  type BenchmarkGitSnapshot,
   type BenchmarkSample,
   type BenchmarkSampleSummary,
 } from "./solver-v2-benchmark-lib.ts";
@@ -43,6 +46,13 @@ function gitValue(args: readonly string[]): string {
     timeout: 5_000,
   });
   return result.status === 0 ? result.stdout.trim() : "unknown";
+}
+
+function captureGitSnapshot(): BenchmarkGitSnapshot {
+  return Object.freeze({
+    commit: gitValue(["rev-parse", "HEAD"]),
+    status: gitValue(["status", "--porcelain"]),
+  });
 }
 
 function childErrorSample(
@@ -191,6 +201,7 @@ async function main(): Promise<void> {
       "--compare-feature accepts only classic-astar and classic-ida-star profiles",
     );
   }
+  const gitStart = captureGitSnapshot();
   process.stderr.write(
     `Benchmark methodology: cold isolated; ${args.warmupRuns} untimed preflight(s), ` +
       `${args.timedRuns} timed sample(s)\n`,
@@ -265,7 +276,8 @@ async function main(): Promise<void> {
   const partial = args.compareFeature !== undefined ||
     fixtures.length !== BENCHMARK_CORPUS.length ||
     args.profileIds.length !== BENCHMARK_PROFILE_IDS.length;
-  const gitStatus = gitValue(["status", "--porcelain"]);
+  const gitEnd = captureGitSnapshot();
+  const stableCleanGit = hasStableCleanBenchmarkGitProvenance(gitStart, gitEnd);
   const output = Object.freeze({
     schemaVersion: BENCHMARK_SCHEMA_VERSION,
     captureDate: new Date().toISOString(),
@@ -281,8 +293,20 @@ async function main(): Promise<void> {
     totalMemoryBytes: totalmem(),
     hostname: hostname(),
     git: Object.freeze({
-      commit: gitValue(["rev-parse", "HEAD"]),
-      dirty: gitStatus !== "" && gitStatus !== "unknown",
+      commit: gitEnd.commit,
+      dirty: gitEnd.status !== "",
+      statusKnown: gitEnd.status !== "unknown",
+      stableClean: stableCleanGit,
+      start: Object.freeze({
+        commit: gitStart.commit,
+        dirty: gitStart.status !== "",
+        statusKnown: gitStart.status !== "unknown",
+      }),
+      end: Object.freeze({
+        commit: gitEnd.commit,
+        dirty: gitEnd.status !== "",
+        statusKnown: gitEnd.status !== "unknown",
+      }),
     }),
     corpus: Object.freeze({
       fingerprint: benchmarkCorpusFingerprint(),
@@ -300,11 +324,16 @@ async function main(): Promise<void> {
         BENCHMARK_PROFILES[profileId],
       ])),
     ),
-    promotableBaseline:
-      !partial &&
-      !args.compareFeature &&
-      summaries.length === fullExpectedPairs &&
-      summaries.every((summary) => summary.accepted),
+    promotableBaseline: isPromotableBenchmarkBaseline({
+      partial,
+      compareFeature: args.compareFeature,
+      summaryCount: summaries.length,
+      expectedPairs: fullExpectedPairs,
+      allAccepted: summaries.every((summary) => summary.accepted),
+      timedRuns: args.timedRuns,
+      gitStart,
+      gitEnd,
+    }),
     results: Object.freeze(summaries),
     comparisons: Object.freeze(comparisons),
   });

@@ -1,17 +1,23 @@
 # Sokomind Project Memory
 
-**Status:** Authoritative working memory for the current Sokomind project  
-**Last updated:** 2026-08-11
+**Status:** Historical provenance and implementation journal
+
+**Last reconciled:** 2026-08-14
 **Primary repository:** `Willpatpost/SokomindSolver`  
-**Active Waterfield checkout:** `/home/wpost003/alphaevolve/practice/Sokomind/Sokomind3`
+
+Current contracts, paths, versions, storage keys, routes, and validation commands
+are authoritative in [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md). Historical
+cluster paths and sprint plans below explain prior work only.
 
 ---
 
 ## 1. Purpose
 
-This file is the durable project-memory document for Sokomind. It exists so a new Claude Code, ChatGPT, Codex, or human development session can recover the project context without relying on a long chat history.
+This file preserves repository provenance and the chronological Solver V2
+journal. It is useful background, but it is intentionally not a live task list.
 
-Treat this document as project context, not as a replacement for the current source tree, tests, `CLAUDE.md`, or `docs/solver-v2-spec.md`.
+Treat this document as history, not as a replacement for the current source
+tree, tests, or `docs/PROJECT-REFERENCE.md`.
 
 > Trust executable tests and verified current code paths over prior model statements.
 
@@ -44,7 +50,10 @@ The current repository history is intentionally unusual.
 
 ---
 
-## 3. Current authoritative state
+## 3. Archived pre-remediation snapshot
+
+The bullets in this section describe the original Waterfield/Sprint 0 state.
+They are retained to explain later decisions and are not current instructions.
 
 - Canonical repository: `Willpatpost/SokomindSolver`
 - Active checkout: `/home/wpost003/alphaevolve/practice/Sokomind/Sokomind3`
@@ -455,7 +464,7 @@ detectors, and compiled neighbor traversal.
 
 ## 12. Solver V2 implementation status
 
-The original Sprint 0â€“14 sequence has been implemented and then audited. It
+The original Sprint 0–14 sequence has been implemented and then audited. It
 is no longer an active task checklist. Current behavior is authoritative in
 `docs/solver-v2-progress.md`, benchmark methodology is authoritative in
 `docs/solver-v2-benchmarks.md`, and the original proposal remains in
@@ -685,7 +694,10 @@ The complete details of older Python/browser implementations are not fully recon
 
 ---
 
-## 19. Immediate next actions
+## 19. Archived Sprint 0 next actions
+
+This checklist is preserved as historical input. The implemented and audited
+state is summarized in Section 12 and the current project reference.
 
 1. Finish Sprint 0 corrections:
    - provenance documentation
@@ -710,7 +722,10 @@ The complete details of older Python/browser implementations are not fully recon
 
 ---
 
-## 20. Safe Sprint 1 start criteria
+## 20. Archived Sprint 1 start criteria
+
+These criteria governed the original staged proposal and no longer gate current
+development.
 
 Sprint 1 may begin when:
 
@@ -731,7 +746,11 @@ Sprint 1 must not modify the production `sokomind-solver` adapter or generated e
 
 ## 21. Maintenance rule
 
-Update this document whenever one of these changes:
+Do not add current status or mutable constants here. Update
+`docs/PROJECT-REFERENCE.md` through its source generator instead. Amend this
+historical journal only when repository provenance needs correction.
+
+Historically, this document tracked:
 
 - canonical repository or local path
 - sprint status

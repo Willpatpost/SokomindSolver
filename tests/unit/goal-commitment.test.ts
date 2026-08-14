@@ -11,6 +11,7 @@ import {
 import {
   findProvenCommitments,
   GoalCommitmentDetector,
+  hasPotentialGoalCommitment,
 } from "../../src/solver/search/goal-commitment.ts";
 import {
   toDenseBoxes,
@@ -123,6 +124,20 @@ function exactRemainingPushes(
 }
 
 describe("goal commitment detection", () => {
+  it("statically rejects open boards where no goal can be committed", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O R   O",
+      "O X X O",
+      "O     O",
+      "O S S O",
+      "O     O",
+      "OOOOOOO",
+    ]));
+
+    assert.equal(hasPotentialGoalCommitment(board), false);
+  });
+
   it("detects a corner-locked box on its matching goal", () => {
     // Two X boxes, two S goals. One goal is in a corner, the other is open.
     // The residual assignment (box1 → goal at (3,4)) must be feasible.

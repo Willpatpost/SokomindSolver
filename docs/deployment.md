@@ -20,7 +20,7 @@ Every pull request, default-branch push, or manual workflow dispatch performs:
 5. unit tests, coverage gates, and production build;
 6. static artifact tests;
 7. Playwright and axe tests beneath the configured preview path;
-8. multi-puzzle and Grand Hall solver performance gates.
+8. frozen-optimum, parallel-proof, multi-puzzle, and Grand Hall solver gates.
 
 If a browser job fails, its Playwright traces and screenshots are uploaded as a
 seven-day diagnostic artifact.
@@ -35,6 +35,11 @@ permission required by `configure-pages`; Pages write and OIDC permissions
 exist only on the deploy job.
 
 Dependabot checks npm and GitHub Actions dependencies weekly.
+Major upgrades remain visible as individual pull requests; they are not
+silently ignored or folded into patch/minor dependency groups.
+
+The expensive extended frozen optimum runs weekly and on demand through
+`.github/workflows/solver-extended.yml`, outside pull-request latency.
 
 ## Path contract
 

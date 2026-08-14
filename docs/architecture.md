@@ -4,6 +4,11 @@ Sokomind is a static React application organized around an immutable domain
 core. Rendering, browsing, persistence, sound, motion, and solving are
 consumers of the core rather than alternate owners of game state.
 
+Use [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md) as the maintained index of
+authoritative modules, important APIs, schemas, defaults, and change
+workflows. This document explains the architecture; it does not duplicate
+source-derived constants.
+
 ## Runtime shape
 
 ```text
@@ -84,17 +89,13 @@ respond to an event without entering the core.
 
 ## Persistence
 
-Storage access is centralized, namespaced, versioned, and exception-safe:
-
-- `sokomind.progress.v1`
-- `sokomind.experience.v1`
-- `sokomind.session.v1`
-- `sokomind.optimal.v4`
-- `sokomind.editor-draft.v1`
-
+Storage access is centralized, namespaced, versioned, and exception-safe. The
+current keys and payload schemas are generated into the project reference.
 Session coordinates are never deserialized directly; saved actions replay
 through the core. Puzzle progress never depends on sound or motion preferences.
-See `persistence-and-sharing.md`.
+The editor key contains a bounded named-document store and migrates the legacy
+single draft without silently overwriting it. See
+[`persistence-and-sharing.md`](persistence-and-sharing.md).
 
 ## Audio and animation
 
@@ -133,13 +134,15 @@ each label group to matching goals using wall- and
 support-aware reverse-push distances with all other boxes removed. This is a
 relaxation of the real puzzle, so it never overestimates the remaining cost.
 
-Search runs are isolated in `solver.worker.ts`. The classic engine yields through a
-macrotask so run/cancel messages remain responsive, publishes throttled
-progress, and enforces elapsed-time, expanded-state, generated-state, and
-estimated-memory limits. Only conservative static and fully blocked 2x2
-deadlocks are hard-pruned. Parent links retain compact search history; the
-exact walking route is reconstructed and replay-verified only after a goal is
-found.
+Search runs are isolated in `solver.worker.ts`. The classic engine yields
+through a macrotask so run/cancel messages remain responsive, publishes
+throttled progress, and enforces elapsed-time, expanded-state,
+generated-state, and estimated-memory limits across preprocessing and search.
+Exact pruning and heuristic mechanisms are independently toggleable and have
+exercise counters so safety and benefit can be checked separately. The
+unproved goal-depth macro is not part of successor generation. Parent links
+retain compact search history; the exact walking route is reconstructed and
+replay-verified only after a goal is found.
 
 The Sokomind Solver adds a second isolation boundary for the synchronous legacy
 kernel. `sokomind-engine.worker.ts` performs the CPU-heavy structural, guided,

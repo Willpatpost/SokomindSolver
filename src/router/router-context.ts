@@ -4,6 +4,7 @@ import type { Route } from "./routes";
 export interface RouterValue {
   readonly route: Route;
   readonly previousRoute: Route | null;
+  readonly puzzlesReturnHash: string;
   readonly navigate: (hash: string, options?: { replace?: boolean }) => void;
   readonly back: () => void;
 }

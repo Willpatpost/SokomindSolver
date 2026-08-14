@@ -4,6 +4,7 @@ import type { PuzzleDefinition } from "../../src/core/model.ts";
 import type { ProgressData } from "../../src/shared/progress.ts";
 import {
   computeDailyStreak,
+  buildActivityHeatMap,
   computeStats,
   getDailyPuzzleId,
 } from "../../src/features/progress/compute-stats.ts";
@@ -25,10 +26,10 @@ function progress(completed: Record<string, { moves: number; pushes: number; com
   for (const [id, rec] of Object.entries(completed)) {
     mapped[id] = { ...rec, completedAt: rec.completedAt ?? "2024-01-01T00:00:00Z" };
   }
-  return { version: 2, completed: mapped, daily: {} };
+  return { version: 2, completed: mapped, daily: {}, activity: {} };
 }
 
-const EMPTY: ProgressData = { version: 2, completed: {}, daily: {} };
+const EMPTY: ProgressData = { version: 2, completed: {}, daily: {}, activity: {} };
 
 describe("computeStats", () => {
   describe("empty puzzle list", () => {
@@ -314,6 +315,50 @@ describe("daily challenge participation", () => {
     assert.notEqual(
       getDailyPuzzleId(dailyPuzzles, before),
       getDailyPuzzleId(dailyPuzzles, after),
+    );
+  });
+});
+
+describe("activity heat map", () => {
+  it("iterates local dates across DST without skipping or duplicating a day", () => {
+    const value: ProgressData = {
+      version: 2,
+      completed: {},
+      daily: {},
+      activity: {
+        "2026-03-07": ["a"],
+        "2026-03-08": ["a", "b"],
+        "2026-03-09": ["b"],
+      },
+    };
+
+    assert.deepEqual(
+      buildActivityHeatMap(value, new Date(2026, 2, 9, 12), 3),
+      [
+        { date: "2026-03-07", count: 1 },
+        { date: "2026-03-08", count: 2 },
+        { date: "2026-03-09", count: 1 },
+      ],
+    );
+  });
+
+  it("shows repeat activity instead of attributing it to the personal-best date", () => {
+    const value: ProgressData = {
+      version: 2,
+      completed: {
+        room: {
+          moves: 5,
+          pushes: 1,
+          completedAt: "2000-01-01T12:00:00.000Z",
+        },
+      },
+      daily: {},
+      activity: { "2026-08-14": ["room"] },
+    };
+
+    assert.deepEqual(
+      buildActivityHeatMap(value, new Date(2026, 7, 14, 12), 1),
+      [{ date: "2026-08-14", count: 1 }],
     );
   });
 });

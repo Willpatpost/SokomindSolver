@@ -19,6 +19,7 @@ import {
 } from "@/src/features/editor/editor-serialization";
 import { Modal } from "@/src/shared/ui/Modal";
 import { useEditorState } from "@/src/features/editor/use-editor-state";
+import type { EditorDraftOperationResult } from "@/src/features/editor/use-editor-state";
 import { EditorGrid } from "@/src/features/editor/EditorGrid";
 import { EditorPlaytest } from "@/src/features/editor/EditorPlaytest";
 import { EditorToolbar } from "@/src/features/editor/EditorToolbar";
@@ -46,6 +47,39 @@ interface ShareResult {
   readonly url: string;
   readonly sourceCustomData?: string;
 }
+
+const STARTER_TEMPLATES: readonly PuzzleDefinition[] = [
+  {
+    id: "editor-starter-single-push",
+    title: "Single push starter",
+    difficulty: "beginner",
+    boxes: 1,
+    rows: [
+      "OOOOOOO",
+      "O     O",
+      "O RXS O",
+      "O     O",
+      "OOOOOOO",
+    ],
+    hint: "Push the box directly onto the goal.",
+  },
+  {
+    id: "editor-starter-turn",
+    title: "Turn the corner starter",
+    difficulty: "beginner",
+    boxes: 1,
+    rows: [
+      "OOOOOOOOO",
+      "O       O",
+      "O R     O",
+      "O   X   O",
+      "O     S O",
+      "O       O",
+      "OOOOOOOOO",
+    ],
+    hint: "Try shaping a route that approaches the box from two sides.",
+  },
+];
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -81,6 +115,7 @@ export function EditorPage({ customData }: EditorPageProps) {
     [customData],
   );
   const isSharedPreview = Boolean(sharedPuzzle);
+  // A valid shared link remains read-only until an explicit local import.
   const editor = useEditorState({ autosave: !isSharedPreview });
   const { state, dispatch } = editor;
   const [savedDraftTitle] = useState(state.title);
@@ -91,6 +126,7 @@ export function EditorPage({ customData }: EditorPageProps) {
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [deleteDraftConfirmOpen, setDeleteDraftConfirmOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -102,10 +138,16 @@ export function EditorPage({ customData }: EditorPageProps) {
   const shareOperationRef = useRef(0);
   const restoreEditorFocusRef = useRef(false);
   const testButtonRef = useRef<HTMLButtonElement>(null);
+  const draftNameRef = useRef<HTMLInputElement>(null);
+  const previousCustomDataRef = useRef(customData);
 
   useEffect(() => {
     document.title = "Puzzle Editor · Sokomind";
   }, []);
+
+  useEffect(() => {
+    if (!isSharedPreview) isDirtyRef.current = editor.hasPendingChanges;
+  }, [editor.hasPendingChanges, isSharedPreview]);
 
   useEffect(() => {
     function onBeforeUnload(event: BeforeUnloadEvent) {
@@ -144,16 +186,23 @@ export function EditorPage({ customData }: EditorPageProps) {
 
   const handleBackClick = useCallback(() => {
     if (isDirtyRef.current) {
+      editor.pausePendingDraft();
       setLeaveConfirmOpen(true);
     } else {
       navigate(homeHash());
     }
-  }, [navigate]);
+  }, [editor, navigate]);
+
+  const handleLeaveCancel = useCallback(() => {
+    setLeaveConfirmOpen(false);
+    editor.resumePendingDraft();
+  }, [editor]);
 
   const handleLeaveConfirm = useCallback(() => {
     isDirtyRef.current = false;
+    editor.discardPendingDraft();
     navigate(homeHash());
-  }, [navigate]);
+  }, [editor, navigate]);
 
   const customDataError =
     customData && !sharedPuzzle
@@ -177,22 +226,81 @@ export function EditorPage({ customData }: EditorPageProps) {
       draftRevisionRef.current += 1;
       shareOperationRef.current += 1;
       dispatch({ type: "load", puzzle: sharedPuzzle });
+    } else if (previousCustomDataRef.current !== customData) {
+      editor.restoreActiveDraft();
     }
-  }, [dispatch, sharedPuzzle]);
+    previousCustomDataRef.current = customData;
+  }, [customData, dispatch, editor.restoreActiveDraft, sharedPuzzle]);
 
   const handleImportShared = useCallback(() => {
     if (!sharedPuzzle) return;
+    const result = editor.createDraft({
+      state,
+      name: sharedPuzzle.title,
+      preserveCurrent: true,
+    });
+    if (!result.ok) {
+      setNotice({
+        kind: "error",
+        message: result.message,
+        sourceCustomData: customData,
+      });
+      return;
+    }
     setPlaytestDraft(null);
     setShareResult(null);
-    setNotice(null);
-    isDirtyRef.current = true;
+    isDirtyRef.current = false;
     draftRevisionRef.current += 1;
     setNotice({
       kind: "success",
-      message: "Shared puzzle imported into your saved draft.",
+      message: "Shared puzzle imported as a new local draft.",
     });
     navigate(editorHash());
-  }, [navigate, sharedPuzzle]);
+  }, [customData, editor, navigate, sharedPuzzle, state]);
+
+  const reportDraftOperation = useCallback((
+    result: EditorDraftOperationResult,
+    successMessage: string,
+  ): boolean => {
+    if (!result.ok) {
+      setNotice({ kind: "error", message: result.message });
+      return false;
+    }
+    isDirtyRef.current = false;
+    draftRevisionRef.current += 1;
+    shareOperationRef.current += 1;
+    setPlaytestDraft(null);
+    setShareResult(null);
+    setNotice({ kind: "success", message: successMessage });
+    return true;
+  }, []);
+
+  const handleCreateDraft = useCallback(() => {
+    reportDraftOperation(
+      editor.createDraft({ name: "New draft" }),
+      "New local draft created.",
+    );
+  }, [editor, reportDraftOperation]);
+
+  const handleDuplicateDraft = useCallback(() => {
+    reportDraftOperation(editor.duplicateDraft(), "Draft duplicated.");
+  }, [editor, reportDraftOperation]);
+
+  const handleRenameDraft = useCallback(() => {
+    reportDraftOperation(
+      editor.renameDraft(draftNameRef.current?.value ?? ""),
+      "Draft renamed.",
+    );
+  }, [editor, reportDraftOperation]);
+
+  const handleSwitchDraft = useCallback((id: string) => {
+    reportDraftOperation(editor.switchDraft(id), "Local draft opened.");
+  }, [editor, reportDraftOperation]);
+
+  const handleDeleteDraft = useCallback(() => {
+    const deleted = reportDraftOperation(editor.deleteDraft(), "Draft deleted.");
+    if (deleted) setDeleteDraftConfirmOpen(false);
+  }, [editor, reportDraftOperation]);
 
   const handleDownloadRecovery = useCallback(() => {
     if (!editor.recoveryDraft) return;
@@ -234,6 +342,18 @@ export function EditorPage({ customData }: EditorPageProps) {
   }, [editorValidation.valid, state]);
 
   const isValid = editorValidation.valid && (coreValidation?.valid ?? false);
+  const isBlankDraft = useMemo(
+    () => state.cells.every((row) => row.every((cell) => cell === "O")),
+    [state.cells],
+  );
+
+  const handleStarterTemplate = useCallback((puzzle: PuzzleDefinition) => {
+    applyEditorAction({ type: "load", puzzle });
+    setNotice({
+      kind: "info",
+      message: `${puzzle.title} loaded. Paint the board, then choose Test puzzle.`,
+    });
+  }, [applyEditorAction]);
 
   const handleTest = useCallback(() => {
     if (!isValid) return;
@@ -301,6 +421,7 @@ export function EditorPage({ customData }: EditorPageProps) {
     (puzzle: PuzzleDefinition) => {
       draftRevisionRef.current += 1;
       shareOperationRef.current += 1;
+      isDirtyRef.current = true;
       dispatch({ type: "load", puzzle });
       setGeneratorOpen(false);
       setShareResult(null);
@@ -410,6 +531,29 @@ export function EditorPage({ customData }: EditorPageProps) {
           </section>
         ) : null}
 
+        {!isSharedPreview && !activePlaytest && isBlankDraft ? (
+          <section className={styles.starterGuide} aria-labelledby="starter-guide-title">
+            <div>
+              <span className={styles.eyebrow}>First build</span>
+              <h2 id="starter-guide-title">Start with a working room</h2>
+              <p>
+                Pick a template, paint with the tools, then test the puzzle before sharing it.
+              </p>
+            </div>
+            <div className={styles.starterActions}>
+              {STARTER_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => handleStarterTemplate(template)}
+                >
+                  {template.title}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {activePlaytest ? (
           <div
             className={`${styles.content} ${styles.playtestContent}`}
@@ -432,10 +576,53 @@ export function EditorPage({ customData }: EditorPageProps) {
             aria-label={isSharedPreview ? "Read-only shared puzzle preview" : undefined}
           >
             <div className={styles.sidebar}>
-              <EditorToolbar
-                selectedTool={state.selectedTool}
-                dispatch={applyEditorAction}
-              />
+              <section className={styles.fields} aria-label="Local drafts">
+                <label>
+                  Local draft
+                  <select
+                    aria-label="Local draft"
+                    value={editor.activeDraft.id}
+                    onChange={(event) => handleSwitchDraft(event.currentTarget.value)}
+                  >
+                    {editor.drafts.map((draft) => (
+                      <option key={draft.id} value={draft.id}>{draft.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <small>
+                  {editor.activeDraft.updatedAt
+                    ? `Last saved ${new Date(editor.activeDraft.updatedAt).toLocaleString()}`
+                    : "Not saved yet"}
+                </small>
+                <label>
+                  Draft name
+                  <input
+                    key={editor.activeDraft.id}
+                    aria-label="Draft name"
+                    defaultValue={editor.activeDraft.name}
+                    maxLength={60}
+                    ref={draftNameRef}
+                  />
+                </label>
+                <div className={styles.actions}>
+                  <button type="button" onClick={handleRenameDraft}>Rename draft</button>
+                  <button type="button" onClick={handleCreateDraft}>New draft</button>
+                  <button type="button" onClick={handleDuplicateDraft}>Duplicate draft</button>
+                  <button
+                    type="button"
+                    disabled={editor.drafts.length <= 1}
+                    onClick={() => setDeleteDraftConfirmOpen(true)}
+                  >
+                    Delete draft
+                  </button>
+                </div>
+              </section>
+              <div className={styles.mobileStickyTools}>
+                <EditorToolbar
+                  selectedTool={state.selectedTool}
+                  dispatch={applyEditorAction}
+                />
+              </div>
 
               <div className={styles.sizeControls}>
                 <label>
@@ -651,7 +838,17 @@ export function EditorPage({ customData }: EditorPageProps) {
         confirmLabel="Leave"
         destructive
         onConfirm={handleLeaveConfirm}
-        onClose={() => setLeaveConfirmOpen(false)}
+        onClose={handleLeaveCancel}
+      />
+
+      <ConfirmDialog
+        open={deleteDraftConfirmOpen}
+        title="Delete this draft?"
+        message={`Delete “${editor.activeDraft.name}” from this device? This cannot be undone.`}
+        confirmLabel="Delete draft"
+        destructive
+        onConfirm={handleDeleteDraft}
+        onClose={() => setDeleteDraftConfirmOpen(false)}
       />
 
       <ConfirmDialog

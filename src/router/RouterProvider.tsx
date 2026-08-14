@@ -13,18 +13,33 @@ function resolveInitialRoute(): Route {
   return result.route;
 }
 
+function isPuzzleSelectorRoute(route: Route): boolean {
+  return route.page === "puzzles" ||
+    route.page === "puzzles-difficulty" ||
+    route.page === "puzzles-collection";
+}
+
 export function RouterProvider({ children }: { children: ReactNode }) {
-  const [routing, setRouting] = useState(() => ({
-    route: resolveInitialRoute(),
-    previousRoute: null as Route | null,
-  }));
-  const { route, previousRoute } = routing;
+  const [routing, setRouting] = useState(() => {
+    const route = resolveInitialRoute();
+    return {
+      route,
+      previousRoute: null as Route | null,
+      puzzlesReturnHash: isPuzzleSelectorRoute(route)
+        ? window.location.hash
+        : "#/puzzles",
+    };
+  });
+  const { route, previousRoute, puzzlesReturnHash } = routing;
   const prevPageRef = useRef(route.page);
 
-  const commitRoute = useCallback((next: Route) => {
+  const commitRoute = useCallback((next: Route, hash = window.location.hash) => {
     setRouting((current) => ({
       route: next,
       previousRoute: current.route,
+      puzzlesReturnHash: isPuzzleSelectorRoute(next)
+        ? hash
+        : current.puzzlesReturnHash,
     }));
   }, []);
 
@@ -39,9 +54,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       if (result.kind === "redirect") {
         window.location.replace(result.hash);
         const resolved = parseHash(result.hash);
-        if (resolved.kind === "route") commitRoute(resolved.route);
+        if (resolved.kind === "route") commitRoute(resolved.route, result.hash);
       } else {
-        commitRoute(result.route);
+        commitRoute(result.route, hash);
       }
     },
     [commitRoute],
@@ -61,9 +76,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       if (result.kind === "redirect") {
         window.location.replace(result.hash);
         const resolved = parseHash(result.hash);
-        if (resolved.kind === "route") commitRoute(resolved.route);
+        if (resolved.kind === "route") commitRoute(resolved.route, result.hash);
       } else {
-        commitRoute(result.route);
+        commitRoute(result.route, window.location.hash);
       }
     }
     window.addEventListener("hashchange", onHashChange);
@@ -73,6 +88,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (prevPageRef.current !== route.page) {
       prevPageRef.current = route.page;
+      if (previousRoute?.page === "play" && isPuzzleSelectorRoute(route)) {
+        return;
+      }
       const prefersReduced =
         document.documentElement.dataset.motion === "reduced" ||
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -81,11 +99,17 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         behavior: prefersReduced ? "instant" : "smooth",
       });
     }
-  }, [route.page]);
+  }, [previousRoute, route]);
 
   const value = useMemo<RouterValue>(
-    () => ({ route, previousRoute, navigate, back }),
-    [route, previousRoute, navigate, back],
+    () => ({
+      route,
+      previousRoute,
+      puzzlesReturnHash,
+      navigate,
+      back,
+    }),
+    [route, previousRoute, puzzlesReturnHash, navigate, back],
   );
 
   return (

@@ -323,6 +323,31 @@ describe("AC6: cutoff with incumbent returns bounded proof", () => {
     assert.deepStrictEqual(issues, [], `Proof validation issues: ${issues.join("; ")}`);
   });
 
+  it("never lets a cutoff heap peek overstate the active-node oracle bound", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const optimum = assertSolved(await runExactMoveAStar(req, oracleContext()));
+    const incumbent = await runClassicSearch(req, oracleContext(), { strategy: "dfs" });
+    assert.equal(incumbent.status, "solved");
+    if (incumbent.status !== "solved") return;
+    const result = await runExactMoveAStar(
+      { ...req, limits: { maxGeneratedStates: 1 } },
+      oracleContext(),
+      {
+        incumbent: {
+          solution: incumbent.solution,
+          cost: incumbent.solution.moves,
+        },
+      },
+    );
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.proof?.kind, "bounded");
+    assert.ok(
+      (result.proof?.lowerBound ?? Infinity) <= optimum.solution.moves,
+      "a cutoff lower bound must include the dequeued active node",
+    );
+  });
+
   it("returns unsolved on cutoff without incumbent", async () => {
     const req: SolverRequest = {
       ...requestFromRows(BOARD_ROWS),
@@ -332,6 +357,63 @@ describe("AC6: cutoff with incumbent returns bounded proof", () => {
     assert.equal(result.status, "unsolved");
     if (result.status !== "unsolved") throw new Error("unreachable");
     assert.equal(result.reason, "limit-reached");
+  });
+
+  it("treats a numeric upper bound as a cap, never as a solution", async () => {
+    const req = requestFromRows(BOARD_ROWS);
+    const optimum = assertSolved(await runExactMoveAStar(req, oracleContext()));
+    const result = await runExactMoveAStar(req, oracleContext(), {
+      upperBound: optimum.solution.moves,
+    });
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "exhausted");
+    assert.equal(result.proof, undefined);
+    assert.equal(result.metrics.counters?.lowerBound, optimum.solution.moves);
+  });
+});
+
+describe("exact preprocessing resource budgets", () => {
+  it("enforces the elapsed deadline while preprocessing", async () => {
+    let clock = 0;
+    const result = await runExactMoveAStar(
+      { ...requestFromRows(BOARD_ROWS), limits: { maxElapsedMs: 3 } },
+      {
+        signal: new AbortController().signal,
+        reportProgress: () => undefined,
+        now: () => ++clock,
+      },
+    );
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "limit-reached");
+    assert.match(result.detail ?? "", /preprocessing/i);
+    assert.equal(result.metrics.expandedStates, 0);
+  });
+
+  it("enforces and reports the memory budget before retained tables allocate", async () => {
+    const result = await runExactMoveAStar(
+      { ...requestFromRows(BOARD_ROWS), limits: { maxMemoryBytes: 1 } },
+      oracleContext(),
+    );
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "limit-reached");
+    assert.ok((result.metrics.counters?.estimatedMemoryBytes ?? 0) > 1);
+  });
+
+  it("counts retained PDB and deadlock-table structures", async () => {
+    const result = assertSolved(
+      await runExactMoveAStar(requestFromRows(BOARD_ROWS), oracleContext()),
+    );
+    assert.ok((result.metrics.counters?.pdbRetainedBytes ?? 0) > 0);
+    assert.ok((result.metrics.counters?.deadlockTableRetainedBytes ?? 0) > 0);
+    assert.equal(
+      result.metrics.counters?.preprocessingRetainedBytes,
+      (result.metrics.counters?.pdbRetainedBytes ?? 0) +
+        (result.metrics.counters?.deadlockTableRetainedBytes ?? 0) +
+        (result.metrics.counters?.interactionBoostRetainedBytes ?? 0),
+    );
   });
 });
 

@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
 import { useStoredProgress } from "@/src/shared/use-stored-progress";
-import { computeStats } from "@/src/features/progress/compute-stats";
+import {
+  buildActivityHeatMap,
+  computeStats,
+} from "@/src/features/progress/compute-stats";
 import {
   ACHIEVEMENTS,
   getUnlockedAchievements,
 } from "@/src/features/achievements/achievements";
-import { resetAppData } from "@/src/shared/app-data-reset";
 import { summarizeProgressMerge } from "@/src/shared/progress";
 import { readProgressImportFile } from "@/src/shared/progress-import";
 import {
   createProgressWriterId,
   loadProgressSyncSnapshot,
   persistProgressImport,
+  resetStoredProgress,
 } from "@/src/shared/progress-sync";
 import { ExperienceControls } from "@/src/features/experience";
 import { Link, homeHash } from "@/src/router";
@@ -35,32 +38,6 @@ function formatDuration(ms: number): string {
   return `${minutes}m`;
 }
 
-interface HeatDay {
-  date: string;
-  count: number;
-}
-
-function buildHeatMap(
-  progress: Record<string, { completedAt: string }>,
-): HeatDay[] {
-  const dayCounts = new Map<string, number>();
-  for (const record of Object.values(progress)) {
-    const date = new Date(record.completedAt);
-    if (!Number.isFinite(date.getTime())) continue;
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
-  }
-
-  const today = new Date();
-  const days: HeatDay[] = [];
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 86_400_000);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    days.push({ date: key, count: dayCounts.get(key) ?? 0 });
-  }
-  return days;
-}
-
 function heatLevel(count: number): number {
   if (count === 0) return 0;
   if (count <= 2) return 1;
@@ -77,7 +54,7 @@ export function StatsPage() {
   );
 
   const heatMap = useMemo(
-    () => buildHeatMap(progress.completed),
+    () => buildActivityHeatMap(progress),
     [progress],
   );
 
@@ -96,15 +73,20 @@ export function StatsPage() {
   const [resetInput, setResetInput] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
 
-  const handleResetProgress = useCallback(async () => {
-    try {
-      await resetAppData();
-      window.location.hash = "";
-      window.location.reload();
-    } catch (e) {
-      setResetError(e instanceof Error ? e.message : "Reset failed.");
+  const handleResetProgress = useCallback(() => {
+    const update = resetStoredProgress();
+    if (!update.result.ok) {
+      const cause = update.result.reason === "quota-exceeded"
+        ? "browser storage is full"
+        : update.result.reason === "security-error"
+          ? "the browser denied storage access"
+          : "browser storage is unavailable";
+      setResetError(`Progress was not reset because ${cause}.`);
       setResetStep("idle");
+      return;
     }
+    window.location.hash = "";
+    window.location.reload();
   }, []);
 
   const [statsCopied, setStatsCopied] = useState(false);
@@ -160,7 +142,8 @@ export function StatsPage() {
       return;
     }
     if (Object.keys(parsed.progress.completed).length === 0 &&
-      Object.keys(parsed.progress.daily).length === 0) {
+      Object.keys(parsed.progress.daily).length === 0 &&
+      Object.keys(parsed.progress.activity).length === 0) {
       setImportStatus("No matching puzzles found in the file.");
       return;
     }
@@ -530,9 +513,9 @@ export function StatsPage() {
                   type="button"
                   className={styles.resetButton}
                   disabled={resetInput !== "RESET"}
-                  onClick={() => void handleResetProgress()}
+                  onClick={handleResetProgress}
                 >
-                  Permanently delete all data
+                  Permanently reset progress
                 </button>
                 <button
                   type="button"

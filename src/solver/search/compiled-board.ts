@@ -4,6 +4,10 @@ import type {
   Position,
 } from "../../core/model.ts";
 import { analyzeTopology, type BoardTopology } from "./topology.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 /**
  * Search direction order is part of the compiled-board contract.
@@ -97,7 +101,15 @@ function buildReversePushDistances(
   goalCell: number,
   positions: readonly Position[],
   cellAt: (row: number, column: number) => number,
+  budget?: ExactPreprocessingBudget,
+  retainedBeforeTable = 0,
 ): Int32Array {
+  const workingBytes = positions.length *
+    (Int32Array.BYTES_PER_ELEMENT * 2);
+  checkExactPreprocessingBudget(
+    budget,
+    retainedBeforeTable + workingBytes,
+  );
   const distances = new Int32Array(positions.length);
   distances.fill(-1);
   distances[goalCell] = 0;
@@ -108,6 +120,12 @@ function buildReversePushDistances(
   let tail = 1;
 
   while (head < tail) {
+    if ((head & 31) === 0) {
+      checkExactPreprocessingBudget(
+        budget,
+        retainedBeforeTable + workingBytes,
+      );
+    }
     const currentCell = queue[head];
     head += 1;
     const current = positions[currentCell];
@@ -148,7 +166,11 @@ function buildReversePushDistances(
  * geometrically valid support square. They therefore underestimate—or equal—
  * the pushes required in the real puzzle and are safe inputs to A*.
  */
-export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
+export function compileSearchBoard(
+  board: ParsedBoard,
+  budget?: ExactPreprocessingBudget,
+): CompiledSearchBoard {
+  checkExactPreprocessingBudget(budget);
   if (
     !Number.isInteger(board.width) ||
     !Number.isInteger(board.height) ||
@@ -157,6 +179,12 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
   ) {
     throw new RangeError("Board dimensions must be positive integers.");
   }
+
+  let estimatedRetainedBytes =
+    512 +
+    board.width * board.height * Int32Array.BYTES_PER_ELEMENT +
+    board.floor.length * 32;
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
 
   const positions = [...board.floor]
     .map((position) => {
@@ -167,10 +195,14 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
       });
     })
     .sort(positionOrder);
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
 
   const cellByOffset = new Int32Array(board.width * board.height);
   cellByOffset.fill(-1);
   positions.forEach((position, cell) => {
+    if ((cell & 31) === 0) {
+      checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
+    }
     const offset = position.row * board.width + position.column;
     if (cellByOffset[offset] >= 0) {
       throw new Error(
@@ -194,6 +226,8 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
     return cellByOffset[row * board.width + column];
   };
 
+  estimatedRetainedBytes += positions.length * 48;
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
   const neighbors = positions.map((position) => {
     const adjacent = new Int32Array(SEARCH_DIRECTION_COUNT);
     SEARCH_DIRECTIONS.forEach(({ rowDelta, columnDelta }, directionIndex) => {
@@ -204,10 +238,17 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
     });
     return adjacent;
   });
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
 
+  estimatedRetainedBytes += positions.length * 16 + board.goals.length * 96;
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
   const goalLabelByCell = Array<string | null>(positions.length).fill(null);
   const mutableGoalCellsByLabel = new Map<string, number[]>();
-  for (const goal of board.goals) {
+  for (let goalIndex = 0; goalIndex < board.goals.length; goalIndex++) {
+    if ((goalIndex & 15) === 0) {
+      checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
+    }
+    const goal = board.goals[goalIndex];
     assertBoardPosition(board, goal.position, "Goal");
     const goalCell = cellAt(goal.position.row, goal.position.column);
     if (goalCell < 0) {
@@ -237,10 +278,23 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
   const reversePushDistancesByGoal = new Map<number, Int32Array>();
   for (const goalCells of goalCellsByLabel.values()) {
     for (const goalCell of goalCells) {
+      const tableRetainedBytes =
+        positions.length * Int32Array.BYTES_PER_ELEMENT + 128;
+      checkExactPreprocessingBudget(
+        budget,
+        estimatedRetainedBytes + tableRetainedBytes,
+      );
       reversePushDistancesByGoal.set(
         goalCell,
-        buildReversePushDistances(goalCell, positions, cellAt),
+        buildReversePushDistances(
+          goalCell,
+          positions,
+          cellAt,
+          budget,
+          estimatedRetainedBytes,
+        ),
       );
+      estimatedRetainedBytes += tableRetainedBytes;
     }
   }
 
@@ -258,6 +312,16 @@ export function compileSearchBoard(board: ParsedBoard): CompiledSearchBoard {
     reversePushDistancesByGoal,
     topology: undefined!,
   };
-  (compiled as { topology: BoardTopology }).topology = analyzeTopology(compiled);
+  const topologyBudget = budget
+    ? {
+        ...budget,
+        baseMemoryBytes: budget.baseMemoryBytes + estimatedRetainedBytes,
+      }
+    : undefined;
+  (compiled as { topology: BoardTopology }).topology = analyzeTopology(
+    compiled,
+    topologyBudget,
+  );
+  checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
   return Object.freeze(compiled);
 }

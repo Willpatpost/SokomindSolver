@@ -10,6 +10,10 @@ async function openSolver(page: Page) {
   await page.getByRole("button", { name: "Open solver laboratory" }).click();
   const dialog = page.getByRole("dialog", { name: "Find a route" });
   await expect(dialog).toBeVisible();
+  const advanced = dialog.getByText("Advanced settings", { exact: true });
+  await expect(advanced).toBeVisible();
+  await expect(dialog.getByLabel("Algorithm")).toBeHidden();
+  await advanced.click();
   await expect(dialog.getByLabel("Algorithm")).toHaveValue("sokomind-solver");
   return dialog;
 }

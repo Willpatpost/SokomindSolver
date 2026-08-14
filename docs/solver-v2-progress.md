@@ -1,6 +1,6 @@
 # Solver V2 — Current Implementation Status
 
-Last reconciled: August 11, 2026
+Last reconciled: August 14, 2026
 
 This document describes the code that exists now. It replaces the former
 sprint-by-sprint diary, which mixed historical intentions, intermediate test
@@ -86,6 +86,17 @@ goal-macro pruning. Twenty-four completed under the ordinary 60-second gate.
 19 pushes after roughly 150 seconds. This is a correctness pass and a
 performance warning, not an efficiency success.
 
+The manifest is executable rather than documentary:
+
+- `npm run test:solver:known` runs the 24 ordinary fixtures;
+- `npm run test:solver:known:extended` runs `expert-tetris`; and
+- `npm run test:solver:parallel` proves inter-rooms through the production
+  two-worker Node adapter.
+
+Standard and parallel gates run in pull-request/default-branch CI. The extended
+fixture runs in a scheduled/manual workflow because its single proof currently
+takes about 2.5 minutes on the audit workstation.
+
 No unknown optimum is invented from an old performance artifact. A newly
 proved, replay-valid result can be captured, reviewed, and then added to the
 frozen correctness map separately.
@@ -105,6 +116,44 @@ lane count produces zero-budget lanes rather than manufacturing one state per
 lane. The rewrite engine enforces and reports generated states across
 permutation, push-window, and move-window searches. Summed reservations cannot
 exceed the run-wide remainder.
+
+## August 14 proof-safety follow-up
+
+### Active A* cutoffs
+
+A* dequeues the minimum-`f` node before expanding it. Resource termination
+during that expansion now retains the active node's bound; the remaining heap
+alone cannot overstate proof progress. A cutoff returns a bounded incumbent
+unless every unresolved subtree is already at or above its cost.
+
+### Numeric caps are not incumbents
+
+`ExactIncumbent` carries a complete replay-validated route and its cost.
+`upperBound` is an exclusive numeric ceiling only. Parallel workers use the
+latter until they construct a real route, so a shared bound can prune or prove
+partition exhaustion but can never manufacture a public solution.
+
+### Integer and deadline-safe phase handoff
+
+Discovery metrics may contain fractional milliseconds, while solver protocol
+limits require positive safe integers. Sequential proof floors and clamps every
+derived elapsed/state remainder, returns immediately for a zero share, and
+subtracts proof-planning time again before launch.
+
+### Budgeted preprocessing
+
+Pattern-database, deadlock-table, and related exact preprocessing now share the
+run's cancellation, elapsed, and estimated-memory budget. Limit exits include
+retained preprocessing bytes and feature counters instead of appearing as
+zero-cost failures before search.
+
+### Parallel metric semantics
+
+Expanded/generated work and event counters are additive. A retained structure
+or peak takes the maximum across sequential partitions on the same worker and
+then conservatively sums worker maxima across possible concurrency. Coordinator
+elapsed time remains wall time. This avoids summing sequential peaks while
+remaining an upper bound rather than claiming timeline-sampled process RSS.
 
 ## Removed proof scaffolds
 
@@ -192,6 +241,12 @@ The schema-3 V2 harness now:
 evidence. It is incomplete for the current 43-fixture corpus and must not be
 used as the current performance truth.
 
+A schema-3 capture is promotable only when it covers every eligible pair,
+every deterministic group is accepted, it has at least five timed samples, the
+Git commit is a known full hash, and the worktree is clean. A/B classifications
+also qualify median elapsed time and peak RSS; a reviewed regression in either
+resource vetoes an apparent node-count win or makes conflicting evidence mixed.
+
 ## Remaining performance work
 
 Correctness changes can expose performance costs. Current priorities are:
@@ -214,6 +269,8 @@ npm.cmd run lint
 npm.cmd run test:unit
 npm.cmd run test:solver:oracle
 npm.cmd run test:solver:optimal
+npm.cmd run test:solver:proof-regressions
+npm.cmd run test:solver:known:extended
 npm.cmd run test:solver:multi
 npm.cmd run test:solver:huge
 npm.cmd run build

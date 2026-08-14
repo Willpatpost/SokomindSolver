@@ -15,10 +15,15 @@ import {
   persistProgressReset,
   persistProgressUpdate,
   reconcileProgressSnapshots,
+  resetStoredProgress,
   writeProgressSyncSnapshot,
   type ProgressSyncSnapshot,
 } from "../../src/shared/progress-sync.ts";
-import { STORAGE_KEYS } from "../../src/shared/storage.ts";
+import {
+  APP_SESSION_STORAGE_KEYS,
+  APP_STORAGE_KEYS,
+  STORAGE_KEYS,
+} from "../../src/shared/storage.ts";
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>();
@@ -53,6 +58,7 @@ function progress(
       ]),
     ),
     daily: {},
+    activity: {},
   };
 }
 
@@ -66,10 +72,15 @@ function snapshot(
 }
 
 let storage: Storage;
+let sessionStorage: Storage;
 
 beforeEach(() => {
   storage = createMockStorage();
-  (globalThis as Record<string, unknown>).window = { localStorage: storage };
+  sessionStorage = createMockStorage();
+  (globalThis as Record<string, unknown>).window = {
+    localStorage: storage,
+    sessionStorage,
+  };
 });
 
 afterEach(() => {
@@ -155,6 +166,26 @@ test("same-generation races converge deterministically on the better record", ()
   );
 });
 
+test("same-generation races union activity without double counting", () => {
+  const first: ProgressData = {
+    ...EMPTY_PROGRESS,
+    activity: { "2026-08-14": ["room-a"] },
+  };
+  const second: ProgressData = {
+    ...EMPTY_PROGRESS,
+    activity: { "2026-08-14": ["room-a", "room-b"] },
+  };
+
+  assert.deepEqual(
+    mergeConcurrentProgress(first, second).activity,
+    { "2026-08-14": ["room-a", "room-b"] },
+  );
+  assert.deepEqual(
+    mergeConcurrentProgress(second, first).activity,
+    { "2026-08-14": ["room-a", "room-b"] },
+  );
+});
+
 test("concurrent tie-breaking does not change import current-record-wins rules", () => {
   const current = progress({
     room: {
@@ -221,4 +252,33 @@ test("a higher reset generation prevents stale records from resurrecting", () =>
       ?.progress.completed.oldA,
     undefined,
   );
+});
+
+test("progress-only reset preserves every other app-owned storage domain", () => {
+  for (const key of APP_STORAGE_KEYS) storage.setItem(key, `owned:${key}`);
+  for (const key of APP_SESSION_STORAGE_KEYS) {
+    sessionStorage.setItem(key, `session-owned:${key}`);
+  }
+  sessionStorage.setItem("sokomind:timer:room-a", "active-timer");
+  writeProgressSyncSnapshot(snapshot("before-reset", progress({
+    room: { moves: 10, pushes: 3 },
+  }), 4, 7));
+
+  const preserved = new Map(
+    APP_STORAGE_KEYS
+      .filter((key) => key !== STORAGE_KEYS.progress)
+      .map((key) => [key, storage.getItem(key)]),
+  );
+  const update = resetStoredProgress("progress-reset");
+
+  assert.equal(update.result.ok, true);
+  assert.deepEqual(loadProgressSyncSnapshot().progress, EMPTY_PROGRESS);
+  assert.equal(loadProgressSyncSnapshot().generation, 5);
+  for (const [key, value] of preserved) {
+    assert.equal(storage.getItem(key), value, `${key} must not be reset`);
+  }
+  for (const key of APP_SESSION_STORAGE_KEYS) {
+    assert.equal(sessionStorage.getItem(key), `session-owned:${key}`);
+  }
+  assert.equal(sessionStorage.getItem("sokomind:timer:room-a"), "active-timer");
 });

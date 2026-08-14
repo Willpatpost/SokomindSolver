@@ -29,6 +29,7 @@ export interface ProofStartPartition {
   readonly type: "proof/start-partition";
   readonly partitionId: string;
   readonly request: SolverRequest;
+  /** Exclusive numeric move cap; it is not evidence that a route exists. */
   readonly initialUpperBound: number;
   readonly prefixCost: number;
   readonly prefixSteps: readonly SolutionStep[];

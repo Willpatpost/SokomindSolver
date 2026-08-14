@@ -15,6 +15,16 @@ import { DIFFICULTY_LABELS, PUZZLES_PER_PAGE } from "./selector-constants";
 
 export type CompletionFilter = "all" | "cleared" | "open" | "favorites";
 
+interface PuzzleListContextSnapshot {
+  readonly boxFilter: number | null;
+  readonly completionFilter: CompletionFilter;
+  readonly query: string;
+  readonly scrollY: number;
+  readonly focusedPuzzleId?: string;
+}
+
+const puzzleListContexts = new Map<string, PuzzleListContextSnapshot>();
+
 export interface UsePuzzleListStateOptions {
   readonly difficulty: PuzzleDifficulty;
   readonly collection: string;
@@ -23,6 +33,7 @@ export interface UsePuzzleListStateOptions {
   readonly navigate: RouterValue["navigate"];
   readonly pageNumber?: number;
   readonly directDifficultyView: boolean;
+  readonly restoreContext?: boolean;
 }
 
 export function usePuzzleListState({
@@ -33,17 +44,60 @@ export function usePuzzleListState({
   navigate,
   pageNumber,
   directDifficultyView,
+  restoreContext = false,
 }: UsePuzzleListStateOptions) {
-  const [boxFilter, setBoxFilter] = useState<number | null>(null);
-  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>("all");
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const contextKey = `${directDifficultyView ? "difficulty" : "collection"}:${difficulty}:${collection}`;
+  const savedContext = puzzleListContexts.get(contextKey);
+  const [boxFilter, setBoxFilter] = useState<number | null>(
+    savedContext?.boxFilter ?? null,
+  );
+  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>(
+    savedContext?.completionFilter ?? "all",
+  );
+  const [query, setQuery] = useState(savedContext?.query ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(savedContext?.query ?? "");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pageStatusRef = useRef<HTMLParagraphElement>(null);
   const previousPageNumberRef = useRef(pageNumber);
   const preserveFilterFocusRef = useRef(false);
 
   useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  useEffect(() => {
+    const previous = puzzleListContexts.get(contextKey);
+    puzzleListContexts.set(contextKey, {
+      boxFilter,
+      completionFilter,
+      query,
+      scrollY: previous?.scrollY ?? 0,
+      focusedPuzzleId: previous?.focusedPuzzleId,
+    });
+  }, [boxFilter, completionFilter, contextKey, query]);
+
+  useEffect(() => {
+    if (!restoreContext) return;
+    const context = puzzleListContexts.get(contextKey);
+    if (!context) return;
+
+    let secondFrame: number | undefined;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        window.scrollTo(0, context.scrollY);
+        if (!context.focusedPuzzleId) return;
+        const row = [...document.querySelectorAll<HTMLButtonElement>(
+          "button[data-puzzle-id]",
+        )].find((candidate) =>
+          candidate.dataset.puzzleId === context.focusedPuzzleId
+        );
+        row?.focus({ preventScroll: true });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== undefined) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [contextKey, restoreContext]);
 
   const allPuzzles = useMemo(
     () =>
@@ -94,6 +148,9 @@ export function usePuzzleListState({
         : puzzleCollectionPageHash(difficulty, collection, nextPage),
     [collection, difficulty, directDifficultyView],
   );
+  const recentPuzzle = savedContext?.focusedPuzzleId
+    ? allPuzzles.find((puzzle) => puzzle.id === savedContext.focusedPuzzleId)
+    : undefined;
 
   const pageCount = Math.max(
     1,
@@ -146,6 +203,16 @@ export function usePuzzleListState({
     [resetPagination],
   );
 
+  const rememberPuzzleFocus = useCallback((puzzleId: string) => {
+    puzzleListContexts.set(contextKey, {
+      boxFilter,
+      completionFilter,
+      query,
+      scrollY: window.scrollY,
+      focusedPuzzleId: puzzleId,
+    });
+  }, [boxFilter, completionFilter, contextKey, query]);
+
   useEffect(() => {
     if (requestedPage === currentPage) return;
     navigate(pageHash(currentPage), { replace: true });
@@ -169,6 +236,7 @@ export function usePuzzleListState({
     query,
     filteredPuzzles,
     visiblePuzzles,
+    recentPuzzle,
     nextUnsolved,
     indexMap,
     viewLabel,
@@ -181,5 +249,6 @@ export function usePuzzleListState({
     handleSearchChange,
     handleBoxFilterChange,
     handleCompletionFilterChange,
+    rememberPuzzleFocus,
   };
 }

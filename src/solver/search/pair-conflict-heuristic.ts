@@ -34,10 +34,36 @@ export class PairConflictHeuristic {
   readonly #board: CompiledSearchBoard;
   readonly #topology: BoardTopology;
   readonly #tableCache = new Map<string, PairTable>();
+  readonly #retainedBudgetCheck?: (estimatedRetainedBytes: number) => void;
 
-  constructor(board: CompiledSearchBoard, topology: BoardTopology) {
+  constructor(
+    board: CompiledSearchBoard,
+    topology: BoardTopology,
+    retainedBudgetCheck?: (estimatedRetainedBytes: number) => void,
+  ) {
     this.#board = board;
     this.#topology = topology;
+    this.#retainedBudgetCheck = retainedBudgetCheck;
+  }
+
+  get tableRetainedBytes(): number {
+    let total = 0;
+    for (const table of this.#tableCache.values()) {
+      total += table.result.estimatedRetainedBytes + 192;
+    }
+    return total;
+  }
+
+  get criticalCellCacheRetainedBytes(): number {
+    let total = 0;
+    for (const [key, cells] of this.#criticalCellCache) {
+      total += 128 + key.length * 2 + cells.size * 8;
+    }
+    return total;
+  }
+
+  get estimatedRetainedBytes(): number {
+    return this.tableRetainedBytes + this.criticalCellCacheRetainedBytes;
   }
 
   candidates(
@@ -111,6 +137,9 @@ export class PairConflictHeuristic {
       goalCell,
       this.#topology,
     );
+    this.#retainedBudgetCheck?.(
+      this.estimatedRetainedBytes + 128 + key.length * 2 + result.size * 8,
+    );
     this.#criticalCellCache.set(key, result);
     return result;
   }
@@ -128,10 +157,16 @@ export class PairConflictHeuristic {
       { cell: leftGoals[0], label: leftLabel },
       { cell: rightGoals[0], label: rightLabel },
     ];
+    const retainedBeforeTable = this.estimatedRetainedBytes;
     const result = relaxedReversePushTable(
       board,
       targetBoxes,
       PAIR_CONFLICT_MAX_STATES,
+      undefined,
+      (tableBytes) =>
+        this.#retainedBudgetCheck?.(
+          retainedBeforeTable + tableBytes + 192,
+        ),
     );
     this.stats.builds++;
     this.stats.states += result.visited;
@@ -140,6 +175,9 @@ export class PairConflictHeuristic {
       labels: new Set(labels),
       result,
     };
+    this.#retainedBudgetCheck?.(
+      retainedBeforeTable + result.estimatedRetainedBytes + 192,
+    );
     this.#tableCache.set(cacheKey, table);
     return table;
   }

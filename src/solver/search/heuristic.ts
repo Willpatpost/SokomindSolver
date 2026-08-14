@@ -18,6 +18,7 @@ import {
   UNSOLVED as PDB_UNSOLVED,
   type PatternDatabase,
 } from "./pattern-database.ts";
+import type { ExactPreprocessingBudget } from "./preprocessing-budget.ts";
 
 const INCREMENTAL_ASSIGNMENT_CROSSOVER = 3;
 
@@ -594,16 +595,23 @@ export class PdbHeuristicEvaluator {
   static async createAsync(
     board: CompiledSearchBoard,
     signal: AbortSignal,
+    budget?: ExactPreprocessingBudget,
   ): Promise<PdbHeuristicEvaluator> {
     const partitions = partitionGoals(board);
     const pdbs: PatternDatabase[] = [];
     for (const partition of partitions) {
+      const retainedBytes = pdbs.reduce(
+        (sum, pdb) => sum + pdb.estimatedRetainedBytes,
+        0,
+      );
       pdbs.push(
         await buildPatternDatabaseAsync(board, {
           goalCells: partition.goalCells,
           labelIds: partition.labels,
           regionCells: partition.regionCells,
-        }, signal),
+        }, signal, budget
+          ? { ...budget, baseMemoryBytes: budget.baseMemoryBytes + retainedBytes }
+          : undefined),
       );
     }
     return new PdbHeuristicEvaluator(partitions, pdbs);
@@ -615,6 +623,13 @@ export class PdbHeuristicEvaluator {
 
   get totalTableEntries(): number {
     return this.#pdbs.reduce((sum, pdb) => sum + pdb.tableSize, 0);
+  }
+
+  get estimatedRetainedBytes(): number {
+    return this.#pdbs.reduce(
+      (sum, pdb) => sum + pdb.estimatedRetainedBytes,
+      0,
+    );
   }
 
   evaluate(boxes: readonly DenseBox[]): number {

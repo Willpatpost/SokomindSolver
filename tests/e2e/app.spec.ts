@@ -29,6 +29,18 @@ test("solves a room and reports the new personal best", async ({ page }) => {
   await expect(dialog).toContainText("1 Push");
 });
 
+test("difficulty feedback exposes its selected state", async ({ page }) => {
+  await page.keyboard.press("ArrowDown");
+  const dialog = page.getByRole("dialog", { name: "First Steps" });
+  const tooEasy = dialog.getByRole("button", { name: "Too easy" });
+  const justRight = dialog.getByRole("button", { name: "Just right" });
+
+  await expect(tooEasy).toHaveAttribute("aria-pressed", "false");
+  await justRight.click();
+  await expect(justRight).toHaveAttribute("aria-pressed", "true");
+  await expect(tooEasy).toHaveAttribute("aria-pressed", "false");
+});
+
 test("restores an exact attempt after reload and keeps undo available", async ({
   page,
 }) => {

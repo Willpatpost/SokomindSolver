@@ -33,10 +33,15 @@ import {
 import {
   findProvenCommitments,
   GoalCommitmentDetector,
+  hasPotentialGoalCommitment,
 } from "./goal-commitment.ts";
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
-import { InteractionBoostEvaluator } from "./interaction-boost.ts";
+import {
+  hasPotentialInteractionBoost,
+  InteractionBoostEvaluator,
+  isExactInteractionSearchLimitError,
+} from "./interaction-boost.ts";
 import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
@@ -69,6 +74,11 @@ import {
   resolveExactSearchFeatures,
   type ExactSearchFeatures,
 } from "./exact-search-features.ts";
+import {
+  checkExactPreprocessingBudget,
+  isExactPreprocessingLimitError,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 export interface ExactIncumbent {
   readonly solution: SolverSolution;
@@ -81,6 +91,8 @@ export interface UpperBoundChannel {
 
 export interface ExactMoveAStarOptions {
   readonly incumbent?: ExactIncumbent;
+  /** Exclusive move-cost ceiling. Unlike an incumbent, this carries no route. */
+  readonly upperBound?: number;
   readonly upperBoundChannel?: UpperBoundChannel;
   readonly features?: Partial<ExactSearchFeatures>;
 }
@@ -242,16 +254,55 @@ export async function runExactMoveAStar(
     maxDepth: 0,
   };
   let collectCurrentMetrics: (() => SolverRunMetrics) | undefined;
+  const numericUpperBound = options?.upperBound ?? Infinity;
+  if (
+    numericUpperBound !== Infinity &&
+    (!Number.isSafeInteger(numericUpperBound) || numericUpperBound < 0)
+  ) {
+    throw new Error("Exact A* upper bound must be a non-negative safe integer.");
+  }
+  let U = Math.min(options?.incumbent?.cost ?? Infinity, numericUpperBound);
+  if (options?.incumbent) {
+    const { cost, solution } = options.incumbent;
+    if (cost !== solution.moves || !Number.isSafeInteger(cost) || cost < 0) {
+      throw new Error("Exact A* incumbent cost does not match its route.");
+    }
+    const verification = verifySolverSolution(request, solution);
+    if (!verification.valid) {
+      throw new Error(`Exact A* incumbent is invalid: ${verification.message}`);
+    }
+  }
   let incumbentSolution: SolverSolution | null =
-    options?.incumbent?.solution ?? null;
-  let U = options?.incumbent?.cost ?? Infinity;
+    options?.incumbent && options.incumbent.cost <= U
+      ? options.incumbent.solution
+      : null;
   let lastLowerBound = 0;
 
   try {
     throwIfSolverCancelled(context.signal);
-    const board = compileSearchBoard(request.board);
+    const deadline = request.limits?.maxElapsedMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : startedAt + request.limits.maxElapsedMs;
+    const compilationBudget: ExactPreprocessingBudget = {
+      signal: context.signal,
+      now: context.now,
+      deadline,
+      maxMemoryBytes: request.limits?.maxMemoryBytes,
+      baseMemoryBytes: 0,
+    };
+    const board = compileSearchBoard(request.board, compilationBudget);
     const { cellCount } = board;
     const labels = [...board.goalCellsByLabel.keys()].sort();
+    const baseStaticBytes = estimateStaticSearchBytes(board);
+    const preprocessingBudget: ExactPreprocessingBudget = {
+      signal: context.signal,
+      now: context.now,
+      deadline,
+      maxMemoryBytes: request.limits?.maxMemoryBytes,
+      baseMemoryBytes: baseStaticBytes,
+    };
+    checkExactPreprocessingBudget(preprocessingBudget);
+    let estimateInteractionSearchBaseMemory = () => baseStaticBytes;
 
     context.reportProgress({
       phase: "preparing",
@@ -261,26 +312,47 @@ export async function runExactMoveAStar(
     });
 
     const reachability = new KeeperReachability(board);
-    const patternCache = features.patternDeadlockPruning
+    const patternCacheCandidate = features.patternDeadlockPruning
       ? new PatternDeadlockCache()
+      : null;
+    const patternCache = patternCacheCandidate?.hasEligibleWindow(board)
+      ? patternCacheCandidate
       : null;
     const corralDetector = features.piCorralPruning
       ? new PiCorralDetector(cellCount)
       : null;
-    const commitmentDetector = features.goalCommitmentPruning
+    const commitmentDetector =
+      features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
       ? new GoalCommitmentDetector()
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
 
-    const boostEvaluator = features.interactionBoost
-      ? new InteractionBoostEvaluator(board, board.topology)
+    const boostEvaluator =
+      features.interactionBoost &&
+        hasPotentialInteractionBoost(board, board.topology)
+      ? new InteractionBoostEvaluator(
+          board,
+          board.topology,
+          preprocessingBudget,
+          {
+            signal: context.signal,
+            now: context.now,
+            deadline,
+            maxMemoryBytes: request.limits?.maxMemoryBytes,
+            baseMemoryBytes: () => estimateInteractionSearchBaseMemory(),
+          },
+        )
       : null;
     const macroDetector = features.forcedPushMacros
       ? new ForcedPushMacroDetector(board)
       : null;
     const deadlockTableLookup = features.deadlockTablePruning
-      ? await buildDeadlockTablesAsync(board, context.signal)
+      ? await buildDeadlockTablesAsync(
+          board,
+          context.signal,
+          preprocessingBudget,
+        )
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
@@ -292,7 +364,13 @@ export async function runExactMoveAStar(
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
     const pdbStartedAt = context.now();
     const pdbEvaluator = features.patternDatabase
-      ? await PdbHeuristicEvaluator.createAsync(board, context.signal)
+      ? await PdbHeuristicEvaluator.createAsync(board, context.signal, {
+          ...preprocessingBudget,
+          baseMemoryBytes:
+            baseStaticBytes +
+            (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+            (boostEvaluator?.preprocessingRetainedBytes ?? 0),
+        })
       : null;
     featureTelemetry.pdbBuildTimeMs = features.patternDatabase
       ? Math.max(0, context.now() - pdbStartedAt)
@@ -300,7 +378,13 @@ export async function runExactMoveAStar(
     featureTelemetry.pdbTableEntries = pdbEvaluator?.totalTableEntries ?? 0;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
-    const staticBytes = estimateStaticSearchBytes(board);
+    const preprocessingStaticBytes = baseStaticBytes +
+      (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+      (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+      (pdbEvaluator?.estimatedRetainedBytes ?? 0);
+    const currentStaticBytes = () =>
+      preprocessingStaticBytes +
+      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();
     for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
@@ -316,6 +400,8 @@ export async function runExactMoveAStar(
       toDenseBoxes(board, request.snapshot.boxes),
     );
     const boxCount = initialBoxes.length;
+    let heapSize = 0;
+    let uniqueStates = 0;
 
     const linearConflict = (boxes: readonly DenseBox[]): number => {
       if (!features.linearConflict) return 0;
@@ -345,6 +431,15 @@ export async function runExactMoveAStar(
 
     const maxToken = labelCount * cellCount - 1;
     const arena = createCompactNodeArena(boxCount, maxToken);
+    estimateInteractionSearchBaseMemory = () =>
+      estimatedArenaMemoryBytes(
+        preprocessingStaticBytes,
+        arena.estimatedRetainedBytes(),
+        uniqueStates,
+        heapSize,
+        heuristic.stats.cacheEntries,
+        boxCount,
+      );
 
     const parentTokenBuf = new Uint32Array(boxCount);
     const childTokenBuf = new Uint32Array(boxCount);
@@ -380,27 +475,38 @@ export async function runExactMoveAStar(
     const initialH = Math.max(initialPushBound + Math.max(initialLC, initialBoost), initialPdbSum) + initialWalkBound;
     lastLowerBound = initialH;
 
-    let heapSize = 0;
-    let uniqueStates = 0;
-
     const featureCounters = (): Readonly<Record<string, number>> => ({
       exactFeatureMask: exactSearchFeatureMask(features),
       incrementalAssignmentRepairs: heuristic.stats.incrementalRepairs,
       linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
       linearConflictTotal: featureTelemetry.linearConflictTotal,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
+      interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
+      interactionBoostRetainedBytes:
+        boostEvaluator?.estimatedRetainedBytes ?? 0,
+      interactionBoostSearchCacheRetainedBytes:
+        boostEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
+      pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
       patternDeadlockChecks: patternCache?.stats.checks ?? 0,
+      patternDeadlockApplicable: patternCache === null ? 0 : 1,
       deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
       deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
       deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
+      deadlockTableRetainedBytes:
+        deadlockTableLookup?.estimatedRetainedBytes ?? 0,
+      preprocessingRetainedBytes:
+        (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+        (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+        (boostEvaluator?.preprocessingRetainedBytes ?? 0),
       deadlockTableChecks: featureTelemetry.deadlockTableChecks,
       goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
       goalCommitments: commitmentDetector?.stats.commitments ?? 0,
+      goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
     });
 
     const metrics = () =>
@@ -412,7 +518,7 @@ export async function runExactMoveAStar(
         uniqueStates,
         arena.size,
         heuristic,
-        staticBytes,
+        currentStaticBytes(),
         boxCount,
         arena.estimatedRetainedBytes(),
         macroDetector?.stats,
@@ -441,12 +547,12 @@ export async function runExactMoveAStar(
           uniqueStates,
           arena.size,
           heuristic,
-          staticBytes,
+          currentStaticBytes(),
           boxCount,
           arena.estimatedRetainedBytes(),
           incumbentInfo(),
-          incumbentSolution ? lastLowerBound : undefined,
-          incumbentSolution ? U : undefined,
+          U < Infinity ? Math.min(lastLowerBound, U) : undefined,
+          U < Infinity ? U : undefined,
           macroDetector?.stats,
           featureCounters,
         ),
@@ -467,7 +573,7 @@ export async function runExactMoveAStar(
       const stats = heuristic.stats;
       return (
         estimatedArenaMemoryBytes(
-          staticBytes,
+          currentStaticBytes(),
           arena.estimatedRetainedBytes(),
           uniqueStates,
           heapSize,
@@ -521,6 +627,19 @@ export async function runExactMoveAStar(
       };
     };
 
+    const finishCapExhausted = (lb: number): SolverResult => {
+      const m = metrics();
+      return {
+        status: "unsolved",
+        reason: "exhausted",
+        detail: `No solution exists below the exclusive move bound ${U}.`,
+        metrics: {
+          ...m,
+          counters: { ...m.counters, lowerBound: Math.min(lb, U) },
+        },
+      };
+    };
+
     report("preparing", "Preparing exact A* search");
     throwIfSolverCancelled(context.signal);
 
@@ -548,6 +667,9 @@ export async function runExactMoveAStar(
     }
 
     if (isSolved(board, initialBoxes)) {
+      if (U === 0 && !incumbentSolution) {
+        return finishCapExhausted(0);
+      }
       if (0 < U) {
         const solution: SolverSolution = {
           steps: [],
@@ -581,7 +703,9 @@ export async function runExactMoveAStar(
     }
 
     if (initialH >= U) {
-      return finishSolvedOptimal();
+      return incumbentSolution
+        ? finishSolvedOptimal()
+        : finishCapExhausted(U);
     }
 
     const rootIndex = arena.allocate();
@@ -675,7 +799,12 @@ export async function runExactMoveAStar(
         await delayForEventLoop();
         throwIfSolverCancelled(context.signal);
         const channelU = options?.upperBoundChannel?.poll();
-        if (channelU !== undefined && channelU < U) U = channelU;
+        if (channelU !== undefined && channelU < U) {
+          U = channelU;
+          if (incumbentSolution && incumbentSolution.moves > U) {
+            incumbentSolution = null;
+          }
+        }
         lastYieldAt = context.now();
         workSinceYield = 0;
         if (elapsedLimitReached()) {
@@ -700,7 +829,9 @@ export async function runExactMoveAStar(
       lastLowerBound = L;
 
       if (L >= U) {
-        return finishSolvedOptimal();
+        return incumbentSolution
+          ? finishSolvedOptimal()
+          : finishCapExhausted(U);
       }
 
       for (let b = 0; b < boxCount; b++) {
@@ -1051,7 +1182,7 @@ export async function runExactMoveAStar(
           if (
             maxMemoryAfterHeuristic !== undefined &&
             estimatedArenaMemoryBytes(
-              staticBytes,
+              currentStaticBytes(),
               arena.estimatedRetainedBytes(),
               uniqueStates,
               heap.size,
@@ -1100,7 +1231,7 @@ export async function runExactMoveAStar(
           if (maxMemory !== undefined) {
             const stats = heuristic.stats;
             const projectedMemory = estimatedArenaMemoryBytes(
-              staticBytes,
+              currentStaticBytes(),
               projectedArenaBytes,
               uniqueStates + 1,
               heap.size + 1,
@@ -1142,32 +1273,28 @@ export async function runExactMoveAStar(
     syncState();
     if (limitDetail) {
       if (incumbentSolution) {
-        const peekIndex = heap.size > 0 ? heap.peek() : undefined;
-        let bestL = lastLowerBound;
-        if (peekIndex !== undefined) {
-          bestL = arena.gMoves(peekIndex) + arena.heuristic(peekIndex);
-        }
-        return finishSolvedBounded(bestL);
+        // The current node has already been removed from the heap. A cutoff
+        // during its expansion must retain that node's f-value; heap.peek()
+        // alone can overstate the proven lower bound.
+        return finishSolvedBounded(lastLowerBound);
       }
       const m = metrics();
-      let cutoffLB = lastLowerBound;
-      const peekIdx = heap.size > 0 ? heap.peek() : undefined;
-      if (peekIdx !== undefined) {
-        cutoffLB = arena.gMoves(peekIdx) + arena.heuristic(peekIdx);
-      }
       return {
         status: "unsolved",
         reason: "limit-reached",
         detail: limitDetail,
         metrics: {
           ...m,
-          counters: { ...m.counters, lowerBound: cutoffLB },
+          counters: { ...m.counters, lowerBound: lastLowerBound },
         },
       };
     }
 
     if (incumbentSolution) {
       return finishSolvedOptimal();
+    }
+    if (U < Infinity) {
+      return finishCapExhausted(U);
     }
     return {
       status: "unsolved",
@@ -1176,6 +1303,56 @@ export async function runExactMoveAStar(
       proof: makeUnsolvableProof(),
     };
   } catch (error) {
+    if (
+      isExactPreprocessingLimitError(error) ||
+      isExactInteractionSearchLimitError(error)
+    ) {
+      const limitMetrics: SolverRunMetrics = {
+        elapsedMs: Math.max(0, context.now() - startedAt),
+        expandedStates: counters.expanded,
+        generatedStates: counters.generated,
+        peakFrontierSize: counters.peakFrontier,
+        counters: {
+          estimatedMemoryBytes: error.estimatedMemoryBytes,
+          currentEstimatedMemoryBytes: error.estimatedMemoryBytes,
+          peakEstimatedMemoryBytes: error.estimatedMemoryBytes,
+          exactFeatureMask: exactSearchFeatureMask(features),
+        },
+      };
+      if (incumbentSolution && U < Infinity) {
+        const proven = lastLowerBound >= U;
+        return {
+          status: "solved",
+          solution: proven
+            ? { ...incumbentSolution, optimality: "proven" }
+            : incumbentSolution,
+          metrics: limitMetrics,
+          proof: proven
+            ? {
+                objective: request.objective,
+                kind: "optimal",
+                algorithm: "move-astar",
+                lowerBound: U,
+                upperBound: U,
+                gap: 0,
+              }
+            : {
+                objective: request.objective,
+                kind: "bounded",
+                algorithm: "move-astar",
+                lowerBound: lastLowerBound,
+                upperBound: U,
+                gap: U - lastLowerBound,
+              },
+        };
+      }
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: error.message,
+        metrics: limitMetrics,
+      };
+    }
     if (isSolverCancellation(error) || context.signal.aborted) {
       const cancelMetrics = collectCurrentMetrics?.() ?? {
         elapsedMs: Math.max(0, context.now() - startedAt),

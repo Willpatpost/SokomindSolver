@@ -138,6 +138,63 @@ test("a reset propagates to another tab and stale progress is not resurrected", 
   ]);
 });
 
+test("progress dialog reports failed imports and resets without changing visible progress", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    const state = { blockProgress: false };
+    Object.defineProperty(window, "__progressDialogFailure", { value: state });
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key === "sokomind.progress.v1" && state.blockProgress) {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  });
+  await page.goto("./#/play/ultra-tiny");
+  const completion = await solveFirstSteps(page);
+  await completion.getByRole("button", { name: "Study board" }).click();
+  await page.getByRole("button", { name: "Open progress" }).click();
+  const dialog = page.getByRole("dialog", { name: "Your progress" });
+  await expect(dialog.getByTestId("completed-count")).toHaveText("1");
+
+  await page.evaluate(() => {
+    (window as typeof window & {
+      __progressDialogFailure: { blockProgress: boolean };
+    }).__progressDialogFailure.blockProgress = true;
+  });
+  await dialog.getByRole("button", { name: "Reset saved progress" }).click();
+  await dialog.getByRole("button", { name: "Yes, reset progress" }).click();
+  await expect(dialog.getByRole("status").filter({ hasText: "not reset" }))
+    .toBeVisible();
+  await expect(dialog.getByText("Saved progress was reset.")).toHaveCount(0);
+  await expect(dialog.getByTestId("completed-count")).toHaveText("1");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  await dialog.getByLabel("Import progress backup file").setInputFiles({
+    name: "progress.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      version: 2,
+      completed: {
+        "tutorial-push": {
+          moves: 4,
+          pushes: 1,
+          completedAt: "2026-08-14T12:00:00.000Z",
+        },
+      },
+      daily: {},
+      activity: { "2026-08-14": ["tutorial-push"] },
+    })),
+  });
+  await expect(dialog.getByRole("status").filter({ hasText: "not imported" }))
+    .toBeVisible();
+  await expect(dialog.getByText(/Progress imported:/u)).toHaveCount(0);
+  await expect(dialog.getByTestId("completed-count")).toHaveText("1");
+  await expect.poll(() => storedProgressIds(page)).toEqual(["ultra-tiny"]);
+});
+
 test("a quota failure shows one warning and a later successful retry clears it", async ({
   page,
 }) => {

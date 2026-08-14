@@ -1,5 +1,9 @@
 # Sokomind Solver Engineering Rules
 
+Start with `docs/PROJECT-REFERENCE.md` for current ownership, contracts,
+persistent identifiers, solver versions, and the validation ladder. Source and
+executable tests remain authoritative when any prose disagrees.
+
 ## Game rules
 
 - O is wall.

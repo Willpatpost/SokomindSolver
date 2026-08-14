@@ -16,7 +16,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: [/mobile\.spec\.ts/, /service-worker\.spec\.ts/],
+      testIgnore: [/mobile\.spec\.ts/, /minimum-width\.spec\.ts/, /service-worker\.spec\.ts/],
       use: {
         ...devices["Desktop Chrome"],
         channel: process.env.CI ? undefined : "chrome",
@@ -24,14 +24,14 @@ export default defineConfig({
     },
     {
       name: "firefox",
-      testIgnore: [/mobile\.spec\.ts/, /service-worker\.spec\.ts/],
+      testIgnore: [/mobile\.spec\.ts/, /minimum-width\.spec\.ts/, /service-worker\.spec\.ts/],
       use: {
         ...devices["Desktop Firefox"],
       },
     },
     {
       name: "webkit",
-      testIgnore: [/mobile\.spec\.ts/, /service-worker\.spec\.ts/],
+      testIgnore: [/mobile\.spec\.ts/, /minimum-width\.spec\.ts/, /service-worker\.spec\.ts/],
       use: {
         ...devices["Desktop Safari"],
       },
@@ -49,6 +49,15 @@ export default defineConfig({
       testMatch: /mobile\.spec\.ts/,
       use: {
         ...devices["iPhone 14"],
+      },
+    },
+    {
+      name: "minimum-width-chrome",
+      testMatch: /minimum-width\.spec\.ts/,
+      use: {
+        ...devices["Pixel 7"],
+        viewport: { width: 320, height: 568 },
+        channel: process.env.CI ? undefined : "chrome",
       },
     },
     {

@@ -1,0 +1,21 @@
+.notice {
+  position: relative;
+  z-index: 45;
+  width: min(620px, calc(100% - 24px));
+  margin: max(8px, env(safe-area-inset-top)) auto 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--coral-500), transparent 42%);
+  border-radius: 10px;
+  color: var(--ink-800);
+  background: color-mix(in srgb, var(--paper-50), var(--coral-500) 8%);
+  box-shadow: var(--shadow-soft);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (forced-colors: active) {
+  .notice {
+    border: 2px solid CanvasText;
+  }
+}

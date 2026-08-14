@@ -29,14 +29,15 @@ function declaredTestNames(fileName: string, sourceText: string): ReadonlySet<st
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && node.arguments.length > 0) {
       const callee = node.expression;
-      const baseName = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)
-          ? callee.expression.text
-          : null;
+      const isExecutableTest =
+        (ts.isIdentifier(callee) && (callee.text === "test" || callee.text === "it")) ||
+        (ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          (callee.expression.text === "test" || callee.expression.text === "it") &&
+          callee.name.text === "only");
       const name = node.arguments[0];
       if (
-        (baseName === "test" || baseName === "it") &&
+        isExecutableTest &&
         (ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name))
       ) {
         names.add(name.text);
@@ -47,6 +48,18 @@ function declaredTestNames(fileName: string, sourceText: string): ReadonlySet<st
   visit(source);
   return names;
 }
+
+test("route-matrix discovery rejects skipped, todo, and suite-only declarations", () => {
+  const names = declaredTestNames("fixture.ts", `
+    test("direct", () => {});
+    it.only("focused", () => {});
+    test.skip("skipped", () => {});
+    test.todo("todo");
+    test.describe("suite", () => {});
+    test.beforeEach("hook", () => {});
+  `);
+  assert.deepEqual([...names], ["direct", "focused"]);
+});
 
 test("critical route behavior matrix references executable regression tests", () => {
   const requiredRoutes = new Set(["home", "selector", "play", "editor", "stats"]);

@@ -1,6 +1,10 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
 import { throwIfSolverCancelled } from "../cancellation.ts";
 import { delayForEventLoop } from "./scheduling.ts";
+import {
+  checkExactPreprocessingBudget,
+  type ExactPreprocessingBudget,
+} from "./preprocessing-budget.ts";
 
 export interface PatternDatabaseConfig {
   readonly goalCells: readonly number[];
@@ -13,11 +17,26 @@ export interface PatternDatabase {
   readonly tableSize: number;
   readonly goalCells: readonly number[];
   readonly regionCells: readonly number[];
+  readonly estimatedRetainedBytes: number;
   lookup(boxCells: readonly number[]): number;
 }
 
 const UNSOLVED = 0xffff;
 const MAX_K = 6;
+
+function estimatePdbRetainedBytes(
+  boardCellCount: number,
+  regionCount: number,
+  k: number,
+  tableSize: number,
+): number {
+  return 256 +
+    boardCellCount * Int32Array.BYTES_PER_ELEMENT +
+    (regionCount + 1) * (k + 1) * Uint32Array.BYTES_PER_ELEMENT +
+    tableSize * Uint16Array.BYTES_PER_ELEMENT +
+    regionCount * 8 +
+    k * 8;
+}
 
 // ---------------------------------------------------------------------------
 // Combinadic encoding: map k sorted positions from a set of n to a contiguous
@@ -80,7 +99,7 @@ export function buildPatternDatabase(
   const k = goalCells.length;
 
   if (k === 0) {
-    return { k: 0, tableSize: 0, goalCells, regionCells, lookup: () => 0 };
+    return { k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => 0 };
   }
   if (k > MAX_K) {
     throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
@@ -98,7 +117,7 @@ export function buildPatternDatabase(
   const tableSize = binom[regionCount][k];
 
   if (tableSize === 0) {
-    return { k, tableSize: 0, goalCells, regionCells, lookup: () => UNSOLVED };
+    return { k, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => UNSOLVED };
   }
 
   const table = new Uint16Array(tableSize);
@@ -109,7 +128,16 @@ export function buildPatternDatabase(
     .sort((a, b) => a - b);
 
   if (solvedRegionPositions.some((p) => p < 0)) {
-    return { k, tableSize, goalCells, regionCells, lookup: () => UNSOLVED };
+    return {
+      k,
+      tableSize,
+      goalCells,
+      regionCells,
+      estimatedRetainedBytes: estimatePdbRetainedBytes(
+        board.cellCount, regionCount, k, tableSize,
+      ),
+      lookup: () => UNSOLVED,
+    };
   }
 
   const solvedIndex = combinadicEncode(solvedRegionPositions, binom);
@@ -170,6 +198,9 @@ export function buildPatternDatabase(
     tableSize,
     goalCells: [...goalCells],
     regionCells: [...regionCells],
+    estimatedRetainedBytes: estimatePdbRetainedBytes(
+      board.cellCount, regionCount, k, tableSize,
+    ),
     lookup(boxCells: readonly number[]): number {
       const regionPositions: number[] = [];
       for (const cell of boxCells) {
@@ -191,12 +222,14 @@ export async function buildPatternDatabaseAsync(
   board: CompiledSearchBoard,
   config: PatternDatabaseConfig,
   signal: AbortSignal,
+  budget?: ExactPreprocessingBudget,
 ): Promise<PatternDatabase> {
   const { goalCells, regionCells } = config;
   const k = goalCells.length;
+  checkExactPreprocessingBudget(budget);
 
   if (k === 0) {
-    return { k: 0, tableSize: 0, goalCells, regionCells, lookup: () => 0 };
+    return { k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => 0 };
   }
   if (k > MAX_K) {
     throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
@@ -212,9 +245,13 @@ export async function buildPatternDatabaseAsync(
 
   const binom = buildBinomials(regionCount, k);
   const tableSize = binom[regionCount][k];
+  const retainedBytes = estimatePdbRetainedBytes(
+    board.cellCount, regionCount, k, tableSize,
+  );
+  checkExactPreprocessingBudget(budget, retainedBytes);
 
   if (tableSize === 0) {
-    return { k, tableSize: 0, goalCells, regionCells, lookup: () => UNSOLVED };
+    return { k, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => UNSOLVED };
   }
 
   const table = new Uint16Array(tableSize);
@@ -225,7 +262,7 @@ export async function buildPatternDatabaseAsync(
     .sort((a, b) => a - b);
 
   if (solvedRegionPositions.some((p) => p < 0)) {
-    return { k, tableSize, goalCells, regionCells, lookup: () => UNSOLVED };
+    return { k, tableSize, goalCells, regionCells, estimatedRetainedBytes: retainedBytes, lookup: () => UNSOLVED };
   }
 
   const solvedIndex = combinadicEncode(solvedRegionPositions, binom);
@@ -240,12 +277,23 @@ export async function buildPatternDatabaseAsync(
   let itersSinceYield = 0;
 
   throwIfSolverCancelled(signal);
+  checkExactPreprocessingBudget(budget, retainedBytes + 64 + k * 8);
 
   while (head < queue.length) {
+    if ((head & 255) === 0) {
+      checkExactPreprocessingBudget(
+        budget,
+        retainedBytes + queue.length * (32 + k * 8),
+      );
+    }
     if (++itersSinceYield >= PDB_BFS_YIELD_INTERVAL) {
       itersSinceYield = 0;
       await delayForEventLoop();
       throwIfSolverCancelled(signal);
+      checkExactPreprocessingBudget(
+        budget,
+        retainedBytes + queue.length * (32 + k * 8),
+      );
     }
 
     const current = queue[head++];
@@ -295,6 +343,7 @@ export async function buildPatternDatabaseAsync(
     tableSize,
     goalCells: [...goalCells],
     regionCells: [...regionCells],
+    estimatedRetainedBytes: retainedBytes,
     lookup(boxCells: readonly number[]): number {
       const regionPositions: number[] = [];
       for (const cell of boxCells) {

@@ -84,8 +84,10 @@ function InvalidPlayRoute() {
 }
 
 function LoadedPlayPage({ puzzleId, actionLog, freshAttempt }: PlayPageProps) {
+  const { puzzlesReturnHash } = useRouter();
   const [puzzle, setPuzzle] = useState<PuzzleDefinition | null>(null);
   const [failure, setFailure] = useState<Error | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -106,9 +108,40 @@ function LoadedPlayPage({ puzzleId, actionLog, freshAttempt }: PlayPageProps) {
     return () => {
       active = false;
     };
-  }, [puzzleId]);
+  }, [puzzleId, loadAttempt]);
 
-  if (failure) throw failure;
+  if (failure) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.loadFailure} role="alert">
+          <p className={styles.stageEyebrow}>Puzzle unavailable</p>
+          <h1>Couldn&apos;t load this puzzle</h1>
+          <p>
+            {navigator.onLine
+              ? "The puzzle file did not load. The connection may have dropped, or a cached file may be out of date."
+              : "You are offline and this puzzle is not cached on this device yet."}
+          </p>
+          <div className={styles.loadFailureActions}>
+            <button
+              type="button"
+              onClick={() => {
+                setFailure(null);
+                setPuzzle(null);
+                setLoadAttempt((value) => value + 1);
+              }}
+            >
+              Retry loading
+            </button>
+            <Link href={puzzlesReturnHash}>Back to puzzles</Link>
+          </div>
+          <details>
+            <summary>Error details</summary>
+            <code>{failure.message}</code>
+          </details>
+        </section>
+      </main>
+    );
+  }
   if (!puzzle) {
     return (
       <main className={styles.page}>
@@ -145,6 +178,7 @@ function ValidatedPlayPage({
   readonly actionLog?: string;
   readonly freshAttempt?: boolean;
 }) {
+  const { puzzlesReturnHash } = useRouter();
   const { isFavorite, toggle: toggleFav } = useFavorites();
   const handleToggleFavorite = useCallback(
     () => toggleFav(definition.id),
@@ -200,7 +234,7 @@ function ValidatedPlayPage({
       <a href="#game-stage" className={styles.skipLink}>Skip to puzzle</a>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
-          <Link href={puzzlesHash()} className={styles.backButton} aria-label="Back to puzzles">
+          <Link href={puzzlesReturnHash} className={styles.backButton} aria-label="Back to puzzles">
             <span aria-hidden="true">&larr;</span>
           </Link>
           <Link href={homeHash()} className={styles.brandSmall} aria-label="Sokomind home">
@@ -355,6 +389,10 @@ function ValidatedPlayPage({
               deadlockedBoxIds={game.deadlockedBoxIds}
             />
           </div>
+
+          <p className={styles.mobileMoveCue}>
+            Swipe the board to move, or use the controls below.
+          </p>
 
           <MoveNotation actionLog={session.actionLog} moves={session.moves} />
           <MoveTimeline actionLog={session.actionLog} moves={session.moves} pushes={session.pushes} />

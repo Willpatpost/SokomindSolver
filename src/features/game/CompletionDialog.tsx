@@ -215,6 +215,7 @@ export function CompletionDialog({
                 type="button"
                 className={styles.feedbackButton}
                 data-selected={selectedRating === opt.value || undefined}
+                aria-pressed={selectedRating === opt.value}
                 onClick={() => handleRate(opt.value)}
               >
                 {opt.label}

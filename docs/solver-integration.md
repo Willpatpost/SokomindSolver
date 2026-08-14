@@ -146,9 +146,12 @@ modes take the same code path — the gate in the source is
 Discovery, harvesting, rewriting, and proof consume one run-wide allowance.
 Elapsed, expanded, and generated work already spent is subtracted before the
 next phase begins. Concurrent proof divides finite state and memory allowances
-between partitions and uses one coordinator deadline; final metrics merge all
-phases and partitions rather than replacing discovery telemetry with proof
-telemetry.
+between partitions and uses one coordinator deadline. Exact PDB/deadlock
+preprocessing is covered by the same time, cancellation, and estimated-memory
+ledger. Final metrics merge all phases and partitions rather than replacing
+discovery telemetry with proof telemetry. Work counters are additive; retained
+and peak resources take a per-worker maximum across sequential partitions and
+then a conservative sum across concurrent workers.
 
 Nested proof messages are an untrusted boundary. The coordinator requires
 finite non-negative safe costs, fully structured metrics and solutions, the

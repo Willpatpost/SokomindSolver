@@ -1,7 +1,7 @@
 .banner {
   position: fixed;
   z-index: 120;
-  top: max(18px, env(safe-area-inset-top));
+  bottom: max(18px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 36px));
@@ -14,6 +14,12 @@
   color: var(--ink-950);
   background: rgb(237 247 252 / 0.97);
   box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 560px) {
+  .banner {
+    bottom: calc(68px + env(safe-area-inset-bottom));
+  }
 }
 
 .message {

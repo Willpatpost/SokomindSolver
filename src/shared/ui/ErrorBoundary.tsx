@@ -54,8 +54,19 @@ export class ErrorBoundary extends Component<
   override render() {
     if (!this.state.error) return this.props.children;
 
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    const isLazyLoadFailure = /chunk|dynamically imported|module script|importing a module/iu.test(
+      this.state.error.message,
+    );
+    const recoveryMessage = isOffline
+      ? "Sokomind could not load this screen while offline. Reconnect, then retry; your saved progress will stay intact."
+      : isLazyLoadFailure
+        ? "A screen file did not load. This can happen after an update or a dropped connection. Retry before resetting anything."
+        : "Sokomind hit an unexpected error. Try reloading first; your saved progress will stay intact.";
+
     return (
       <div
+        role="alert"
         style={{
           display: "flex",
           flexDirection: "column",
@@ -72,8 +83,7 @@ export class ErrorBoundary extends Component<
           Something went wrong
         </h1>
         <p style={{ maxWidth: "28rem", marginBottom: "1.5rem", color: "var(--ink-muted)" }}>
-          Sokomind hit an unexpected error. Try reloading first; your saved
-          progress will stay intact.
+          {recoveryMessage}
         </p>
         <div
           style={{
@@ -97,7 +107,7 @@ export class ErrorBoundary extends Component<
               cursor: "pointer",
             }}
           >
-            Reload Sokomind
+            Retry loading
           </button>
           <button
             onClick={this.#handleReset}

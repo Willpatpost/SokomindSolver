@@ -147,6 +147,67 @@
   gap: 10px;
 }
 
+.advancedSettings {
+  border: 1px solid rgb(23 25 22 / 0.12);
+  border-radius: var(--radius-sm);
+  background: rgb(243 240 231 / 0.35);
+}
+
+.advancedSettings summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: var(--ink-700);
+  cursor: pointer;
+  list-style: none;
+}
+
+.advancedSettings summary::-webkit-details-marker {
+  display: none;
+}
+
+.advancedSettings summary::after {
+  flex: 0 0 auto;
+  color: var(--sage-700);
+  content: "+";
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.advancedSettings[open] summary::after {
+  content: "-";
+}
+
+.advancedSettings summary:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.advancedSettings summary span {
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.advancedSettings summary small {
+  flex: 1;
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.advancedContent {
+  padding: 2px 12px 12px;
+  border-top: 1px solid rgb(23 25 22 / 0.08);
+}
+
+.advancedContent .fields {
+  padding-top: 12px;
+}
+
 .fields label {
   display: grid;
   gap: 6px;
@@ -526,6 +587,15 @@
 :global(html[data-theme="dark"]) .card,
 :global(html[data-theme="dark"]) .logCard {
   border-color: rgb(255 255 255 / 0.07);
+}
+
+:global(html[data-theme="dark"]) .advancedSettings,
+:global(html[data-theme="dark"]) .advancedContent {
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .advancedSettings {
+  background: rgb(255 255 255 / 0.03);
 }
 
 :global(html[data-theme="dark"]) .fields select {

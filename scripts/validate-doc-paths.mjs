@@ -5,14 +5,26 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const DOCS_DIR = join(ROOT, "docs");
 const CI_MODE = process.argv.includes("--ci");
-const PATH_RE = /`((?:src|tests|scripts|docs)\/[\w./@+-]+\.[A-Za-z0-9]+)`/gu;
+const IGNORED_DIRECTORIES = new Set([
+  ".git",
+  "coverage",
+  "dist",
+  "node_modules",
+  "playwright-report",
+  "test-results",
+]);
+const PATH_RE = /`((?:(?:src|tests|scripts|docs|public|\.github)\/[\w./@+-]+|(?:README\.md|package\.json|tsconfig\.json|vite\.config\.ts|playwright\.config\.ts)))`/gu;
 const LINK_RE = /!?\[[^\]]*\]\((<[^>]+>|[^\s)]+)(?:\s+["'][^)]*["'])?\)/gu;
+const NPM_COMMAND_RE = /\bnpm(?:\.cmd)?\s+run\s+([\w:-]+)/gu;
+const MOJIBAKE_RE = /\u00c3|\u00c2|\u00e2(?:\u0080|\u20ac)/u;
+const packageJson = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+const packageScripts = new Set(Object.keys(packageJson.scripts ?? {}));
 
 async function collectMarkdownFiles(directory) {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...await collectMarkdownFiles(path));
     else if (entry.isFile() && /\.md$/iu.test(entry.name)) files.push(path);
@@ -71,6 +83,23 @@ async function validateFile(file, headingCache) {
     if (!await exists(target)) report(match.index, match[1], "path not found");
   }
 
+  for (const match of content.matchAll(NPM_COMMAND_RE)) {
+    if (!packageScripts.has(match[1])) {
+      report(match.index, match[1], "npm script not found in package.json");
+    }
+  }
+
+  for (const [index, line] of content.split(/\r?\n/u).entries()) {
+    if (MOJIBAKE_RE.test(line)) {
+      issues.push({
+        file: relative(ROOT, file),
+        line: index + 1,
+        path: line.trim().slice(0, 80),
+        reason: "probable mojibake encoding",
+      });
+    }
+  }
+
   for (const match of content.matchAll(LINK_RE)) {
     const raw = match[1].replace(/^<|>$/gu, "");
     if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(raw)) continue;
@@ -102,10 +131,7 @@ async function validateFile(file, headingCache) {
 }
 
 async function main() {
-  const rootFiles = (await readdir(ROOT, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && /\.md$/iu.test(entry.name))
-    .map((entry) => join(ROOT, entry.name));
-  const mdFiles = [...rootFiles, ...await collectMarkdownFiles(DOCS_DIR)].sort();
+  const mdFiles = (await collectMarkdownFiles(ROOT)).sort();
   const headingCache = new Map();
   const allIssues = [];
   for (const file of mdFiles) {
@@ -113,7 +139,7 @@ async function main() {
   }
 
   if (allIssues.length === 0) {
-    console.log(`Checked ${mdFiles.length} Markdown files — all local links, anchors, and paths resolve.`);
+    console.log(`Checked ${mdFiles.length} Markdown files — links, anchors, paths, npm commands, and encoding are valid.`);
     return;
   }
   console.log(`Found ${allIssues.length} documentation reference issue(s):\n`);

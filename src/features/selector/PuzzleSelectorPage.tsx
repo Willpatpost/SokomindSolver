@@ -31,7 +31,8 @@ interface PuzzleSelectorPageProps {
 }
 
 export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
-  const { navigate } = useRouter();
+  const { navigate, previousRoute } = useRouter();
+  const restoreListContext = previousRoute?.page === "play";
   const progress = useStoredProgress();
   const completedIds = useMemo(
     () => new Set(Object.keys(progress.completed)),
@@ -114,6 +115,7 @@ export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
           ratings={ratings}
           navigate={navigate}
           pageNumber={route.pageNumber}
+          restoreContext={restoreListContext}
         />
       );
     }
@@ -139,6 +141,7 @@ export function PuzzleSelectorPage({ route }: PuzzleSelectorPageProps) {
       ratings={ratings}
       navigate={navigate}
       pageNumber={route.pageNumber}
+      restoreContext={restoreListContext}
     />
   );
 }

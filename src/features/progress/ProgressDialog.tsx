@@ -4,6 +4,7 @@ import {
   type ProgressData,
 } from "@/src/shared/progress";
 import { readProgressImportFile } from "@/src/shared/progress-import";
+import type { PersistedProgressUpdate } from "@/src/shared/progress-sync";
 import { Modal } from "@/src/shared/ui/Modal";
 import { computeStats, type StatsPuzzle } from "./compute-stats";
 import styles from "./ProgressDialog.module.css";
@@ -13,8 +14,23 @@ interface ProgressDialogProps {
   readonly progress: ProgressData;
   readonly puzzles: readonly StatsPuzzle[];
   readonly onClose: () => void;
-  readonly onImport: (progress: ProgressData) => void;
-  readonly onReset: () => void;
+  readonly onImport: (
+    progress: ProgressData,
+  ) => PersistedProgressUpdate | Promise<PersistedProgressUpdate>;
+  readonly onReset: () => PersistedProgressUpdate | Promise<PersistedProgressUpdate>;
+}
+
+function persistenceFailureMessage(
+  action: "imported" | "reset",
+  result: PersistedProgressUpdate["result"],
+): string {
+  if (result.ok) return "";
+  const cause = result.reason === "quota-exceeded"
+    ? "browser storage is full"
+    : result.reason === "security-error"
+      ? "the browser denied storage access"
+      : "browser storage is unavailable";
+  return `Progress was not ${action} because ${cause}.`;
 }
 
 function downloadProgress(progress: ProgressData) {
@@ -39,6 +55,7 @@ export function ProgressDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [mutationPending, setMutationPending] = useState(false);
   const stats = useMemo(() => computeStats(progress, puzzles), [progress, puzzles]);
   const knownPuzzleIds = useMemo(
     () => puzzles.map((puzzle) => puzzle.id),
@@ -56,15 +73,43 @@ export function ProgressDialog({
     }
 
     const summary = summarizeProgressMerge(progress, imported.progress);
-    onImport(imported.progress);
-    setMessage([
-      "Progress imported:",
-      `${summary.added} added,`,
-      `${summary.improved} improved,`,
-      `${summary.unchanged} unchanged,`,
-      `${summary.rejected + imported.rejected} rejected,`,
-      `${imported.invalid} invalid.`,
-    ].join(" "));
+    setMutationPending(true);
+    try {
+      const outcome = await onImport(imported.progress);
+      if (!outcome.result.ok) {
+        setMessage(persistenceFailureMessage("imported", outcome.result));
+        return;
+      }
+      setMessage([
+        "Progress imported:",
+        `${summary.added} added,`,
+        `${summary.improved} improved,`,
+        `${summary.unchanged} unchanged,`,
+        `${summary.rejected + imported.rejected} rejected,`,
+        `${imported.invalid} invalid.`,
+      ].join(" "));
+    } catch {
+      setMessage("Progress was not imported because the save failed.");
+    } finally {
+      setMutationPending(false);
+    }
+  }
+
+  async function resetSavedProgress() {
+    setMutationPending(true);
+    try {
+      const outcome = await onReset();
+      if (!outcome.result.ok) {
+        setMessage(persistenceFailureMessage("reset", outcome.result));
+        return;
+      }
+      setConfirmReset(false);
+      setMessage("Saved progress was reset.");
+    } catch {
+      setMessage("Progress was not reset because the save failed.");
+    } finally {
+      setMutationPending(false);
+    }
   }
 
   return (
@@ -109,7 +154,11 @@ export function ProgressDialog({
           <button type="button" onClick={() => downloadProgress(progress)}>
             Export backup
           </button>
-          <button type="button" onClick={() => inputRef.current?.click()}>
+          <button
+            type="button"
+            disabled={mutationPending}
+            onClick={() => inputRef.current?.click()}
+          >
             Import backup
           </button>
           <input
@@ -189,11 +238,8 @@ export function ProgressDialog({
               <span>Remove every personal best from this device?</span>
               <button
                 type="button"
-                onClick={() => {
-                  onReset();
-                  setConfirmReset(false);
-                  setMessage("Saved progress was reset.");
-                }}
+                disabled={mutationPending}
+                onClick={() => void resetSavedProgress()}
               >
                 Yes, reset progress
               </button>
@@ -202,7 +248,11 @@ export function ProgressDialog({
               </button>
             </div>
           ) : (
-            <button type="button" onClick={() => setConfirmReset(true)}>
+            <button
+              type="button"
+              disabled={mutationPending}
+              onClick={() => setConfirmReset(true)}
+            >
               Reset saved progress
             </button>
           )}

@@ -101,6 +101,7 @@ export function DifficultyGrid({
                   <button
                     type="button"
                     className={styles.randomButton}
+                    aria-label={`Random unsolved ${DIFFICULTY_LABELS[difficulty]} puzzle`}
                     onClick={() => {
                       const pick = unsolved[Math.floor(Math.random() * unsolved.length)];
                       navigate(playHash(pick.id));

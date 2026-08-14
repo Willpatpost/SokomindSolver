@@ -10,6 +10,23 @@ test("homepage shows branding and all CTAs work", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Create a puzzle" })).toBeVisible();
 });
 
+test("difficulty random actions have unique accessible names", async ({ page }) => {
+  await page.goto("./#/puzzles");
+
+  for (const difficulty of [
+    "Tutorial",
+    "Beginner",
+    "Intermediate",
+    "Advanced",
+    "Expert",
+    "Master",
+  ]) {
+    await expect(page.getByRole("button", {
+      name: `Random unsolved ${difficulty} puzzle`,
+    })).toBeVisible();
+  }
+});
+
 test("drill-down from home to puzzles to play", async ({ page }) => {
   await page.goto("./");
 
@@ -140,4 +157,46 @@ test("large collections use URL-addressable accessible pagination", async ({
   await expect(search).toHaveValue("446");
   await expect(page).toHaveURL(/Sokomind%20Generated$/);
   await expect(rows).toHaveCount(1);
+});
+
+test("puzzle lists restore filters, page, scroll, and row focus after play", async ({
+  page,
+}) => {
+  await page.goto("./#/puzzles/beginner/Sokomind%20Generated?page=2");
+  const search = page.getByRole("searchbox", { name: "Search puzzles" });
+  const rows = page.getByTestId("puzzle-row");
+
+  await search.fill("446");
+  await expect(rows).toHaveCount(1);
+  const filteredRow = rows.first();
+  const filteredPuzzleId = await filteredRow.getAttribute("data-puzzle-id");
+  const filteredPuzzleTitle = await filteredRow.locator("strong").textContent();
+  await filteredRow.click();
+  await page.getByRole("link", { name: "Back to puzzles" }).click();
+  await expect(search).toHaveValue("446");
+  await expect(page.locator(`[data-puzzle-id="${filteredPuzzleId}"]`)).toBeFocused();
+  const recent = page.getByRole("complementary", {
+    name: "Recently played puzzle",
+  });
+  await expect(recent).toContainText(filteredPuzzleTitle ?? "");
+  await expect(recent.getByRole("link", { name: "Continue" })).toHaveAttribute(
+    "href",
+    `#/play/${filteredPuzzleId}`,
+  );
+
+  await search.fill("");
+  await expect(rows).toHaveCount(50);
+  await page.getByRole("link", { name: "2", exact: true }).click();
+  const deepRow = rows.nth(40);
+  await deepRow.scrollIntoViewIfNeeded();
+  const savedScrollY = await page.evaluate(() => window.scrollY);
+  const deepPuzzleId = await deepRow.getAttribute("data-puzzle-id");
+  await deepRow.click();
+  await page.getByRole("link", { name: "Back to puzzles" }).click();
+
+  await expect(page).toHaveURL(/Sokomind%20Generated\?page=2$/);
+  await expect(page.locator(`[data-puzzle-id="${deepPuzzleId}"]`)).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(
+    Math.max(0, savedScrollY - 2),
+  );
 });

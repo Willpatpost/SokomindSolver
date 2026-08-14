@@ -273,6 +273,7 @@ export function usePersistedPlay(
             solved.moves,
             solved.pushes,
             elapsedMs,
+            daily?.completedAt,
           );
           return daily
             ? recordDailyCompletion(
@@ -303,13 +304,15 @@ export function usePersistedPlay(
       writerId,
       imported,
     );
-    commitProgressSnapshot(update.snapshot);
+    if (update.result.ok) commitProgressSnapshot(update.snapshot);
+    return update;
   }, [commitProgressSnapshot, writerId]);
 
   const resetProgress = useCallback(() => {
     const current = progressSyncRef.current ?? loadProgressSyncSnapshot();
     const update = persistProgressReset(current, writerId);
-    commitProgressSnapshot(update.snapshot);
+    if (update.result.ok) commitProgressSnapshot(update.snapshot);
+    return update;
   }, [commitProgressSnapshot, writerId]);
 
   return {
