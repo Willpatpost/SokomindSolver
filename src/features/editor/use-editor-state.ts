@@ -425,6 +425,11 @@ export function useEditorState(options: { readonly autosave?: boolean } = {}): E
   }, [commitOperation, savedCurrentDocuments]);
 
   const restoreActiveDraft = useCallback(() => {
+    const raw = readStoredValue(STORAGE_KEYS.editorDraft);
+    const persisted = parseEditorDraftStore(raw);
+    if (persisted) {
+      publishStore(persisted.store.drafts, persisted.store.activeId);
+    }
     const active = draftsRef.current.find(
       (draft) => draft.id === activeDraftIdRef.current,
     );
@@ -435,7 +440,7 @@ export function useEditorState(options: { readonly autosave?: boolean } = {}): E
     discardPendingRef.current = false;
     latestStateRef.current = active.state;
     rawDispatch({ type: "replace", state: active.state });
-  }, []);
+  }, [publishStore]);
 
   const pausePendingDraft = useCallback(() => {
     autosaveEnabledRef.current = false;
