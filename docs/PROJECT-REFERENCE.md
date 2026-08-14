@@ -251,7 +251,7 @@ fails when the generated facts below differ from source.
 
 - Immutable benchmark fixtures: **43**
 - Classic-eligible fixtures: **37**
-- Frozen exact optima: **25**
+- Frozen exact optima: **33**
 - Current performance artifact schema: **3**; schema-2 `baseline-v0.json` is historical only.
 
 ### Delivery ceilings
