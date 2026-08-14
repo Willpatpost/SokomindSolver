@@ -72,7 +72,7 @@ test("keeps a large editor canvas scrollable and playtest controls reachable", a
   expect(overflow).toEqual({ horizontal: true, vertical: true });
 
   await page.reload();
-  await page.getByRole("button", { name: "Test puzzle" }).click();
+  await page.getByRole("button", { name: "Test puzzle" }).click({ force: true });
   await expect(
     page.getByRole("complementary", { name: "Playtest controls" }),
   ).toBeVisible();

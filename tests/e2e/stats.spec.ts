@@ -114,8 +114,8 @@ test("reset all progress preserves every non-progress ownership domain", async (
     localStorage.setItem("sokomind.reset.v1", values.reset);
     sessionStorage.setItem("sokomind:timer", "timer-sentinel");
     sessionStorage.setItem("sokomind:timer:ultra-tiny", "room-timer-sentinel");
-    window.location.hash = "#/stats";
   }, preserved);
+  await page.goto("./#/stats");
 
   await expect(page.getByRole("heading", { name: "Statistics" })).toBeVisible();
   await page.getByRole("button", { name: "Reset all progress" }).click();
