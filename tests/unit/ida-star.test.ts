@@ -270,7 +270,7 @@ describe("IDA* search", () => {
     assert.equal(result.status, "unsolved");
     if (result.status !== "unsolved") return;
     assert.equal(result.reason, "limit-reached");
-    assert.match(result.detail ?? "", /memory.*preparation/i);
+    assert.match(result.detail ?? "", /memory.*(preparation|preprocessing)/i);
     assert.equal(result.metrics.expandedStates, 0);
     assert.equal(result.metrics.generatedStates, 0);
     assert.equal(result.metrics.counters?.estimatedMemoryBytes, staticBytes);
