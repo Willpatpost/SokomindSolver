@@ -208,7 +208,7 @@ export function CompletionDialog({
         </div>
         <div className={styles.difficultyFeedback}>
           <span className={styles.feedbackLabel}>How was the difficulty?</span>
-          <div className={styles.feedbackButtons}>
+          <div className={styles.feedbackButtons} role="group" aria-label="Rate this puzzle's difficulty">
             {RATING_OPTIONS.map((opt) => (
               <button
                 key={opt.value}

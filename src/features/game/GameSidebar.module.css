@@ -16,6 +16,7 @@
   border: 1px solid var(--scorecard-border-color);
   border-radius: var(--radius-xl);
   background: var(--scorecard-bg);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   animation: scorecard-in 350ms ease both;
 }

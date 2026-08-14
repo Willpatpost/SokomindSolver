@@ -16,6 +16,7 @@
   color: var(--ink-700);
   background: rgb(251 250 245 / 0.72);
   cursor: pointer;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   transition:
     border-color 150ms ease,
@@ -85,6 +86,7 @@
   color: var(--ink-950);
   background: rgb(251 250 245 / 0.97);
   box-shadow: 0 24px 70px rgb(23 25 22 / 0.22);
+  -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
   animation: panel-in 180ms ease both;
 }
@@ -334,6 +336,7 @@
   .modal {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 88px);
+    max-height: calc(100dvh - 88px);
   }
 }
 

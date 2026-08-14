@@ -3,6 +3,7 @@
   justify-content: center;
   padding: 24px 18px;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .container {

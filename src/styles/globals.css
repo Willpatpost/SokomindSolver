@@ -46,6 +46,7 @@ html[data-modal-open] {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   overflow-x: hidden;
   color: var(--ink-950);
@@ -131,6 +132,7 @@ button,
 }
 
 html[data-theme="dark"] {
+  color-scheme: dark;
   --ink-950: #e8e6e1;
   --ink-900: #d8d5cd;
   --ink-800: #c4c0b6;
@@ -157,7 +159,6 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="dark"] body {
-  color-scheme: dark;
   background:
     radial-gradient(circle at 12% 8%, rgb(30 30 28 / 0.95), transparent 28rem),
     linear-gradient(145deg, #1a1c19 0%, #222420 100%);
@@ -183,7 +184,7 @@ html[data-theme="dark"] body {
 
 @media (max-width: 560px) {
   body {
-    padding-bottom: 60px;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 }
 

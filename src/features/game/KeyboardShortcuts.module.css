@@ -5,6 +5,7 @@
   display: grid;
   place-items: center;
   background: rgb(23 25 22 / 0.6);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   animation: overlay-in 180ms ease;
 }
@@ -12,6 +13,7 @@
 .panel {
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
+  max-height: calc(100dvh - 64px);
   overflow-y: auto;
   padding: 28px 28px 20px;
   border: 1px solid rgb(255 255 255 / 0.08);

@@ -1,5 +1,6 @@
 .page {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 18px;
 }
 
@@ -33,6 +34,7 @@
   background: rgb(251 250 245 / 0.6);
   font-size: 1rem;
   cursor: pointer;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   text-decoration: none;
   color: inherit;
@@ -77,6 +79,7 @@
   grid-template-columns: 200px 1fr 260px;
   gap: 16px;
   height: calc(100vh - 120px);
+  height: calc(100dvh - 120px);
   min-height: 500px;
 }
 
@@ -221,6 +224,7 @@
     radial-gradient(circle at 50% 36%, rgb(255 255 255 / 0.9), transparent 48%),
     rgb(251 250 245 / 0.72);
   box-shadow: var(--shadow-soft);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
@@ -311,7 +315,7 @@
 }
 
 .undoRedo button:disabled {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: default;
 }
 

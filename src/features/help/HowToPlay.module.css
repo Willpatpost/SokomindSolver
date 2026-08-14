@@ -5,6 +5,7 @@
 .sheet {
   width: 100%;
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   padding: 34px;
   overflow-y: auto;
   border: 1px solid rgb(255 255 255 / 0.5);
