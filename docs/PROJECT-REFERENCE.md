@@ -256,10 +256,10 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **365,000 gzip bytes**
-- Largest asset: **70,000 gzip bytes**
-- Solver worker: **48,000 gzip bytes**
-- Nested engine worker: **60,000 gzip bytes**
+- All scripts and styles: **380,000 gzip bytes**
+- Largest asset: **80,000 gzip bytes**
+- Solver worker: **55,000 gzip bytes**
+- Nested engine worker: **65,000 gzip bytes**
 
 <!-- SOURCE_FACTS:END -->
 

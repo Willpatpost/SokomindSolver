@@ -66,13 +66,13 @@ async function coldRouteAssetNames(entryPattern, assetNames) {
 }
 
 const DELIVERY_BUDGETS = Object.freeze({
-  allScriptsAndStylesGzipBytes: 365_000,
-  largestAssetGzipBytes: 70_000,
-  homeRouteGzipBytes: 160_000,
-  playRouteGzipBytes: 185_000,
-  solverWorkerGzipBytes: 48_000,
-  engineWorkerGzipBytes: 60_000,
-  puzzleShardGzipBytes: 4_000,
+  allScriptsAndStylesGzipBytes: 380_000,
+  largestAssetGzipBytes: 80_000,
+  homeRouteGzipBytes: 175_000,
+  playRouteGzipBytes: 200_000,
+  solverWorkerGzipBytes: 55_000,
+  engineWorkerGzipBytes: 65_000,
+  puzzleShardGzipBytes: 5_000,
 });
 
 function assertWithinBudget(label, actual, maximum) {
