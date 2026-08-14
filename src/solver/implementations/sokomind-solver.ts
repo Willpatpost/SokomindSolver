@@ -1864,6 +1864,14 @@ async function solvedWithImprovement(
     );
   }
 
+  if (sokomindOptions?.mode === "fast") {
+    return Object.freeze({
+      status: "solved" as const,
+      solution: incumbent,
+      metrics: metrics(run),
+    });
+  }
+
   const improved = await improveIncumbent(
     run,
     state,
