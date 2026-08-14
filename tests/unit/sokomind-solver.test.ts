@@ -310,7 +310,11 @@ describe("Sokomind Solver adapter", () => {
           });
         }),
     });
-    const request = requestFor(ONE_TYPED_BOX);
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: {
+        "sokomind-solver": { mode: "quality", maximumIncumbents: 1 },
+      },
+    });
 
     const result = await adapter.solve(
       request,
