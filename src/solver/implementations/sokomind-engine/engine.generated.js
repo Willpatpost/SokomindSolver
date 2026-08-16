@@ -8518,7 +8518,7 @@ function moveBridgeAStarSearch(payload) {
   const pushUpperBound = payload.pushUpperBound ?? Infinity;
   let visited = 0, generated = 0, order = 0, peakFrontier = 1;
 
-  const moveBridgeWeight = payload.moveBridgeWeight ?? 1.5;
+  const moveBridgeWeight = payload.moveBridgeWeight ?? 1.0;
   const targetPositionSet = new Set(
     targetBoxes.map(([ty, tx, tl]) => `${ty},${tx},${tl}`)
   );

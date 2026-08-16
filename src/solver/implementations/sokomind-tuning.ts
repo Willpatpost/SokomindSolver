@@ -82,9 +82,9 @@ export const TUNABLE_PARAMETER_META: Readonly<
 export const DEFAULT_SOKOMIND_TUNING: SokomindTuningProfile = Object.freeze({
   schemaVersion: 2 as const,
 
-  planMoveWeight: 0.03,
-  heuristicWeight: 2.5,
-  costWeight: 0.5,
+  planMoveWeight: 0.005,
+  heuristicWeight: 3,
+  costWeight: 0,
   goalPackingWeight: 0.8,
   mobilityWeight: 0.03,
   topologyWeight: 0.7,
@@ -92,7 +92,7 @@ export const DEFAULT_SOKOMIND_TUNING: SokomindTuningProfile = Object.freeze({
   supportDependencyWeight: 0.8,
   localRoomWeight: 0.6,
   doorwayFlowWeight: 0.35,
-  relevanceWeight: 1.0,
+  relevanceWeight: 0.6,
 
   planBeamWidth: 32,
   planBoxBranches: 6,
