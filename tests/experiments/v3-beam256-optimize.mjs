@@ -7,7 +7,7 @@
  * Phase 2: Convergence (6 passes)
  * Phase 3: Aggressive seed-varied rewrite (80 rounds)
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";

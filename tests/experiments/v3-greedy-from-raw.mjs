@@ -81,7 +81,6 @@ if (greedyResult.path) {
   console.log(`  diag: ${JSON.stringify(greedyResult.greedyDiag || {})}`);
   if (greedySol.moves < sol.moves && greedyValid) {
     currentPath = greedyResult.path;
-    sol = greedySol;
     console.log("  (using greedy result)");
   } else {
     console.log("  (greedy did not improve or invalid, keeping raw plan)");

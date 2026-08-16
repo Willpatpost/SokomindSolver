@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
-import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
+import { solutionFromLegacyPath } from "../../src/solver/implementations/sokomind-solver.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
 globalThis.postMessage = () => {};
@@ -34,7 +34,7 @@ console.log(`Solution: m=${sol.moves} p=${sol.pushes} w=${sol.moves - sol.pushes
 const pushDirs = ["u", "d", "l", "r"];
 const segments = [];
 let walkCount = 0;
-let segStart = 0;
+let _segStart = 0;
 
 for (let i = 0; i < path.length; i++) {
   if (pushDirs.includes(path[i])) {
@@ -45,7 +45,7 @@ for (let i = 0; i < path.length; i++) {
       direction: path[i],
     });
     walkCount = 0;
-    segStart = i + 1;
+    _segStart = i + 1;
   } else {
     walkCount++;
   }
@@ -78,7 +78,7 @@ for (const windowSize of [4, 8, 16, 32]) {
       : { moveIndex: path.length };
     const totalMoves = end.moveIndex - start.moveIndex + start.walksBefore;
     const totalWalks = totalMoves - windowSize;
-    const overhead = totalWalks;
+    const _overhead = totalWalks;
     const avgWalk = totalWalks / windowSize;
     windows.push({ startPush: i, totalMoves: end.moveIndex - start.moveIndex, walks: totalWalks, avgWalk });
   }
@@ -93,8 +93,8 @@ const third = Math.ceil(segments.length / 3);
 for (let t = 0; t < 3; t++) {
   const start = t * third;
   const end = Math.min((t + 1) * third, segments.length);
-  const startIdx = segments[start].moveIndex - segments[start].walksBefore;
-  const endIdx = end < segments.length ? segments[end].moveIndex - segments[end].walksBefore : path.length;
+  const _startIdx = segments[start].moveIndex - segments[start].walksBefore;
+  const _endIdx = end < segments.length ? segments[end].moveIndex - segments[end].walksBefore : path.length;
   let walks = 0;
   for (let i = start; i < end; i++) {
     walks += segments[i].walksBefore;
