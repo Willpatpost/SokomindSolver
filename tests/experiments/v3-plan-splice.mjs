@@ -91,7 +91,7 @@ for (const spliceAt of splicePoints) {
   const firstHalf = path.slice(0, midState.moveIndex);
 
   // Check how many goals are already solved
-  const solvedGoals = midState.boxes.filter(([pos, label]) => {
+  const _solvedGoals = midState.boxes.filter(([_pos, _label]) => {
     // A goal is solved if a box is on its matching goal position
     // We'd need to check the board goals, but let's just count
     return false; // placeholder

@@ -12,7 +12,6 @@ import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
-import { verifySolverSolution } from "../../src/solver/verification.ts";
 
 globalThis.postMessage = () => {};
 

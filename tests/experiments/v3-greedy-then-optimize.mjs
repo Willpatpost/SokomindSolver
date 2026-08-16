@@ -71,7 +71,6 @@ if (greedyResult.path) {
   console.log(`  diag: ${JSON.stringify(greedyResult.greedyDiag || {})}`);
   if (greedySol.moves < sol.moves) {
     currentPath = greedyResult.path;
-    sol = greedySol;
     writeFileSync("/tmp/v3-greedy-path.json", JSON.stringify(currentPath));
     console.log("  (using greedy result)");
   } else {

@@ -95,7 +95,7 @@ writeFileSync("/tmp/v3-beam192-converged.json", JSON.stringify(currentPath));
 
 // Phase 3: Aggressive rewrite with seed variation
 console.log("\n=== Phase 3: Aggressive Seed-Varied Rewrite ===");
-let totalMs = 0;
+let _totalMs = 0;
 let staleCount = 0;
 let bestEverMoves = sol.moves;
 
@@ -144,7 +144,7 @@ for (let round = 0; round < 80; round++) {
     progressIntervalMs: 60_000,
   });
   const ms = Math.round(performance.now() - started);
-  totalMs += ms;
+  _totalMs += ms;
 
   if (!result.path) {
     console.log(`  No path | ${Math.round(ms/1000)}s`);

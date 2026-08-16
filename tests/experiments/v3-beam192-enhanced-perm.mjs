@@ -27,7 +27,7 @@ const pathFile = "/tmp/v3-beam192-converged.json";
 while (!existsSync(pathFile)) {
   console.log("Waiting for " + pathFile + "...");
   const start = Date.now();
-  while (Date.now() - start < 30_000) {}
+  while (Date.now() - start < 30_000) { /* no-op */ }
 }
 
 let currentPath = JSON.parse(readFileSync(pathFile, "utf-8"));

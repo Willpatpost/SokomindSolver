@@ -5,7 +5,7 @@
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
-import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
+import { toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
 
 globalThis.postMessage = () => {};
 
@@ -42,15 +42,15 @@ if (result.status !== "solved" || !Array.isArray(result.path)) {
 }
 
 const path = result.path;
-const PUSH_DIRS = ["u", "d", "l", "r"];
+const _PUSH_DIRS = ["u", "d", "l", "r"];
 
 // Analyze the path: identify push vs walk moves
 let pushes = 0, walks = 0;
-const segments = [];
-let currentSegmentStart = 0;
-let currentSegmentWalks = 0;
-let currentSegmentPushes = 0;
-let robotY, robotX;
+const _segments = [];
+let _currentSegmentStart = 0;
+let _currentSegmentWalks = 0;
+let _currentSegmentPushes = 0;
+let _robotY, _robotX;
 
 // We need to replay the path to track robot position
 // The path is an array of move directions
@@ -64,10 +64,10 @@ for (let i = 0; i < path.length; i++) {
   const isPush = move === move.toUpperCase();
   if (isPush) {
     pushes++;
-    currentSegmentPushes++;
+    _currentSegmentPushes++;
   } else {
     walks++;
-    currentSegmentWalks++;
+    _currentSegmentWalks++;
   }
 }
 
