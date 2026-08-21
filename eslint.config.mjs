@@ -39,6 +39,16 @@ export default defineConfig(
     languageOptions: {
       ecmaVersion: 2022,
     },
+    rules: {
+      "no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
   },
   {
     files: ["eslint.config.mjs", "scripts/**/*.{js,mjs}", "tests/**/*.mjs"],

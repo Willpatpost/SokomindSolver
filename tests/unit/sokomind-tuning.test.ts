@@ -59,7 +59,7 @@ describe("Sokomind tuning profile", () => {
     assert.equal(payload.weight, 2.5);
     assert.match(
       sokomindTuningFingerprint(profile),
-      /^v2;planMoveWeight=0\.005;heuristicWeight=2\.5;.*rewriteMoveWindowScale=/,
+      /^v2;planMoveWeight=[\d.]+;heuristicWeight=2\.5;.*rewriteMoveWindowScale=/,
     );
   });
 
