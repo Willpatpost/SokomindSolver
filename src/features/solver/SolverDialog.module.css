@@ -547,6 +547,7 @@
 
   .content {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     padding: 12px;
     overflow-y: auto;
     scrollbar-width: thin;
