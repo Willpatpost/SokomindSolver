@@ -11,6 +11,7 @@ import {
   type PuzzleDefinition,
 } from "@/src/core";
 import { ConfirmDialog } from "@/src/shared/ui/ConfirmDialog";
+import { DeadlockDialog } from "@/src/shared/ui/DeadlockDialog";
 import { isOptimal, getOptimalRecord } from "@/src/shared/optimal-cache";
 import { useFavorites } from "@/src/shared/use-favorites";
 import { HowToPlay } from "@/src/features/help/HowToPlay";
@@ -459,6 +460,13 @@ function ValidatedPlayPage({
         onConfirm={game.performReset}
         open={game.resetConfirmOpen}
         title="Restart this room?"
+      />
+
+      <DeadlockDialog
+        open={game.deadlockModalOpen}
+        onUndo={game.deadlockUndo}
+        onRestart={game.deadlockReset}
+        onDismiss={game.closeDeadlockModal}
       />
 
       <CelebrationOverlay

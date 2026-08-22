@@ -193,6 +193,7 @@ export function SolverDialog({
                   </select>
                 </label>
 
+                {solver.selectedSolverId === "sokomind-solver" ? (
                 <label>
                   <span>Mode</span>
                   <select
@@ -212,6 +213,7 @@ export function SolverDialog({
                     <option value="optimal">Optimal</option>
                   </select>
                 </label>
+                ) : null}
                   </div>
 
               {solver.selectedSolver ? (

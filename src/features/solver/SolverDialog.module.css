@@ -75,10 +75,11 @@
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
   padding: 18px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .setupColumn {
@@ -86,6 +87,9 @@
   align-content: start;
   gap: 16px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .card,
@@ -468,8 +472,9 @@
 
 .logCard {
   display: flex;
-  min-height: 340px;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   box-shadow: none;
 }
 
@@ -542,10 +547,17 @@
   .content {
     grid-template-columns: minmax(0, 1fr);
     padding: 12px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .setupColumn {
+    overflow-y: visible;
   }
 
   .logCard {
     min-height: 260px;
+    max-height: 50dvh;
   }
 }
 

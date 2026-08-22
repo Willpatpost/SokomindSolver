@@ -104,6 +104,7 @@ export function usePlayController(
   const [deadlockedBoxIds, setDeadlockedBoxIds] = useState<ReadonlySet<string>>(
     EMPTY_BOX_SET,
   );
+  const [deadlockModalOpen, setDeadlockModalOpen] = useState(false);
   const hintCancelRef = useRef<() => void>(() => {});
   const resetConfirmOpen = resetConfirmPuzzleId === session.puzzle.id;
   const completionOpen = completionPuzzleId === session.puzzle.id;
@@ -197,7 +198,11 @@ export function usePlayController(
     } else if (feedback === "push" || feedback === "goal" || feedback === "goal-leave") {
       const pushed = findPushedBox(current.snapshot.boxes, next.snapshot.boxes);
       const result = detectDeadlock(next.board, next.snapshot, pushed?.id);
-      if (result.isDeadlocked) {
+      if (result.severity === "deadlock") {
+        setDeadlockedBoxIds(new Set(result.deadlockedBoxIds));
+        setDeadlockModalOpen(true);
+        void playCue("blocked");
+      } else if (result.severity === "warning") {
         setDeadlockedBoxIds(new Set(result.deadlockedBoxIds));
         setToast("That box looks stuck — you may need to undo.");
         void playCue("blocked");
@@ -427,6 +432,16 @@ export function usePlayController(
     progress,
     completedIds,
     deadlockedBoxIds,
+    deadlockModalOpen,
+    closeDeadlockModal: () => setDeadlockModalOpen(false),
+    deadlockUndo: () => {
+      setDeadlockModalOpen(false);
+      handleUndo();
+    },
+    deadlockReset: () => {
+      setDeadlockModalOpen(false);
+      performReset();
+    },
     elapsed: timer.elapsed,
     hint,
     reducedMotion,
