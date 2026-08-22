@@ -546,20 +546,25 @@
   }
 
   .content {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
+    display: block;
     padding: 12px;
     overflow-y: auto;
     scrollbar-width: thin;
   }
 
   .setupColumn {
+    display: block;
     overflow-y: visible;
+  }
+
+  .setupColumn > * + * {
+    margin-top: 16px;
   }
 
   .logCard {
     min-height: 260px;
     max-height: 50dvh;
+    margin-top: 16px;
   }
 }
 
