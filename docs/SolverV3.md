@@ -1,9 +1,10 @@
 # Solver V3 -- Legacy Engine Discovery Pipeline
 
-Last updated: August 21, 2026
+Last updated: August 22, 2026
 
 This document maps the discovery pipeline that produces first-found solutions,
-analyzes why Grand Hall currently yields 1,066 moves, and proposes concrete
+analyzes why Grand Hall formerly yielded 1,066 moves, records the current
+893-move first-found route, and proposes concrete
 improvements targeting **< 700 moves in < 10 seconds**. Proof kernels (A\*,
 IDA\*) and rewrite passes are out of scope.
 
@@ -185,7 +186,7 @@ within the budget.
 
 ---
 
-## 3. Why Grand Hall Produces 1,066 Moves
+## 3. Why Grand Hall Produced 1,066 Moves
 
 Grand Hall is a 15×15 grid with six typed boxes (A/B/C/D/G/H), eleven
 generic boxes (X), 127 floor cells, and a robot that starts at center-bottom.
@@ -193,11 +194,12 @@ The certified doorway analysis focuses on the gated lower room.
 
 ### 3.1 Root Cause Analysis
 
-The reviewed 628-move route has 244 pushes and 384 keeper walks. The current
-first solution has 322 pushes and 744 keeper walks. Replay analysis found no
-repeated exact states, and every walk between consecutive pushes in the
-solver route is already shortest for that chosen push sequence. The quality
-gap is therefore primarily the push agenda, not local pathfinding.
+The reviewed 628-move route has 244 pushes and 384 keeper walks. The former
+1,066-move solution had 322 pushes and 744 keeper walks; the current 893-move
+solution has 278 pushes and 615 keeper walks. Replay analysis found no repeated
+exact states in the former route, and every walk between consecutive pushes was
+already shortest for its chosen push sequence. The quality gap is therefore
+primarily the push agenda, not local pathfinding.
 
 The lower room has six mandatory exports and four mandatory imports. Its
 two-sided barrier requires four exports before the first import; after those
@@ -206,11 +208,23 @@ one, and its distance term continued to prioritize every pending export. The
 current schedule uses the capacity formula and measures the nearest imports
 that are actually unlocked.
 
-The remaining large gap is sequencing. The first solution still exports all
-six lower boxes before importing, while the 628-move route follows a
-four-export, two-import, two-export, two-import cadence. It also places H on h
-too early and later reopens it. Global move weights and hard phase bonuses were
-tested, but they destabilized the bounded beam instead of fixing that agenda.
+The former first solution exported all six lower boxes before importing. Two
+independent defects hid the better schedule:
+
+1. Root branching spent two of eight fixed slots on alternate directions for
+   already represented boxes, so the seventh distinct box agenda was not
+   retained even though the teacher route selected it.
+2. `strandedExports` was a local, one-push reachability estimate but was used as
+   a hard import rejection. A legal import can temporarily make another export
+   non-immediate while creating the support access needed to continue it.
+
+The retained fixed-work branch policy and softening of that unproven prune now
+produce the structurally correct four-export, two-import, two-export,
+two-import cadence. The first-found route is 893 moves / 278 pushes. The
+remaining gap is mostly later agenda sequencing in the upper room: 92 pushes
+and 256 moves occur after the final lower-room crossing. The route also places
+H on its goal, later reopens it, and manipulates that box in four episodes.
+Global temporary-goal penalties did not fix this coherently.
 
 ### 3.2 What a 700-Move Solution Looks Like
 
@@ -245,6 +259,71 @@ Implemented:
 6. Plan-local doorway and analysis caches are bounded and included in live
    memory telemetry. Reusing a prepared board under a smaller ceiling replaces
    oversized derived caches instead of reporting a limit they do not honor.
+7. On room-bearing boards with more movable boxes than the ordinary distinct
+   box quota can represent, one of the existing eight first-push slots is
+   reserved for one additional distinct box before alternate directions. The
+   total branching budget is unchanged.
+8. The local `strandedExports` signal remains in search scoring, but its hard
+   rejection is now diagnostic opt-in (`planStrandedExportGuard: true`). The
+   independently certified packing-order, goal-access, deadlock, and box-
+   continuation guards remain enabled.
+9. `planDiagnostics: true` returns a bounded, structured trace with one record
+   per macro layer: generated and selected first pushes, distinct boxes,
+   macro successors, candidate/milestone/eligible/retained counts, and explicit
+   prune totals. The field is absent in normal runs and does not allocate layer
+   records unless requested.
+
+### 4.1 Current deterministic results
+
+| Case | Moves | Pushes | Visited | Generated | Retained | Peak frontier |
+|---|---:|---:|---:|---:|---:|---:|
+| Grand Hall, former fast baseline | 1,066 | 322 | 1,616 | 9,329 | 3,077 | 330 |
+| Grand Hall, current first found | **893** | **278** | **1,329** | **8,425** | **2,538** | **291** |
+| Current route after quality rewrite | 789 | 270 | 29,000 | 108,722 | 29,000 | 1 |
+
+Base, mirror, and 180-degree rotation produce exactly the same 893 / 278
+result and counters. All routes above replay successfully. The direct Node
+engine takes about 5.3--7.2 seconds by orientation on the development machine;
+the rewrite is intentionally not part of fast mode.
+
+### 4.2 Controlled experiments
+
+| Experiment | Result | Decision |
+|---|---|---|
+| Original branch policy + stranded hard guard | 1,066 / 322 | Baseline |
+| Distinct-box reserve only | 1,020 / 288, more generated work | Incomplete alone |
+| Guard relaxation only | Cutoff, 5,043 visited / 30,659 generated | Reject alone |
+| Reserve + guard relaxation | **893 / 278**, less search than baseline | Retain as one coherent change |
+| One enabling handoff per box | Cutoff, 54,942 generated | Revert |
+| Persistent agenda-resumption slot | 1,121 / 322 | Revert |
+| Macro alternate-approach reserve | Cutoff, 27.5 s | Revert |
+| Move-aware macro arrival diversity | Cutoff, 20.6 s | Revert |
+| Temporary-goal penalty | 918 / 278, more search | Revert |
+| Remove temporary goals from milestone identity | Cutoff, 5,025 visited / 39,580 generated | Revert |
+
+The failed diversity trials preserved local keeper-arrival geometry, not a
+coherent multi-macro agenda. They displaced useful endpoints repeatedly and
+are not suitable for fast mode.
+
+### 4.3 Generalization evidence
+
+The default reserve predicate is based only on topology and branch pressure:
+the board has at least one detected room and more than `planBoxBranches + 2`
+boxes. It activates on 23 of 2,095 catalog puzzles, not on an ID, dimensions,
+labels, or fixed doorway counts. Representative non-Grand-Hall improvements
+include:
+
+| Puzzle | Before | After |
+|---|---:|---:|
+| `gen-expert-057` | 109 / 24 | 87 / 24 |
+| `gen-master-090` | 90 / 28 | 86 / 28 |
+| `gen-expert-335` | 341 / 95 | 195 / 43 |
+
+Across the reviewed 15-puzzle room-bearing structural corpus, the combined
+default produced four wins, eight ties, and three losses while reducing total
+moves, pushes, and generated states. Large room/packing boards remain the most
+important regression class because the seventh box can replace a useful second
+direction.
 
 Rejected after deterministic Grand Hall trials:
 
@@ -253,8 +332,10 @@ Rejected after deterministic Grand Hall trials:
 - hard doorway branch quotas;
 - global crossing-progress rewards or reduced evacuation-completion bonuses;
 - keeper-distance weighting at the first-push rank;
-- goal-transit penalties for premature H placement; and
-- import-to-goal continuation or reserved import branch slots.
+- goal-transit penalties for premature H placement;
+- import-to-goal continuation or reserved import branch slots;
+- one-push handoff macros and persistent agenda-resumption slots; and
+- local keeper-approach diversity at macro endpoints.
 
 Those variants either exhausted the bounded frontier or returned a slower,
 longer first solution. Future work should add phase-aware macro diversity only
@@ -341,17 +422,18 @@ remain represented.
 
 ## 8. Open Questions
 
-1. What is the optimal `costWeight` for move-count quality without
-   sacrificing push-count quality? Need A/B experiments.
+1. What compact representation can preserve an interrupted strategic agenda
+   without forcing its immediate resumption or multiplying macro endpoints?
 
-2. Should `evacuationWeight` be nonzero for Grand Hall? The puzzle has
-   boxes that must leave rooms before others can enter.
+2. Can provisional goal occupancy be incorporated as one component of a
+   state-specific traffic/dependency feature instead of a global penalty?
 
 3. Does seeding from plan checkpoints help or hurt? The plan's best
    checkpoint might be in a local optimum that biases the beam.
 
-4. Would `beamRestartSearch` with 3 restarts beat the single-shot beam?
-   Different seeds explore different parts of the search space.
+4. Would several fixed-work, deterministic strategic restarts beat a single
+   homogeneous search, provided each lane encodes a genuinely different
+   room/packing agenda rather than arbitrary score noise?
 
 5. What beam width saturates the quality improvement? Is 512 better than
    256, or does it plateau?

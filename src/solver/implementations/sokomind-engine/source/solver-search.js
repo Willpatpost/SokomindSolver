@@ -1490,6 +1490,38 @@ function planMacroBeamSearch(payload) {
   const rootImportDoorwayTasks = rootDoorwayTasks.filter(
     task => task.direction === "import",
   );
+  const defaultDistinctBoxReserve = initial.boxes.length > boxBranchLimit + 2 &&
+    board.topology.rooms.length > 0 ? 1 : 0;
+  const distinctBoxReserve = Math.max(0, Math.min(
+    1,
+    payload.planDistinctBoxReserve ?? defaultDistinctBoxReserve,
+  ));
+  const distinctBoxLimit = boxBranchLimit + distinctBoxReserve;
+  // Diagnostics are opt-in and deliberately bounded to one aggregate record
+  // per plan layer.  Normal browser solving pays only predictable null checks.
+  const planDiagnostics = payload.planDiagnostics === true ? {
+    schemaVersion: 1,
+    branching: {
+      boxBranchLimit,
+      distinctBoxReserve,
+      firstPushLimit: boxBranchLimit + 2,
+    },
+    pruning: {
+      sealedCorral: 0,
+      macroRejected: 0,
+      depthBound: 0,
+      exactTransposition: 0,
+      strandedExport: 0,
+      packingOrder: 0,
+      goalAccess: 0,
+      noBoxContinuation: 0,
+      unreachableEstimate: 0,
+      planBound: 0,
+      candidateDominance: 0,
+      regionTransposition: 0,
+    },
+    layers: [],
+  } : null;
   const hasEvacuationPlan = rootDoorwayTasks.some(task => task.direction === "export");
   const doorwayScheduleMemo = registerBoardMemoryCache(
     board,
@@ -1651,6 +1683,26 @@ function planMacroBeamSearch(payload) {
     const candidates = new Map();
     let layerSolution = null;
     let layerSolutionGeneratedAt = null, layerSolutionCandidates = 0;
+    const layerDiagnostics = planDiagnostics ? {
+      segment: segment + 1,
+      frontier: beam.length,
+      expanded: 0,
+      firstPushesGenerated: 0,
+      distinctBoxesAvailable: 0,
+      firstPushesSelected: 0,
+      distinctBoxesSelected: 0,
+      macroSuccessors: 0,
+      generatedStates: 0,
+      candidateStates: 0,
+      milestoneCells: 0,
+      preselectedStates: 0,
+      eligibleStates: 0,
+      retainedStates: 0,
+      retainedMilestoneCells: 0,
+      solutionCandidates: 0,
+      bestEstimate,
+    } : null;
+    const layerGeneratedAt = generated;
     const expansionBeam = bestEstimate <= 20
       ? [...beam].sort((left, right) =>
           left.estimate - right.estimate ||
@@ -1660,8 +1712,12 @@ function planMacroBeamSearch(payload) {
     layerExpansion:
     for (const current of expansionBeam) {
       if (visited++ >= maxVisited) break;
+      if (layerDiagnostics) layerDiagnostics.expanded++;
       const reachable = reachablePaths(current, board);
-      if (createsSealedCorralDeadlock(current, board, reachable)) continue;
+      if (createsSealedCorralDeadlock(current, board, reachable)) {
+        if (planDiagnostics) planDiagnostics.pruning.sealedCorral++;
+        continue;
+      }
       const accessBlockers = importAccessBlockers(current, reachable);
       const firstPushes = pushNeighbors(
         current,
@@ -1669,6 +1725,12 @@ function planMacroBeamSearch(payload) {
         reachable,
         {deferPath: true},
       );
+      if (layerDiagnostics) {
+        layerDiagnostics.firstPushesGenerated += firstPushes.length;
+        layerDiagnostics.distinctBoxesAvailable += new Set(
+          firstPushes.map(next => next.pushedFrom),
+        ).size;
+      }
       const rankedFirst = firstPushes.map(next => {
         const analysis = structuralAnalysis(next.boxes);
         const estimate = analysis.estimate;
@@ -1691,16 +1753,27 @@ function planMacroBeamSearch(payload) {
         };
       }).sort((left, right) => left.score - right.score);
       const selectedBoxes = new Set(), selectedFirst = [];
+      // Preserve one additional box agenda before spending the final branch
+      // slots on alternate directions for boxes already represented.  Sokoban
+      // strategy is usually more sensitive to which box moves next than to a
+      // second locally ranked direction for the same box, and the total number
+      // of expanded first pushes remains boxBranchLimit + 2.
       for (const candidate of rankedFirst) {
         if (selectedBoxes.has(candidate.next.pushedFrom)) continue;
         selectedBoxes.add(candidate.next.pushedFrom);
         selectedFirst.push(candidate.next);
-        if (selectedBoxes.size >= boxBranchLimit) break;
+        if (selectedBoxes.size >= distinctBoxLimit) break;
       }
       for (const candidate of rankedFirst) {
         if (selectedFirst.length >= boxBranchLimit + 2) break;
         if (selectedFirst.includes(candidate.next)) continue;
         selectedFirst.push(candidate.next);
+      }
+      if (layerDiagnostics) {
+        layerDiagnostics.firstPushesSelected += selectedFirst.length;
+        layerDiagnostics.distinctBoxesSelected += new Set(
+          selectedFirst.map(next => next.pushedFrom),
+        ).size;
       }
       for (let firstIndex = 0; firstIndex < selectedFirst.length; firstIndex++) {
         const first = materializePushNeighborPath(
@@ -1776,7 +1849,7 @@ function planMacroBeamSearch(payload) {
           if (!objectiveComplete) return false;
           let analysis = structuralAnalysis(sequence.boxes);
           const doorwaySchedule = analysis.doorwaySchedule;
-          if (payload.planEgressGuard !== false &&
+          if (payload.planStrandedExportGuard === true &&
               doorwayTask?.direction === "import" &&
               doorwaySchedule.strandedExports >
                 current.doorwaySchedule.strandedExports) {
@@ -1833,10 +1906,19 @@ function planMacroBeamSearch(payload) {
         const successors = endpoints.length
           ? (firstIndex < 2 ? [expanded[0], ...endpoints] : endpoints)
           : expanded;
+        if (layerDiagnostics) {
+          layerDiagnostics.macroSuccessors += successors.length;
+        }
         for (const next of successors) {
-          if (next.macroRejectedReason) continue;
+          if (next.macroRejectedReason) {
+            if (planDiagnostics) planDiagnostics.pruning.macroRejected++;
+            continue;
+          }
           const cost = current.cost + next.pushes;
-          if (cost > maxPushes) continue;
+          if (cost > maxPushes) {
+            if (planDiagnostics) planDiagnostics.pruning.depthBound++;
+            continue;
+          }
           const child = {
             robot: next.robot,
             boxes: next.boxes,
@@ -1853,21 +1935,33 @@ function planMacroBeamSearch(payload) {
               ? planArrivalDominates(
                   seenExact.get(child.exactIdentity), cost, child.moves,
                 )
-              : (seenExact.get(child.exactIdentity) ?? Infinity) <= cost) continue;
+              : (seenExact.get(child.exactIdentity) ?? Infinity) <= cost) {
+            if (planDiagnostics) planDiagnostics.pruning.exactTransposition++;
+            continue;
+          }
           scoreCandidate(child);
-          if (payload.planEgressGuard !== false &&
+          if (payload.planStrandedExportGuard === true &&
               doorwayTask?.direction === "import" &&
               child.doorwaySchedule.strandedExports >
-                current.doorwaySchedule.strandedExports) continue;
+                current.doorwaySchedule.strandedExports) {
+            if (planDiagnostics) planDiagnostics.pruning.strandedExport++;
+            continue;
+          }
           if (payload.planEgressGuard !== false &&
               child.doorwaySchedule.packingOrderViolations >
-                current.doorwaySchedule.packingOrderViolations) continue;
+                current.doorwaySchedule.packingOrderViolations) {
+            if (planDiagnostics) planDiagnostics.pruning.packingOrder++;
+            continue;
+          }
           if (payload.planGoalAccessGuard !== false) {
             const blockedBefore = new Set(
               current.goalAccess.blockedGoals.map(goalState => goalState.goal),
             );
             if (child.goalAccess.blockedGoals.some(goalState =>
-              !blockedBefore.has(goalState.goal))) continue;
+              !blockedBefore.has(goalState.goal))) {
+              if (planDiagnostics) planDiagnostics.pruning.goalAccess++;
+              continue;
+            }
           }
           if (payload.planEgressGuard !== false && assignedTarget) {
             const [movedY, movedX] = child.boxes[movedIndex];
@@ -1888,11 +1982,20 @@ function planMacroBeamSearch(payload) {
                 movedPosition,
                 childReachable,
                 {lockProven: false},
-              ).length) continue;
+              ).length) {
+                if (planDiagnostics) planDiagnostics.pruning.noBoxContinuation++;
+                continue;
+              }
             }
           }
-          if (!Number.isFinite(child.estimate)) continue;
-          if (child.cost + child.estimate > planBound) continue;
+          if (!Number.isFinite(child.estimate)) {
+            if (planDiagnostics) planDiagnostics.pruning.unreachableEstimate++;
+            continue;
+          }
+          if (child.cost + child.estimate > planBound) {
+            if (planDiagnostics) planDiagnostics.pruning.planBound++;
+            continue;
+          }
           generated++;
           const solvedChild = goal(child.boxes, board.goals);
           if (solvedChild) {
@@ -1911,10 +2014,16 @@ function planMacroBeamSearch(payload) {
           }
           if (solvedChild) continue;
           if (moveAwareTranspositions) {
-            if (!addParetoCandidate(candidates, child, exactParetoLimit)) continue;
+            if (!addParetoCandidate(candidates, child, exactParetoLimit)) {
+              if (planDiagnostics) planDiagnostics.pruning.candidateDominance++;
+              continue;
+            }
           } else {
             const existing = candidates.get(child.exactIdentity);
-            if (existing && existing.score <= child.score) continue;
+            if (existing && existing.score <= child.score) {
+              if (planDiagnostics) planDiagnostics.pruning.candidateDominance++;
+              continue;
+            }
             candidates.set(child.exactIdentity, child);
           }
           if (child.estimate < bestEstimate ||
@@ -1934,6 +2043,17 @@ function planMacroBeamSearch(payload) {
       }
     }
     if (layerSolution) {
+      if (layerDiagnostics) {
+        layerDiagnostics.generatedStates = generated - layerGeneratedAt;
+        layerDiagnostics.candidateStates = candidates.size;
+        layerDiagnostics.milestoneCells = new Set(
+          [...candidates.values()].map(candidate =>
+            planMilestoneSignature(candidate, board)),
+        ).size;
+        layerDiagnostics.solutionCandidates = layerSolutionCandidates;
+        layerDiagnostics.bestEstimate = 0;
+        planDiagnostics.layers.push(layerDiagnostics);
+      }
       if (reported === 0) {
         postMessage({
           type: "progress",
@@ -1960,6 +2080,7 @@ function planMacroBeamSearch(payload) {
         solutionCandidates: layerSolutionCandidates,
         solutionComparisonStates: generated - layerSolutionGeneratedAt,
         strategy: "Plan Macro Beam",
+        ...(planDiagnostics ? {planDiagnostics} : {}),
       };
     }
     const candidateList = moveAwareTranspositions
@@ -1967,19 +2088,29 @@ function planMacroBeamSearch(payload) {
       : [...candidates.values()];
     peakFrontier = Math.max(peakFrontier, candidateList.length);
     const eligible = [];
-    for (const child of selectPlanLayer(candidateList, width * 2, board)) {
+    const preselected = selectPlanLayer(candidateList, width * 2, board);
+    for (const child of preselected) {
       const reachable = reachablePaths(child, board);
-      if (createsSealedCorralDeadlock(child, board, reachable)) continue;
+      if (createsSealedCorralDeadlock(child, board, reachable)) {
+        if (planDiagnostics) planDiagnostics.pruning.sealedCorral++;
+        continue;
+      }
       child.identity = pushIdentity(child, reachable);
       if (moveAwareTranspositions) {
         const approach = keeperApproachProfile(child, board, reachable);
         child.approachDistance = approach.distance;
         child.approachSide = approach.side;
-        if (!seen.wouldRetain(child.identity, child)) continue;
+        if (!seen.wouldRetain(child.identity, child)) {
+          if (planDiagnostics) planDiagnostics.pruning.regionTransposition++;
+          continue;
+        }
         child.token = `${String(child.exactIdentity)}|${child.cost}|${child.moves}`;
       } else if (moveTieTranspositions
         ? planArrivalDominates(seen.get(child.identity), child.cost, child.moves)
-        : (seen.get(child.identity) ?? Infinity) <= child.cost) continue;
+        : (seen.get(child.identity) ?? Infinity) <= child.cost) {
+        if (planDiagnostics) planDiagnostics.pruning.regionTransposition++;
+        continue;
+      }
       child.signature = pushKey(child, reachable);
       eligible.push(child);
     }
@@ -1995,6 +2126,22 @@ function planMacroBeamSearch(payload) {
           selectKeeperArrivals(arrivals, keeperArrivalLimit))
       : eligible;
     beam = selectPlanLayer(boundedEligible, width, board);
+    if (layerDiagnostics) {
+      layerDiagnostics.generatedStates = generated - layerGeneratedAt;
+      layerDiagnostics.candidateStates = candidateList.length;
+      layerDiagnostics.milestoneCells = new Set(
+        candidateList.map(candidate => planMilestoneSignature(candidate, board)),
+      ).size;
+      layerDiagnostics.preselectedStates = preselected.length;
+      layerDiagnostics.eligibleStates = boundedEligible.length;
+      layerDiagnostics.retainedStates = beam.length;
+      layerDiagnostics.retainedMilestoneCells = new Set(
+        beam.map(candidate => planMilestoneSignature(candidate, board)),
+      ).size;
+      layerDiagnostics.solutionCandidates = layerSolutionCandidates;
+      layerDiagnostics.bestEstimate = bestEstimate;
+      planDiagnostics.layers.push(layerDiagnostics);
+    }
     for (const child of beam) {
       if (moveAwareTranspositions) {
         seen.set(child.identity, child);
@@ -2054,6 +2201,7 @@ function planMacroBeamSearch(payload) {
     trackedThrough,
     checkpoint,
     checkpoints: checkpoints.filter(Boolean),
+    ...(planDiagnostics ? {planDiagnostics} : {}),
     cutoff: true,
     terminationReason: visited >= maxVisited ? "state-budget" :
       generated >= maxGenerated ? "generated-budget" : "plan-frontier-exhausted",

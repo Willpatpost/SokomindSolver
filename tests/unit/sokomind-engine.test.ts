@@ -74,6 +74,95 @@ describe("vendored Sokomind engine", () => {
     assert.equal(solution.pushes, 2);
   });
 
+  it("emits bounded structural-plan diagnostics only when requested", () => {
+    const request = requestFor(MIXED_TYPED_PUZZLE);
+    const payload = {
+      algorithm: "plan-macro-beam",
+      state: toLegacyState(request),
+      maxVisited: 1_000,
+      planBeamWidth: 16,
+      planBoxBranches: 4,
+      maxPlanSegments: 40,
+      maxDepth: 80,
+      planSolutionComparisonBudget: 0,
+    } as const;
+    const regular = search(payload);
+    const traced = search({...payload, planDiagnostics: true});
+
+    assert.deepEqual(traced.path, regular.path);
+    assert.equal("planDiagnostics" in regular, false);
+    const diagnostics = traced.planDiagnostics as {
+      readonly schemaVersion: number;
+      readonly branching: {
+        readonly distinctBoxReserve: number;
+        readonly firstPushLimit: number;
+      };
+      readonly pruning: Readonly<Record<string, number>>;
+      readonly layers: ReadonlyArray<{
+        readonly frontier: number;
+        readonly firstPushesGenerated: number;
+        readonly firstPushesSelected: number;
+        readonly candidateStates: number;
+        readonly retainedStates: number;
+      }>;
+    };
+    assert.equal(diagnostics.schemaVersion, 1);
+    assert.equal(diagnostics.branching.distinctBoxReserve, 0);
+    assert.equal(diagnostics.branching.firstPushLimit, 6);
+    assert.ok(diagnostics.layers.length > 0);
+    assert.ok(diagnostics.layers[0].frontier > 0);
+    assert.ok(diagnostics.layers[0].firstPushesGenerated > 0);
+    assert.ok(
+      diagnostics.layers[0].firstPushesSelected <=
+        diagnostics.branching.firstPushLimit,
+    );
+    assert.ok(
+      diagnostics.layers.every(layer =>
+        layer.retainedStates <= layer.candidateStates),
+    );
+    assert.ok(
+      Object.values(diagnostics.pruning).every(value =>
+        Number.isSafeInteger(value) && value >= 0),
+    );
+  });
+
+  it("derives the fixed-work box-agenda reserve from topology and pressure", () => {
+    const roomPuzzle = PUZZLE_BY_ID["gen-expert-335"];
+    const openPuzzle = PUZZLE_BY_ID["open-field"];
+    assert.ok(roomPuzzle);
+    assert.ok(openPuzzle);
+    const branchingFor = (puzzle: PuzzleDefinition) => {
+      const result = search({
+        algorithm: "plan-macro-beam",
+        state: toLegacyState(requestFor(puzzle)),
+        maxVisited: 1,
+        maxGenerated: 1,
+        planBeamWidth: 16,
+        planBoxBranches: 6,
+        maxPlanSegments: 1,
+        maxDepth: 80,
+        planDiagnostics: true,
+      });
+      return (result.planDiagnostics as {
+        readonly branching: {
+          readonly distinctBoxReserve: number;
+          readonly firstPushLimit: number;
+        };
+      }).branching;
+    };
+
+    assert.deepEqual(branchingFor(roomPuzzle), {
+      distinctBoxReserve: 1,
+      boxBranchLimit: 6,
+      firstPushLimit: 8,
+    });
+    assert.deepEqual(branchingFor(openPuzzle), {
+      distinctBoxReserve: 0,
+      boxBranchLimit: 6,
+      firstPushLimit: 8,
+    });
+  });
+
   it("rehydrates a structured-cloned prepared board without changing the route", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const state = toLegacyState(request);

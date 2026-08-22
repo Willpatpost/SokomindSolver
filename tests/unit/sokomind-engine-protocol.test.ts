@@ -239,6 +239,23 @@ describe("Sokomind engine worker protocol", () => {
       }),
       false,
     );
+    assert.equal(
+      isEngineResult({
+        type: "done",
+        planDiagnostics: {
+          schemaVersion: 1,
+          layers: [{segment: 1, retainedStates: 4}],
+        },
+      }),
+      true,
+    );
+    assert.equal(
+      isEngineResult({
+        type: "done",
+        planDiagnostics: {layers: [{score: Number.NaN}]},
+      }),
+      false,
+    );
   });
 
   it("turns malformed commands into a bounded failure without calling the engine", () => {

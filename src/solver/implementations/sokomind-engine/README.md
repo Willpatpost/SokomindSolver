@@ -23,11 +23,21 @@ The older PI-corral helper is also disabled as a hard prune. The engine retains
 the separate sealed-corral check that receives the exact reachable keeper
 region.
 
-The vendored `solver-search.js` has one integration-only protocol change:
-bidirectional record batches include visited, generated, frontier, retained,
-and peak-frontier telemetry. Its structural plan lane also accepts a generated
-state cap so the adapter can reserve a run-wide budget for discovery. Search
-order and successor generation below that cap are unchanged.
+The vendored `solver-search.js` includes integration telemetry and bounded
+structural-search improvements. Bidirectional record batches include visited,
+generated, frontier, retained, and peak-frontier counters. The structural plan
+lane accepts a generated-state cap so the adapter can reserve a run-wide budget
+for discovery. On crowded room boards it also spends one existing first-push
+slot on an additional distinct box agenda before alternate directions; the
+total first-push cap is unchanged.
+
+`planEgressGuard` continues to control the certified packing-order and
+box-continuation guards. The local `strandedExports` estimate is intentionally
+only a soft score by default: a legal enabling import can temporarily increase
+that one-push estimate. `planStrandedExportGuard: true` restores the legacy hard
+rejection for diagnostic comparison only. `planDiagnostics: true` emits a
+bounded per-layer generation/selection/pruning trace; normal runs omit it and
+do not allocate trace records.
 
 The source files use the legacy classic-script layout: declarations span files
 and must share one lexical scope. `scripts/prepare-sokomind-engine.mjs`

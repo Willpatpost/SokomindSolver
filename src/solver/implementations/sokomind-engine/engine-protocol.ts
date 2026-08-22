@@ -39,6 +39,8 @@ export interface EngineResultPayload {
   readonly moveImprovements?: number;
   readonly moveWindowAdaptiveStop?: boolean;
   readonly path?: readonly string[] | null;
+  /** Opt-in, bounded structural-plan trace; absent from normal solver runs. */
+  readonly planDiagnostics?: unknown;
   readonly peakFrontier?: number;
   readonly performance?: Readonly<Record<string, unknown>>;
   readonly permutationVisited?: number;
@@ -227,6 +229,14 @@ function hasValidOptionalPerformance(
       isTelemetryValue(value.performance, new Set<unknown>(), 0));
 }
 
+function hasValidOptionalPlanDiagnostics(
+  value: Readonly<Record<string, unknown>>,
+): boolean {
+  return value.planDiagnostics === undefined ||
+    (isRecord(value.planDiagnostics) &&
+      isTelemetryValue(value.planDiagnostics, new Set<unknown>(), 0));
+}
+
 export function isEngineResult(value: unknown): value is EngineResult {
   if (!isRecord(value)) return false;
   if (!ENGINE_RESULT_TYPES.has(value.type)) return false;
@@ -258,6 +268,7 @@ export function isEngineResult(value: unknown): value is EngineResult {
   if (!hasOptionalString(value, "error")) return false;
   if (value.cutoff !== undefined && typeof value.cutoff !== "boolean") return false;
   if (!hasValidOptionalPerformance(value)) return false;
+  if (!hasValidOptionalPlanDiagnostics(value)) return false;
   return true;
 }
 
