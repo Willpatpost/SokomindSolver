@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { Worker } from "node:worker_threads";
 
 const PROJECT_ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -143,6 +144,70 @@ describe("solve-sokomind CLI JSONL output", () => {
 
     const record = JSON.parse(stdout.trim());
     assert.ok(record.elapsedMs < 30000);
+  });
+});
+
+describe("Node engine worker progress bridge", () => {
+  it("relays classic-engine progress before the final result", async () => {
+    const workerPath = join(
+      PROJECT_ROOT,
+      "src/solver/implementations/sokomind-engine.node-worker.ts",
+    );
+    const worker = new Worker(workerPath, {
+      execArgv: ["--experimental-strip-types"],
+    });
+    const messages: Array<Record<string, unknown>> = [];
+    try {
+      const result = await new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("Node engine worker timed out")),
+            10_000,
+          );
+          worker.on("message", (value: unknown) => {
+            const message = value as Record<string, unknown>;
+            messages.push(message);
+            if (message.type !== "done") return;
+            clearTimeout(timer);
+            resolve(message);
+          });
+          worker.once("error", (error) => {
+            clearTimeout(timer);
+            reject(error);
+          });
+          worker.postMessage({
+            mode: "search",
+            payload: {
+              algorithm: "plan-macro-beam",
+              planCanonicalOrientation: false,
+              state: {
+                rows: [
+                  "OOOOOOOOO",
+                  "O R     O",
+                  "O X X X O",
+                  "O S S S O",
+                  "O       O",
+                  "OOOOOOOOO",
+                ],
+                robot: [1, 2],
+                boxes: [["2,2", "X"], ["2,4", "X"], ["2,6", "X"]],
+              },
+              maxDepth: 20,
+              maxVisited: 1_000,
+              maxGenerated: 4_000,
+              planBeamWidth: 32,
+              maxPlanSegments: 12,
+            },
+          });
+        },
+      );
+
+      assert.equal(result.status, "solved");
+      assert.ok(messages.some(({ type }) => type === "progress"));
+      assert.notEqual(result.error, "postMessage is not defined");
+    } finally {
+      await worker.terminate();
+    }
   });
 });
 

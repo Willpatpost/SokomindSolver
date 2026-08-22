@@ -24,7 +24,12 @@ function cacheAssignmentDetail(boxes, board, includeInteractions) {
       targets.map(target => compiledGoalPushDistance(board, pkey(y, x), target)));
     board.metrics.assignmentCalls++;
     const assignment = minimumAssignment(costs);
-    labels.set(label, {boxIndices: entries.map(entry => entry.index), costs, assignment});
+    labels.set(label, {
+      boxIndices: entries.map(entry => entry.index),
+      targets,
+      costs,
+      assignment,
+    });
     for (let column = 1; column < (assignment.matching?.length || 0); column++) {
       const row = assignment.matching[column] - 1;
       if (row >= 0) assignedTargets.set(entries[row].index, targets[column - 1]);
@@ -49,6 +54,82 @@ function cacheFullAssignmentDetail(boxes, board) {
 
 function cacheDiscoveryAssignmentDetail(boxes, board) {
   return cacheAssignmentDetail(boxes, board, false);
+}
+
+function perfectMatchingDomains(labelDetail) {
+  if (labelDetail.matchingDomains) return labelDetail.matchingDomains;
+  const {boxIndices, targets, costs, assignment} = labelDetail;
+  const size = boxIndices.length;
+  const finiteColumns = Array.from({length: size}, (_, row) => {
+    const columns = [];
+    for (let column = 0; column < (costs[row]?.length || 0); column++) {
+      if (Number.isFinite(costs[row][column])) columns.push(column);
+    }
+    return columns;
+  });
+  const finiteEdges = finiteColumns.reduce((sum, columns) => sum + columns.length, 0);
+  const cache = (complete, allowedColumnsByRow, reason = null) => {
+    const matchingDomains = {
+      method: "allowed-perfect-matching-edges",
+      complete,
+      reason,
+      allowedColumnsByRow,
+      finiteEdges,
+      allowedEdges: allowedColumnsByRow.reduce((sum, columns) => sum + columns.length, 0),
+    };
+    labelDetail.matchingDomains = matchingDomains;
+    return matchingDomains;
+  };
+  const failOpen = reason => cache(false, finiteColumns, reason);
+  if (targets.length !== size || costs.length !== size ||
+      costs.some(row => !Array.isArray(row) || row.length !== size)) {
+    return failOpen("unbalanced-domain");
+  }
+  if (!Number.isFinite(assignment?.cost) || assignment.matching?.length !== size + 1) {
+    return failOpen("infeasible-assignment");
+  }
+
+  const matchedColumnByRow = Array(size).fill(-1);
+  for (let column = 0; column < size; column++) {
+    const row = assignment.matching[column + 1] - 1;
+    if (!Number.isInteger(row) || row < 0 || row >= size ||
+        matchedColumnByRow[row] !== -1 || !Number.isFinite(costs[row][column])) {
+      return failOpen("invalid-matching-witness");
+    }
+    matchedColumnByRow[row] = column;
+  }
+
+  // Contract every matched box-goal edge. A non-matching edge belongs to some
+  // perfect matching exactly when its endpoints lie on an alternating cycle.
+  const adjacency = Array.from({length: size}, () => []);
+  for (let row = 0; row < size; row++) {
+    for (const column of finiteColumns[row]) {
+      if (column === matchedColumnByRow[row]) continue;
+      adjacency[row].push(assignment.matching[column + 1] - 1);
+    }
+  }
+  const reaches = adjacency.map((_, origin) => {
+    const seen = Array(size).fill(false);
+    const stack = [origin];
+    seen[origin] = true;
+    while (stack.length) {
+      const row = stack.pop();
+      for (let index = adjacency[row].length - 1; index >= 0; index--) {
+        const next = adjacency[row][index];
+        if (seen[next]) continue;
+        seen[next] = true;
+        stack.push(next);
+      }
+    }
+    return seen;
+  });
+  const allowedColumnsByRow = finiteColumns.map((columns, row) =>
+    columns.filter(column => {
+      if (column === matchedColumnByRow[row]) return true;
+      const matchedRow = assignment.matching[column + 1] - 1;
+      return reaches[row][matchedRow] && reaches[matchedRow][row];
+    }));
+  return cache(true, allowedColumnsByRow);
 }
 
 function heuristicWithInteractions(boxes, board, includeInteractions) {
@@ -182,7 +263,8 @@ function topologyPenalty(boxes, board) {
 function roomEvacuationPenalty(boxes, board) {
   const started = now();
   board.metrics.roomEvacuationCalls++;
-  const occupied = new Set(boxes.map(([y, x]) => pkey(y, x)));
+  const positions = boxes.map(([y, x]) => pkey(y, x));
+  const occupied = new Set(positions);
   let penalty = 0;
   for (const room of board.topology.rooms) {
     const current = new Map(), target = new Map();
@@ -211,19 +293,68 @@ function assignmentDoorwayPlan(boxes, board, discovery = false) {
     ? cacheDiscoveryAssignmentDetail(boxes, board)
     : cacheFullAssignmentDetail(boxes, board);
   if (assignment.doorwayPlan) return assignment.doorwayPlan;
-  const occupied = new Set(boxes.map(([y, x]) => pkey(y, x)));
+  const positions = boxes.map(([y, x]) => pkey(y, x));
+  const occupied = new Set(positions);
+  const domainsByBoxIndex = new Map();
+  const labelDomains = [];
+  let finiteEdges = 0, allowedEdges = 0;
+  for (const [label, detail] of assignment.labels) {
+    const domains = perfectMatchingDomains(detail);
+    finiteEdges += domains.finiteEdges;
+    allowedEdges += domains.allowedEdges;
+    labelDomains.push({
+      label,
+      complete: domains.complete,
+      reason: domains.reason,
+      boxes: detail.boxIndices.length,
+      finiteEdges: domains.finiteEdges,
+      allowedEdges: domains.allowedEdges,
+    });
+    detail.boxIndices.forEach((boxIndex, row) => {
+      domainsByBoxIndex.set(boxIndex, {
+        complete: domains.complete,
+        targets: domains.allowedColumnsByRow[row].map(column => detail.targets[column]),
+      });
+    });
+  }
   const tasks = [];
+  let optionalCrossings = 0, stationaryRelations = 0, unclassifiedRelations = 0;
+  let classificationComplete = true;
   for (let roomIndex = 0; roomIndex < board.topology.rooms.length; roomIndex++) {
     const room = board.topology.rooms[roomIndex];
     boxes.forEach(([y, x, label], boxIndex) => {
       const box = pkey(y, x), target = assignment.assignedTargets.get(boxIndex);
-      if (!target) return;
-      const inside = room.cells.has(box), targetInside = room.cells.has(target);
-      const direction = inside && !targetInside
-        ? "export" : !inside && targetInside ? "import" : null;
-      if (direction) {
-        tasks.push({box, boxIndex, label, target, direction, roomIndex, gate: room.gate});
+      const domain = domainsByBoxIndex.get(boxIndex);
+      if (!domain?.complete || !domain.targets.length || !target ||
+          !domain.targets.includes(target)) {
+        classificationComplete = false;
+        unclassifiedRelations++;
+        return;
       }
+      const inside = room.cells.has(box);
+      let hasInsideTarget = false, hasOutsideTarget = false;
+      for (const allowedTarget of domain.targets) {
+        if (room.cells.has(allowedTarget)) hasInsideTarget = true;
+        else hasOutsideTarget = true;
+      }
+      if (hasInsideTarget && hasOutsideTarget) {
+        optionalCrossings++;
+        return;
+      }
+      const direction = inside && hasOutsideTarget
+        ? "export" : !inside && hasInsideTarget ? "import" : null;
+      if (direction) {
+        tasks.push({
+          box,
+          boxIndex,
+          label,
+          target,
+          allowedTargets: [...domain.targets],
+          direction,
+          roomIndex,
+          gate: room.gate,
+        });
+      } else stationaryRelations++;
     });
   }
   let penalty = tasks.length;
@@ -231,11 +362,37 @@ function assignmentDoorwayPlan(boxes, board, discovery = false) {
     const crossings = tasks.filter(task => task.gate === room.gate).length;
     if (crossings && occupied.has(room.gate)) penalty += 2 * crossings;
   }
-  assignment.doorwayPlan = {tasks, penalty};
+  assignment.doorwayPlan = {
+    tasks,
+    penalty,
+    proof: {
+      method: "allowed-perfect-matching-edges",
+      complete: classificationComplete && labelDomains.every(domain => domain.complete),
+      labelDomains,
+      boxDomains: boxes.map(([y, x, label], boxIndex) => {
+        const domain = domainsByBoxIndex.get(boxIndex);
+        return {
+          box: pkey(y, x),
+          boxIndex,
+          label,
+          complete: domain?.complete === true,
+          allowedTargets: [...(domain?.targets || [])],
+        };
+      }),
+      finiteEdges,
+      allowedEdges,
+      eliminatedEdges: finiteEdges - allowedEdges,
+      mandatoryCrossings: tasks.length,
+      optionalCrossings,
+      stationaryRelations,
+      unclassifiedRelations,
+    },
+  };
   return assignment.doorwayPlan;
 }
 
 const DOORWAY_TASK_PARTITION_MEMO = new WeakMap();
+const ROOM_INTERFACE_POLICY_MEMO = new WeakMap();
 
 function doorwayTaskPartitions(tasks, roomCount) {
   const cached = DOORWAY_TASK_PARTITION_MEMO.get(tasks);
@@ -253,7 +410,209 @@ function doorwayTaskPartitions(tasks, roomCount) {
   return partitions;
 }
 
-function doorwayScheduleState(boxes, board, tasks) {
+function doorwayTaskTargets(task) {
+  return task.allowedTargets?.length ? task.allowedTargets : task.target ? [task.target] : [];
+}
+
+function preferredDoorwayTaskTarget(task, position, board) {
+  const targets = doorwayTaskTargets(task);
+  let preferred = null, bestDistance = Infinity;
+  for (const target of targets) {
+    const distance = compiledGoalPushDistance(board, position, target);
+    if (distance < bestDistance ||
+        (distance === bestDistance && target === task.target)) {
+      preferred = target;
+      bestDistance = distance;
+    }
+  }
+  return {target: preferred, distance: bestDistance};
+}
+
+function doorwayClearanceRequirement(exports, imports, room) {
+  if (!exports.length || !imports.length) {
+    return Object.freeze({
+      minimumExportsBeforeFirstImport: 0,
+      lateralExportCounts: Object.freeze([0, 0]),
+      method: "no-mixed-flow",
+      hardPruning: false,
+    });
+  }
+  const baseline = Math.min(
+    exports.length,
+    Math.max(1, exports.length - imports.length + 1),
+  );
+  const lane = room.doorwayLanes.find(candidate =>
+    candidate.importPossible && candidate.exportPossible) || room.doorwayLanes[0];
+  if (!lane) {
+    return Object.freeze({
+      minimumExportsBeforeFirstImport: baseline,
+      lateralExportCounts: Object.freeze([0, 0]),
+      method: "flow-balance",
+      hardPruning: false,
+    });
+  }
+  const [gateY, gateX] = room.gate.split(",").map(Number);
+  const [insideY, insideX] = lane.inside.split(",").map(Number);
+  const vertical = insideY !== gateY;
+  const inwardY = insideY - gateY, inwardX = insideX - gateX;
+  // Room graph depth can route around the edge of a packed row and make its
+  // centre look artificially deeper. For doorway clearance, use the axial
+  // layer measured from the inside landing cell so a full cross-door barrier
+  // (such as Grand Hall's six-box row) is recognized as one layer.
+  const depths = exports.map(task => {
+    const [y, x] = task.box.split(",").map(Number);
+    const axialDepth = (y - insideY) * inwardY + (x - insideX) * inwardX;
+    return axialDepth >= 0 ? axialDepth : Infinity;
+  });
+  const barrierDepth = Math.min(...depths);
+  const barrier = exports.filter((task, index) => depths[index] === barrierDepth);
+  let negative = 0, positive = 0;
+  for (const task of barrier) {
+    const [y, x] = task.box.split(",").map(Number);
+    const offset = vertical ? x - insideX : y - insideY;
+    if (offset < 0) negative++;
+    else if (offset > 0) positive++;
+  }
+  // A shallow barrier on both sides of a one-cell doorway needs one side
+  // cleared plus one box on the other side before an imported box can be
+  // staged without sealing the keeper away from the packing side. This is an
+  // ordering recommendation only: irregular room geometry is deliberately
+  // allowed to prove it unnecessary during the real search.
+  const barrierRecommendation = negative && positive
+    ? Math.min(exports.length, Math.min(negative, positive) + 1)
+    : 0;
+  return Object.freeze({
+    minimumExportsBeforeFirstImport: Math.max(baseline, barrierRecommendation),
+    lateralExportCounts: Object.freeze([negative, positive]),
+    barrierDepth: Number.isFinite(barrierDepth) ? barrierDepth : null,
+    method: barrierRecommendation > baseline
+      ? "shallow-two-sided-barrier" : "flow-balance",
+    hardPruning: false,
+  });
+}
+
+function doorwayAllowedImports(
+  exportCount,
+  importCount,
+  completedExports,
+  minimumExportsBeforeFirstImport,
+) {
+  if (!importCount || completedExports < minimumExportsBeforeFirstImport) return 0;
+  if (completedExports >= exportCount) return importCount;
+  const permanentSurplus = Math.max(0, exportCount - importCount);
+  return Math.min(importCount, Math.max(0, completedExports - permanentSurplus));
+}
+
+function roomInterfacePolicyTables(tasks, board) {
+  const cached = ROOM_INTERFACE_POLICY_MEMO.get(tasks);
+  if (cached?.length === board.topology.rooms.length) return cached;
+  const partitions = doorwayTaskPartitions(tasks, board.topology.rooms.length);
+  const tables = partitions.map(({exports, imports}, roomIndex) => {
+    const room = board.topology.rooms[roomIndex];
+    const clearance = doorwayClearanceRequirement(
+      exports,
+      imports,
+      room,
+    );
+    const targetLabels = new Map();
+    room.goals.forEach(goal => {
+      const label = board.goals.get(goal);
+      targetLabels.set(label, (targetLabels.get(label) || 0) + 1);
+    });
+    const states = new Map();
+    for (let pendingExports = 0; pendingExports <= exports.length; pendingExports++) {
+      for (let remainingImports = 0; remainingImports <= imports.length; remainingImports++) {
+        for (const keeperSide of ["inside", "outside"]) {
+          const actions = [];
+          const completedExports = exports.length - pendingExports;
+          const imported = imports.length - remainingImports;
+          const allowedImports = doorwayAllowedImports(
+            exports.length,
+            imports.length,
+            completedExports,
+            clearance.minimumExportsBeforeFirstImport,
+          );
+          const importsUnlocked = imported < allowedImports;
+          if (pendingExports > 0) actions.push("export");
+          if (remainingImports > 0 && importsUnlocked) actions.push("import");
+          if (!pendingExports && !remainingImports) actions.push("pack");
+          states.set(
+            `${pendingExports}|${remainingImports}|${keeperSide}`,
+            Object.freeze({
+              pendingExports,
+              remainingImports,
+              keeperSide,
+              minimumCrossings: pendingExports + remainingImports,
+              allowedImports,
+              preferredAction: remainingImports > 0 && importsUnlocked
+                ? "import" : pendingExports > 0 ? "export" : "pack",
+              actions: Object.freeze(actions),
+            }),
+          );
+        }
+      }
+    }
+    return Object.freeze({
+      maximumExports: exports.length,
+      maximumImports: imports.length,
+      targetLabels,
+      ...clearance,
+      proofScope: "permissive-boundary-overapproximation",
+      hardPruning: false,
+      states,
+    });
+  });
+  ROOM_INTERFACE_POLICY_MEMO.set(tasks, tables);
+  return tables;
+}
+
+function roomInterfaceStates(boxes, board, tasks, robot = null) {
+  const occupied = new Set(boxes.map(([y, x]) => pkey(y, x)));
+  const partitions = doorwayTaskPartitions(tasks, board.topology.rooms.length);
+  const tables = roomInterfacePolicyTables(tasks, board);
+  return board.topology.rooms.map((room, roomIndex) => {
+    const {exports, imports} = partitions[roomIndex];
+    const pendingExports = exports.filter(task => {
+      const [y, x] = boxes[task.boxIndex];
+      const position = pkey(y, x);
+      return room.cells.has(position) || position === room.gate;
+    }).length;
+    const remainingImports = imports.filter(task => {
+      const [y, x] = boxes[task.boxIndex];
+      return !room.cells.has(pkey(y, x));
+    }).length;
+    const keeperPosition = robot ? pkey(robot[0], robot[1]) : null;
+    const keeperSide = keeperPosition && room.cells.has(keeperPosition)
+      ? "inside" : "outside";
+    const policy = tables[roomIndex].states.get(
+      `${pendingExports}|${remainingImports}|${keeperSide}`,
+    );
+    const stagingOccupied = [...room.exteriorStaging]
+      .filter(position => occupied.has(position)).length;
+    return Object.freeze({
+      roomIndex,
+      gate: room.gate,
+      keeperSide,
+      gateOccupied: occupied.has(room.gate),
+      stagingOccupied,
+      stagingCapacity: room.exteriorStaging.size,
+      pendingExports,
+      remainingImports,
+      minimumExportsBeforeFirstImport:
+        tables[roomIndex].minimumExportsBeforeFirstImport,
+      clearanceMethod: tables[roomIndex].method,
+      lateralExportCounts: tables[roomIndex].lateralExportCounts,
+      minimumCrossings: policy?.minimumCrossings ?? pendingExports + remainingImports,
+      allowedImports: policy?.allowedImports ?? 0,
+      preferredAction: policy?.preferredAction ?? "pack",
+      availableActions: policy?.actions ?? Object.freeze([]),
+      proofScope: tables[roomIndex].proofScope,
+      hardPruning: false,
+    });
+  });
+}
+
+function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
   const started = now();
   board.metrics.doorwayScheduleCalls++;
   let penalty = 0, pendingExports = 0, remainingImports = 0;
@@ -261,61 +620,102 @@ function doorwayScheduleState(boxes, board, tasks) {
   let crossingDistance = 0, packingDistance = 0, unpackedImports = 0;
   let stagingBlockers = 0, strandedExports = 0, blockedImportAccess = 0;
   let packingOrderViolations = 0;
-  const occupied = new Set(boxes.map(([y, x]) => pkey(y, x)));
+  let evacuationPenalty = 0;
+  const positions = boxes.map(([y, x]) => pkey(y, x));
+  const layout = preparedLayout || denseBoxLayout(boxes, board);
+  const indexByCell = ensureIndexByCell(layout, board);
+  const occupiedIndex = position => {
+    const cell = board.dense.idByKey.get(position);
+    return cell === undefined ? -1 : indexByCell[cell];
+  };
+  const isOccupied = position => occupiedIndex(position) >= 0;
+  const occupiedLabel = position => {
+    const index = occupiedIndex(position);
+    return index < 0 ? undefined : boxes[index][2];
+  };
   const partitions = doorwayTaskPartitions(tasks, board.topology.rooms.length);
+  const interfaceTables = roomInterfacePolicyTables(tasks, board);
   for (let roomIndex = 0; roomIndex < board.topology.rooms.length; roomIndex++) {
     const room = board.topology.rooms[roomIndex];
     const {exports, imports} = partitions[roomIndex];
+    const insideRoomIndices = [];
+    for (let boxIndex = 0; boxIndex < boxes.length; boxIndex++) {
+      if (room.cells.has(positions[boxIndex])) insideRoomIndices.push(boxIndex);
+    }
+    const currentLabels = new Map();
+    const targetLabels = interfaceTables[roomIndex].targetLabels;
+    insideRoomIndices.forEach(boxIndex => {
+      const label = boxes[boxIndex][2];
+      currentLabels.set(label, (currentLabels.get(label) || 0) + 1);
+    });
+    let roomSurplus = 0;
+    currentLabels.forEach((count, label) => {
+      roomSurplus += Math.max(0, count - (targetLabels.get(label) || 0));
+    });
+    if (roomSurplus) {
+      evacuationPenalty += 20 * insideRoomIndices.length + 8 * roomSurplus;
+      for (const [position, distance] of room.approach) {
+        if (isOccupied(position)) evacuationPenalty += 3 * (4 - distance);
+      }
+    }
     const pending = exports.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      const position = pkey(y, x);
+      const position = positions[task.boxIndex];
       return room.cells.has(position) || position === room.gate;
     });
+    const pendingSet = new Set(pending);
     const imported = imports.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      return room.cells.has(pkey(y, x));
+      return room.cells.has(positions[task.boxIndex]);
     });
     const unpacked = imported.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      return task.target && pkey(y, x) !== task.target;
+      const targets = doorwayTaskTargets(task);
+      return targets.length > 0 && !targets.includes(positions[task.boxIndex]);
     });
     const blocking = imports.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      return pkey(y, x) === room.gate;
+      return positions[task.boxIndex] === room.gate;
     });
     const completedExports = exports.length - pending.length;
-    const requiredExportLead = Math.max(0, exports.length - imports.length);
-    const balancedImports = Math.max(0, completedExports - requiredExportLead);
-    const allowedImports = pending.length
-      ? Math.min(1, balancedImports) : balancedImports;
+    const requiredExportLead = interfaceTables[roomIndex]
+      .minimumExportsBeforeFirstImport;
+    const allowedImports = doorwayAllowedImports(
+      exports.length,
+      imports.length,
+      completedExports,
+      requiredExportLead,
+    );
+    const importSlots = Math.max(
+      0,
+      Math.min(
+        imports.length - imported.length,
+        allowedImports - imported.length,
+      ),
+    );
     const excessImports = Math.max(0, imported.length - allowedImports);
     const blockedImports = blocking.length && imported.length >= allowedImports
       ? blocking.length : 0;
-    const conflicts = occupied.has(room.gate)
+    const conflicts = isOccupied(room.gate)
       ? room.doorwayLanes.filter(lane =>
-        occupied.has(lane.inside) || occupied.has(lane.outside)).length
+        isOccupied(lane.inside) || isOccupied(lane.outside)).length
       : 0;
     const exportedInApproach = exports.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      return !pending.includes(task) && room.exteriorStaging.has(pkey(y, x));
+      return !pendingSet.has(task) && room.exteriorStaging.has(positions[task.boxIndex]);
     });
     const blockedStaging = pending.length && exportedInApproach.length
       ? [...room.exteriorStaging].filter(position =>
-        occupied.has(position)).length
+        isOccupied(position)).length
       : !pending.length && imported.length < imports.length
         ? exportedInApproach.length
         : 0;
     let accessible = null;
     const crossingAccessible = () => {
       if (accessible) return accessible;
-      const accessStart = !occupied.has(room.gate)
+      const accessStart = !isOccupied(room.gate)
         ? room.gate
-        : [...room.cells].find(position => !occupied.has(position));
+        : [...room.cells].find(position => !isOccupied(position));
       accessible = new Set(accessStart ? [accessStart] : []);
       const accessQueue = accessStart ? [accessStart] : [];
       for (let head = 0; head < accessQueue.length; head++) {
         for (const next of floorNeighbors(accessQueue[head], board.floor)) {
-          if (occupied.has(next) || accessible.has(next)) continue;
+          if (isOccupied(next) || accessible.has(next)) continue;
           accessible.add(next);
           accessQueue.push(next);
         }
@@ -330,7 +730,7 @@ function doorwayScheduleState(boxes, board, tasks) {
         return !DIRECTION_ENTRIES.some(([, [dy, dx]]) => {
           const destination = pkey(y + dy, x + dx);
           const support = pkey(y - dy, x - dx);
-          return board.floor.has(destination) && !occupied.has(destination) &&
+          return board.floor.has(destination) && !isOccupied(destination) &&
             reached.has(support) &&
             !staticDead(y + dy, x + dx, board, task.label);
         });
@@ -350,7 +750,7 @@ function doorwayScheduleState(boxes, board, tasks) {
           const nextDistance = playerAwarePushDistances(board, destination).get(room.gate);
           const candidateBoxes = boxes.slice();
           candidateBoxes[task.boxIndex] = [y + dy, x + dx, task.label];
-          return board.floor.has(destination) && !occupied.has(destination) &&
+          return board.floor.has(destination) && !isOccupied(destination) &&
             reached.has(support) && nextDistance < currentDistance &&
             !staticDead(y + dy, x + dx, board, task.label) &&
             !createsDynamicDeadlock(candidateBoxes, board, [y + dy, x + dx]);
@@ -358,24 +758,67 @@ function doorwayScheduleState(boxes, board, tasks) {
       }).length;
     }
     const packingViolations = room.dependencies.filter(([blocker, prerequisite]) =>
-      occupied.has(blocker) &&
-      boxes.some(([y, x, label]) =>
-        pkey(y, x) === blocker && board.goals.get(blocker) === label) &&
-      !boxes.some(([y, x, label]) =>
-        pkey(y, x) === prerequisite && board.goals.get(prerequisite) === label),
+      occupiedLabel(blocker) === board.goals.get(blocker) &&
+      occupiedLabel(prerequisite) !== board.goals.get(prerequisite),
     ).length;
-    const distanceTasks = pending.length ? pending : imports.filter(task => {
-      const [y, x] = boxes[task.boxIndex];
-      return !room.cells.has(pkey(y, x));
-    });
-    for (const task of distanceTasks) {
-      const [y, x] = boxes[task.boxIndex];
-      const distance = playerAwarePushDistances(board, pkey(y, x)).get(room.gate);
-      crossingDistance += Number.isFinite(distance) ? Math.min(12, distance + 1) : 12;
+    if (importSlots > 0) {
+      const waitingImportCount = imports.length - imported.length;
+      if (importSlots === 1) {
+        let minimumDistance = Infinity;
+        for (const task of imports) {
+          if (room.cells.has(positions[task.boxIndex])) continue;
+          minimumDistance = Math.min(
+            minimumDistance,
+            playerAwarePushDistances(
+              board,
+              positions[task.boxIndex],
+            ).get(room.gate) ?? Infinity,
+          );
+        }
+        crossingDistance += Number.isFinite(minimumDistance)
+          ? Math.min(12, minimumDistance + 1) : 12;
+      } else if (importSlots >= waitingImportCount) {
+        for (const task of imports) {
+          if (room.cells.has(positions[task.boxIndex])) continue;
+          const distance = playerAwarePushDistances(
+            board,
+            positions[task.boxIndex],
+          ).get(room.gate);
+          crossingDistance += Number.isFinite(distance)
+            ? Math.min(12, distance + 1) : 12;
+        }
+      } else {
+        const waitingImportDistances = [];
+        for (const task of imports) {
+          if (room.cells.has(positions[task.boxIndex])) continue;
+          waitingImportDistances.push(playerAwarePushDistances(
+            board,
+            positions[task.boxIndex],
+          ).get(room.gate) ?? Infinity);
+        }
+        waitingImportDistances.sort((left, right) => left - right);
+        for (let index = 0; index < importSlots; index++) {
+          const distance = waitingImportDistances[index];
+          crossingDistance += Number.isFinite(distance)
+            ? Math.min(12, distance + 1) : 12;
+        }
+      }
+    } else {
+      for (const task of pending) {
+        const distance = playerAwarePushDistances(
+          board,
+          positions[task.boxIndex],
+        ).get(room.gate);
+        crossingDistance += Number.isFinite(distance)
+          ? Math.min(12, distance + 1) : 12;
+      }
     }
     for (const task of unpacked) {
-      const [y, x] = boxes[task.boxIndex];
-      const distance = compiledGoalPushDistance(board, pkey(y, x), task.target);
+      const {distance} = preferredDoorwayTaskTarget(
+        task,
+        positions[task.boxIndex],
+        board,
+      );
       packingDistance += Number.isFinite(distance) ? Math.min(12, distance) : 12;
     }
     pendingExports += pending.length;
@@ -408,6 +851,7 @@ function doorwayScheduleState(boxes, board, tasks) {
     packingOrderViolations,
     crossingDistance,
     packingDistance,
+    evacuationPenalty,
   };
   board.metrics.doorwayScheduleMs += now() - started;
   return result;
@@ -691,6 +1135,48 @@ function evaluateGoalAccess(goalAccess, occupied) {
   };
 }
 
+function evaluateGoalAccessSummary(goalAccess, occupied) {
+  let penalty = 0;
+  const blockedGoals = [];
+  for (const entry of goalAccess) {
+    const solved = occupied.get(entry.goal) === entry.label;
+    let openLanes = 0;
+    for (const lane of entry.lanes) {
+      const sourceLabel = occupied.get(lane.source);
+      const supportLabel = occupied.get(lane.support);
+      if (supportLabel === undefined &&
+          (sourceLabel === undefined || sourceLabel === entry.label)) openLanes++;
+    }
+    if (!solved && entry.lanes.length) {
+      penalty += (entry.lanes.length - openLanes) / entry.lanes.length;
+      if (!openLanes) penalty += 4;
+      else if (openLanes === 1 && entry.lanes.length > 1) penalty += 0.5;
+    }
+    if (!solved && !openLanes) blockedGoals.push({goal: entry.goal});
+  }
+  return {penalty, blockedGoals};
+}
+
+function ensureGoalAccessPackingRisk(result, boxes, board) {
+  if (result.packingRisk instanceof Map) return result.packingRisk;
+  const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
+  const packingRisk = new Map(), safeGoals = new Set();
+  for (const goal of result.goals) {
+    if (goal.solved) continue;
+    let risk = 5;
+    if (!occupied.has(goal.goal)) {
+      const packed = new Map(occupied);
+      packed.set(goal.goal, goal.label);
+      risk = evaluateGoalAccess(board.topology.goalAccess, packed).penalty - result.penalty;
+    }
+    packingRisk.set(goal.goal, risk);
+    if (risk <= 0) safeGoals.add(goal.goal);
+  }
+  result.packingRisk = packingRisk;
+  result.safeGoals = safeGoals;
+  return packingRisk;
+}
+
 function goalAccessAnalysis(boxes, board) {
   const metrics = board.metrics;
   metrics.goalAccessCalls++;
@@ -703,19 +1189,11 @@ function goalAccessAnalysis(boxes, board) {
   const started = now();
   const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
   const result = evaluateGoalAccess(board.topology.goalAccess, occupied);
-  result.packingRisk = new Map();
-  result.safeGoals = new Set();
-  for (const goal of result.goals) {
-    if (goal.solved) continue;
-    let risk = 5;
-    if (!occupied.has(goal.goal)) {
-      const packed = new Map(occupied);
-      packed.set(goal.goal, goal.label);
-      risk = evaluateGoalAccess(board.topology.goalAccess, packed).penalty - result.penalty;
-    }
-    result.packingRisk.set(goal.goal, risk);
-    if (risk <= 0) result.safeGoals.add(goal.goal);
-  }
+  // Packing risk is only consumed by relevance ordering in the ordinary beam
+  // lanes. The structural planner needs penalty/blockedGoals only, so avoid
+  // reevaluating every goal lane for its thousands of transient candidates.
+  result.packingRisk = null;
+  result.safeGoals = null;
   metrics.goalAccessBlockedGoals += result.blockedGoals.length;
   metrics.goalAccessMs += now() - started;
   return memoizeBounded(
@@ -726,13 +1204,27 @@ function goalAccessAnalysis(boxes, board) {
   );
 }
 
+function goalAccessSummary(boxes, board) {
+  const metrics = board.metrics;
+  metrics.goalAccessCalls++;
+  const started = now();
+  const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
+  const result = evaluateGoalAccessSummary(board.topology.goalAccess, occupied);
+  metrics.goalAccessBlockedGoals += result.blockedGoals.length;
+  metrics.goalAccessMs += now() - started;
+  return result;
+}
+
 function goalAccessDelta(analysis, state, next, board) {
   const occupied = new Map(state.boxes.map(([y, x, label]) => [pkey(y, x), label]));
   const label = occupied.get(next.pushedFrom);
   if (label === undefined) return 0;
   occupied.delete(next.pushedFrom);
   occupied.set(next.pushedTo, label);
-  return evaluateGoalAccess(board.topology.goalAccess, occupied).penalty - analysis.penalty;
+  const result = analysis.goals
+    ? evaluateGoalAccess(board.topology.goalAccess, occupied)
+    : evaluateGoalAccessSummary(board.topology.goalAccess, occupied);
+  return result.penalty - analysis.penalty;
 }
 
 function relevanceOrderingScore(state, board, next, evidence = {}) {
@@ -748,7 +1240,10 @@ function relevanceOrderingScore(state, board, next, evidence = {}) {
     ? compiledGoalPushDistance(board, next.pushedTo, target) : Infinity;
   const rawAssignmentProgress = Number.isFinite(beforeDistance) && Number.isFinite(afterDistance)
     ? afterDistance - beforeDistance : 0;
-  const targetPackingRisk = target && goalAccess?.packingRisk.get(target) || 0;
+  const packingRisk = goalAccess
+    ? ensureGoalAccessPackingRisk(goalAccess, state.boxes, board)
+    : null;
+  const targetPackingRisk = target && packingRisk?.get(target) || 0;
   const assignmentProgress = targetPackingRisk > 0
     ? rawAssignmentProgress < 0
       ? -rawAssignmentProgress * Math.min(1, targetPackingRisk)
@@ -880,14 +1375,25 @@ const SokomindHeuristic = {
   discoveryHeuristic,
   topologyPenalty,
   roomEvacuationPenalty,
+  perfectMatchingDomains,
   assignmentDoorwayPlan,
   DOORWAY_TASK_PARTITION_MEMO,
   doorwayTaskPartitions,
+  ROOM_INTERFACE_POLICY_MEMO,
+  roomInterfacePolicyTables,
+  roomInterfaceStates,
+  doorwayTaskTargets,
+  preferredDoorwayTaskTarget,
+  doorwayClearanceRequirement,
+  doorwayAllowedImports,
   doorwayScheduleState,
+  ensureGoalAccessPackingRisk,
   typedDoorwayFlow,
   doorwayFlowDelta,
   evaluateGoalAccess,
+  evaluateGoalAccessSummary,
   goalAccessAnalysis,
+  goalAccessSummary,
   goalAccessDelta,
   relevanceOrderingScore,
   recordRelevanceOrdering,

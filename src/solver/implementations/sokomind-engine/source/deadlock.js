@@ -9,12 +9,49 @@ function corner(y, x, board, label) {
     (wall(1, 0) && wall(0, -1)) || (wall(1, 0) && wall(0, 1));
 }
 function staticDead(y, x, board, label) {
-  if (board.goals.get(pkey(y, x)) === label) return false;
-  const distances = playerAwarePushDistances(board, pkey(y, x));
+  const position = pkey(y, x);
+  if (board.goals.get(position) === label) return false;
+  const targets = board.goalPushTables?.byLabel?.get(label);
+  if (targets) return !targets.some(({distances}) => distances.has(position));
+  // Compatibility for small hand-built test boards without compiled tables.
+  const distances = playerAwarePushDistances(board, position);
   return !(board.goalsByLabel.get(label) || []).some(goal => distances.has(goal));
 }
-function creates2x2Deadlock(boxes, board, movedBox) {
-  const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
+
+function createDeadlockOccupancyContext(boxes, board) {
+  const layout = denseBoxLayout(boxes, board);
+  return {
+    boxes,
+    layout,
+    indexByCell: layout.indexByCell,
+    parentIndexByCell: layout.parentIndexByCell,
+  };
+}
+
+function occupiedIndex(context, board, position) {
+  const cell = board.dense.idByKey.get(position);
+  if (cell === undefined) return -1;
+  if (context.indexByCell) return context.indexByCell[cell];
+  if (context.parentIndexByCell) {
+    if (cell === context.layout.previousCell) return -1;
+    if (cell === context.layout.destinationCell) return context.layout.changedIndex;
+    return context.parentIndexByCell[cell];
+  }
+  context.indexByCell = ensureIndexByCell(context.layout, board);
+  return context.indexByCell[cell];
+}
+
+function occupiedHas(context, board, position) {
+  return occupiedIndex(context, board, position) >= 0;
+}
+
+function occupiedLabel(context, board, position) {
+  const index = occupiedIndex(context, board, position);
+  return index < 0 ? undefined : context.boxes[index][2];
+}
+
+function creates2x2Deadlock(boxes, board, movedBox, context = null) {
+  const occupancy = context || createDeadlockOccupancyContext(boxes, board);
   const [boxY, boxX] = movedBox;
   for (const originY of [boxY - 1, boxY]) {
     for (const originX of [boxX - 1, boxX]) {
@@ -22,25 +59,28 @@ function creates2x2Deadlock(boxes, board, movedBox) {
         [originY, originX], [originY + 1, originX],
         [originY, originX + 1], [originY + 1, originX + 1],
       ];
-      if (!cells.every(([y, x]) => board.walls.has(pkey(y, x)) || occupied.has(pkey(y, x)))) continue;
+      if (!cells.every(([y, x]) => {
+        const position = pkey(y, x);
+        return board.walls.has(position) || occupiedHas(occupancy, board, position);
+      })) continue;
       if (cells.some(([y, x]) => {
-        const label = occupied.get(pkey(y, x));
+        const label = occupiedLabel(occupancy, board, pkey(y, x));
         return label && board.goals.get(pkey(y, x)) !== label;
       })) return true;
     }
   }
   return false;
 }
-function createsFrozenComponentDeadlock(boxes, board, movedBox) {
-  const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
+function createsFrozenComponentDeadlock(boxes, board, movedBox, context = null) {
+  const occupancy = context || createDeadlockOccupancyContext(boxes, board);
   const start = pkey(movedBox[0], movedBox[1]);
-  if (!occupied.has(start)) return false;
+  if (!occupiedHas(occupancy, board, start)) return false;
   const component = new Set([start]), queue = [movedBox];
   for (let head = 0; head < queue.length; head++) {
     const [y, x] = queue[head];
     for (const [dy, dx] of Object.values(DIRS)) {
       const adjacent = pkey(y + dy, x + dx);
-      if (!occupied.has(adjacent) || component.has(adjacent)) continue;
+      if (!occupiedHas(occupancy, board, adjacent) || component.has(adjacent)) continue;
       component.add(adjacent);
       queue.push([y + dy, x + dx]);
     }
@@ -49,7 +89,7 @@ function createsFrozenComponentDeadlock(boxes, board, movedBox) {
   const recursivelyFrozen = new Set();
   const isBlocker = position =>
     !board.floor.has(position) ||
-    (occupied.has(position) && recursivelyFrozen.has(position));
+    (occupiedHas(occupancy, board, position) && recursivelyFrozen.has(position));
   let changed = true;
   while (changed) {
     changed = false;
@@ -65,23 +105,29 @@ function createsFrozenComponentDeadlock(boxes, board, movedBox) {
   }
   board.metrics.recursiveFreezeBoxes += recursivelyFrozen.size;
   if ([...recursivelyFrozen]
-    .some(position => board.goals.get(position) !== occupied.get(position))) return true;
+    .some(position => board.goals.get(position) !==
+      occupiedLabel(occupancy, board, position))) return true;
   const movable = queue.some(([y, x]) => Object.values(DIRS).some(([dy, dx]) => {
     const destination = pkey(y + dy, x + dx);
     const support = pkey(y - dy, x - dx);
     return board.floor.has(destination) && board.floor.has(support) &&
-      !occupied.has(destination) && !occupied.has(support);
+      !occupiedHas(occupancy, board, destination) &&
+      !occupiedHas(occupancy, board, support);
   }));
   if (movable) return false;
-  return [...component].some(position => board.goals.get(position) !== occupied.get(position));
+  return [...component].some(position => board.goals.get(position) !==
+    occupiedLabel(occupancy, board, position));
 }
 
-function createsClosedDiagonalDeadlock(boxes, board, movedBox) {
-  const occupied = new Map(boxes.map(([y, x, label]) => [pkey(y, x), label]));
+function createsClosedDiagonalDeadlock(boxes, board, movedBox, context = null) {
+  const occupancy = context || createDeadlockOccupancyContext(boxes, board);
   const movedKey = pkey(movedBox[0], movedBox[1]);
-  if (!occupied.has(movedKey)) return false;
+  if (!occupiedHas(occupancy, board, movedKey)) return false;
   const limit = board.rows.length + Math.max(...board.rows.map(row => row.length)) + 2;
-  const blocked = (y, x) => board.walls.has(pkey(y, x)) || occupied.has(pkey(y, x));
+  const blocked = (y, x) => {
+    const position = pkey(y, x);
+    return board.walls.has(position) || occupiedHas(occupancy, board, position);
+  };
 
   const scanHalf = (startY, startX, stepY, stepX) => {
     const boxesOnBorder = new Set();
@@ -92,20 +138,22 @@ function createsClosedDiagonalDeadlock(boxes, board, movedBox) {
       if (board.walls.has(center)) {
         return {closed: true, boxes: boxesOnBorder, boxSides, rows: distance};
       }
-      if (occupied.has(center) && staticallyImmovable(center, board)) {
+      if (occupiedHas(occupancy, board, center) && staticallyImmovable(center, board)) {
         boxesOnBorder.add(center);
         return {closed: true, boxes: boxesOnBorder, boxSides, rows: distance};
       }
-      if (!board.floor.has(center) || occupied.has(center) || board.goals.has(center)) {
+      if (!board.floor.has(center) || occupiedHas(occupancy, board, center) ||
+          board.goals.has(center)) {
         return {closed: false, boxes: boxesOnBorder, boxSides, rows: distance};
       }
       let rowBoxSide = null;
       for (const [sideOffset, sideX] of [[-1, x - 1], [1, x + 1]]) {
         const side = pkey(y, sideX);
-        if (!blocked(y, sideX) || (board.goals.has(side) && !occupied.has(side))) {
+        if (!blocked(y, sideX) ||
+            (board.goals.has(side) && !occupiedHas(occupancy, board, side))) {
           return {closed: false, boxes: boxesOnBorder, boxSides, rows: distance};
         }
-        if (occupied.has(side)) {
+        if (occupiedHas(occupancy, board, side)) {
           if (rowBoxSide !== null) {
             return {closed: false, boxes: boxesOnBorder, boxSides, rows: distance};
           }
@@ -131,9 +179,11 @@ function createsClosedDiagonalDeadlock(boxes, board, movedBox) {
       const outwardFacing = boxSides.length === 2 &&
         boxSides[0] === -slope && boxSides[1] === slope;
       const unfinished = [...participants]
-        .some(position => board.goals.get(position) !== occupied.get(position));
+        .some(position => board.goals.get(position) !==
+          occupiedLabel(occupancy, board, position));
       if (!unfinished || !participants.has(movedKey) || participants.size < 2) continue;
-      if (outwardFacing || createsPatternDatabaseDeadlock(boxes, board, movedBox)) return true;
+      if (outwardFacing || (board.patternEligibleCount !== 0 &&
+          createsPatternDatabaseDeadlock(boxes, board, movedBox, occupancy))) return true;
     }
   }
   return false;
@@ -170,11 +220,20 @@ function createsPatternDatabaseDeadlock(
   boxes,
   board,
   movedBox,
+  contextOrMaxStates = null,
   maxStates = PATTERN_EXACT_STATE_LIMIT,
 ) {
+  // Preserve the legacy direct-call overload where the fourth argument was
+  // the state limit; dynamic dispatch now uses that slot for shared occupancy.
+  if (Number.isFinite(contextOrMaxStates)) maxStates = contextOrMaxStates;
   const metrics = board.metrics;
   metrics.patternDeadlockCalls++;
   const [centerY, centerX] = movedBox;
+  const center = cellId(centerY, centerX, board.dense);
+  if (center < 0 || (board.patternEligibility && !board.patternEligibility[center])) {
+    metrics.patternDeadlockBypasses++;
+    return false;
+  }
   const inside = position => {
     const [y, x] = position.split(",").map(Number);
     return Math.abs(y - centerY) <= 4 && Math.abs(x - centerX) <= 4;
@@ -182,9 +241,17 @@ function createsPatternDatabaseDeadlock(
   const windowKey = `${centerY},${centerX}`;
   let window = memoLookup(board.patternWindowMemo, windowKey);
   if (!window) {
-    const floor = new Set([...board.floor].filter(inside));
-    const eligible = floor.size <= PATTERN_FLOOR_LIMIT &&
-      ![...floor].some(position => floorNeighbors(position, board.floor).length > 2);
+    const floor = new Set();
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const cell = cellId(centerY + dy, centerX + dx, board.dense);
+        if (cell >= 0) floor.add(board.dense.keys[cell]);
+      }
+    }
+    const eligible = board.patternEligibility
+      ? Boolean(board.patternEligibility[center])
+      : floor.size <= PATTERN_FLOOR_LIMIT &&
+        ![...floor].some(position => floorNeighbors(position, board.floor).length > 2);
     window = {floor, eligible};
     board.patternWindowMemo.set(windowKey, window);
   }
@@ -242,12 +309,39 @@ function createsPatternDatabaseDeadlock(
 }
 
 function createsDynamicDeadlock(boxes, board, movedBox) {
-  const signature = `${boxSignature(boxes, board)}|${movedBox.join(",")}`;
+  const occupancy = createDeadlockOccupancyContext(boxes, board);
+  const movedCell = cellId(movedBox[0], movedBox[1], board.dense);
+  const signature = occupancy.layout.valid && movedCell >= 0
+    ? (occupancy.layout.identity << BigInt(board.dense.cellBits)) | BigInt(movedCell)
+    : `${boxSignature(boxes, board)}|${movedBox.join(",")}`;
   const cachedDeadlock = memoLookup(board.deadlockMemo, signature);
-  if (cachedDeadlock !== undefined) return cachedDeadlock;
-  const deadlocked = DYNAMIC_HARD_PRUNING_RULES.some(
-    rule => rule.detect(boxes, board, movedBox),
-  );
+  if (cachedDeadlock !== undefined) {
+    board.metrics.dynamicDeadlockCacheHits++;
+    return cachedDeadlock;
+  }
+  board.metrics.dynamicDeadlockCalls++;
+  const started = now();
+  let rules = board.dynamicHardPruningRules;
+  if (!rules) {
+    rules = board.patternEligibleCount === 0
+      ? DYNAMIC_HARD_PRUNING_RULES.filter(rule => rule.name !== "pattern-database")
+      : DYNAMIC_HARD_PRUNING_RULES;
+    board.dynamicHardPruningRules = rules;
+  }
+  if (rules.length < DYNAMIC_HARD_PRUNING_RULES.length) {
+    board.metrics.patternDeadlockBoardBypasses++;
+  }
+  let matchedRule = null;
+  const deadlocked = rules.some(rule => {
+    if (!rule.detect(boxes, board, movedBox, occupancy)) return false;
+    matchedRule = rule.name;
+    return true;
+  });
+  if (matchedRule) {
+    board.metrics.dynamicDeadlockRuleHits[matchedRule] =
+      (board.metrics.dynamicDeadlockRuleHits[matchedRule] || 0) + 1;
+  }
+  board.metrics.dynamicDeadlockMs += now() - started;
   // The legacy PI-corral helper guessed the keeper region from an arbitrary
   // free neighbor of the moved box. That is not a proof and can reject legal
   // states. Exact-player-region corral checks remain active in analysis.js.
@@ -258,6 +352,7 @@ function createsDynamicDeadlock(boxes, board, movedBox) {
 const SokomindDeadlock = {
   corner,
   staticDead,
+  createDeadlockOccupancyContext,
   creates2x2Deadlock,
   createsFrozenComponentDeadlock,
   createsClosedDiagonalDeadlock,

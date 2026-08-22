@@ -14,6 +14,7 @@ import type {
 import {
   createSokomindSolverAdapter,
   reconstructBidirectionalPath,
+  semanticDiversityTrace,
   sokomindDiscoveryBeamWidth,
   solutionFromLegacyPath,
   toLegacyState,
@@ -185,6 +186,38 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(sokomindDiscoveryBeamWidth(8, 90), 256);
   });
 
+  it("shares the process memory ceiling across concurrent engine workers", async () => {
+    const memoryShares: number[] = [];
+    const maxMemoryBytes = 2 * 1024 * 1024 * 1024;
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          memoryShares.push(command.payload.maxMemoryBytes as number);
+          queueMicrotask(() => {
+            self.emit({
+              type: "done",
+              status: "exhausted",
+              visited: 0,
+              generated: 0,
+            });
+          });
+        }),
+    });
+
+    await adapter.solve(
+      requestFor(ONE_TYPED_BOX, { limits: { maxMemoryBytes } }),
+      context(),
+    );
+
+    assert.deepEqual(memoryShares, [
+      Math.floor(maxMemoryBytes / 3),
+      Math.floor(maxMemoryBytes / 3),
+      Math.floor(maxMemoryBytes / 3),
+    ]);
+  });
+
   it("honors zero-valued resource ceilings before starting a worker", async () => {
     for (const limits of [
       { maxElapsedMs: 0 },
@@ -240,6 +273,17 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(solutionFromLegacyPath(request, ["Up"]), null);
   });
 
+  it("replays semantic diversity from actual box identities and goals", () => {
+    const request = requestFor(ONE_TYPED_BOX);
+    const solution = solutionFromLegacyPath(request, ["Down"]);
+    assert.ok(solution);
+
+    assert.deepEqual(semanticDiversityTrace(request, solution), {
+      pushChain: "A@2,2#0:2,2>3,2",
+      boxGoals: "A@2,2#0>3,2",
+    });
+  });
+
   it("returns and verifies a typed solution from the isolated engine worker", async () => {
     const workers: ScriptedWorker[] = [];
     const adapter = createSokomindSolverAdapter({
@@ -279,7 +323,43 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(verifySolverSolution(request, result.solution).valid, true);
     assert.equal(result.solution.optimality, "unknown");
     assert.equal(result.metrics.expandedStates, 1);
+    assert.equal(workers.length, 1);
     assert.equal(workers.every(({ terminated }) => terminated), true);
+  });
+
+  it("returns long fast-mode routes immediately without a rewrite", async () => {
+    const algorithms: unknown[] = [];
+    const longRoute = [
+      ...Array.from({ length: 50 }, () => ["Left", "Right"] as const).flat(),
+      "Down",
+    ];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          algorithms.push(algorithm);
+          queueMicrotask(() => {
+            self.emit({
+              type: "done",
+              status: "solved",
+              path: longRoute,
+              visited: 1,
+              generated: 1,
+            });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.deepEqual(algorithms, ["ultimate"]);
+    assert.equal(result.solution.moves, 101);
+    assert.equal(result.metrics.counters?.initialSolutionMoves, 101);
+    assert.equal(result.metrics.counters?.bestSolutionMoves, 101);
+    assert.equal(result.metrics.counters?.solutionImprovements, 0);
   });
 
   it("replay-verifies and returns a shorter bounded rewrite", async () => {
@@ -323,7 +403,11 @@ describe("Sokomind Solver adapter", () => {
 
     assert.equal(result.status, "solved");
     if (result.status !== "solved") return;
-    assert.deepEqual(algorithms, ["ultimate", "solution-window-rewrite"]);
+    assert.deepEqual(algorithms, [
+      "ultimate",
+      "solution-window-rewrite",
+      "solution-window-rewrite",
+    ]);
     assert.equal(result.solution.moves, 1);
     assert.equal(result.solution.pushes, 1);
     assert.equal(verifySolverSolution(request, result.solution).valid, true);
@@ -331,6 +415,59 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(result.metrics.counters?.bestSolutionMoves, 1);
     assert.equal(result.metrics.counters?.solutionImprovements, 1);
     assert.ok(phases.includes("improving"));
+  });
+
+  it("harvests multiple seeded ordering profiles before stopping on duplicates", async () => {
+    const harvestPayloads: Array<Readonly<Record<string, unknown>>> = [];
+    let seededRoute = 0;
+    const routes = [
+      ["Left", "Right", "Down"],
+      ["Right", "Left", "Down"],
+      ["Left", "Right", "Right", "Left", "Down"],
+    ] as const;
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const seeded = typeof command.payload.seed === "number";
+          if (seeded) harvestPayloads.push(command.payload);
+          const path = seeded
+            ? routes[seededRoute++ % routes.length]
+            : routes[0];
+          queueMicrotask(() => {
+            self.emit({
+              type: "done",
+              status: "solved",
+              path,
+              visited: 1,
+              generated: 1,
+            });
+          });
+        }),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: {
+        "sokomind-solver": {
+          mode: "quality",
+          maximumIncumbents: 4,
+          harvestElapsedMs: 500,
+        },
+      },
+    });
+
+    const result = await adapter.solve(request, context());
+
+    assert.equal(result.status, "solved");
+    assert.equal(harvestPayloads.length, 6);
+    assert.equal(
+      new Set(harvestPayloads.map(({ seed }) => seed)).size,
+      6,
+    );
+    assert.deepEqual(
+      new Set(harvestPayloads.map(({ beamProfile }) => beamProfile)),
+      new Set(["balanced", "detour", "milestone"]),
+    );
   });
 
   it("passes a validated tuning profile only into soft engine ordering", async () => {
@@ -439,6 +576,186 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(workers[1]?.terminated, true);
   });
 
+  it("consumes typed analysis recommendations and resumes a structural checkpoint", async () => {
+    const ultimatePayloads: Array<Readonly<Record<string, unknown>>> = [];
+    const maxMemoryBytes = 2 * 1024 * 1024 * 1024;
+    const preparedEstimatedBytes = 4_096;
+    const preparedBoard = {
+      schemaVersion: 3,
+      boardContentKey: LARGE_ONE_TYPED_BOX.rows.join("\n"),
+      estimatedBytes: preparedEstimatedBytes,
+      floor: new Set<string>(),
+      goals: new Map<string, string>(),
+      singleBoxGraph: { nodes: new Map<string, unknown>() },
+      goalPushTables: { byGoal: new Map<string, unknown>() },
+      dense: { idByKey: new Map<string, number>() },
+    };
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          queueMicrotask(() => {
+            if (algorithm === "analyze-puzzle") {
+              self.emit({
+                type: "done",
+                status: "exhausted",
+                analysis: {
+                  preparedBoard,
+                  difficulty: "complex",
+                  phases: [{ id: "milestone-reverse" }],
+                  recommendations: {
+                    beamWidth: 17,
+                    beamVisited: 23,
+                    checkpointLimit: 5,
+                    sideVisitedLimit: 29,
+                    useSequenceMacros: false,
+                  },
+                },
+              });
+              return;
+            }
+            if (algorithm === "plan-macro-beam") {
+              self.emit({
+                type: "done",
+                status: "exhausted",
+                visited: 1,
+                generated: 1,
+                checkpoint: {
+                  state: {
+                    rows: LARGE_ONE_TYPED_BOX.rows,
+                    robot: [1, 2],
+                    boxes: [["2,2", "A"]],
+                  },
+                  path: ["Left", "Right"],
+                  // The adapter derives this from replay instead of trusting
+                  // stale or malformed engine metadata.
+                  cost: 999,
+                  estimate: 1,
+                },
+              });
+              return;
+            }
+            if (algorithm === "ultimate") {
+              ultimatePayloads.push(command.payload);
+              self.emit({
+                type: "done",
+                status:
+                  typeof command.payload.seed === "number"
+                    ? "solved"
+                    : "exhausted",
+                path:
+                  typeof command.payload.seed === "number" ? ["Down"] : null,
+                visited: 1,
+                generated: 1,
+              });
+            }
+          });
+        }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(LARGE_ONE_TYPED_BOX, {
+        limits: { maxMemoryBytes },
+      }),
+      context(),
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3);
+    assert.equal(ultimatePayloads.length, 2);
+    assert.equal(ultimatePayloads[0]?.beamWidth, 17);
+    assert.equal(ultimatePayloads[0]?.maxVisited, 23);
+    assert.equal(ultimatePayloads[0]?.checkpointLimit, 5);
+    assert.equal(ultimatePayloads[0]?.sequenceMacros, false);
+    assert.equal(ultimatePayloads[0]?.beamProfile, "milestone");
+    assert.equal(typeof ultimatePayloads[1]?.seed, "number");
+    assert.equal(ultimatePayloads[1]?.maxDepth, 360);
+    const expectedWorkerMemory =
+      maxMemoryBytes - 1024 * 1024 - preparedEstimatedBytes;
+    assert.equal(ultimatePayloads[0]?.maxMemoryBytes, expectedWorkerMemory);
+    assert.equal(ultimatePayloads[1]?.maxMemoryBytes, expectedWorkerMemory);
+  });
+
+  it("rejects a structural checkpoint whose path does not reach its state", async () => {
+    const ultimatePayloads: Array<Readonly<Record<string, unknown>>> = [];
+    const modes: WorkerCommand["mode"][] = [];
+    const preparedBoard = {
+      schemaVersion: 3,
+      boardContentKey: LARGE_ONE_TYPED_BOX.rows.join("\n"),
+      floor: new Set<string>(),
+      goals: new Map<string, string>(),
+      singleBoxGraph: { nodes: new Map<string, unknown>() },
+      goalPushTables: { byGoal: new Map<string, unknown>() },
+      dense: { idByKey: new Map<string, number>() },
+    };
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          modes.push(command.mode);
+          const algorithm = command.payload.algorithm;
+          queueMicrotask(() => {
+            if (command.mode !== "search") {
+              self.emit({ type: "done", status: "exhausted" });
+              return;
+            }
+            if (algorithm === "analyze-puzzle") {
+              self.emit({
+                type: "done",
+                status: "exhausted",
+                analysis: {
+                  preparedBoard,
+                  recommendations: { reverseWorkerLimit: 0 },
+                },
+              });
+              return;
+            }
+            if (algorithm === "plan-macro-beam") {
+              self.emit({
+                type: "done",
+                status: "exhausted",
+                checkpoint: {
+                  state: {
+                    rows: LARGE_ONE_TYPED_BOX.rows,
+                    robot: [1, 3],
+                    boxes: [["2,2", "A"]],
+                  },
+                  path: ["Left", "Right"],
+                  cost: 0,
+                  estimate: 1,
+                },
+              });
+              return;
+            }
+            if (algorithm === "ultimate") {
+              ultimatePayloads.push(command.payload);
+              self.emit({
+                type: "done",
+                status: "solved",
+                path: ["Down"],
+                visited: 1,
+                generated: 1,
+              });
+            }
+          });
+        }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(LARGE_ONE_TYPED_BOX),
+      context(),
+    );
+
+    assert.equal(result.status, "solved");
+    assert.equal(ultimatePayloads.length, 1);
+    assert.equal(ultimatePayloads[0]?.seed, undefined);
+    assert.equal(modes.includes("bidir-forward"), false);
+    assert.equal(modes.includes("bidir-reverse"), false);
+  });
+
   it("reserves a one-state expanded budget for discovery", async () => {
     const algorithms: unknown[] = [];
     const adapter = createSokomindSolverAdapter({
@@ -511,6 +828,8 @@ describe("Sokomind Solver adapter", () => {
 
   it("caps structural generation before using the remaining budget", async () => {
     const structuralGeneratedBudgets: unknown[] = [];
+    const structuralSolutionComparisonBudgets: unknown[] = [];
+    const discoverySolutionComparisonBudgets: unknown[] = [];
     const adapter = createSokomindSolverAdapter({
       hardwareConcurrency: 2,
       createWorker: () =>
@@ -523,6 +842,9 @@ describe("Sokomind Solver adapter", () => {
               structuralGeneratedBudgets.push(
                 command.payload.maxGenerated,
               );
+              structuralSolutionComparisonBudgets.push(
+                command.payload.planSolutionComparisonBudget,
+              );
               self.emit({
                 type: "done",
                 status: "cutoff",
@@ -531,6 +853,9 @@ describe("Sokomind Solver adapter", () => {
                 generated: 6,
               });
             } else {
+              discoverySolutionComparisonBudgets.push(
+                command.payload.beamSolutionComparisonBudget,
+              );
               self.emit({
                 type: "done",
                 status: "solved",
@@ -552,6 +877,59 @@ describe("Sokomind Solver adapter", () => {
 
     assert.equal(result.status, "solved");
     assert.deepEqual(structuralGeneratedBudgets, [6]);
+    assert.deepEqual(structuralSolutionComparisonBudgets, [0]);
+    assert.deepEqual(discoverySolutionComparisonBudgets, [0]);
+  });
+
+  it("keeps solution comparison enabled outside fast mode", async () => {
+    const structuralSolutionComparisonBudgets: unknown[] = [];
+    const discoverySolutionComparisonBudgets: unknown[] = [];
+    const controller = new AbortController();
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          queueMicrotask(() => {
+            if (algorithm === "analyze-puzzle") {
+              self.emit({ type: "done", status: "exhausted" });
+              return;
+            }
+            if (algorithm === "plan-macro-beam") {
+              structuralSolutionComparisonBudgets.push(
+                command.payload.planSolutionComparisonBudget,
+              );
+              self.emit({
+                type: "done",
+                status: "cutoff",
+                cutoff: true,
+                visited: 1,
+                generated: 1,
+              });
+              return;
+            }
+            if (algorithm === "ultimate") {
+              discoverySolutionComparisonBudgets.push(
+                command.payload.beamSolutionComparisonBudget,
+              );
+              controller.abort();
+            }
+          });
+        }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(LARGE_ONE_TYPED_BOX, {
+        options: {
+          "sokomind-solver": { mode: "quality", maximumIncumbents: 1 },
+        },
+      }),
+      context(controller.signal),
+    );
+
+    assert.equal(result.status, "cancelled");
+    assert.deepEqual(structuralSolutionComparisonBudgets, [undefined]);
+    assert.deepEqual(discoverySolutionComparisonBudgets, [undefined]);
   });
 
   it("runs the bidirectional pair only after direct search at the desktop memory class", async () => {

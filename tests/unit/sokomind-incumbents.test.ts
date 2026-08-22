@@ -6,6 +6,7 @@ import {
   computeDiversitySignature,
   isDiverse,
   computeHarvestMs,
+  isSolutionBetter,
   selectForRewrite,
   selectBest,
   IncumbentCollector,
@@ -121,6 +122,21 @@ describe("diversity signature", () => {
     assert.equal(sig1.pushChainHash, sig2.pushChainHash);
     assert.ok(!isDiverse(sig2, [sig1]), "Walk-only solutions are structurally identical");
   });
+
+  it("uses replay-derived box identities instead of cosmetic walk paths", () => {
+    const solution = makeSolution([walkStep("left"), pushStep("down")]);
+    const first = computeDiversitySignature(solution, {
+      pushChain: "A@2,2#0:2,2>3,2",
+      boxGoals: "A@2,2#0>3,2",
+    });
+    const second = computeDiversitySignature(solution, {
+      pushChain: "B@2,2#0:2,2>3,2",
+      boxGoals: "B@2,2#0>3,2",
+    });
+
+    assert.notEqual(first.pushChainKey, second.pushChainKey);
+    assert.ok(isDiverse(second, [first]));
+  });
 });
 
 describe("IncumbentCollector", () => {
@@ -145,6 +161,27 @@ describe("IncumbentCollector", () => {
     assert.ok(!collector.offer(sol));
     assert.equal(collector.stats.duplicatesRejected, 1);
     assert.equal(collector.incumbents.length, 1);
+  });
+
+  it("replaces a duplicate semantic basin when its keeper route is shorter", () => {
+    const collector = new IncumbentCollector(4);
+    const semanticTrace = {
+      pushChain: "A@2,2#0:2,2>3,2",
+      boxGoals: "A@2,2#0>3,2",
+    };
+    const longer = makeSolution([
+      walkStep("left"),
+      walkStep("right"),
+      pushStep("down"),
+    ]);
+    const shorter = makeSolution([pushStep("down")]);
+
+    assert.equal(collector.offer(longer, semanticTrace), true);
+    assert.equal(collector.offer(shorter, semanticTrace), true);
+    assert.equal(collector.incumbents.length, 1);
+    assert.equal(collector.best?.solution, shorter);
+    assert.equal(collector.best?.discoveryOrder, 0);
+    assert.equal(collector.stats.duplicatesRejected, 0);
   });
 
   it("accepts diverse solutions up to limit", () => {
@@ -295,5 +332,34 @@ describe("rewrite selection", () => {
     ];
     const best = selectBest(candidates);
     assert.equal(best.steps[0].direction, "down");
+  });
+
+  it("prioritizes a different box-goal basin over a nearby route", () => {
+    const collector = new IncumbentCollector(4);
+    const best = makeSolution([pushStep("up")]);
+    const nearby = makeSolution([pushStep("down"), walkStep("up")]);
+    const differentBasin = makeSolution([
+      pushStep("left"),
+      walkStep("right"),
+      walkStep("up"),
+    ]);
+    collector.offer(best, { pushChain: "p1", boxGoals: "g1" });
+    collector.offer(nearby, { pushChain: "p2", boxGoals: "g1" });
+    collector.offer(differentBasin, { pushChain: "p3", boxGoals: "g2" });
+
+    const selected = selectForRewrite(collector.incumbents);
+
+    assert.equal(selected[0]?.solution, best);
+    assert.equal(selected[1]?.solution, differentBasin);
+  });
+
+  it("uses pushes as the secondary improvement objective", () => {
+    const morePushes = makeSolution([pushStep("up"), pushStep("down")]);
+    const fewerPushes = makeSolution(
+      [pushStep("left"), walkStep("right")],
+      { pushes: 1 },
+    );
+    assert.equal(isSolutionBetter(fewerPushes, morePushes), true);
+    assert.equal(isSolutionBetter(morePushes, fewerPushes), false);
   });
 });

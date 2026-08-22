@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   allocateParallelRewriteBudgets,
+  sokomindRewriteConcurrency,
   solutionImprovementPlan,
 } from "../../src/solver/implementations/sokomind-solver.ts";
 import { resolveSokomindTuning } from "../../src/solver/implementations/sokomind-tuning.ts";
@@ -34,6 +35,15 @@ const dummyState = Object.freeze({
 });
 
 describe("rewrite worker telemetry identity", () => {
+  it("bounds rewrite concurrency by workers, memory, and candidate count", () => {
+    const mib = 1024 * 1024;
+    assert.equal(sokomindRewriteConcurrency(3, 512 * mib, 3), 1);
+    assert.equal(sokomindRewriteConcurrency(3, 1024 * mib, 3), 2);
+    assert.equal(sokomindRewriteConcurrency(3, 2048 * mib, 2), 2);
+    assert.equal(sokomindRewriteConcurrency(1, undefined, 3), 1);
+    assert.equal(sokomindRewriteConcurrency(3, undefined, 0), 0);
+  });
+
   it("reserves disjoint parallel state and elapsed budgets", () => {
     const budgets = allocateParallelRewriteBudgets(3, 10, 8, 5);
 

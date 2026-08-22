@@ -23,10 +23,13 @@ export type EngineResultType =
 
 /** Fields returned by search or consumed from incremental worker telemetry. */
 export interface EngineResultPayload {
+  readonly adaptiveMovePriorImprovements?: number;
   readonly analysis?: unknown;
   readonly arenaStates?: number;
   readonly compactArenaAllocatedBytes?: number;
   readonly compactPathBytes?: number;
+  readonly checkpoint?: unknown;
+  readonly checkpoints?: readonly unknown[];
   readonly cutoff?: boolean;
   readonly error?: string;
   readonly frontier?: number;
@@ -34,10 +37,12 @@ export interface EngineResultPayload {
   readonly improvements?: number;
   readonly moveVisited?: number;
   readonly moveImprovements?: number;
+  readonly moveWindowAdaptiveStop?: boolean;
   readonly path?: readonly string[] | null;
   readonly peakFrontier?: number;
   readonly performance?: Readonly<Record<string, unknown>>;
   readonly permutationVisited?: number;
+  readonly pushWindowImprovements?: number;
   readonly retained?: number;
   readonly status?: string;
   readonly terminationReason?: string;
@@ -242,6 +247,9 @@ export function isEngineResult(value: unknown): value is EngineResult {
     value.records !== undefined &&
     (!Array.isArray(value.records) || !value.records.every(isEngineRecord))
   ) {
+    return false;
+  }
+  if (value.checkpoints !== undefined && !Array.isArray(value.checkpoints)) {
     return false;
   }
   if (value.type === "records" && !Array.isArray(value.records)) return false;

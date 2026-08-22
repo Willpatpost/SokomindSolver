@@ -13,10 +13,17 @@ function analyzePuzzleForSearch(data) {
   const initialHeuristic = heuristic(boxes, board);
   const evacuationPenalty = roomEvacuationPenalty(boxes, board);
   const initialGoalAccess = goalAccessAnalysis(boxes, board);
+  const doorwayPlan = assignmentDoorwayPlan(boxes, board, true);
+  const roomInterfaces = roomInterfaceStates(
+    boxes,
+    board,
+    doorwayPlan.tasks,
+    initial.robot,
+  );
   const legalPushes = pushNeighbors(initial, board).length;
   const solvedBoxes = boxes.filter(([y, x, label]) =>
     board.goals.get(pkey(y, x)) === label).length;
-  const roomSummaries = board.topology.rooms.map(room => {
+  const roomSummaries = board.topology.rooms.map((room, roomIndex) => {
     const inside = boxes.filter(([y, x]) => room.cells.has(pkey(y, x)));
     const current = {}, target = {};
     inside.forEach(([, , label]) => { current[label] = (current[label] || 0) + 1; });
@@ -26,19 +33,34 @@ function analyzePuzzleForSearch(data) {
     });
     const surplus = Object.entries(current).reduce((sum, [label, count]) =>
       sum + Math.max(0, count - (target[label] || 0)), 0);
+    const roomTasks = doorwayPlan.tasks.filter(task => task.roomIndex === roomIndex);
+    const roomInterface = roomInterfaces[roomIndex];
     return {
       gate: room.gate,
       cells: room.cells.size,
       goals: room.goals.length,
       boxes: inside.length,
       surplus,
+      forcedExports: roomTasks.filter(task => task.direction === "export").length,
+      forcedImports: roomTasks.filter(task => task.direction === "import").length,
       dependencies: room.dependencies.length,
       maxDepth: Math.max(0, ...room.depths.values()),
+      interfacePhase: roomInterface?.preferredAction || "pack",
+      interfaceMinimumCrossings: roomInterface?.minimumCrossings || 0,
+      interfaceMinimumExportsBeforeImport:
+        roomInterface?.minimumExportsBeforeFirstImport || 0,
+      interfaceClearanceMethod: roomInterface?.clearanceMethod || "no-mixed-flow",
     };
   });
   const searchScale = boxes.length * board.floor.size;
   const dependencyCount = roomSummaries.reduce((sum, room) => sum + room.dependencies, 0);
   const surplusBoxes = roomSummaries.reduce((sum, room) => sum + room.surplus, 0);
+  const mandatoryDoorwayExports = doorwayPlan.tasks.filter(
+    task => task.direction === "export",
+  ).length;
+  const mandatoryDoorwayImports = doorwayPlan.tasks.filter(
+    task => task.direction === "import",
+  ).length;
   const reversePortfolio = reverseStartPortfolio(board, boxes);
   const productiveReverseRegions = reversePortfolio.filter(entry => entry.pullOptions > 0);
   for (const [y, x] of boxes) playerAwarePushDistances(board, pkey(y, x));
@@ -47,7 +69,17 @@ function analyzePuzzleForSearch(data) {
   const difficulty = pressure >= 1800 ? "extreme" : pressure >= 700 ? "complex" :
     pressure >= 180 ? "moderate" : "small";
   const phases = [];
-  if (surplusBoxes) phases.push({id: "evacuation", reason: `${surplusBoxes} surplus room box${surplusBoxes === 1 ? "" : "es"}`});
+  if (mandatoryDoorwayExports) {
+    phases.push({
+      id: "evacuation",
+      reason: `${mandatoryDoorwayExports} certified room export${mandatoryDoorwayExports === 1 ? "" : "s"}`,
+    });
+  } else if (surplusBoxes) {
+    phases.push({
+      id: "evacuation",
+      reason: `${surplusBoxes} surplus room box${surplusBoxes === 1 ? "" : "es"}`,
+    });
+  }
   if (board.topology.rooms.length) phases.push({id: "room-packing", reason: `${board.topology.rooms.length} gated goal room${board.topology.rooms.length === 1 ? "" : "s"}`});
   if (board.topology.tunnels.size) phases.push({id: "tunnel-macros", reason: `${board.topology.tunnels.size} tunnel cells`});
   if (boxes.length >= 4 && difficulty !== "extreme") {
@@ -64,7 +96,7 @@ function analyzePuzzleForSearch(data) {
     beamAttempts: difficulty === "small" ? 1 : 2,
     beamWidth: difficulty === "extreme" ? 300 : difficulty === "complex" ? 700 : 1200,
     beamVisited: difficulty === "extreme" ? 110000 : difficulty === "complex" ? 180000 : 250000,
-    useEvacuation: surplusBoxes > 0,
+    useEvacuation: mandatoryDoorwayExports > 0 || surplusBoxes > 0,
     useSequenceMacros: board.topology.tunnels.size > 0 || board.topology.rooms.length > 0,
     useFess: boxes.length >= 4 && difficulty !== "extreme",
     useMilestoneReverse: difficulty === "complex" || difficulty === "extreme",
@@ -84,6 +116,21 @@ function analyzePuzzleForSearch(data) {
     tunnelCells: board.topology.tunnels.size,
     rooms: roomSummaries,
     surplusBoxes,
+    mandatoryDoorwayExports,
+    mandatoryDoorwayImports,
+    doorwayAssignment: {
+      ...doorwayPlan.proof,
+      tasks: doorwayPlan.tasks.map(task => ({
+        box: task.box,
+        label: task.label,
+        target: task.target,
+        allowedTargets: [...(task.allowedTargets || [task.target].filter(Boolean))],
+        direction: task.direction,
+        roomIndex: task.roomIndex,
+        gate: task.gate,
+      })),
+    },
+    roomInterfaces,
     evacuationPenalty,
     goalAccessClauses: board.topology.goalAccess.reduce(
       (total, goal) => total + goal.lanes.filter(lane => lane.blockingGoals.length).length,
@@ -511,9 +558,18 @@ function reachablePaths(state, board) {
     },
     size: tail,
     occupied,
-    board,
     regionId,
+    // These arrays are already retained by the accessors above. Exposing them
+    // lets the bounded-cache estimator count the actual reachability payload
+    // instead of recursively charging every memo entry for the shared board.
+    _parents: parents,
+    _parentMoves: parentMoves,
+    _queue: queue,
   };
+  Object.defineProperty(result, "board", {
+    value: board,
+    enumerable: false,
+  });
   return memoLimit
     ? memoizeBounded(board.reachabilityMemo, cacheKey, result, memoLimit)
     : result;
@@ -1631,9 +1687,14 @@ function exactLocalRoomSearch(state, board, room, reachable = reachablePaths(sta
     importsRequired += Math.max(0, count - (internalCounts.get(label) || 0));
     if ((localCounts.get(label) || 0) < count) missingLocalBox = true;
   }
+  for (const [label, count] of internalCounts) {
+    exportsRequired += Math.max(0, count - (targetCounts.get(label) || 0));
+  }
   if (missingLocalBox) {
       const result = {
-        status: "needs-import", importsRequired, exportsRequired,
+        status: exportsRequired > 0 ? "mixed-flow" : "needs-import",
+        importsRequired,
+        exportsRequired,
         doorwayOccupied: localBoxes.some(([position]) => position === room.gate),
         entrySide, domain, roomIndex, firstPushes: new Set(), visited: 0, viableBoundaries: 0,
         proofComplete: false, stateUpperBound,
@@ -1641,9 +1702,6 @@ function exactLocalRoomSearch(state, board, room, reachable = reachablePaths(sta
       };
       metrics.localRoomMs += now() - started;
     return recordLocalAnalysis(metrics, result);
-  }
-  for (const [label, count] of internalCounts) {
-    exportsRequired += Math.max(0, count - (targetCounts.get(label) || 0));
   }
   if (room.cells.size > LOCAL_ROOM_CELL_LIMIT ||
       domain.size > LOCAL_DOMAIN_CELL_LIMIT || localBoxes.length > LOCAL_BOX_LIMIT ||

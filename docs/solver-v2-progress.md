@@ -1,6 +1,6 @@
 # Solver V2 — Current Implementation Status
 
-Last reconciled: August 14, 2026
+Last reconciled: August 21, 2026
 
 This document describes the code that exists now. It replaces the former
 sprint-by-sprint diary, which mixed historical intentions, intermediate test
@@ -31,8 +31,8 @@ search speed:
 The shipped solver surface has three layers:
 
 1. Classic exact A* and IDA* kernels for move-optimal proofs.
-2. Sokomind discovery, harvesting, and bounded rewrite for fast or improved
-   incumbents.
+2. Sokomind discovery for immediate fast-mode incumbents, with harvesting and
+   bounded rewrite reserved for quality-mode incumbents.
 3. Sokomind optimal mode, which hands verified incumbents to the exact proof
    kernels under one run-wide resource budget.
 

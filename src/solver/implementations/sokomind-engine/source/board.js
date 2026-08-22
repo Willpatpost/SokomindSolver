@@ -4,7 +4,93 @@
 
 const PREPARED_BOARD_SCHEMA = 3;
 const boardContentKey = rows => rows.join("\n");
-const ESTIMATED_BOARD_CACHE_ENTRY_BYTES = 384;
+const ESTIMATED_MAP_ENTRY_BYTES = 96;
+const ESTIMATED_CACHE_ENTRY_BYTES = 320;
+
+class DenseDistanceTable {
+  constructor(dense, serialized = null, maximumDistance = Infinity) {
+    this._idByKey = dense.idByKey;
+    const values = serialized?.values ?? serialized?._values;
+    if (ArrayBuffer.isView(values)) {
+      this._values = values;
+    } else if (maximumDistance <= 0xfe) {
+      this._values = new Uint8Array(dense.keys.length);
+    } else if (maximumDistance <= 0xfffe) {
+      this._values = new Uint16Array(dense.keys.length);
+    } else {
+      this._values = new Int32Array(dense.keys.length);
+    }
+    this._sentinel = serialized?.sentinel ?? serialized?._sentinel ??
+      (this._values instanceof Uint8Array ? 0xff :
+        this._values instanceof Uint16Array ? 0xffff : -1);
+    if (!values) this._values.fill(this._sentinel);
+    this._size = serialized?.size ?? serialized?._size ?? 0;
+  }
+  get(key) {
+    const cell = this._idByKey.get(key);
+    if (cell === undefined) return undefined;
+    const value = this._values[cell];
+    return value !== this._sentinel ? value : undefined;
+  }
+  has(key) {
+    const cell = this._idByKey.get(key);
+    return cell !== undefined && this._values[cell] !== this._sentinel;
+  }
+  set(key, value) {
+    const cell = this._idByKey.get(key);
+    if (cell === undefined) return this;
+    if (this._values[cell] === this._sentinel) this._size++;
+    this._values[cell] = value;
+    return this;
+  }
+  get size() { return this._size; }
+  get byteLength() { return this._values.byteLength; }
+  serializable() {
+    return {
+      kind: "dense-distance-v1",
+      values: this._values,
+      sentinel: this._sentinel,
+      size: this._size,
+    };
+  }
+}
+
+function hydrateDistanceTable(table, dense, maximumDistance = Infinity) {
+  if (table instanceof DenseDistanceTable) return table;
+  if (table instanceof Map) {
+    const hydrated = new DenseDistanceTable(dense, null, maximumDistance);
+    for (const [key, value] of table) hydrated.set(key, value);
+    return hydrated;
+  }
+  return new DenseDistanceTable(dense, table);
+}
+
+function serializeDistanceTable(table) {
+  return table instanceof DenseDistanceTable ? table.serializable() : table;
+}
+
+function serializeGoalPushTables(tables) {
+  const byGoal = new Map([...tables.byGoal]
+    .map(([goal, distances]) => [goal, serializeDistanceTable(distances)]));
+  const byLabel = new Map([...tables.byLabel].map(([label, entries]) => [
+    label,
+    entries.map(({goal}) => ({goal, distances: byGoal.get(goal)})),
+  ]));
+  return {byGoal, byLabel};
+}
+
+function hydrateGoalPushTables(tables, dense, maximumDistance = Infinity) {
+  const byGoal = new Map([...tables.byGoal]
+    .map(([goal, distances]) => [
+      goal,
+      hydrateDistanceTable(distances, dense, maximumDistance),
+    ]));
+  const byLabel = new Map([...tables.byLabel].map(([label, entries]) => [
+    label,
+    entries.map(({goal}) => ({goal, distances: byGoal.get(goal)})),
+  ]));
+  return {byGoal, byLabel};
+}
 
 const BOARD_CACHE_MAPS = Object.freeze([
   "heuristicMemo",
@@ -33,59 +119,212 @@ const BOARD_TABLE_MAPS = Object.freeze([
   "capacityPatternTables",
 ]);
 
+const BOARD_CLOCK_CACHE_PROFILES = Object.freeze([
+  Object.freeze({name: "heuristicMemo", maximum: HEURISTIC_MEMO_LIMIT, weight: 0.45}),
+  Object.freeze({name: "deadlockMemo", maximum: DEADLOCK_MEMO_LIMIT, weight: 0.23}),
+  Object.freeze({name: "patternDeadlockMemo", maximum: PATTERN_DEADLOCK_MEMO_LIMIT, weight: 0.23}),
+  Object.freeze({name: "pushTransitionMemo", maximum: PUSH_TRANSITION_MEMO_LIMIT, weight: 0.09}),
+]);
+
+function estimateRetainedBytes(value, seen = new Set(), depth = 0) {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string") return 16 + value.length * 2;
+  if (typeof value === "number" || typeof value === "bigint") return 8;
+  if (typeof value !== "object" || seen.has(value)) return 0;
+  seen.add(value);
+  if (ArrayBuffer.isView(value)) return 32 + value.byteLength;
+  if (value instanceof ArrayBuffer) return 32 + value.byteLength;
+  if (value instanceof DenseDistanceTable) return 64 + value.byteLength;
+  if (value instanceof ClockCache) return value.estimatedMemoryBytes();
+  if (depth >= 4) return 64;
+  if (value instanceof Map) {
+    let bytes = 64 + value.size * ESTIMATED_MAP_ENTRY_BYTES;
+    for (const [key, entry] of value) {
+      bytes += estimateRetainedBytes(key, seen, depth + 1);
+      bytes += estimateRetainedBytes(entry, seen, depth + 1);
+    }
+    return bytes;
+  }
+  if (value instanceof Set) {
+    let bytes = 64 + value.size * 56;
+    for (const entry of value) bytes += estimateRetainedBytes(entry, seen, depth + 1);
+    return bytes;
+  }
+  if (Array.isArray(value)) {
+    let bytes = 32 + value.length * 8;
+    for (const entry of value) bytes += estimateRetainedBytes(entry, seen, depth + 1);
+    return bytes;
+  }
+  let bytes = 64;
+  for (const entry of Object.values(value)) {
+    bytes += estimateRetainedBytes(entry, seen, depth + 1);
+  }
+  return bytes;
+}
+
 function estimatePreparedBoardBytes(board) {
-  const stringBytes = values => [...values].reduce((sum, value) => sum + 2 * value.length, 0);
-  const nestedMapEntries = map => [...map.values()].reduce(
-    (sum, value) => sum + (value?.size || 0),
-    0,
-  );
-  return (
-    stringBytes(board.rows) +
-    stringBytes(board.floor) +
-    stringBytes(board.walls) +
-    stringBytes(board.goals.keys()) +
-    board.dense.y.byteLength +
-    board.dense.x.byteLength +
-    board.dense.neighbors.byteLength +
-    board.singleBoxGraph.nodes.size * 32 +
-    board.metrics.graphEdges * 16 +
-    nestedMapEntries(board.pushDistances) * 12 +
-    nestedMapEntries(board.goalPushTables.byGoal) * 12 +
-    nestedMapEntries(board.playerPushDistances) * 12
-  );
+  // Keep immutable board accounting separate from search caches. Shared table
+  // objects are counted once, including every typed-array backing store.
+  const seen = new Set();
+  return [
+    board.rows,
+    board.floor,
+    board.walls,
+    board.goals,
+    board.goalsByLabel,
+    board.pushDistances,
+    board.goalPressure,
+    board.topology,
+    board.singleBoxGraph,
+    board.goalPushTables,
+    board.dense,
+    board.patternEligibility,
+  ].reduce((sum, value) => sum + estimateRetainedBytes(value, seen), 0);
+}
+
+function estimatePreparedBoardSeedBytes(seed) {
+  // A prepared seed intentionally carries selected warmed search tables in
+  // addition to the immutable board. Estimate the object that is actually
+  // cloned to workers with one shared `seen` set so shared graph/table values
+  // are counted once. Keep this separate from estimatePreparedBoardBytes():
+  // hydrated boards report these warmed tables as caches, not static memory.
+  const seen = new Set();
+  return Object.entries(seed).reduce((sum, [name, value]) =>
+    name === "estimatedBytes"
+      ? sum
+      : sum + estimateRetainedBytes(value, seen, 0), 0);
+}
+
+function cacheMemoryBytes(cache, seen, name = "") {
+  if (!cache) return 0;
+  if (cache instanceof ClockCache) {
+    const samples = Math.min(16, cache.size);
+    let sampledBytes = 0;
+    for (let index = 0; index < samples; index++) {
+      sampledBytes += estimateRetainedBytes(cache._keys[index], seen, 1);
+      sampledBytes += estimateRetainedBytes(cache._values[index], seen, 1);
+    }
+    return cache.estimatedMemoryBytes() +
+      (samples ? Math.round(sampledBytes * cache.size / samples) : 0);
+  }
+  if (name === "playerPushDistances" && cache instanceof Map) {
+    let bytes = 64 + cache.size * ESTIMATED_MAP_ENTRY_BYTES;
+    for (const distances of cache.values()) {
+      bytes += distances instanceof DenseDistanceTable
+        ? 64 + distances.byteLength
+        : 64 + (distances?.size || 0) * ESTIMATED_MAP_ENTRY_BYTES;
+    }
+    return bytes;
+  }
+  if (!(cache instanceof Map)) return estimateRetainedBytes(cache, seen, 1);
+  const samples = Math.min(16, cache.size);
+  let sampledBytes = 0, sampled = 0;
+  for (const [key, value] of cache) {
+    sampledBytes += estimateRetainedBytes(key, seen, 1);
+    sampledBytes += estimateRetainedBytes(value, seen, 1);
+    if (++sampled >= samples) break;
+  }
+  return 64 + cache.size * ESTIMATED_MAP_ENTRY_BYTES +
+    (samples ? Math.round(sampledBytes * cache.size / samples) : 0);
 }
 
 function boardCacheMemorySnapshot(board) {
-  let cacheEntries = 0;
+  const seen = new Set();
+  let cacheEntries = 0, cacheBytes = 0;
+  const cacheBreakdownBytes = {};
   for (const name of BOARD_CACHE_MAPS) {
-    cacheEntries += board[name]?.size || 0;
+    const cache = board[name];
+    cacheEntries += cache?.size || 0;
+    const bytes = cacheMemoryBytes(cache, seen, name);
+    cacheBreakdownBytes[name] = bytes;
+    cacheBytes += bytes;
   }
   for (const name of BOARD_TABLE_MAPS) {
     const tables = board[name];
     if (!tables?.values) continue;
     cacheEntries += tables.size || 0;
-    for (const table of tables.values()) {
-      cacheEntries += table?.states?.size || 0;
-    }
+    for (const table of tables.values()) cacheEntries += table?.states?.size || 0;
+    const nestedEntries = [...tables.values()]
+      .reduce((sum, table) => sum + (table?.states?.size || 0), 0);
+    const bytes = 64 + tables.size * ESTIMATED_MAP_ENTRY_BYTES +
+      nestedEntries * ESTIMATED_CACHE_ENTRY_BYTES;
+    cacheBreakdownBytes[name] = bytes;
+    cacheBytes += bytes;
+  }
+  for (const [name, cache] of board._engineMemoryCaches || []) {
+    cacheEntries += cache?.size || 0;
+    const bytes = cacheMemoryBytes(cache, seen, name);
+    cacheBreakdownBytes[name] = bytes;
+    cacheBytes += bytes;
   }
   return {
     boardBytes: board._estimatedStaticBytes || 0,
     cacheEntries,
-    cacheBytes: cacheEntries * ESTIMATED_BOARD_CACHE_ENTRY_BYTES,
+    cacheBytes,
+    cacheBreakdownBytes,
   };
 }
 
+function registerBoardMemoryCache(board, name, cache) {
+  if (!board._engineMemoryCaches) {
+    Object.defineProperty(board, "_engineMemoryCaches", {
+      value: new Map(),
+      enumerable: false,
+    });
+  }
+  board._engineMemoryCaches.set(name, cache);
+  return cache;
+}
+
 function attachBoardMemorySampler(board) {
+  if (board._engineMemoryCaches) board._engineMemoryCaches.clear();
+  else {
+    Object.defineProperty(board, "_engineMemoryCaches", {
+      value: new Map(),
+      enumerable: false,
+    });
+  }
   board._estimatedStaticBytes = Math.max(0, estimatePreparedBoardBytes(board));
   board.metrics._engineMemorySampler = () => boardCacheMemorySnapshot(board);
   return board;
 }
 
+function configureBoardCaches(board, maxMemoryBytes, fraction = 0.2) {
+  if (!Number.isFinite(maxMemoryBytes) || maxMemoryBytes <= 0) return null;
+  const staticBytes = board._estimatedStaticBytes || estimatePreparedBoardBytes(board);
+  const remainingBytes = Math.max(0, Math.floor(maxMemoryBytes) - staticBytes);
+  const requestedFraction = Number.isFinite(fraction)
+    ? Math.max(0, Math.min(1, fraction))
+    : 0.2;
+  const cacheBudgetBytes = Math.min(
+    96 * 1024 * 1024,
+    Math.floor(remainingBytes * requestedFraction),
+  );
+  const totalEntries = Math.max(1, Math.floor(
+    cacheBudgetBytes / ESTIMATED_CACHE_ENTRY_BYTES,
+  ));
+  const capacities = {};
+  for (const profile of BOARD_CLOCK_CACHE_PROFILES) {
+    const capacity = Math.max(1, Math.min(
+      profile.maximum,
+      Math.floor(totalEntries * profile.weight),
+    ));
+    capacities[profile.name] = capacity;
+    const current = board[profile.name];
+    if (current?.size && current.capacity === capacity) {
+      board.metrics.cacheConfigurationSkips++;
+      continue;
+    }
+    board[profile.name] = new ClockCache(capacity);
+  }
+  board.metrics.cacheBudgetBytes = cacheBudgetBytes;
+  board.metrics.cacheCapacityEntries = Object.values(capacities)
+    .reduce((sum, capacity) => sum + capacity, 0);
+  return {cacheBudgetBytes, capacities};
+}
+
 function createPreparedBoardSeed(board) {
-  const estimatedBytes = estimatePreparedBoardBytes(board);
-  board.metrics.preparedSeedBytes = estimatedBytes;
-  board.metrics.preparedPlayerDistanceTables = board.playerPushDistances.size;
-  return {
+  const seed = {
     schemaVersion: PREPARED_BOARD_SCHEMA,
     boardContentKey: boardContentKey(board.rows),
     floor: board.floor,
@@ -96,17 +335,23 @@ function createPreparedBoardSeed(board) {
     goalPressure: board.goalPressure,
     topology: board.topology,
     singleBoxGraph: board.singleBoxGraph,
-    goalPushTables: board.goalPushTables,
-    playerPushDistances: board.playerPushDistances,
+    goalPushTables: serializeGoalPushTables(board.goalPushTables),
+    playerPushDistances: new Map([...board.playerPushDistances]
+      .map(([start, distances]) => [start, serializeDistanceTable(distances)])),
     dense: board.dense,
+    patternEligibility: board.patternEligibility,
+    patternEligibleCount: board.patternEligibleCount,
     goalRoomPackingTables: board.goalRoomPackingTables,
     roomPatternTables: board.roomPatternTables,
     pairConflictTables: board.pairConflictTables,
     capacityPatternTables: board.capacityPatternTables,
     graphNodes: board.metrics.graphNodes,
     graphEdges: board.metrics.graphEdges,
-    estimatedBytes,
   };
+  const estimatedBytes = estimatePreparedBoardSeedBytes(seed);
+  board.metrics.preparedSeedBytes = estimatedBytes;
+  board.metrics.preparedPlayerDistanceTables = board.playerPushDistances.size;
+  return {...seed, estimatedBytes};
 }
 
 function preparedBoardMatches(data, seed) {
@@ -126,9 +371,32 @@ function hydratePreparedBoard(data, seed, metrics) {
   metrics.denseCells = seed.dense.keys.length;
   metrics.preparedSeedBytes = seed.estimatedBytes || 0;
   metrics.preparedPlayerDistanceTables = seed.playerPushDistances?.size || 0;
-  metrics.goalTableBuilds = seed.goalPushTables.byGoal.size;
+  const maximumPushDistance = seed.singleBoxGraph.nodes.size;
+  const goalPushTables = hydrateGoalPushTables(
+    seed.goalPushTables,
+    seed.dense,
+    maximumPushDistance,
+  );
+  const playerPushDistances = new Map([...seed.playerPushDistances || []]
+    .map(([start, distances]) => [
+      start,
+      hydrateDistanceTable(distances, seed.dense, maximumPushDistance),
+    ]));
+  const patternEligibility = seed.patternEligibility instanceof Uint8Array
+    ? seed.patternEligibility
+    : compilePatternEligibility(seed.dense, metrics);
+  const patternEligibleCount = seed.patternEligibleCount ??
+    patternEligibility.reduce((sum, eligible) => sum + eligible, 0);
+  metrics.goalTableBuilds = goalPushTables.byGoal.size;
   metrics.goalTableStates = [...seed.goalPushTables.byGoal.values()]
     .reduce((sum, distances) => sum + distances.size, 0);
+  metrics.denseDistanceTables += goalPushTables.byGoal.size + playerPushDistances.size;
+  metrics.denseDistanceCells +=
+    (goalPushTables.byGoal.size + playerPushDistances.size) * seed.dense.keys.length;
+  metrics.denseDistanceBytes += [...goalPushTables.byGoal.values(), ...playerPushDistances.values()]
+    .reduce((sum, distances) => sum + distances.byteLength, 0);
+  metrics.patternEligibleCells = patternEligibleCount;
+  metrics.patternIneligibleCells = seed.dense.keys.length - metrics.patternEligibleCells;
   const board = {
     rows: data.rows,
     floor: seed.floor,
@@ -139,14 +407,16 @@ function hydratePreparedBoard(data, seed, metrics) {
     goalPressure: seed.goalPressure,
     topology: seed.topology,
     singleBoxGraph: seed.singleBoxGraph,
-    goalPushTables: seed.goalPushTables,
+    goalPushTables,
     dense: seed.dense,
+    patternEligibility,
+    patternEligibleCount,
     heuristicMemo: new ClockCache(HEURISTIC_MEMO_LIMIT),
     discoveryHeuristicMemo: new Map(),
     assignmentMemo: new WeakMap(),
     discoveryAssignmentMemo: new WeakMap(),
     assignmentParentMemo: new WeakMap(),
-    playerPushDistances: new Map(seed.playerPushDistances || []),
+    playerPushDistances,
     deadlockMemo: new ClockCache(DEADLOCK_MEMO_LIMIT),
     patternDeadlockMemo: new ClockCache(PATTERN_DEADLOCK_MEMO_LIMIT),
     patternWindowMemo: new Map(),
@@ -244,7 +514,9 @@ function parse(data) {
   ]));
   const dense = compileDenseBoard(floor, goals, metrics);
   const singleBoxGraph = compileSingleBoxPushGraph(floor, metrics);
-  const goalPushTables = compileGoalPushTables(singleBoxGraph, goals, metrics);
+  const goalPushTables = compileGoalPushTables(singleBoxGraph, goals, metrics, dense);
+  const patternEligibility = compilePatternEligibility(dense, metrics);
+  const patternEligibleCount = patternEligibility.reduce((sum, eligible) => sum + eligible, 0);
   const topology = analyzeTopology(floor, goals);
   metrics.parseMs += now() - parseStarted;
   return attachBoardMemorySampler({
@@ -271,7 +543,7 @@ function parse(data) {
     pushTransitionMemo: new ClockCache(PUSH_TRANSITION_MEMO_LIMIT),
     boxSignatureMemo: new WeakMap(),
     boxIdentityMemo: new WeakMap(),
-    singleBoxGraph, goalPushTables, dense, metrics,
+    singleBoxGraph, goalPushTables, dense, patternEligibility, patternEligibleCount, metrics,
   });
 }
 
@@ -325,6 +597,34 @@ function compileDenseBoard(floor, goals, metrics) {
   }
   return {keys, idByKey, y, x, neighbors, labelIds, cellBits, tokenBits, idByYX, width,
     zobristHi, zobristLo, labelCount};
+}
+
+function compilePatternEligibility(dense, metrics = createPerformanceMetrics()) {
+  const eligible = new Uint8Array(dense.keys.length);
+  const degree = new Uint8Array(dense.keys.length);
+  for (let cell = 0; cell < dense.keys.length; cell++) {
+    let count = 0;
+    for (let direction = 0; direction < DIRECTION_ENTRIES.length; direction++) {
+      if (dense.neighbors[cell * DIRECTION_ENTRIES.length + direction] >= 0) count++;
+    }
+    degree[cell] = count;
+  }
+  for (let center = 0; center < dense.keys.length; center++) {
+    let floorCount = 0, branched = false;
+    scanWindow: for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const cell = cellId(dense.y[center] + dy, dense.x[center] + dx, dense);
+        if (cell < 0) continue;
+        floorCount++;
+        if (degree[cell] > 2) branched = true;
+        if (floorCount > PATTERN_FLOOR_LIMIT && branched) break scanWindow;
+      }
+    }
+    if (floorCount <= PATTERN_FLOOR_LIMIT && !branched) eligible[center] = 1;
+  }
+  metrics.patternEligibleCells = eligible.reduce((sum, value) => sum + value, 0);
+  metrics.patternIneligibleCells = dense.keys.length - metrics.patternEligibleCells;
+  return eligible;
 }
 function reversePushDistances(floor, goalKey) {
   const [gy, gx] = goalKey.split(",").map(Number);
@@ -533,7 +833,12 @@ function compileSingleBoxPushGraph(floor, metrics = createPerformanceMetrics()) 
   return {nodes, startsByBox};
 }
 
-function compileGoalPushTables(singleBoxGraph, goals, metrics = createPerformanceMetrics()) {
+function compileGoalPushTables(
+  singleBoxGraph,
+  goals,
+  metrics = createPerformanceMetrics(),
+  dense = null,
+) {
   const started = now();
   const predecessors = new Map();
   for (const [nodeKey, node] of singleBoxGraph.nodes) {
@@ -560,7 +865,9 @@ function compileGoalPushTables(singleBoxGraph, goals, metrics = createPerformanc
         queue.push(previous);
       }
     }
-    const distances = new Map();
+    const distances = dense
+      ? new DenseDistanceTable(dense, null, singleBoxGraph.nodes.size)
+      : new Map();
     for (const [box, starts] of singleBoxGraph.startsByBox) {
       let best = Infinity;
       for (const nodeKey of starts) {
@@ -573,6 +880,11 @@ function compileGoalPushTables(singleBoxGraph, goals, metrics = createPerformanc
     byLabel.get(label).push({goal, distances});
     metrics.goalTableBuilds++;
     metrics.goalTableStates += nodeDistances.size;
+    if (dense) {
+      metrics.denseDistanceTables++;
+      metrics.denseDistanceCells += dense.keys.length;
+      metrics.denseDistanceBytes += distances.byteLength;
+    }
   }
   metrics.goalTableMs += now() - started;
   return {byGoal, byLabel};
@@ -628,7 +940,13 @@ function playerAwarePushDistances(board, startKey) {
     return board.playerPushDistances.get(startKey);
   }
   const started = now();
-  const distances = new Map([[startKey, 0]]), seen = new Set(), queue = [];
+  const distances = new DenseDistanceTable(
+    board.dense,
+    null,
+    board.singleBoxGraph.nodes.size,
+  );
+  distances.set(startKey, 0);
+  const seen = new Set(), queue = [];
   const enqueue = (nodeKey, distance) => {
     if (seen.has(nodeKey)) return;
     seen.add(nodeKey);
@@ -648,6 +966,9 @@ function playerAwarePushDistances(board, startKey) {
     }
   }
   board.playerPushDistances.set(startKey, distances);
+  metrics.denseDistanceTables++;
+  metrics.denseDistanceCells += board.dense.keys.length;
+  metrics.denseDistanceBytes += distances.byteLength;
   metrics.pushDistanceMs += now() - started;
   return distances;
 }
@@ -657,14 +978,19 @@ const SokomindBoard = {
   PREPARED_BOARD_SCHEMA,
   boardContentKey,
   estimatePreparedBoardBytes,
+  estimatePreparedBoardSeedBytes,
   boardCacheMemorySnapshot,
+  registerBoardMemoryCache,
   attachBoardMemorySampler,
+  configureBoardCaches,
   createPreparedBoardSeed,
   preparedBoardMatches,
   hydratePreparedBoard,
   validatePuzzleRows,
   parse,
   compileDenseBoard,
+  compilePatternEligibility,
+  DenseDistanceTable,
   reversePushDistances,
   minimumAssignment,
   repairMinimumAssignment,

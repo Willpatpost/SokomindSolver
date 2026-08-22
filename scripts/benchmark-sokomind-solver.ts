@@ -63,6 +63,7 @@ interface BenchmarkOptions {
   readonly perMoveWindowVisited: number;
   readonly moveWindowAttempts: number;
   readonly moveWindowExtraPushes: number;
+  readonly adaptiveMoveWindows: boolean;
   readonly finalMoveVisited: number;
   readonly caseTimeoutMs: number;
   readonly beamWidth: number | undefined;
@@ -113,6 +114,7 @@ function optionsFromArguments(): BenchmarkOptions {
     perMoveWindowVisited: numberArgument("per-move-window-visited", 4_000),
     moveWindowAttempts: numberArgument("move-window-attempts", 12),
     moveWindowExtraPushes: numberArgument("move-window-extra-pushes", 4),
+    adaptiveMoveWindows: numberArgument("adaptive-move-windows", 1) !== 0,
     finalMoveVisited: numberArgument("final-move-visited", 0),
     caseTimeoutMs: numberArgument("case-timeout-ms", 180_000),
     memoryMiB: numberArgument("memory-mib", 768),
@@ -156,6 +158,7 @@ function structuralPayload(
   return Object.freeze({
     algorithm: "plan-macro-beam",
     state: toLegacyState(request),
+    maxMemoryBytes: memoryBytes,
     maxDepth: 460,
     maxVisited: 6_000,
     transpositionLimit:
@@ -185,6 +188,7 @@ function discoveryPayload(
   return Object.freeze({
     algorithm: "ultimate",
     state: toLegacyState(request),
+    maxMemoryBytes: memoryBytes,
     maxDepth: moderate ? 360 : 180,
     maxVisited: moderate ? 180_000 : 80_000,
     maxGenerated: moderate ? 1_200_000 : 300_000,
@@ -220,11 +224,13 @@ function rewritePayload(
   profile: SokomindTuningProfile,
 ): Readonly<Record<string, unknown>> {
   const maxVisited = options.rewriteVisited;
+  const memoryBytes = options.memoryMiB * 1024 * 1024;
   const permutationVisited = Math.floor(maxVisited * 0.2);
   const moveScale = profile.rewriteMoveWindowScale;
   return Object.freeze({
     algorithm: "solution-window-rewrite",
     state: toLegacyState(request),
+    maxMemoryBytes: memoryBytes,
     solutionPath,
     maxVisited,
     permutationVisited: options.permutationVisited ?? permutationVisited,
@@ -242,6 +248,10 @@ function rewritePayload(
     perMoveWindowVisited: Math.floor(options.perMoveWindowVisited * moveScale),
     moveWindowExtraPushes: options.moveWindowExtraPushes,
     moveWindowMinimumOverhead: 6,
+    adaptiveMoveWindows:
+      options.adaptiveMoveWindows && request.snapshot.boxes.length >= 10,
+    adaptiveMoveMinimumPriorImprovements: 8,
+    moveWindowMissLimit: 1,
   });
 }
 
@@ -422,6 +432,10 @@ try {
     let rewriteMoveImprovements = 0;
     let rewritePermutationVisited = 0;
     let rewriteWindows = 0;
+    let rewritePushWindowImprovements = 0;
+    let rewriteAdaptiveStops = 0;
+    let rewriteParseMs = 0;
+    let rewriteGraphCompileMs = 0;
     for (
       let pass = 0;
       bestPath &&
@@ -438,6 +452,10 @@ try {
       rewriteMoveImprovements += numeric(rewrite.moveImprovements);
       rewritePermutationVisited += numeric(rewrite.permutationVisited);
       rewriteWindows += numeric(rewrite.windows);
+      rewritePushWindowImprovements += numeric(rewrite.pushWindowImprovements);
+      rewriteAdaptiveStops += Number(rewrite.moveWindowAdaptiveStop === true);
+      rewriteParseMs += numeric(rewrite.performance?.parseMs);
+      rewriteGraphCompileMs += numeric(rewrite.performance?.graphCompileMs);
       rewritePasses += 1;
       if (
         !Array.isArray(rewrite.path) ||
@@ -464,6 +482,10 @@ try {
       rewriteMoveImprovements += numeric(rewrite.moveImprovements);
       rewritePermutationVisited += numeric(rewrite.permutationVisited);
       rewriteWindows += numeric(rewrite.windows);
+      rewritePushWindowImprovements += numeric(rewrite.pushWindowImprovements);
+      rewriteAdaptiveStops += Number(rewrite.moveWindowAdaptiveStop === true);
+      rewriteParseMs += numeric(rewrite.performance?.parseMs);
+      rewriteGraphCompileMs += numeric(rewrite.performance?.graphCompileMs);
       rewritePasses += 1;
       if (
         Array.isArray(rewrite.path) &&
@@ -519,6 +541,15 @@ try {
       rewriteMoveImprovements,
       rewritePermutationVisited,
       rewriteWindows,
+      rewritePushWindowImprovements,
+      rewriteAdaptiveStops,
+      rewriteParseMs,
+      rewriteGraphCompileMs,
+      initialDoorwayScheduleCalls: numeric(initial.performance?.doorwayScheduleCalls),
+      initialDoorwayScheduleCacheHits: numeric(
+        initial.performance?.doorwayScheduleCacheHits,
+      ),
+      initialDoorwayScheduleMs: numeric(initial.performance?.doorwayScheduleMs),
       heapBeforeBytes,
       heapAfterBytes: memory.heapUsed,
       heapDeltaBytes: memory.heapUsed - heapBeforeBytes,
@@ -545,6 +576,9 @@ try {
         perMoveWindowVisited: options.perMoveWindowVisited,
         moveWindowAttempts: options.moveWindowAttempts,
         moveWindowExtraPushes: options.moveWindowExtraPushes,
+        adaptiveMoveWindows:
+          options.adaptiveMoveWindows && request.snapshot.boxes.length >= 10,
+        adaptiveMoveMinimumPriorImprovements: 8,
         finalMoveVisited: options.finalMoveVisited,
       },
     };

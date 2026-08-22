@@ -8,6 +8,17 @@ function flushRecords(records, telemetry = {}) {
   }
 }
 
+function prepareSearchBoard(payload, allowPrepared = true) {
+  const board = allowPrepared && payload.preparedBoard
+    ? payload.preparedBoard
+    : parse(payload.state);
+  const maxMemoryBytes = payload.maxMemoryBytes ?? payload.memoryBudgetBytes;
+  if (Number.isFinite(maxMemoryBytes) && maxMemoryBytes > 0) {
+    configureBoardCaches(board, maxMemoryBytes);
+  }
+  return board;
+}
+
 function reconstructPath(cameFrom, signature) {
   const path = [];
   let current = signature;
@@ -43,6 +54,254 @@ function reconstructNodePath(node) {
   const path = [];
   for (let index = segments.length - 1; index >= 0; index--) path.push(...segments[index]);
   return path;
+}
+
+function searchPairDominates(leftPushes, leftMoves, rightPushes, rightMoves) {
+  return leftPushes <= rightPushes && leftMoves <= rightMoves;
+}
+
+function compareSearchPair(left, right) {
+  return (left.pushes ?? left.cost) - (right.pushes ?? right.cost) ||
+    left.moves - right.moves;
+}
+
+function betterMoveSolution(candidate, incumbent) {
+  return !incumbent || candidate.moves < incumbent.moves ||
+    (candidate.moves === incumbent.moves && candidate.cost < incumbent.cost);
+}
+
+function planArrivalDominates(record, cost, moves) {
+  return record !== undefined &&
+    (record.cost < cost || (record.cost === cost && record.moves <= moves));
+}
+
+function planArrivalRecord(cost, moves) {
+  return {cost, moves};
+}
+
+function boundedParetoRecords(records, limit) {
+  if (records.length <= limit) return records;
+  const ranked = [...records].sort(compareSearchPair);
+  if (limit <= 1) return ranked.slice(0, 1);
+  const selected = [ranked[0]];
+  const minimumMoves = [...ranked].sort((left, right) =>
+    left.moves - right.moves ||
+      (left.pushes ?? left.cost) - (right.pushes ?? right.cost))[0];
+  if (minimumMoves !== ranked[0]) selected.push(minimumMoves);
+  for (const record of ranked) {
+    if (selected.length >= limit) break;
+    if (!selected.includes(record)) selected.push(record);
+  }
+  return selected;
+}
+
+class BoundedParetoMap {
+  constructor(limit, perKeyLimit = 3) {
+    this.limit = Math.max(1, limit);
+    this.perKeyLimit = Math.max(1, perKeyLimit);
+    this.values = new Map();
+    this.evictions = 0;
+  }
+  _records(key) {
+    const records = this.values.get(key);
+    if (records !== undefined) {
+      this.values.delete(key);
+      this.values.set(key, records);
+    }
+    return records || [];
+  }
+  isDominated(key, pushes, moves) {
+    return this._records(key).some(record =>
+      searchPairDominates(record.pushes, record.moves, pushes, moves));
+  }
+  hasPair(key, pushes, moves) {
+    return this._records(key).some(record =>
+      record.pushes === pushes && record.moves === moves);
+  }
+  set(key, pushes, moves) {
+    const records = this._records(key);
+    if (records.some(record =>
+      searchPairDominates(record.pushes, record.moves, pushes, moves))) return false;
+    const retained = records.filter(record =>
+      !searchPairDominates(pushes, moves, record.pushes, record.moves));
+    retained.push({pushes, moves});
+    const bounded = boundedParetoRecords(retained, this.perKeyLimit);
+    this.values.set(key, bounded);
+    while (this.values.size > this.limit) {
+      this.values.delete(this.values.keys().next().value);
+      this.evictions++;
+    }
+    return bounded.some(record => record.pushes === pushes && record.moves === moves);
+  }
+  get size() { return this.values.size; }
+}
+
+function candidateSelectionIdentity(candidate) {
+  return candidate.selectionIdentity ?? candidate.exactIdentity;
+}
+
+function addParetoCandidate(candidates, candidate, perKeyLimit = 3) {
+  const records = candidates.get(candidate.exactIdentity) || [];
+  if (records.some(record => searchPairDominates(
+    record.cost, record.moves, candidate.cost, candidate.moves,
+  ))) return false;
+  const retained = records.filter(record => !searchPairDominates(
+    candidate.cost, candidate.moves, record.cost, record.moves,
+  ));
+  candidate.selectionIdentity =
+    `${String(candidate.exactIdentity)}|${candidate.cost}|${candidate.moves}`;
+  retained.push(candidate);
+  candidates.set(
+    candidate.exactIdentity,
+    boundedParetoRecords(retained, perKeyLimit),
+  );
+  return candidates.get(candidate.exactIdentity).includes(candidate);
+}
+
+function flattenParetoCandidates(candidates) {
+  return [...candidates.values()].flat();
+}
+
+function keeperApproachProfile(state, board, reachable) {
+  const occupied = new Set(state.boxes.map(([y, x]) => pkey(y, x)));
+  let distance = Infinity, side = "none";
+  for (const [y, x] of state.boxes) {
+    for (const [, [dy, dx]] of DIRECTION_ENTRIES) {
+      const destination = pkey(y + dy, x + dx);
+      const support = pkey(y - dy, x - dx);
+      if (!board.floor.has(destination) || occupied.has(destination) ||
+          occupied.has(support)) continue;
+      if (!reachable.has(support)) continue;
+      const walk = reachable.get(support);
+      const candidateSide = `${dy},${dx}`;
+      if (walk.length < distance ||
+          (walk.length === distance && candidateSide < side)) {
+        distance = walk.length;
+        side = candidateSide;
+      }
+    }
+  }
+  return {distance, side};
+}
+
+function selectKeeperArrivals(records, limit) {
+  if (records.length <= limit) return records;
+  const selected = [];
+  const add = record => {
+    if (record && !selected.includes(record) && selected.length < limit) {
+      selected.push(record);
+    }
+  };
+  add([...records].sort((left, right) =>
+    left.cost - right.cost || left.moves - right.moves ||
+    left.approachDistance - right.approachDistance ||
+    String(left.exactIdentity).localeCompare(String(right.exactIdentity)))[0]);
+  add([...records].sort((left, right) =>
+    (left.moves + left.approachDistance) -
+      (right.moves + right.approachDistance) ||
+    left.cost - right.cost ||
+    String(left.exactIdentity).localeCompare(String(right.exactIdentity)))[0]);
+  const representedSides = new Set(selected.map(record => record.approachSide));
+  for (const record of [...records].sort((left, right) =>
+    left.cost - right.cost ||
+    (left.moves + left.approachDistance) -
+      (right.moves + right.approachDistance) ||
+    String(left.exactIdentity).localeCompare(String(right.exactIdentity)))) {
+    if (selected.length >= limit) break;
+    if (representedSides.has(record.approachSide)) continue;
+    representedSides.add(record.approachSide);
+    add(record);
+  }
+  for (const record of [...records].sort((left, right) =>
+    left.cost - right.cost ||
+    (left.moves + left.approachDistance) -
+      (right.moves + right.approachDistance) ||
+    left.score - right.score ||
+    String(left.exactIdentity).localeCompare(String(right.exactIdentity)))) add(record);
+  return selected;
+}
+
+class BoundedKeeperArrivalMap {
+  constructor(limit, perKeyLimit = 4) {
+    this.limit = Math.max(1, limit);
+    this.perKeyLimit = Math.max(1, perKeyLimit);
+    this.values = new Map();
+    this.evictions = 0;
+  }
+  _records(key) {
+    const records = this.values.get(key);
+    if (records !== undefined) {
+      this.values.delete(key);
+      this.values.set(key, records);
+    }
+    return records || [];
+  }
+  _candidateRecord(candidate) {
+    return {
+      exactIdentity: candidate.exactIdentity,
+      cost: candidate.cost,
+      moves: candidate.moves,
+      score: candidate.score,
+      approachDistance: candidate.approachDistance,
+      approachSide: candidate.approachSide,
+      token: `${String(candidate.exactIdentity)}|${candidate.cost}|${candidate.moves}`,
+    };
+  }
+  wouldRetain(key, candidate) {
+    const records = this._records(key);
+    if (records.some(record =>
+      record.exactIdentity === candidate.exactIdentity &&
+      searchPairDominates(record.cost, record.moves, candidate.cost, candidate.moves))) {
+      return false;
+    }
+    const next = records.filter(record => !(
+      record.exactIdentity === candidate.exactIdentity &&
+      searchPairDominates(candidate.cost, candidate.moves, record.cost, record.moves)
+    ));
+    const added = this._candidateRecord(candidate);
+    next.push(added);
+    return selectKeeperArrivals(next, this.perKeyLimit)
+      .some(record => record.token === added.token);
+  }
+  set(key, candidate) {
+    const records = this._records(key).filter(record => !(
+      record.exactIdentity === candidate.exactIdentity &&
+      searchPairDominates(candidate.cost, candidate.moves, record.cost, record.moves)
+    ));
+    const added = this._candidateRecord(candidate);
+    if (!records.some(record => record.token === added.token)) records.push(added);
+    this.values.set(key, selectKeeperArrivals(records, this.perKeyLimit));
+    while (this.values.size > this.limit) {
+      this.values.delete(this.values.keys().next().value);
+      this.evictions++;
+    }
+  }
+  get size() { return this.values.size; }
+}
+
+function selectDynamicTaskTarget(task, state, boxIndex, board, assignedTarget = null) {
+  const domain = task?.allowedTargets
+    ? [...task.allowedTargets]
+    : task?.target ? [task.target] : [];
+  if (task?.target && !domain.includes(task.target)) domain.push(task.target);
+  const unique = [...new Set(domain)];
+  if (!unique.length || boxIndex < 0 || !state.boxes[boxIndex]) return task?.target;
+  const [y, x] = state.boxes[boxIndex];
+  const position = pkey(y, x);
+  const occupiedBy = new Map(state.boxes.map(([boxY, boxX], index) =>
+    [pkey(boxY, boxX), index]));
+  const ranked = unique.map(target => ({
+    target,
+    distance: compiledGoalPushDistance(board, position, target),
+    occupied: occupiedBy.has(target) && occupiedBy.get(target) !== boxIndex ? 1 : 0,
+    assignment: target === assignedTarget ? 0 : 1,
+  })).filter(candidate => Number.isFinite(candidate.distance))
+    .sort((left, right) =>
+      left.occupied - right.occupied ||
+      left.assignment - right.assignment ||
+      left.distance - right.distance ||
+      left.target.localeCompare(right.target));
+  return ranked[0]?.target ?? task?.target;
 }
 
 function serializeSearchCheckpoint(candidate, board) {
@@ -250,7 +509,7 @@ function canonicalPlanMacroBeamSearch(payload) {
 function takeDiverse(candidates, count, selected, scoreKey, groupKey = "pushClass") {
   const groups = new Map();
   for (const candidate of candidates) {
-    const identity = candidate.exactIdentity ?? candidate.exactSignature;
+    const identity = candidateSelectionIdentity(candidate) ?? candidate.exactSignature;
     if (selected.has(identity)) continue;
     const key = candidate[groupKey] || candidate.pushClass || identity;
     if (!groups.has(key)) groups.set(key, []);
@@ -267,7 +526,7 @@ function takeDiverse(candidates, count, selected, scoreKey, groupKey = "pushClas
     for (const queue of queues) {
       if (result.length >= count) break;
       const candidate = queue.items[queue.index++];
-      const identity = candidate.exactIdentity ?? candidate.exactSignature;
+      const identity = candidateSelectionIdentity(candidate) ?? candidate.exactSignature;
       if (!selected.has(identity)) {
         selected.add(identity);
         result.push(candidate);
@@ -408,7 +667,7 @@ function selectPlanLayer(candidates, width, board) {
     .slice(0, structuralEliteCount);
   for (const candidate of structuralElites) {
     selected.push(candidate);
-    selectedIds.add(candidate.exactIdentity);
+    selectedIds.add(candidateSelectionIdentity(candidate));
   }
   const heuristicEliteCount = Math.max(1, Math.ceil(width * 0.1));
   const heuristicElites = [...ranked]
@@ -419,9 +678,10 @@ function selectPlanLayer(candidates, width, board) {
       left.score - right.score)
     .slice(0, heuristicEliteCount);
   for (const candidate of heuristicElites) {
-    if (selectedIds.has(candidate.exactIdentity)) continue;
+    const identity = candidateSelectionIdentity(candidate);
+    if (selectedIds.has(identity)) continue;
     selected.push(candidate);
-    selectedIds.add(candidate.exactIdentity);
+    selectedIds.add(identity);
   }
   let queues = [...groups.values()];
   while (selected.length < Math.ceil(width * 0.7) && queues.length) {
@@ -429,9 +689,10 @@ function selectPlanLayer(candidates, width, board) {
     for (const queue of queues) {
       if (selected.length >= Math.ceil(width * 0.7)) break;
       const candidate = queue.shift();
-      if (!selectedIds.has(candidate.exactIdentity)) {
+      const identity = candidateSelectionIdentity(candidate);
+      if (!selectedIds.has(identity)) {
         selected.push(candidate);
-        selectedIds.add(candidate.exactIdentity);
+        selectedIds.add(identity);
       }
       if (queue.length) remaining.push(queue);
     }
@@ -439,9 +700,10 @@ function selectPlanLayer(candidates, width, board) {
   }
   for (const candidate of ranked) {
     if (selected.length >= width) break;
-    if (selectedIds.has(candidate.exactIdentity)) continue;
+    const identity = candidateSelectionIdentity(candidate);
+    if (selectedIds.has(identity)) continue;
     selected.push(candidate);
-    selectedIds.add(candidate.exactIdentity);
+    selectedIds.add(identity);
   }
   return selected;
 }
@@ -854,7 +1116,7 @@ function createFessStateArena(board, initialBoxes) {
 }
 
 function fessSearch(payload) {
-  const board = payload.preparedBoard || parse(payload.state);
+  const board = prepareSearchBoard(payload);
   const initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([position, label]) => [
@@ -940,7 +1202,12 @@ function fessSearch(payload) {
           macroPushes,
           macroExplored,
           macroResults,
-          {lockProven: false},
+          {
+            lockProven: false,
+            moveAwareDedupe: payload.moveAwareMacroDedupe === true,
+            paretoLimit: payload.macroParetoLimit,
+            reserveAlternateApproach: payload.macroApproachDiversity === true,
+          },
         );
       for (const next of macros) {
         const child = {
@@ -1176,7 +1443,7 @@ function canonicalFessSearch(payload) {
 }
 
 function planMacroBeamSearch(payload) {
-  const board = payload.preparedBoard || parse(payload.state);
+  const board = prepareSearchBoard(payload);
   board.reachabilityMemoLimit = payload.reachabilityMemoLimit ?? REACHABILITY_MEMO_LIMIT;
   const initial = {
     robot: payload.state.robot,
@@ -1193,25 +1460,72 @@ function planMacroBeamSearch(payload) {
   const maxGenerated = payload.maxGenerated ?? Infinity;
   const maxPushes = payload.maxDepth || 320;
   const solutionComparisonBudget = payload.planSolutionComparisonBudget ?? 96;
+  const evacuationCompletionBonus = payload.planEvacuationCompletionBonus ?? 250;
   const boxBranchLimit = payload.planBoxBranches || 8;
   const macroLimit = payload.sequenceMacroLimit || 24;
   const macroExplored = payload.sequenceMacroExplored || 64;
   const macroResults = payload.sequenceMacroResults || 5;
-  const seen = new BoundedDepthMap(payload.transpositionLimit || 60000);
-  const seenExact = new BoundedDepthMap(payload.transpositionLimit || 60000);
+  const transpositionLimit = payload.transpositionLimit || 60000;
+  const exactParetoLimit = Math.max(1, payload.planExactParetoLimit ?? 3);
+  const keeperArrivalLimit = Math.max(1, payload.planKeeperArrivalLimit ?? 4);
+  const moveAwareTranspositions = payload.planMoveAwareTranspositions === true;
+  const moveTieTranspositions = !moveAwareTranspositions &&
+    payload.planMoveTieTranspositions !== false;
+  const seen = moveAwareTranspositions
+    ? new BoundedKeeperArrivalMap(transpositionLimit, keeperArrivalLimit)
+    : new BoundedDepthMap(transpositionLimit);
+  const seenExact = moveAwareTranspositions
+    ? new BoundedParetoMap(transpositionLimit, exactParetoLimit)
+    : new BoundedDepthMap(transpositionLimit);
   let beam = [initial], visited = 0, generated = 0, peakFrontier = 1;
+  let reported = 0, lastProgressAt = now();
+  const progressInterval = payload.progressInterval || 500;
+  const progressIntervalMs = payload.progressIntervalMs || 5000;
   let trackedThrough = payload.trackedSignatures ? 0 : undefined;
   const rootDoorwayTasks = payload.planDoorwaySchedule === false
     ? [] : assignmentDoorwayPlan(initial.boxes, board, true).tasks;
+  const rootDoorwayTaskByBoxIndex = new Map(
+    rootDoorwayTasks.map(task => [task.boxIndex, task]),
+  );
+  const rootImportDoorwayTasks = rootDoorwayTasks.filter(
+    task => task.direction === "import",
+  );
   const hasEvacuationPlan = rootDoorwayTasks.some(task => task.direction === "export");
-  const analysisCache = new WeakMap();
+  const doorwayScheduleMemo = registerBoardMemoryCache(
+    board,
+    "planDoorwayScheduleMemo",
+    new ClockCache(
+      Math.max(1, payload.planDoorwayScheduleMemoLimit ?? DOORWAY_FLOW_MEMO_LIMIT),
+    ),
+  );
+  const evaluateDoorwaySchedule = boxes => {
+    const layout = denseBoxLayout(boxes, board);
+    if (payload.planDoorwayScheduleMemo === false) {
+      return doorwayScheduleState(boxes, board, rootDoorwayTasks, layout);
+    }
+    const signature = layout.orderedSignature;
+    const cached = doorwayScheduleMemo.get(signature);
+    if (cached !== undefined) {
+      board.metrics.doorwayScheduleCacheHits++;
+      return cached;
+    }
+    const schedule = doorwayScheduleState(boxes, board, rootDoorwayTasks, layout);
+    doorwayScheduleMemo.set(signature, schedule);
+    return schedule;
+  };
+  const analysisCache = registerBoardMemoryCache(
+    board,
+    "planAnalysisCache",
+    new ClockCache(Math.max(1, payload.planAnalysisCacheLimit ?? 5_000)),
+  );
   const structuralAnalysis = (boxes, includeGoalAccess = false) => {
     if (payload.planAnalysisCache === false) {
+      const doorwaySchedule = evaluateDoorwaySchedule(boxes);
       return {
         estimate: discoveryHeuristic(boxes, board),
-        evacuation: roomEvacuationPenalty(boxes, board),
-        doorwaySchedule: doorwayScheduleState(boxes, board, rootDoorwayTasks),
-        goalAccess: includeGoalAccess ? goalAccessAnalysis(boxes, board) : null,
+        evacuation: doorwaySchedule.evacuationPenalty,
+        doorwaySchedule,
+        goalAccess: includeGoalAccess ? goalAccessSummary(boxes, board) : null,
       };
     }
     let analysis = analysisCache.get(boxes);
@@ -1219,21 +1533,20 @@ function planMacroBeamSearch(payload) {
       if (activePerformance) activePerformance.planAnalysisCacheHits++;
     } else {
       if (activePerformance) activePerformance.planAnalysisCacheMisses++;
+      const doorwaySchedule = evaluateDoorwaySchedule(boxes);
       analysis = {
         estimate: discoveryHeuristic(boxes, board),
-        evacuation: roomEvacuationPenalty(boxes, board),
-        doorwaySchedule: doorwayScheduleState(boxes, board, rootDoorwayTasks),
+        evacuation: doorwaySchedule.evacuationPenalty,
+        doorwaySchedule,
         goalAccess: null,
       };
       analysisCache.set(boxes, analysis);
     }
     if (includeGoalAccess && !analysis.goalAccess) {
-      analysis.goalAccess = goalAccessAnalysis(boxes, board);
+      analysis.goalAccess = goalAccessSummary(boxes, board);
     }
     return analysis;
   };
-  const evaluateDoorwaySchedule = boxes =>
-    structuralAnalysis(boxes).doorwaySchedule;
   let bestEstimate = structuralAnalysis(initial.boxes).estimate, bestPushes = 0;
   let bestMoves = 0;
   const planBound = Math.min(
@@ -1243,17 +1556,18 @@ function planMacroBeamSearch(payload) {
   let bestCheckpoint = null, bestCheckpointRank = Infinity;
   let bestHeuristicCheckpoint = null;
   const importAccessBlockers = (state, reachable) => {
+    if (!state.doorwaySchedule.blockedImportAccess) return null;
     const blockers = new Map();
-    if (!state.doorwaySchedule.blockedImportAccess) return blockers;
     const routes = minimumBlockerRoutes(reachable, board);
     const occupied = new Set(state.boxes.map(([y, x]) => pkey(y, x)));
-    for (const task of rootDoorwayTasks.filter(task => task.direction === "import")) {
+    for (const task of rootImportDoorwayTasks) {
       const room = board.topology.rooms[task.roomIndex];
       const [y, x, label] = state.boxes[task.boxIndex];
       const position = pkey(y, x);
       if (room.cells.has(position)) continue;
       const currentDistance = playerAwarePushDistances(board, position).get(room.gate);
-      const options = [];
+      let minimumBlockers = Infinity;
+      const minimumRoutes = [];
       for (const [, [dy, dx]] of DIRECTION_ENTRIES) {
         const destination = pkey(y + dy, x + dx);
         const support = pkey(y - dy, x - dx);
@@ -1274,10 +1588,14 @@ function planMacroBeamSearch(payload) {
           continue;
         }
         const route = routes.routeTo(board.dense.idByKey.get(support) ?? -1);
-        if (route) options.push(route);
+        if (!route || route.blockerCount > minimumBlockers) continue;
+        if (route.blockerCount < minimumBlockers) {
+          minimumBlockers = route.blockerCount;
+          minimumRoutes.length = 0;
+        }
+        minimumRoutes.push(route);
       }
-      const minimum = Math.min(...options.map(option => option.blockerCount));
-      for (const option of options.filter(candidate => candidate.blockerCount === minimum)) {
+      for (const option of minimumRoutes) {
         for (const blocker of option.blockers) {
           blockers.set(blocker, (blockers.get(blocker) || 0) + 1);
         }
@@ -1301,7 +1619,7 @@ function planMacroBeamSearch(payload) {
       (evacuationActive ? 0.25 : 1.15) * child.estimate +
       4 * child.goalAccess.penalty + 0.08 * child.evacuation +
       (evacuationActive ? 4 : 3) * child.doorwaySchedule.penalty -
-      (evacuationComplete ? 250 : 0);
+      (evacuationComplete ? evacuationCompletionBonus : 0);
     return child;
   };
   const checkpointRank = child => {
@@ -1313,14 +1631,18 @@ function planMacroBeamSearch(payload) {
       schedule.unpackedImports;
     const evacuationComplete = hasEvacuationPlan && schedule.pendingExports === 0;
     return 1000 * unsafe + 100 * remaining -
-      (evacuationComplete ? 200 : 0) +
+      (evacuationComplete ? 0.8 * evacuationCompletionBonus : 0) +
       50 * schedule.blockedImportAccess + 20 * schedule.stagingBlockers +
       2 * child.cost + child.estimate + 4 * child.goalAccess.penalty;
   };
   initial.exactIdentity = exactPushIdentity(initial, board);
   initial.goalAccess = structuralAnalysis(initial.boxes, true).goalAccess;
   initial.doorwaySchedule = evaluateDoorwaySchedule(initial.boxes);
-  seenExact.set(initial.exactIdentity, 0);
+  if (moveAwareTranspositions) seenExact.set(initial.exactIdentity, 0, 0);
+  else seenExact.set(
+    initial.exactIdentity,
+    moveTieTranspositions ? planArrivalRecord(0, 0) : 0,
+  );
 
   for (let segment = 0;
     segment < maxSegments && beam.length &&
@@ -1341,14 +1663,19 @@ function planMacroBeamSearch(payload) {
       const reachable = reachablePaths(current, board);
       if (createsSealedCorralDeadlock(current, board, reachable)) continue;
       const accessBlockers = importAccessBlockers(current, reachable);
-      const firstPushes = pushNeighbors(current, board, reachable);
+      const firstPushes = pushNeighbors(
+        current,
+        board,
+        reachable,
+        {deferPath: true},
+      );
       const rankedFirst = firstPushes.map(next => {
         const analysis = structuralAnalysis(next.boxes);
         const estimate = analysis.estimate;
         const accessDelta = goalAccessDelta(current.goalAccess, current, next, board);
         const evacuation = analysis.evacuation;
         const schedule = analysis.doorwaySchedule;
-        const blockerProgress = accessBlockers.get(next.pushedFrom) || 0;
+        const blockerProgress = accessBlockers?.get(next.pushedFrom) || 0;
         const estimateWeight = current.doorwaySchedule.pendingExports ||
           current.doorwaySchedule.stagingBlockers ||
           current.doorwaySchedule.blockedImportAccess ? 0.25 : 1;
@@ -1359,7 +1686,8 @@ function planMacroBeamSearch(payload) {
           next,
           score: estimateWeight * estimate + 5 * accessDelta + 0.08 * evacuation +
             4 * (schedule.penalty - current.doorwaySchedule.penalty) -
-            (completesEvacuation ? 250 : 0) - 12 * blockerProgress,
+            (completesEvacuation ? evacuationCompletionBonus : 0) -
+            12 * blockerProgress,
         };
       }).sort((left, right) => left.score - right.score);
       const selectedBoxes = new Set(), selectedFirst = [];
@@ -1375,14 +1703,17 @@ function planMacroBeamSearch(payload) {
         selectedFirst.push(candidate.next);
       }
       for (let firstIndex = 0; firstIndex < selectedFirst.length; firstIndex++) {
-        const first = selectedFirst[firstIndex];
-        const movedIndex = current.boxes.findIndex(([y, x]) =>
-          pkey(y, x) === first.pushedFrom);
-        const doorwayTask = rootDoorwayTasks.find(task => task.boxIndex === movedIndex);
+        const first = materializePushNeighborPath(
+          selectedFirst[firstIndex],
+          reachable,
+        );
+        const movedCell = board.dense.idByKey.get(first.pushedFrom);
+        const movedIndex = movedCell === undefined
+          ? -1 : reachable.occupied[movedCell];
+        const doorwayTask = rootDoorwayTaskByBoxIndex.get(movedIndex);
         const doorwayRoom = doorwayTask
           ? board.topology.rooms[doorwayTask.roomIndex] : null;
-        const currentPosition = movedIndex >= 0
-          ? pkey(current.boxes[movedIndex][0], current.boxes[movedIndex][1]) : null;
+        const currentPosition = movedIndex >= 0 ? first.pushedFrom : null;
         const crossingComplete = doorwayTask?.direction === "export"
           ? !doorwayRoom.cells.has(currentPosition) && currentPosition !== doorwayRoom.gate
           : doorwayTask?.direction === "import"
@@ -1391,17 +1722,29 @@ function planMacroBeamSearch(payload) {
         const clearingStaging = doorwayTask &&
           current.doorwaySchedule.stagingBlockers > 0 &&
           doorwayRoom.exteriorStaging.has(currentPosition);
-        const assignedTarget = doorwayTask?.target ||
-          cacheDiscoveryAssignmentDetail(
-            current.boxes,
-            board,
-          ).assignedTargets.get(movedIndex);
+        const currentAssignmentTarget = cacheDiscoveryAssignmentDetail(
+          current.boxes,
+          board,
+        ).assignedTargets.get(movedIndex);
+        const assignedTarget = doorwayTask
+          ? payload.dynamicTaskTargets === false
+            ? doorwayTask.target || currentAssignmentTarget
+            : selectDynamicTaskTarget(
+                doorwayTask,
+                current,
+                movedIndex,
+                board,
+                currentAssignmentTarget,
+              )
+          : currentAssignmentTarget;
         const objective = clearingStaging
           ? {direction: "clear", roomIndex: doorwayTask.roomIndex}
           : doorwayTask && !crossingComplete
             ? doorwayTask : assignedTarget ? {target: assignedTarget} : null;
-        const sameBoxDirections = rankedFirst.filter(candidate =>
-          candidate.next.pushedFrom === first.pushedFrom).length;
+        let sameBoxDirections = 0;
+        for (const candidate of rankedFirst) {
+          if (candidate.next.pushedFrom === first.pushedFrom) sameBoxDirections++;
+        }
         const ambiguity = sameBoxDirections +
           Number(Boolean(doorwayTask)) +
           Number(current.doorwaySchedule.crossingConflicts > 0) +
@@ -1452,12 +1795,19 @@ function planMacroBeamSearch(payload) {
             first, board, objective, macroLimit, explored, results,
             {lockProven: false, intermediateGuard:
               payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
-            targetBound: payload.targetedMacroBound !== false},
+            targetBound: payload.targetedMacroBound !== false,
+            moveAwareDedupe: payload.moveAwareMacroDedupe === true,
+            paretoLimit: payload.macroParetoLimit,
+            reserveAlternateApproach: payload.macroApproachDiversity === true,
+            pruneUnreachable: payload.pruneUnreachableTargetMacros !== false},
           )
           : expandPushSequences(
             first, board, macroLimit, explored, results,
             {lockProven: false, intermediateGuard:
-              payload.incrementalMacroGuard === false ? undefined : intermediateGuard},
+              payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
+            moveAwareDedupe: payload.moveAwareMacroDedupe === true,
+            paretoLimit: payload.macroParetoLimit,
+            reserveAlternateApproach: payload.macroApproachDiversity === true},
           );
         let expanded;
         if (payload.adaptiveMacroEffort === false) {
@@ -1497,7 +1847,13 @@ function planMacroBeamSearch(payload) {
             macroContext: next.macroContext,
           };
           child.exactIdentity = exactPushIdentity(child, board);
-          if ((seenExact.get(child.exactIdentity) ?? Infinity) <= cost) continue;
+          if (moveAwareTranspositions
+            ? seenExact.isDominated(child.exactIdentity, cost, child.moves)
+            : moveTieTranspositions
+              ? planArrivalDominates(
+                  seenExact.get(child.exactIdentity), cost, child.moves,
+                )
+              : (seenExact.get(child.exactIdentity) ?? Infinity) <= cost) continue;
           scoreCandidate(child);
           if (payload.planEgressGuard !== false &&
               doorwayTask?.direction === "import" &&
@@ -1542,7 +1898,7 @@ function planMacroBeamSearch(payload) {
           if (solvedChild) {
             layerSolutionCandidates++;
             layerSolutionGeneratedAt ??= generated;
-            if (!layerSolution || child.moves < layerSolution.moves) {
+            if (betterMoveSolution(child, layerSolution)) {
               layerSolution = child;
             }
           }
@@ -1554,8 +1910,11 @@ function planMacroBeamSearch(payload) {
             break layerExpansion;
           }
           if (solvedChild) continue;
-          const existing = candidates.get(child.exactIdentity);
-          if (!existing || child.score < existing.score) {
+          if (moveAwareTranspositions) {
+            if (!addParetoCandidate(candidates, child, exactParetoLimit)) continue;
+          } else {
+            const existing = candidates.get(child.exactIdentity);
+            if (existing && existing.score <= child.score) continue;
             candidates.set(child.exactIdentity, child);
           }
           if (child.estimate < bestEstimate ||
@@ -1575,6 +1934,20 @@ function planMacroBeamSearch(payload) {
       }
     }
     if (layerSolution) {
+      if (reported === 0) {
+        postMessage({
+          type: "progress",
+          visited,
+          bestEstimate,
+          bestPushes,
+          bestMoves,
+          depth: segment + 1,
+          frontier: beam.length,
+          generated,
+          retained: seen.size + seenExact.size,
+          performance: performanceSnapshot(board.metrics),
+        });
+      }
       return {
         path: reconstructNodePath(layerSolution.node),
         visited,
@@ -1589,25 +1962,62 @@ function planMacroBeamSearch(payload) {
         strategy: "Plan Macro Beam",
       };
     }
-    peakFrontier = Math.max(peakFrontier, candidates.size);
+    const candidateList = moveAwareTranspositions
+      ? flattenParetoCandidates(candidates)
+      : [...candidates.values()];
+    peakFrontier = Math.max(peakFrontier, candidateList.length);
     const eligible = [];
-    for (const child of selectPlanLayer(candidates.values(), width * 2, board)) {
+    for (const child of selectPlanLayer(candidateList, width * 2, board)) {
       const reachable = reachablePaths(child, board);
       if (createsSealedCorralDeadlock(child, board, reachable)) continue;
       child.identity = pushIdentity(child, reachable);
-      if ((seen.get(child.identity) ?? Infinity) <= child.cost) continue;
+      if (moveAwareTranspositions) {
+        const approach = keeperApproachProfile(child, board, reachable);
+        child.approachDistance = approach.distance;
+        child.approachSide = approach.side;
+        if (!seen.wouldRetain(child.identity, child)) continue;
+        child.token = `${String(child.exactIdentity)}|${child.cost}|${child.moves}`;
+      } else if (moveTieTranspositions
+        ? planArrivalDominates(seen.get(child.identity), child.cost, child.moves)
+        : (seen.get(child.identity) ?? Infinity) <= child.cost) continue;
       child.signature = pushKey(child, reachable);
       eligible.push(child);
     }
-    beam = selectPlanLayer(eligible, width, board);
+    const eligibleByRegion = new Map();
+    if (moveAwareTranspositions) {
+      for (const child of eligible) {
+        if (!eligibleByRegion.has(child.identity)) eligibleByRegion.set(child.identity, []);
+        eligibleByRegion.get(child.identity).push(child);
+      }
+    }
+    const boundedEligible = moveAwareTranspositions
+      ? [...eligibleByRegion.values()].flatMap(arrivals =>
+          selectKeeperArrivals(arrivals, keeperArrivalLimit))
+      : eligible;
+    beam = selectPlanLayer(boundedEligible, width, board);
     for (const child of beam) {
-      seen.set(child.identity, child.cost);
-      seenExact.set(child.exactIdentity, child.cost);
+      if (moveAwareTranspositions) {
+        seen.set(child.identity, child);
+        seenExact.set(child.exactIdentity, child.cost, child.moves);
+      } else {
+        seen.set(
+          child.identity,
+          moveTieTranspositions
+            ? planArrivalRecord(child.cost, child.moves) : child.cost,
+        );
+        seenExact.set(
+          child.exactIdentity,
+          moveTieTranspositions
+            ? planArrivalRecord(child.cost, child.moves) : child.cost,
+        );
+      }
       if (payload.trackedSignatures?.[child.cost] === child.signature) {
         trackedThrough = Math.max(trackedThrough, child.cost);
       }
     }
-    if ((segment + 1) % 2 === 0) {
+    const progressNow = now();
+    if (visited - reported >= progressInterval ||
+        progressNow - lastProgressAt >= progressIntervalMs) {
       postMessage({
         type: "progress",
         visited,
@@ -1620,6 +2030,8 @@ function planMacroBeamSearch(payload) {
         retained: seen.size + seenExact.size,
         performance: performanceSnapshot(board.metrics),
       });
+      reported = visited;
+      lastProgressAt = progressNow;
     }
   }
   const checkpoint = serializeSearchCheckpoint(bestCheckpoint, board);
@@ -1649,13 +2061,15 @@ function planMacroBeamSearch(payload) {
 }
 
 function beamSearch(payload) {
-  const board = payload.preparedBoard || parse(payload.state);
+  const board = prepareSearchBoard(payload);
   const initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([position, label]) => [
       ...position.split(",").map(Number), label,
     ]),
     cost: 0,
+    moves: 0,
+    node: null,
   };
   const width = payload.beamWidth || 3000;
   const maxDepth = payload.maxDepth || 500;
@@ -1674,13 +2088,26 @@ function beamSearch(payload) {
   const beamProfile = payload.beamProfile || "balanced";
   const seed = payload.seed || 0;
   const transpositionLimit = payload.transpositionLimit || Math.max(12000, width * 60);
-  const seenDepth = new BoundedDepthMap(transpositionLimit);
-  const seenExactDepth = new BoundedDepthMap(Math.max(8000, Math.floor(transpositionLimit / 2)));
+  const exactParetoLimit = Math.max(1, payload.beamExactParetoLimit ?? 2);
+  const keeperArrivalLimit = Math.max(1, payload.beamKeeperArrivalLimit ?? 3);
+  const moveAwareTranspositions = payload.beamMoveAwareTranspositions === true;
+  const seenDepth = moveAwareTranspositions
+    ? new BoundedKeeperArrivalMap(transpositionLimit, keeperArrivalLimit)
+    : new BoundedDepthMap(transpositionLimit);
+  const seenExactDepth = moveAwareTranspositions
+    ? new BoundedParetoMap(
+        Math.max(8000, Math.floor(transpositionLimit / 2)),
+        exactParetoLimit,
+      )
+    : new BoundedDepthMap(Math.max(8000, Math.floor(transpositionLimit / 2)));
+  const moveWeight = payload.moveWeight ?? 0.002;
+  const solutionComparisonBudget = payload.beamSolutionComparisonBudget ?? 64;
   const handoffLimit = payload.checkpointLimit || 12;
   const progressInterval = payload.progressInterval || 5000;
   const progressIntervalMs = payload.progressIntervalMs || 5000;
   const handoffCheckpoints = new Map();
   let visited = 0, reported = 0, bestEstimate = Infinity, bestPushes = 0;
+  let bestMoves = 0;
   let generated = 0, peakFrontier = 1;
   let lastProgressAt = now();
   let beamCutoff = false;
@@ -1716,16 +2143,32 @@ function beamSearch(payload) {
   }
   initial.identity = pushIdentity(initial, initial.reachable);
   initial.signature = pushKey(initial, initial.reachable);
+  initial.exactIdentity = exactPushIdentity(initial, board);
+  initial.score = 0;
+  if (moveAwareTranspositions) {
+    const initialApproach = keeperApproachProfile(initial, board, initial.reachable);
+    initial.approachDistance = initialApproach.distance;
+    initial.approachSide = initialApproach.side;
+  }
   initial.strategicHistory = "";
   initial.openingHistory = "";
   const initialEstimate = heuristic(initial.boxes, board);
   if (!Number.isFinite(initialEstimate)) return {path: null, visited};
   bestEstimate = initialEstimate;
-  seenDepth.set(initial.identity, 0);
+  if (moveAwareTranspositions) {
+    seenDepth.set(initial.identity, initial);
+    seenExactDepth.set(initial.exactIdentity, 0, 0);
+  } else {
+    seenDepth.set(initial.identity, 0);
+    seenExactDepth.set(initial.exactIdentity, 0);
+  }
   let beam = [initial];
 
   searchLayers: for (let depth = 0; beam.length && depth <= maxDepth; depth++) {
     const candidates = new Map();
+    let candidateCount = 0, layerGeneratedStates = 0, layerSolution = null;
+    let layerSolutionCandidates = 0, layerSolutionGeneratedAt = null;
+    layerExpansion:
     for (const current of beam) {
       visited++;
       if (goal(current.boxes, board.goals)) {
@@ -1736,6 +2179,8 @@ function beamSearch(payload) {
           retained: seenDepth.size,
           peakFrontier,
           transpositionEvictions: seenDepth.evictions + seenExactDepth.evictions,
+          bestMoves: current.moves,
+          bestPushes: current.cost,
         };
       }
       if (visited >= maxVisited) {
@@ -1766,7 +2211,12 @@ function beamSearch(payload) {
               rawNext,
               board,
               payload.straightMacroLimit || 8,
-              {lockProven: lockProvenCommitments},
+              {
+                lockProven: lockProvenCommitments,
+                moveAwareDedupe: payload.moveAwareMacroDedupe === true,
+                paretoLimit: payload.macroParetoLimit,
+                reserveAlternateApproach: payload.macroApproachDiversity === true,
+              },
             )
           : payload.sequenceMacros
           ? expandPushSequences(
@@ -1775,7 +2225,12 @@ function beamSearch(payload) {
               payload.sequenceMacroLimit || 12,
               payload.sequenceMacroExplored || 48,
               payload.sequenceMacroResults || 8,
-              {lockProven: lockProvenCommitments},
+              {
+                lockProven: lockProvenCommitments,
+                moveAwareDedupe: payload.moveAwareMacroDedupe === true,
+                paretoLimit: payload.macroParetoLimit,
+                reserveAlternateApproach: payload.macroApproachDiversity === true,
+              },
             )
           : [expandPushMacro(
               rawNext,
@@ -1784,21 +2239,39 @@ function beamSearch(payload) {
               {lockProven: lockProvenCommitments},
             )].filter(Boolean);
         for (const next of expansions) {
-        const child = {robot: next.robot, boxes: next.boxes, cost: current.cost + next.pushes};
+        const child = {
+          robot: next.robot,
+          boxes: next.boxes,
+          cost: current.cost + next.pushes,
+          moves: current.moves + next.path.length,
+          node: {parent: current.node || null, segment: next.path},
+        };
         if (child.cost > maxDepth) continue;
         if (payload.upperBound && child.cost > payload.upperBound) continue;
-        if (goal(child.boxes, board.goals)) {
-          return {
-            path: [...reconstructNodePath(current.node), ...next.path],
-            visited,
-            generated: generated + candidates.size + 1,
-            retained: seenDepth.size,
-            peakFrontier: Math.max(peakFrontier, beam.length, candidates.size + 1),
-            transpositionEvictions: seenDepth.evictions + seenExactDepth.evictions,
-          };
-        }
         child.exactIdentity = exactPushIdentity(child, board);
-        if ((seenExactDepth.get(child.exactIdentity) ?? Infinity) <= child.cost) continue;
+        if (moveAwareTranspositions
+          ? seenExactDepth.isDominated(
+              child.exactIdentity, child.cost, child.moves,
+            )
+          : (seenExactDepth.get(child.exactIdentity) ?? Infinity) <= child.cost) continue;
+        if (goal(child.boxes, board.goals)) {
+          if (generated + layerGeneratedStates >= maxGenerated) {
+            beamCutoff = true;
+            if (layerSolution) break layerExpansion;
+            break searchLayers;
+          }
+          layerSolutionCandidates++;
+          layerGeneratedStates++;
+          layerSolutionGeneratedAt ??= layerGeneratedStates;
+          if (betterMoveSolution(child, layerSolution)) {
+            layerSolution = child;
+          }
+          if (layerGeneratedStates - layerSolutionGeneratedAt >=
+              solutionComparisonBudget) {
+            break layerExpansion;
+          }
+          continue;
+        }
         const estimate = heuristic(child.boxes, board);
         if (!Number.isFinite(estimate)) continue;
         if (payload.upperBound && child.cost + estimate > payload.upperBound) continue;
@@ -1806,6 +2279,7 @@ function beamSearch(payload) {
         if (estimate < bestEstimate) {
           bestEstimate = estimate;
           bestPushes = child.cost;
+          bestMoves = child.moves;
         }
         const topology = topologyPenalty(child.boxes, board);
         const dependencyDelta = supportDependencyDelta(dependencyGraph, next);
@@ -1855,7 +2329,7 @@ function beamSearch(payload) {
             ? `${current.openingHistory || ""}/${next.pushClass}`
             : current.openingHistory || "";
         }
-        const score = (payload.costWeight ?? 0) * child.cost +
+        const score = (payload.costWeight ?? 0) * child.cost + moveWeight * child.moves +
           weight * estimate + topologyWeight * topology +
           evacuationWeight * evacuation -
           goalPackingWeight * packing +
@@ -1866,7 +2340,8 @@ function beamSearch(payload) {
               doorwayDelta) +
           (payload.relevanceWeight ?? 0.6) * relevanceScore +
           diversity * signatureNoise(child.exactIdentity, seed);
-        const exploreScore = topologyWeight * topology + evacuationWeight * evacuation -
+        const exploreScore = moveWeight * child.moves +
+          topologyWeight * topology + evacuationWeight * evacuation -
           goalPackingWeight * packing +
           supportDependencyWeight * dependencyDelta +
           localRoomWeight * localRoomDelta +
@@ -1875,16 +2350,15 @@ function beamSearch(payload) {
               doorwayDelta) +
           (payload.relevanceWeight ?? 0.6) * relevanceScore +
           diversity * signatureNoise(child.exactIdentity, seed + 7919);
-        const existing = candidates.get(child.exactIdentity);
-        if (!existing || score < existing.score) {
-          if (!existing && generated + candidates.size >= maxGenerated) {
-            generated += candidates.size;
+        {
+          if (generated + layerGeneratedStates >= maxGenerated) {
             beamCutoff = true;
+            if (layerSolution) break layerExpansion;
+            generated += layerGeneratedStates;
             break searchLayers;
           }
           const candidate = {
             ...child,
-            node: {parent: current.node || null, segment: next.path},
             estimate,
             topology,
             evacuation,
@@ -1904,7 +2378,19 @@ function beamSearch(payload) {
             openingHistory: child.openingHistory,
             recentPush: {pushedFrom: next.pushedFrom, pushedTo: next.pushedTo},
           };
-          candidates.set(child.exactIdentity, candidate);
+          const existing = candidates.get(child.exactIdentity);
+          const before = moveAwareTranspositions ? existing?.length || 0 : Number(Boolean(existing));
+          if (moveAwareTranspositions) {
+            if (!addParetoCandidate(candidates, candidate, exactParetoLimit)) continue;
+          } else {
+            if (existing && existing.score <= candidate.score) continue;
+            candidates.set(child.exactIdentity, candidate);
+          }
+          layerGeneratedStates++;
+          candidateCount +=
+            (moveAwareTranspositions
+              ? candidates.get(child.exactIdentity)?.length || 0
+              : 1) - before;
           if (!bestCheckpoint || estimate < bestCheckpoint.estimate ||
               (estimate === bestCheckpoint.estimate && child.cost < bestCheckpoint.cost)) {
             bestCheckpoint = candidate;
@@ -1951,7 +2437,7 @@ function beamSearch(payload) {
             }
           }
         }
-        }
+      }
       }
       const progressNow = now();
       if (visited - reported >= progressInterval ||
@@ -1964,26 +2450,70 @@ function beamSearch(payload) {
         lastProgressAt = progressNow;
       }
     }
-    generated += candidates.size;
-    peakFrontier = Math.max(peakFrontier, beam.length, candidates.size);
+    generated += layerGeneratedStates;
+    if (layerSolution) {
+      return {
+        path: reconstructNodePath(layerSolution.node),
+        visited,
+        generated,
+        retained: seenDepth.size + seenExactDepth.size,
+        peakFrontier: Math.max(peakFrontier, beam.length, candidateCount),
+        transpositionEvictions: seenDepth.evictions + seenExactDepth.evictions,
+        bestMoves: layerSolution.moves,
+        bestPushes: layerSolution.cost,
+        solutionCandidates: layerSolutionCandidates,
+        solutionComparisonStates:
+          layerGeneratedStates - layerSolutionGeneratedAt,
+      };
+    }
+    const candidateList = moveAwareTranspositions
+      ? flattenParetoCandidates(candidates)
+      : [...candidates.values()];
+    peakFrontier = Math.max(peakFrontier, beam.length, candidateList.length);
     const shortlist = selectBeamLayer(
-      [...candidates.values()],
+      candidateList,
       width * 3,
       beamProfile,
       board.metrics,
       payload.featureSpaceQueues !== false,
     );
-    beam = [];
+    const keeperShortlist = [];
     for (const child of shortlist) {
       child.reachable = reachablePaths(child, board);
       if (createsSealedCorralDeadlock(child, board, child.reachable)) continue;
       child.identity = pushIdentity(child, child.reachable);
-      if ((seenDepth.get(child.identity) ?? Infinity) <= child.cost) continue;
+      if (moveAwareTranspositions) {
+        const approach = keeperApproachProfile(child, board, child.reachable);
+        child.approachDistance = approach.distance;
+        child.approachSide = approach.side;
+        if (!seenDepth.wouldRetain(child.identity, child)) continue;
+        child.token = `${String(child.exactIdentity)}|${child.cost}|${child.moves}`;
+      } else if ((seenDepth.get(child.identity) ?? Infinity) <= child.cost) continue;
       child.signature = pushKey(child, child.reachable);
       child.score -= mobilityWeight * child.reachable.size;
       child.exploreScore -= mobilityWeight * child.reachable.size;
-      seenDepth.set(child.identity, child.cost);
-      seenExactDepth.set(child.exactIdentity, child.cost);
+      keeperShortlist.push(child);
+    }
+    const keeperGroups = new Map();
+    if (moveAwareTranspositions) {
+      for (const child of keeperShortlist) {
+        if (!keeperGroups.has(child.identity)) keeperGroups.set(child.identity, []);
+        keeperGroups.get(child.identity).push(child);
+      }
+    }
+    const boundedKeeperShortlist = moveAwareTranspositions
+      ? [...keeperGroups.values()].flatMap(arrivals =>
+          selectKeeperArrivals(arrivals, keeperArrivalLimit))
+      : keeperShortlist;
+    beam = [];
+    for (const child of boundedKeeperShortlist) {
+      if (moveAwareTranspositions) {
+        seenDepth.set(child.identity, child);
+        seenExactDepth.set(child.exactIdentity, child.cost, child.moves);
+      } else {
+        seenDepth.set(child.identity, child.cost);
+        seenExactDepth.set(child.exactIdentity, child.cost);
+      }
       beam.push(child);
       if (!bestHandoff || child.estimate < bestHandoff.estimate ||
           (child.estimate === bestHandoff.estimate && child.cost < bestHandoff.cost)) {
@@ -2065,7 +2595,9 @@ function beamSearch(payload) {
             seenExactDepth.evictions +
             continuation.transpositionEvictions,
           bestEstimate: 0,
-          bestPushes: checkpoint.cost,
+          bestPushes: checkpoint.cost + (continuation.bestPushes || 0),
+          bestMoves:
+            checkpoint.moves + (continuation.bestMoves ?? continuation.path.length),
           continuation: true,
         };
       }
@@ -2115,7 +2647,8 @@ function beamSearch(payload) {
           seenExactDepth.evictions +
           (endgame.transpositionEvictions || 0),
         bestEstimate: 0,
-        bestPushes: checkpoint.cost,
+        bestPushes: checkpoint.cost + (endgame.bestPushes || 0),
+        bestMoves: checkpoint.moves + endgame.path.length,
         endgame: true,
       };
     }
@@ -2134,6 +2667,7 @@ function beamSearch(payload) {
     terminationReason: beamCutoff ? "budget" : "frontier-exhausted",
     bestEstimate,
     bestPushes,
+    bestMoves,
     trackedThrough,
     checkpoint: serializeSearchCheckpoint(bestHandoff, board),
     checkpoints: [...handoffCheckpoints.values()]
@@ -2151,7 +2685,7 @@ function beamRestartSearch(payload) {
   const restartVisited = payload.restartVisited || 180000;
   const seedStride = payload.seedStride || 104729;
   const profiles = payload.restartProfiles?.length ? payload.restartProfiles : [{}];
-  const preparedBoard = parse(payload.state);
+  const preparedBoard = prepareSearchBoard(payload);
   let visited = 0, bestEstimate = Infinity, bestPushes = 0;
   for (let restart = 0; restart < restartCount; restart++) {
     const result = beamSearch({
@@ -2175,7 +2709,7 @@ function beamRestartSearch(payload) {
 }
 
 function boundedPushDepthFirstSearch(payload) {
-  const board = payload.preparedBoard || parse(payload.state);
+  const board = prepareSearchBoard(payload);
   const initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([position, label]) => [
@@ -2785,7 +3319,7 @@ function pushIterativeDeepeningAStar(payload) {
 }
 
 function moveBridgeAStarSearch(payload) {
-  const board = parse(payload.state);
+  const board = prepareSearchBoard(payload);
   const initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([position, label]) => [
@@ -2880,13 +3414,14 @@ function moveBridgeAStarSearch(payload) {
 
 function bridgeAStarSearch(payload) {
   if (payload.costMode === "moves") return moveBridgeAStarSearch(payload);
-  const board = parse(payload.state);
+  const board = prepareSearchBoard(payload);
   const initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([position, label]) => [
       ...position.split(",").map(Number), label,
     ]),
     cost: 0,
+    moves: 0,
   };
   const targetBoxes = payload.targetState.boxes.map(([position, label]) => [
     ...position.split(",").map(Number), label,
@@ -2895,18 +3430,41 @@ function bridgeAStarSearch(payload) {
   const targetReachable = reachablePaths(targetState, board);
   const targetKey = payload.targetId || pushKey(targetState, targetReachable);
   const heuristicMemo = new Map();
-  const frontier = new Heap(), bestCost = new Map(), closed = new Set();
+  const frontier = new Heap();
   let cameFrom = new Map();
   const weight = payload.weight ?? 1.4;
   const maxVisited = payload.maxVisited || 100000;
   const maxGenerated = payload.maxGenerated ?? Infinity;
   const frontierLimit = payload.frontierLimit || 4000;
+  const exactParetoLimit = Math.max(1, payload.bridgeExactParetoLimit ?? 3);
+  const transpositionLimit = payload.transpositionLimit ||
+    Math.max(8000, frontierLimit * 4);
+  let bestPairs = new BoundedParetoMap(transpositionLimit, exactParetoLimit);
+  const closedPairs = new BoundedParetoMap(transpositionLimit, exactParetoLimit);
+  const solutionComparisonBudget = payload.bridgeSolutionComparisonBudget ?? 96;
+  const moveUpperBound = payload.moveUpperBound ?? Infinity;
+  const pushScaleBound = Number.isFinite(payload.upperBound)
+    ? Math.max(1, payload.upperBound)
+    : Math.max(1, Math.min(maxVisited, 100000));
+  const movePriorityScale = Math.max(
+    2,
+    (board.floor.size + 1) * (pushScaleBound + 2) + 1,
+  );
+  const priority = state =>
+    Math.round((state.cost + weight * state.estimate) * 1000) *
+      movePriorityScale + Math.min(state.moves, movePriorityScale - 1);
+  const stateToken = state =>
+    `${String(state.exactIdentity)}|${state.cost}|${state.moves}`;
   let visited = 0, generated = 0, order = 0;
   let bestEstimate = Infinity, bestCheckpoint = null;
   let compactions = 0, peakFrontier = 0;
+  let bestSolution = null, firstSolutionVisited = null;
+  let solutionCandidates = 0;
 
   initial.reachable = reachablePaths(initial, board);
   initial.signature = pushKey(initial, initial.reachable);
+  initial.exactIdentity = exactPushIdentity(initial, board);
+  initial.stateToken = stateToken(initial);
   initial.estimate = targetLayoutHeuristic(initial.boxes, targetBoxes, board, heuristicMemo);
   const initialEstimate = initial.estimate;
   if (!Number.isFinite(initial.estimate)) {
@@ -2914,32 +3472,42 @@ function bridgeAStarSearch(payload) {
       terminationReason: "target-incompatible", bestEstimate: initial.estimate};
   }
   delete initial.reachable;
-  bestCost.set(initial.signature, 0);
-  frontier.push([weight * initial.estimate, order++, initial]);
+  bestPairs.set(initial.exactIdentity, 0, 0);
+  frontier.push([priority(initial), order++, initial]);
 
   while (frontier.length) {
     const current = frontier.pop()[2];
-    if (bestCost.get(current.signature) !== current.cost || closed.has(current.signature)) continue;
-    bestCost.delete(current.signature);
-    closed.add(current.signature);
+    if (!bestPairs.hasPair(current.exactIdentity, current.cost, current.moves) ||
+        closedPairs.isDominated(
+          current.exactIdentity, current.cost, current.moves,
+        )) continue;
+    if (bestSolution && weight === 1 &&
+        current.cost + current.estimate > bestSolution.pushes) break;
+    closedPairs.set(current.exactIdentity, current.cost, current.moves);
     visited++;
     if (current.signature === targetKey) {
-      return {
-        path: reconstructPath(cameFrom, current.signature),
-        visited,
-        generated,
-        terminationReason: "target-reached",
-        initialEstimate,
-        bestEstimate: 0,
-        bestPushes: current.cost,
-        peakFrontier,
-        compactions,
-        finalState: {
-          rows: board.rows,
-          robot: current.robot,
-          boxes: current.boxes.map(([y, x, label]) => [pkey(y, x), label]),
-        },
-      };
+      const reachable = reachablePaths(current, board);
+      const walking = reachable.get(pkey(targetState.robot[0], targetState.robot[1]));
+      if (walking) {
+        const moves = current.moves + walking.length;
+        if (moves < moveUpperBound) {
+          solutionCandidates++;
+          if (!bestSolution || current.cost < bestSolution.pushes ||
+              (current.cost === bestSolution.pushes && moves < bestSolution.moves)) {
+            bestSolution = {
+              pushes: current.cost,
+              moves,
+              path: [...reconstructPath(cameFrom, current.stateToken), ...walking],
+              robot: targetState.robot,
+              boxes: current.boxes,
+            };
+          }
+          firstSolutionVisited ??= visited;
+        }
+      }
+      if (bestSolution &&
+          visited - firstSolutionVisited >= solutionComparisonBudget) break;
+      continue;
     }
     if (visited >= maxVisited || generated >= maxGenerated) break;
     const currentReachable = reachablePaths(current, board);
@@ -2951,16 +3519,24 @@ function bridgeAStarSearch(payload) {
         robot: next.robot,
         boxes: next.boxes,
         cost: current.cost + next.pushes,
+        moves: current.moves + next.path.length,
       };
       if (payload.upperBound && child.cost > payload.upperBound) continue;
+      if (child.moves >= moveUpperBound) continue;
       child.reachable = reachablePaths(child, board);
       child.signature = pushKey(child, child.reachable);
       delete child.reachable;
-      if (closed.has(child.signature) ||
-          child.cost >= (bestCost.get(child.signature) ?? Infinity)) continue;
+      child.exactIdentity = exactPushIdentity(child, board);
+      child.stateToken = stateToken(child);
+      if (closedPairs.isDominated(
+        child.exactIdentity, child.cost, child.moves,
+      ) || bestPairs.isDominated(
+        child.exactIdentity, child.cost, child.moves,
+      )) continue;
       child.estimate = targetLayoutHeuristic(child.boxes, targetBoxes, board, heuristicMemo);
       if (!Number.isFinite(child.estimate) ||
           (payload.upperBound && child.cost + child.estimate > payload.upperBound)) continue;
+      if (bestSolution && child.cost + child.estimate > bestSolution.pushes) continue;
       if (child.estimate < bestEstimate) {
         bestEstimate = child.estimate;
         bestCheckpoint = {
@@ -2970,27 +3546,30 @@ function bridgeAStarSearch(payload) {
             boxes: child.boxes.map(([y, x, label]) => [pkey(y, x), label]),
           },
           cost: child.cost,
+          moves: child.moves,
           estimate: child.estimate,
-          signature: child.signature,
+          stateToken: child.stateToken,
         };
       }
-      bestCost.set(child.signature, child.cost);
-      cameFrom.set(child.signature, {parent: current.signature, segment: next.path});
-      frontier.push([child.cost + weight * child.estimate, order++, child]);
+      if (!bestPairs.set(child.exactIdentity, child.cost, child.moves)) continue;
+      cameFrom.set(child.stateToken, {parent: current.stateToken, segment: next.path});
+      frontier.push([priority(child), order++, child]);
       generated++;
     }
     peakFrontier = Math.max(peakFrontier, frontier.length);
     if (frontier.length > frontierLimit * 2) {
       frontier.retainBest(frontierLimit);
-      const retainedCosts = new Map();
-      const ancestry = new Set([initial.signature]);
+      const retainedPairs = new BoundedParetoMap(
+        transpositionLimit,
+        exactParetoLimit,
+      );
+      const ancestry = new Set([initial.stateToken]);
       const pending = [];
       for (const [, , state] of frontier.items) {
-        const previous = retainedCosts.get(state.signature) ?? Infinity;
-        if (state.cost < previous) retainedCosts.set(state.signature, state.cost);
-        pending.push(state.signature);
+        retainedPairs.set(state.exactIdentity, state.cost, state.moves);
+        pending.push(state.stateToken);
       }
-      if (bestCheckpoint?.signature) pending.push(bestCheckpoint.signature);
+      if (bestCheckpoint?.stateToken) pending.push(bestCheckpoint.stateToken);
       while (pending.length) {
         const signature = pending.pop();
         if (ancestry.has(signature)) continue;
@@ -2999,19 +3578,39 @@ function bridgeAStarSearch(payload) {
         if (record?.parent) pending.push(record.parent);
       }
       cameFrom = new Map([...cameFrom].filter(([signature]) => ancestry.has(signature)));
-      bestCost.clear();
-      retainedCosts.forEach((cost, signature) => bestCost.set(signature, cost));
+      bestPairs = retainedPairs;
       compactions++;
     }
     if (visited % 5000 === 0) postMessage({type: "progress", visited,
       bestEstimate, bestPushes: bestCheckpoint?.cost, frontier: frontier.length,
-      retained: bestCost.size, peakFrontier, compactions,
+      retained: bestPairs.size + closedPairs.size, peakFrontier, compactions,
       performance: performanceSnapshot(board.metrics)});
+  }
+  if (bestSolution) {
+    return {
+      path: bestSolution.path,
+      visited,
+      generated,
+      terminationReason: "target-reached",
+      initialEstimate,
+      bestEstimate: 0,
+      bestPushes: bestSolution.pushes,
+      bestMoves: bestSolution.moves,
+      solutionCandidates,
+      solutionComparisonStates: visited - firstSolutionVisited,
+      peakFrontier,
+      compactions,
+      finalState: {
+        rows: board.rows,
+        robot: bestSolution.robot,
+        boxes: bestSolution.boxes.map(([y, x, label]) => [pkey(y, x), label]),
+      },
+    };
   }
   const cutoff = visited >= maxVisited || generated >= maxGenerated;
   const checkpoint = bestCheckpoint && {
     state: bestCheckpoint.state,
-    path: reconstructPath(cameFrom, bestCheckpoint.signature),
+    path: reconstructPath(cameFrom, bestCheckpoint.stateToken),
     cost: bestCheckpoint.cost,
     estimate: bestCheckpoint.estimate,
   };
@@ -3019,7 +3618,8 @@ function bridgeAStarSearch(payload) {
     terminationReason: generated >= maxGenerated ? "generated-budget" :
       visited >= maxVisited ? "state-budget" : "frontier-exhausted",
     initialEstimate, bestEstimate, bestPushes: bestCheckpoint?.cost,
-    frontier: frontier.length, retained: bestCost.size, peakFrontier, compactions,
+    frontier: frontier.length, retained: bestPairs.size + closedPairs.size,
+    peakFrontier, compactions,
     checkpoint};
 }
 
@@ -3469,7 +4069,7 @@ function pushPermutationSearch(
 }
 
 function solutionWindowRewriteSearch(payload) {
-  const board = parse(payload.state);
+  const board = prepareSearchBoard(payload, false);
   let path = [...(payload.solutionPath || [])];
   let details = replaySolutionDetails(payload, path, board);
   if (!details || !goal(details.state.boxes, board.goals)) {
@@ -3549,6 +4149,7 @@ function solutionWindowRewriteSearch(payload) {
       (payload.windowTotalVisited ?? maximumVisited),
   );
   let improvements = details.moves < initialQuality.moves ? 1 : 0;
+  let pushWindowImprovements = 0;
 
   for (const windowPushes of windowSizes) {
     let startPush = Math.max(0, details.pushes - windowPushes);
@@ -3566,6 +4167,7 @@ function solutionWindowRewriteSearch(payload) {
       const budget = Math.min(perWindowVisited, pushWindowLimit - visited);
       const result = bridgeAStarSearch({
         algorithm: "bridge-astar",
+        preparedBoard: board,
         state: serializedSearchState(start.state, board.rows),
         targetState: serializedSearchState(target.state, board.rows),
         upperBound: originalSegmentPushes,
@@ -3599,6 +4201,7 @@ function solutionWindowRewriteSearch(payload) {
             path = candidate;
             details = candidateDetails;
             improvements++;
+            pushWindowImprovements++;
             startPush = Math.max(0, Math.min(
               startPush + Math.floor(windowPushes / 2),
               details.pushes - windowPushes,
@@ -3619,6 +4222,13 @@ function solutionWindowRewriteSearch(payload) {
   const moveWindowAttempts = payload.moveWindowAttempts ?? 6;
   const attemptedMoveWindows = new Set();
   let moveVisited = 0, moveImprovements = 0;
+  let moveWindowMisses = 0, moveWindowAdaptiveStop = false;
+  const adaptiveMovePriorImprovements =
+    permutationImprovements + pushWindowImprovements;
+  const adaptiveMoveWindowProbe = payload.adaptiveMoveWindows === true &&
+    adaptiveMovePriorImprovements >=
+      (payload.adaptiveMoveMinimumPriorImprovements ?? 8);
+  const moveWindowMissLimit = Math.max(1, payload.moveWindowMissLimit ?? 1);
   for (let attempt = 0;
     attempt < moveWindowAttempts &&
       moveVisited < moveWindowBudget &&
@@ -3655,6 +4265,7 @@ function solutionWindowRewriteSearch(payload) {
     const result = bridgeAStarSearch({
       algorithm: "bridge-astar",
       costMode: "moves",
+      preparedBoard: board,
       state: serializedSearchState(window.start.state, board.rows),
       targetState: serializedSearchState(window.target.state, board.rows),
       moveUpperBound: window.segmentMoves,
@@ -3666,19 +4277,27 @@ function solutionWindowRewriteSearch(payload) {
     visited += result.visited || 0;
     generated += result.generated || 0;
     windows++;
-    if (!result.path) continue;
-    const candidate = [
-      ...path.slice(0, window.start.moveIndex),
-      ...result.path,
-      ...path.slice(window.target.moveIndex),
-    ];
-    const candidateDetails = replaySolutionDetails(payload, candidate, board);
-    if (candidateDetails && goal(candidateDetails.state.boxes, board.goals) &&
-        candidateDetails.moves < details.moves) {
-      path = candidate;
-      details = candidateDetails;
-      improvements++;
-      moveImprovements++;
+    let moveImproved = false;
+    if (result.path) {
+      const candidate = [
+        ...path.slice(0, window.start.moveIndex),
+        ...result.path,
+        ...path.slice(window.target.moveIndex),
+      ];
+      const candidateDetails = replaySolutionDetails(payload, candidate, board);
+      if (candidateDetails && goal(candidateDetails.state.boxes, board.goals) &&
+          candidateDetails.moves < details.moves) {
+        path = candidate;
+        details = candidateDetails;
+        improvements++;
+        moveImprovements++;
+        moveImproved = true;
+      }
+    }
+    moveWindowMisses = moveImproved ? 0 : moveWindowMisses + 1;
+    if (adaptiveMoveWindowProbe && moveWindowMisses >= moveWindowMissLimit) {
+      moveWindowAdaptiveStop = true;
+      break;
     }
   }
   return {
@@ -3689,10 +4308,13 @@ function solutionWindowRewriteSearch(payload) {
     improvements,
     moveVisited,
     moveImprovements,
+    moveWindowAdaptiveStop,
+    adaptiveMovePriorImprovements,
     permutationVisited,
     permutationGenerated,
     permutationImprovements,
     permutationWindows,
+    pushWindowImprovements,
     initialPushes: initialQuality.pushes,
     initialMoves: initialQuality.moves,
     bestPushes: details.pushes,
@@ -3758,6 +4380,7 @@ function searchCore(payload) {
     ];
     const maximumVisited = payload.maxVisited ?? Infinity;
     const maximumGenerated = payload.maxGenerated ?? Infinity;
+    const preparedBoard = prepareSearchBoard(payload);
     let visited = 0, generated = 0, retained = 0, peakFrontier = 0;
     let transpositionEvictions = 0, anyCutoff = false, lastResult = null;
     for (const [algorithm, label, futureReserveFraction] of plans) {
@@ -3782,6 +4405,7 @@ function searchCore(payload) {
       const lanePayload = {
         ...payload,
         algorithm,
+        preparedBoard,
         maxVisited: Number.isFinite(remainingVisited)
           ? Math.max(1, remainingVisited - visitReserve)
           : undefined,
@@ -3833,7 +4457,7 @@ function searchCore(payload) {
         "portfolio-exhausted",
     };
   }
-  const board = parse(payload.state), initial = {
+  const board = prepareSearchBoard(payload), initial = {
     robot: payload.state.robot,
     boxes: payload.state.boxes.map(([p, label]) => [...p.split(",").map(Number), label]),
     cost: 0,

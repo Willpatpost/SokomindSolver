@@ -49,8 +49,10 @@ import {
 import {
   IncumbentCollector,
   computeHarvestMs,
+  isSolutionBetter,
   selectForRewrite,
   selectBest,
+  type SemanticDiversityTrace,
 } from "./sokomind-incumbents.ts";
 
 const LEGACY_DIRECTIONS = Object.freeze({
@@ -185,8 +187,36 @@ interface EnginePlan {
   readonly mode: EngineCommand["mode"];
   readonly payload: Readonly<Record<string, unknown>>;
   readonly capturesPreparedBoard?: boolean;
+  /** Verified prefix from the original request to a continuation state. */
+  readonly pathPrefix?: readonly unknown[];
 }
 
+interface LegacySearchCheckpoint {
+  readonly state: LegacyState;
+  readonly path: readonly unknown[];
+  readonly cost?: number;
+  readonly estimate?: number;
+}
+
+interface SokomindAnalysisPlan {
+  readonly difficulty?: string;
+  readonly phases: readonly string[];
+  readonly recommendations: Readonly<{
+    beamWidth?: number;
+    beamVisited?: number;
+    checkpointLimit?: number;
+    reverseWorkerLimit?: number;
+    sideVisitedLimit?: number;
+    useSequenceMacros?: boolean;
+  }>;
+}
+
+interface PhaseRunOptions {
+  readonly collectSolutions?: boolean;
+  readonly maxSolutions?: number;
+  /** Outer orchestration may run multiple one-plan phases concurrently. */
+  readonly memoryConcurrency?: number;
+}
 
 interface SearchRunState {
   readonly startedAt: number;
@@ -211,7 +241,10 @@ interface SearchRunState {
 
 interface PhaseOutcome {
   readonly solution?: SolverSolution;
+  readonly solutions?: readonly SolverSolution[];
   readonly preparedBoard?: LegacyPreparedBoard;
+  readonly analysisPlan?: SokomindAnalysisPlan;
+  readonly checkpoints?: readonly LegacySearchCheckpoint[];
   readonly stopReason?: PhaseStopReason;
   readonly phaseTimedOut?: boolean;
   readonly watchdogTimedOut?: boolean;
@@ -369,6 +402,119 @@ function preparedBoardFromAnalysis(
   return prepared as unknown as LegacyPreparedBoard;
 }
 
+function analysisPlanFromAnalysis(
+  analysisValue: unknown,
+): SokomindAnalysisPlan | undefined {
+  const analysis = objectRecord(analysisValue);
+  const recommendations = objectRecord(analysis?.recommendations);
+  if (!analysis || !recommendations) return undefined;
+  const phases = Array.isArray(analysis.phases)
+    ? analysis.phases.flatMap((value) => {
+        const phase = objectRecord(value);
+        return typeof phase?.id === "string" ? [phase.id] : [];
+      })
+    : [];
+  const optionalNumber = (key: string): number | undefined => {
+    const value = recommendations[key];
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  return Object.freeze({
+    difficulty:
+      typeof analysis.difficulty === "string" ? analysis.difficulty : undefined,
+    phases: Object.freeze(phases),
+    recommendations: Object.freeze({
+      beamWidth: optionalNumber("beamWidth"),
+      beamVisited: optionalNumber("beamVisited"),
+      checkpointLimit: optionalNumber("checkpointLimit"),
+      reverseWorkerLimit: optionalNumber("reverseWorkerLimit"),
+      sideVisitedLimit: optionalNumber("sideVisitedLimit"),
+      useSequenceMacros:
+        typeof recommendations.useSequenceMacros === "boolean"
+          ? recommendations.useSequenceMacros
+          : undefined,
+    }),
+  });
+}
+
+function legacyCheckpointFromValue(
+  value: unknown,
+  request: SolverRequest,
+  pathPrefix: readonly unknown[] = [],
+): LegacySearchCheckpoint | undefined {
+  const checkpoint = objectRecord(value);
+  const checkpointState = objectRecord(checkpoint?.state);
+  if (
+    !checkpoint ||
+    !checkpointState ||
+    !Array.isArray(checkpoint.path) ||
+    !checkpoint.path.every((move) => legacyDirection(move) !== undefined) ||
+    !Array.isArray(checkpointState.rows) ||
+    !checkpointState.rows.every((row) => typeof row === "string") ||
+    checkpointState.rows.join("\n") !== request.board.rows.join("\n") ||
+    !Array.isArray(checkpointState.robot) ||
+    checkpointState.robot.length !== 2 ||
+    !checkpointState.robot.every(
+      (coordinate) => Number.isSafeInteger(coordinate) && coordinate >= 0,
+    ) ||
+    !Array.isArray(checkpointState.boxes) ||
+    !checkpointState.boxes.every((box) =>
+      Array.isArray(box) &&
+      box.length === 2 &&
+      typeof box[0] === "string" &&
+      /^\d+,\d+$/.test(box[0]) &&
+      typeof box[1] === "string" &&
+      box[1].trim().length > 0)
+  ) {
+    return undefined;
+  }
+  const path = Object.freeze([...pathPrefix, ...checkpoint.path]);
+  let replay = request.snapshot;
+  let replayPushes = 0;
+  for (const move of path) {
+    const direction = legacyDirection(move);
+    if (!direction) return undefined;
+    const transition = stepSnapshot(request.board, replay, direction);
+    if (!transition.moved) return undefined;
+    if (transition.pushed) replayPushes += 1;
+    replay = transition.snapshot;
+  }
+  if (
+    replay.robot.row !== checkpointState.robot[0] ||
+    replay.robot.column !== checkpointState.robot[1]
+  ) {
+    return undefined;
+  }
+  const expectedBoxes = replay.boxes
+    .map((box) => `${positionKey(box.position.row, box.position.column)}|${box.label}`)
+    .sort();
+  const checkpointBoxes = checkpointState.boxes
+    .map((box) => `${box[0]}|${box[1]}`)
+    .sort();
+  if (
+    expectedBoxes.length !== checkpointBoxes.length ||
+    expectedBoxes.some((box, index) => box !== checkpointBoxes[index])
+  ) {
+    return undefined;
+  }
+  const estimate = optionalFiniteNonNegative(checkpoint.estimate);
+  return Object.freeze({
+    state: Object.freeze({
+      rows: Object.freeze([...checkpointState.rows]) as readonly string[],
+      robot: Object.freeze([
+        checkpointState.robot[0],
+        checkpointState.robot[1],
+      ]) as readonly [number, number],
+      boxes: Object.freeze(checkpointState.boxes.map((box) =>
+        Object.freeze([box[0], box[1]]) as readonly [string, string])),
+    }),
+    path,
+    cost: replayPushes,
+    ...(estimate === undefined ? {} : { estimate }),
+  });
+}
+
 function withPreparedBoard(
   state: LegacyState,
   preparedBoard: LegacyPreparedBoard,
@@ -424,6 +570,58 @@ export function solutionFromLegacyPath(
     objectiveScore: scoreSolverObjective(request.objective, moves),
     optimality: "unknown",
   });
+}
+
+const DIRECTION_DELTAS = Object.freeze({
+  up: Object.freeze({ row: -1, column: 0 }),
+  down: Object.freeze({ row: 1, column: 0 }),
+  left: Object.freeze({ row: 0, column: -1 }),
+  right: Object.freeze({ row: 0, column: 1 }),
+} as const satisfies Readonly<
+  Record<Direction, Readonly<{ row: number; column: number }>>
+>);
+
+/** Replay a verified route into actual box identities and final goal choices. */
+export function semanticDiversityTrace(
+  request: SolverRequest,
+  solution: SolverSolution,
+): SemanticDiversityTrace | undefined {
+  let snapshot = request.snapshot;
+  const identities = new Map<string, string>();
+  request.snapshot.boxes.forEach((box, index) => {
+    const position = positionKey(box.position.row, box.position.column);
+    identities.set(position, `${box.label}@${position}#${index}`);
+  });
+  const pushes: string[] = [];
+  for (const step of solution.steps) {
+    const delta = DIRECTION_DELTAS[step.direction];
+    const from = positionKey(
+      snapshot.robot.row + delta.row,
+      snapshot.robot.column + delta.column,
+    );
+    const to = positionKey(
+      snapshot.robot.row + 2 * delta.row,
+      snapshot.robot.column + 2 * delta.column,
+    );
+    const transition = stepSnapshot(request.board, snapshot, step.direction);
+    if (!transition.moved || transition.pushed !== (step.kind === "push")) {
+      return undefined;
+    }
+    if (transition.pushed) {
+      const identity = identities.get(from);
+      if (!identity || identities.has(to)) return undefined;
+      identities.delete(from);
+      identities.set(to, identity);
+      pushes.push(`${identity}:${from}>${to}`);
+    }
+    snapshot = transition.snapshot;
+  }
+  if (!snapshot.solved) return undefined;
+  const goals = [...identities]
+    .map(([position, identity]) => `${identity}>${position}`)
+    .sort()
+    .join(";");
+  return Object.freeze({ pushChain: pushes.join(";"), boxGoals: goals });
 }
 
 function asLegacyPath(value: unknown): readonly unknown[] | null {
@@ -1014,6 +1212,7 @@ async function runPhase(
   createWorker: () => SokomindEngineWorker,
   maxConcurrent = plans.length,
   maxPhaseElapsedMs?: number,
+  options: PhaseRunOptions = {},
 ): Promise<PhaseOutcome> {
   if (plans.length === 0) {
     return {
@@ -1025,6 +1224,12 @@ async function runPhase(
   }
 
   return new Promise<PhaseOutcome>((resolve, reject) => {
+    const memoryConcurrency = Math.max(
+      1,
+      Math.floor(
+        options.memoryConcurrency ?? Math.min(maxConcurrent, plans.length),
+      ),
+    );
     const active = new Map<
       string,
       {
@@ -1043,6 +1248,9 @@ async function runPhase(
     let startedWorkers = 0;
     let failedWorkers = 0;
     let nextPlanIndex = 0;
+    const collectedSolutions: SolverSolution[] = [];
+    const collectedSolutionKeys = new Set<string>();
+    const collectedCheckpoints: LegacySearchCheckpoint[] = [];
 
     const cleanupWorker = (id: string) => {
       const entry = active.get(id);
@@ -1092,6 +1300,12 @@ async function runPhase(
       for (const id of [...active.keys()]) cleanupWorker(id);
       run.budget.resetPhase();
       resolve({
+        ...(collectedSolutions.length
+          ? { solutions: Object.freeze([...collectedSolutions]) }
+          : {}),
+        ...(collectedCheckpoints.length
+          ? { checkpoints: Object.freeze([...collectedCheckpoints]) }
+          : {}),
         ...outcome,
         cutoff,
         startedWorkers,
@@ -1175,6 +1389,26 @@ async function runPhase(
           stopForLimit(limitAfterReplay);
           return true;
         }
+        if (options.collectSolutions) {
+          const key = solution.steps
+            .map((step) => `${step.kind[0]}${step.direction[0]}`)
+            .join("");
+          if (!collectedSolutionKeys.has(key)) {
+            collectedSolutionKeys.add(key);
+            collectedSolutions.push(solution);
+            report(
+              run,
+              `${label} published verified route ${collectedSolutions.length}.`,
+              true,
+            );
+          }
+          const maximum = Math.max(1, options.maxSolutions ?? Infinity);
+          if (collectedSolutions.length >= maximum) {
+            finish();
+            return true;
+          }
+          return false;
+        }
         finish({ solution });
         return true;
       } catch (error) {
@@ -1234,7 +1468,11 @@ async function runPhase(
       if (active.size === 0 && nextPlanIndex >= plans.length) finish();
     };
 
-    const workerFinished = (id: string, message: EngineResult) => {
+    const workerFinished = (
+      id: string,
+      message: EngineResult,
+      publishedRoute = false,
+    ) => {
       const entry = active.get(id);
       if (!entry) return;
       cutoff ||= Boolean(message.cutoff) || message.status === "cutoff";
@@ -1248,10 +1486,35 @@ async function runPhase(
       cleanupWorker(id);
       report(
         run,
-        `${entry.plan.label} finished without a verified route.`,
+        publishedRoute
+          ? `${entry.plan.label} finished after publishing a verified route.`
+          : `${entry.plan.label} finished without a verified route.`,
         true,
       );
       continueOrFinish();
+    };
+
+    const captureCheckpoints = (plan: EnginePlan, message: EngineResult) => {
+      const values = [
+        ...(Array.isArray(message.checkpoints) ? message.checkpoints : []),
+        ...(message.checkpoint === undefined ? [] : [message.checkpoint]),
+      ];
+      const known = new Set(collectedCheckpoints.map((checkpoint) =>
+        `${checkpoint.path.join(",")}|${checkpoint.state.robot.join(",")}|` +
+        checkpoint.state.boxes.map((box) => box.join(",")).join(";")));
+      for (const value of values) {
+        const checkpoint = legacyCheckpointFromValue(
+          value,
+          run.request,
+          plan.pathPrefix,
+        );
+        if (!checkpoint) continue;
+        const key = `${checkpoint.path.join(",")}|${checkpoint.state.robot.join(",")}|` +
+          checkpoint.state.boxes.map((box) => box.join(",")).join(";");
+        if (known.has(key)) continue;
+        known.add(key);
+        collectedCheckpoints.push(checkpoint);
+      }
     };
 
     const startPlan = (plan: EnginePlan) => {
@@ -1294,13 +1557,17 @@ async function runPhase(
             }
 
             if (message.type === "done") {
+              captureCheckpoints(plan, message);
               if (plan.capturesPreparedBoard) {
                 const preparedBoard = preparedBoardFromAnalysis(
                   message.analysis,
                   run.request.board.rows,
                 );
                 if (preparedBoard) {
-                  finish({ preparedBoard });
+                  finish({
+                    preparedBoard,
+                    analysisPlan: analysisPlanFromAnalysis(message.analysis),
+                  });
                   return;
                 }
                 errors.push(
@@ -1310,8 +1577,16 @@ async function runPhase(
                 return;
               }
               const path = asLegacyPath(message.path);
-              if (path && acceptPath(path, plan.label)) return;
-              workerFinished(executionId, message);
+              const candidatePath = path && plan.pathPrefix
+                ? [...plan.pathPrefix, ...path]
+                : path;
+              const solutionsBefore = collectedSolutions.length;
+              if (candidatePath && acceptPath(candidatePath, plan.label)) return;
+              workerFinished(
+                executionId,
+                message,
+                collectedSolutions.length > solutionsBefore,
+              );
               return;
             }
 
@@ -1355,9 +1630,31 @@ async function runPhase(
           stopForLimit(startupLimit);
           return;
         }
+        const configuredMemory = run.request.limits?.maxMemoryBytes;
+        const coordinatorMemoryReserve =
+          run.budget.coordinatorEstimatedMemoryBytes +
+          run.budget.preparedBoardEstimatedMemoryBytes;
+        const memoryShare =
+          plan.payload.maxMemoryBytes === undefined &&
+          configuredMemory !== undefined &&
+          Number.isFinite(configuredMemory)
+            ? Math.max(
+                1,
+                Math.floor(
+                  Math.max(0, configuredMemory - coordinatorMemoryReserve) /
+                    memoryConcurrency,
+                ),
+              )
+            : undefined;
         worker.postMessage({
           mode: plan.mode,
-          payload: plan.payload,
+          payload:
+            memoryShare === undefined
+              ? plan.payload
+              : Object.freeze({
+                  ...plan.payload,
+                  maxMemoryBytes: memoryShare,
+                }),
         });
         resetWatchdog();
       } catch (error) {
@@ -1445,6 +1742,7 @@ function structuralPlan(
   state: LegacyState,
   request: SolverRequest,
   tuning: Readonly<Record<string, number>>,
+  mode: SokomindRequestOptions["mode"],
   budgetDivisor = 1,
 ): EnginePlan {
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
@@ -1476,6 +1774,7 @@ function structuralPlan(
       targetedMacroExplored: 64,
       progressIntervalMs: 1_000,
       ...tuning,
+      ...(mode === "fast" ? { planSolutionComparisonBudget: 0 } : {}),
     }),
   });
 }
@@ -1505,6 +1804,8 @@ function discoveryPlans(
   maxWorkers: number,
   tuning: Readonly<Record<string, number>>,
   budgetDivisor = maxWorkers,
+  analysisPlan?: SokomindAnalysisPlan,
+  firstSolutionOnly = false,
 ): readonly EnginePlan[] {
   const boxes = request.snapshot.boxes.length;
   const moderate = boxes >= 5 || request.board.floor.length >= 45;
@@ -1518,6 +1819,13 @@ function discoveryPlans(
     : memoryLimit <= 384 * 1024 * 1024
       ? 40_000
       : 80_000;
+  const recommendedVisited = analysisPlan?.recommendations.beamVisited;
+  const directVisitedLimit = recommendedVisited === undefined
+    ? directVisitedFallback
+    : Math.max(
+        1,
+        Math.min(directVisitedFallback, Math.floor(recommendedVisited)),
+      );
   const directGeneratedFallback = moderate
     ? memoryLimit <= 384 * 1024 * 1024
       ? 200_000
@@ -1531,7 +1839,7 @@ function discoveryPlans(
       : 300_000;
   const directBudget = remainingStateBudget(
     request,
-    directVisitedFallback,
+    directVisitedLimit,
     budgetDivisor,
   );
   const directGeneratedBudget = remainingGeneratedBudget(
@@ -1539,10 +1847,18 @@ function discoveryPlans(
     directGeneratedFallback,
     budgetDivisor,
   );
-  const beamWidth = sokomindDiscoveryBeamWidth(
+  const memoryBeamWidth = sokomindDiscoveryBeamWidth(
     boxes,
     request.board.floor.length,
     request.limits?.maxMemoryBytes,
+  );
+  const recommendedBeamWidth = analysisPlan?.recommendations.beamWidth;
+  const beamWidth = recommendedBeamWidth === undefined
+    ? memoryBeamWidth
+    : Math.max(1, Math.min(memoryBeamWidth, Math.floor(recommendedBeamWidth)));
+  const checkpointLimit = Math.max(
+    1,
+    Math.floor(analysisPlan?.recommendations.checkpointLimit ?? 8),
   );
   const transpositionLimit = !moderate
     ? 30_000
@@ -1565,31 +1881,56 @@ function discoveryPlans(
       maxGenerated: directGeneratedBudget,
       transpositionLimit,
       beamWidth,
-      sequenceMacros: moderate,
-      checkpointLimit: 8,
+      beamProfile: analysisPlan?.phases.includes("milestone-reverse")
+        ? "milestone"
+        : "balanced",
+      sequenceMacros:
+        moderate && analysisPlan?.recommendations.useSequenceMacros !== false,
+      checkpointLimit,
       progressInterval: 1_000,
       progressIntervalMs: 1_000,
       ...tuning,
+      ...(firstSolutionOnly ? { beamSolutionComparisonBudget: 0 } : {}),
     }),
   });
 
   if (maxWorkers < 3) return Object.freeze([direct]);
+  const bidirectional = bidirectionalPlans(
+    state,
+    request,
+    budgetDivisor,
+    analysisPlan,
+  );
   return Object.freeze([
     direct,
-    ...bidirectionalPlans(state, request, budgetDivisor),
+    ...bidirectional,
   ]);
+}
+
+function reverseLaneCount(analysisPlan?: SokomindAnalysisPlan): number {
+  const recommended = analysisPlan?.recommendations.reverseWorkerLimit;
+  if (recommended === undefined) return 1;
+  // The current adapter owns one reverse meeting map. Honor analysis that
+  // disables the lane, while capping positive recommendations at the one lane
+  // that can be scheduled without silently dropping reverse-start shards or
+  // diluting every portfolio budget.
+  return Math.min(1, Math.max(0, Math.floor(recommended)));
 }
 
 function bidirectionalPlans(
   state: LegacyState,
   request: SolverRequest,
   budgetDivisor = 2,
+  analysisPlan?: SokomindAnalysisPlan,
 ): readonly EnginePlan[] {
+  if (reverseLaneCount(analysisPlan) === 0) return Object.freeze([]);
   const boxes = request.snapshot.boxes.length;
   const moderate = boxes >= 5 || request.board.floor.length >= 45;
+  const sideFallback = analysisPlan?.recommendations.sideVisitedLimit ??
+    (moderate ? 100_000 : 40_000);
   const sideBudget = remainingStateBudget(
     request,
-    moderate ? 100_000 : 40_000,
+    Math.max(1, Math.floor(sideFallback)),
     budgetDivisor,
   );
   return Object.freeze([
@@ -1618,6 +1959,123 @@ function bidirectionalPlans(
   ]);
 }
 
+function checkpointContinuationPlans(
+  checkpoints: readonly LegacySearchCheckpoint[],
+  preparedState: LegacyState,
+  request: SolverRequest,
+  tuning: Readonly<Record<string, number>>,
+  budgetDivisor: number,
+  analysisPlan?: SokomindAnalysisPlan,
+  firstSolutionOnly = false,
+): readonly EnginePlan[] {
+  return Object.freeze(
+    [...checkpoints]
+      .filter((checkpoint) => checkpoint.path.length > 0)
+      .sort((left, right) =>
+        (left.estimate ?? Infinity) - (right.estimate ?? Infinity) ||
+        (right.cost ?? 0) - (left.cost ?? 0))
+      .slice(0, 2)
+      .flatMap((checkpoint, index) => {
+        const checkpointState: LegacyState = Object.freeze({
+          ...checkpoint.state,
+          ...(preparedState.preparedBoard
+            ? { preparedBoard: preparedState.preparedBoard }
+            : {}),
+        });
+        const direct = discoveryPlans(
+          checkpointState,
+          request,
+          1,
+          tuning,
+          budgetDivisor,
+          analysisPlan,
+          firstSolutionOnly,
+        )[0];
+        if (!direct) return [];
+        const maxDepth = optionalFiniteNonNegative(direct.payload.maxDepth);
+        const prefixCost = checkpoint.cost ?? 0;
+        return [Object.freeze({
+          ...direct,
+          id: `checkpoint-continuation-${index}`,
+          label: `Structural checkpoint continuation ${index + 1}`,
+          pathPrefix: checkpoint.path,
+          payload: Object.freeze({
+            ...direct.payload,
+            state: checkpointState,
+            seed: 65_537 + index * 8_191,
+            ...(maxDepth === undefined
+              ? {}
+              : { maxDepth: Math.max(1, maxDepth - prefixCost) }),
+          }),
+        })];
+      }),
+  );
+}
+
+function diversifiedHarvestPlans(
+  state: LegacyState,
+  request: SolverRequest,
+  workerCount: number,
+  tuning: Readonly<Record<string, number>>,
+  round: number,
+  analysisPlan?: SokomindAnalysisPlan,
+): readonly EnginePlan[] {
+  const count = Math.max(1, Math.floor(workerCount));
+  const direct = discoveryPlans(
+    state,
+    request,
+    1,
+    tuning,
+    count,
+    analysisPlan,
+  )[0];
+  if (!direct) return Object.freeze([]);
+  return Object.freeze(Array.from({ length: count }, (_, index) => {
+    const seed = ((round + 1) * 104_729 + index * 13_007) >>> 0;
+    const profiles = Object.freeze([
+      Object.freeze({
+        beamProfile: "balanced",
+        diversity: 1.25,
+        planMoveWeight: 0.005,
+      }),
+      Object.freeze({
+        beamProfile: "detour",
+        diversity: 2.25,
+        planMoveWeight: 0.003,
+      }),
+      Object.freeze({
+        beamProfile: "milestone",
+        diversity: 0.8,
+        planMoveWeight: 0.008,
+      }),
+    ]);
+    const profile = profiles[(round + index) % profiles.length];
+    return Object.freeze({
+      ...direct,
+      id: `harvest-${round}-${index}`,
+      label: `Diverse harvest ${round + 1}.${index + 1}`,
+      payload: Object.freeze({ ...direct.payload, seed, ...profile }),
+    });
+  }));
+}
+
+export function sokomindRewriteConcurrency(
+  maxWorkers: number,
+  maxMemoryBytes: number | undefined,
+  candidateCount: number,
+): number {
+  const workers = Math.max(1, Math.floor(maxWorkers));
+  const candidates = Math.max(0, Math.floor(candidateCount));
+  if (candidates === 0) return 0;
+  const memory = maxMemoryBytes ?? Infinity;
+  const memoryBound = memory <= 768 * 1024 * 1024
+    ? 1
+    : memory <= 1_536 * 1024 * 1024
+      ? 2
+      : DEFAULT_MAX_ENGINE_WORKERS;
+  return Math.max(1, Math.min(workers, memoryBound, candidates));
+}
+
 function configuredBudget(
   value: number | undefined,
   fallback: number,
@@ -1642,6 +2100,7 @@ export function solutionImprovementPlan(
   rewriteProfile: SokomindTuningProfile,
   candidateIndex = 0,
   maxGenerated = Infinity,
+  allocation: RewriteBudgetAllocation = DEFAULT_REWRITE_BUDGET_ALLOCATION,
 ): EnginePlan {
   const windowVisited = rewriteProfile.rewriteWindowVisited;
   const moveScale = rewriteProfile.rewriteMoveWindowScale;
@@ -1655,19 +2114,24 @@ export function solutionImprovementPlan(
       solutionPath: legacyPathFromSolution(incumbent),
       maxVisited,
       maxGenerated,
-      permutationVisited: Math.floor(maxVisited * 0.2),
+      permutationVisited: Math.floor(maxVisited * allocation.permutationShare),
       permutationWindowPushes: Object.freeze([8, 16, 32]),
       perPermutationWindowVisited: 1_500,
       windowPushes: Object.freeze([8, 16, 32]),
       windowVisited,
-      windowTotalVisited: Math.floor(maxVisited * 0.3),
+      windowTotalVisited: Math.floor(maxVisited * allocation.pushWindowShare),
       frontierLimit: windowVisited,
-      moveWindowVisited: Math.floor(maxVisited * 0.5 * moveScale),
+      moveWindowVisited: Math.floor(
+        maxVisited * allocation.moveWindowShare * moveScale,
+      ),
       moveWindowPushes: Object.freeze([1, 2, 4]),
       moveWindowAttempts: 12,
       perMoveWindowVisited: Math.floor(4_000 * moveScale),
       moveWindowExtraPushes: 4,
       moveWindowMinimumOverhead: 6,
+      adaptiveMoveWindows: state.boxes.length >= 10,
+      adaptiveMoveMinimumPriorImprovements: 8,
+      moveWindowMissLimit: 1,
       progressIntervalMs: 1_000,
     }),
   });
@@ -1676,7 +2140,20 @@ export function solutionImprovementPlan(
 interface ImprovedIncumbent {
   readonly solution: SolverSolution;
   readonly cancelled: boolean;
+  readonly improved: boolean;
 }
+
+interface RewriteBudgetAllocation {
+  readonly permutationShare: number;
+  readonly pushWindowShare: number;
+  readonly moveWindowShare: number;
+}
+
+const DEFAULT_REWRITE_BUDGET_ALLOCATION: RewriteBudgetAllocation = Object.freeze({
+  permutationShare: 0.2,
+  pushWindowShare: 0.3,
+  moveWindowShare: 0.5,
+});
 
 export interface ParallelRewriteBudget {
   readonly maxVisited: number;
@@ -1732,6 +2209,8 @@ async function improveIncumbent(
   options: SokomindSolverAdapterOptions,
   candidateIndex = 0,
   reservedGenerated = Infinity,
+  memoryConcurrency = 1,
+  allocation: RewriteBudgetAllocation = DEFAULT_REWRITE_BUDGET_ALLOCATION,
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -1775,7 +2254,7 @@ async function improveIncumbent(
     maxElapsedMs === 0 ||
     maxPasses === 0
   ) {
-    return Object.freeze({ solution: incumbent, cancelled: false });
+    return Object.freeze({ solution: incumbent, cancelled: false, improved: false });
   }
 
   run.progressPhase = "improving";
@@ -1796,7 +2275,16 @@ async function improveIncumbent(
   });
 
   let best = incumbent;
+  const improvementDeadline = Math.min(
+    run.deadline,
+    run.context.now() + maxElapsedMs,
+  );
   for (let pass = 1; pass <= maxPasses; pass += 1) {
+    const remainingImprovementMs = Math.max(
+      0,
+      improvementDeadline - run.context.now(),
+    );
+    if (remainingImprovementMs < 1) break;
     const remainingRequest = withRemainingLimits(run);
     if (!remainingRequest) break;
     const maxVisited = Math.min(
@@ -1821,23 +2309,32 @@ async function improveIncumbent(
             run.profile,
             candidateIndex,
             Math.floor(maxGenerated),
+            allocation,
           ),
         ],
         createWorker,
         1,
-        maxElapsedMs,
+        Math.max(1, Math.floor(remainingImprovementMs)),
+        { memoryConcurrency },
       );
       if (
         outcome.stopReason === "cancelled" ||
         run.context.signal.aborted
       ) {
-        return Object.freeze({ solution: best, cancelled: true });
+        return Object.freeze({
+          solution: best,
+          cancelled: true,
+          improved: isSolutionBetter(best, incumbent),
+        });
       }
       const candidate = outcome.solution;
-      if (!candidate || candidate.moves >= best.moves) break;
+      if (!candidate || !isSolutionBetter(candidate, best)) break;
       best = candidate;
       run.solutionImprovements += 1;
-      run.bestSolutionMoves = candidate.moves;
+      run.bestSolutionMoves =
+        run.bestSolutionMoves === 0
+          ? candidate.moves
+          : Math.min(run.bestSolutionMoves, candidate.moves);
       if (outcome.phaseTimedOut || outcome.stopReason) break;
     } catch {
       // Improvement is opportunistic. A verified incumbent must survive an
@@ -1845,7 +2342,11 @@ async function improveIncumbent(
       break;
     }
   }
-  return Object.freeze({ solution: best, cancelled: false });
+  return Object.freeze({
+    solution: best,
+    cancelled: false,
+    improved: isSolutionBetter(best, incumbent),
+  });
 }
 
 async function solvedWithImprovement(
@@ -1854,22 +2355,36 @@ async function solvedWithImprovement(
   incumbent: SolverSolution,
   createWorker: () => SokomindEngineWorker,
   options: SokomindSolverAdapterOptions,
-  sokomindOptions?: SokomindRequestOptions,
+  sokomindOptions: SokomindRequestOptions,
   tuning?: Readonly<Record<string, number>>,
   maxWorkers?: number,
+  analysisPlan?: SokomindAnalysisPlan,
 ): Promise<SolverResult> {
-  if (sokomindOptions && sokomindOptions.mode !== "fast" && tuning && maxWorkers !== undefined) {
-    return harvestAndImprove(
-      run, state, incumbent, createWorker, options, sokomindOptions, tuning, maxWorkers,
-    );
-  }
-
-  if (sokomindOptions?.mode === "fast") {
+  if (sokomindOptions.mode === "fast") {
+    run.initialSolutionMoves ||= incumbent.moves;
+    run.bestSolutionMoves =
+      run.bestSolutionMoves === 0
+        ? incumbent.moves
+        : Math.min(run.bestSolutionMoves, incumbent.moves);
     return Object.freeze({
       status: "solved" as const,
       solution: incumbent,
       metrics: metrics(run),
     });
+  }
+
+  if (tuning && maxWorkers !== undefined) {
+    return harvestAndImprove(
+      run,
+      state,
+      incumbent,
+      createWorker,
+      options,
+      sokomindOptions,
+      tuning,
+      maxWorkers,
+      analysisPlan,
+    );
   }
 
   const improved = await improveIncumbent(
@@ -1899,17 +2414,28 @@ async function harvestAndImprove(
   sokomindOptions: SokomindRequestOptions,
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
+  analysisPlan?: SokomindAnalysisPlan,
 ): Promise<SolverResult> {
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
   const collector = new IncumbentCollector(sokomindOptions.maximumIncumbents);
-  collector.offer(firstIncumbent);
+  run.initialSolutionMoves ||= firstIncumbent.moves;
+  run.bestSolutionMoves =
+    run.bestSolutionMoves === 0
+      ? firstIncumbent.moves
+      : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
+  collector.offer(
+    firstIncumbent,
+    semanticDiversityTrace(run.request, firstIncumbent),
+  );
 
   run.progressPhase = "harvesting";
   report(run, `Harvesting diverse incumbents (${harvestMs}ms budget).`, true);
 
   const harvestDeadline = run.context.now() + harvestMs;
+  let harvestRound = 0;
+  let unproductiveRounds = 0;
   while (
     collector.incumbents.length < sokomindOptions.maximumIncumbents &&
     run.context.now() < harvestDeadline &&
@@ -1921,25 +2447,58 @@ async function harvestAndImprove(
     const harvestRequest = withRemainingLimits(run);
     if (!harvestRequest) break;
 
-    const harvestWorkers = sokomindOptions.deterministic ? 1 : Math.max(1, maxWorkers);
-    const planCount = harvestWorkers >= 3 ? 3 : 1;
+    const harvestWorkers = sokomindOptions.deterministic
+      ? 1
+      : Math.max(1, maxWorkers);
+    const plans = diversifiedHarvestPlans(
+      state,
+      harvestRequest,
+      harvestWorkers,
+      tuning,
+      harvestRound,
+      analysisPlan,
+    );
     try {
       const outcome = await runPhase(
         run,
-        discoveryPlans(state, harvestRequest, harvestWorkers, tuning, planCount),
+        plans,
         createWorker,
         harvestWorkers,
         remaining,
+        {
+          collectSolutions: true,
+          maxSolutions: plans.length,
+        },
       );
-      if (outcome.solution) {
-        collector.offer(outcome.solution);
+      const acceptedBefore = collector.stats.accepted;
+      const bestBefore = collector.best?.solution;
+      for (const solution of outcome.solutions ?? []) {
+        collector.offer(
+          solution,
+          semanticDiversityTrace(run.request, solution),
+        );
+      }
+      const accepted = collector.stats.accepted - acceptedBefore;
+      const bestAfter = collector.best?.solution;
+      const improvedBest =
+        bestAfter !== undefined &&
+        (bestBefore === undefined || isSolutionBetter(bestAfter, bestBefore));
+      if (bestAfter) {
+        run.bestSolutionMoves = Math.min(run.bestSolutionMoves, bestAfter.moves);
+      }
+      if (accepted > 0) {
         report(
           run,
           `Harvested ${collector.incumbents.length} incumbent(s) (${collector.stats.duplicatesRejected} duplicates rejected).`,
           true,
         );
       }
+      const enoughRewriteChoices = collector.incumbents.length >= 3;
+      const productive = accepted > 0 && (improvedBest || !enoughRewriteChoices);
+      unproductiveRounds = productive ? 0 : unproductiveRounds + 1;
+      harvestRound += 1;
       if (outcome.stopReason === "cancelled" || run.context.signal.aborted) break;
+      if (unproductiveRounds >= 2) break;
     } catch {
       break;
     }
@@ -1972,57 +2531,133 @@ async function harvestAndImprove(
     options.improvementMaxElapsedMs,
     DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
   );
-  const rewriteBudgets = remainingRewriteRequest
-    ? allocateParallelRewriteBudgets(
-        rewriteCount,
-        totalRewriteVisited,
-        remainingRewriteRequest.limits?.maxGeneratedStates,
-        configuredRewriteElapsed,
-      )
-    : [];
-
-  const rewrittenCandidates: { solution: SolverSolution; discoveryOrder: number }[] = [];
-  const rewritePromises = rewriteCandidates.map(async (incumbent, candidateIndex) => {
-    const budget = rewriteBudgets[candidateIndex];
-    if (
-      run.context.signal.aborted ||
-      !budget ||
-      budget.maxVisited < 1 ||
-      budget.maxGenerated < 1 ||
-      budget.maxElapsedMs < 1
-    ) {
-      return { solution: incumbent.solution, discoveryOrder: incumbent.discoveryOrder };
-    }
-    const dividedOptions: SokomindSolverAdapterOptions = {
-      ...options,
-      improvementMaxVisited: budget.maxVisited,
-      improvementMaxElapsedMs: budget.maxElapsedMs,
-      improvementMaxPasses: 1,
-    };
-    const improved = await improveIncumbent(
-      run,
-      state,
-      incumbent.solution,
-      createWorker,
-      dividedOptions,
-      candidateIndex,
-      budget.maxGenerated,
+  const totalRewriteGenerated =
+    remainingRewriteRequest?.limits?.maxGeneratedStates ?? Infinity;
+  const rewriteConcurrency = sokomindRewriteConcurrency(
+    maxWorkers,
+    run.request.limits?.maxMemoryBytes,
+    rewriteCount,
+  );
+  const rewriteStarted = aggregate(run);
+  const rewriteDeadline = Math.min(
+    run.deadline,
+    run.context.now() + configuredRewriteElapsed,
+  );
+  const rewrittenCandidates: Array<{
+    solution: SolverSolution;
+    discoveryOrder: number;
+    improved: boolean;
+  }> = collector.incumbents.map((incumbent) => ({
+    solution: incumbent.solution,
+    discoveryOrder: incumbent.discoveryOrder,
+    improved: false,
+  }));
+  const pending = rewriteCandidates.map((incumbent, candidateIndex) => ({
+    incumbent,
+    candidateIndex,
+  }));
+  while (pending.length && !run.context.signal.aborted && rewriteConcurrency > 0) {
+    const usage = aggregate(run);
+    const remainingVisited = Math.max(
+      0,
+      totalRewriteVisited - (usage.expandedStates - rewriteStarted.expandedStates),
     );
-    return {
-      solution: improved.solution,
-      discoveryOrder: incumbent.discoveryOrder,
-    };
-  });
-  const rewriteResults = await Promise.all(rewritePromises);
-  for (const result of rewriteResults) {
-    rewrittenCandidates.push(result);
+    const remainingGenerated = Math.max(
+      0,
+      totalRewriteGenerated - (usage.generatedStates - rewriteStarted.generatedStates),
+    );
+    const remainingElapsed = Math.max(0, rewriteDeadline - run.context.now());
+    if (remainingVisited < 1 || remainingGenerated < 1 || remainingElapsed < 1) break;
+
+    const waveSize = Math.min(rewriteConcurrency, pending.length);
+    const remainingWaves = Math.ceil(pending.length / rewriteConcurrency);
+    const visitedShares = dividedIntegerBudget(remainingVisited, pending.length);
+    const generatedShares = dividedIntegerBudget(remainingGenerated, pending.length);
+    const perWorkerElapsed = Math.max(
+      1,
+      Math.floor(remainingElapsed / remainingWaves),
+    );
+    const wave = pending.splice(0, waveSize);
+    const results = await Promise.all(wave.map(async (
+      { incumbent, candidateIndex },
+      waveIndex,
+    ) => {
+      const maxVisited = visitedShares[waveIndex] ?? 0;
+      const maxGenerated = generatedShares[waveIndex] ?? 0;
+      if (maxVisited < 1 || maxGenerated < 1) {
+        return {
+          solution: incumbent.solution,
+          discoveryOrder: incumbent.discoveryOrder,
+          improved: false,
+        };
+      }
+      const adaptiveOptions: SokomindSolverAdapterOptions = {
+        ...options,
+        improvementMaxVisited: maxVisited,
+        improvementMaxElapsedMs: perWorkerElapsed,
+        improvementMaxPasses: 1,
+      };
+      const improved = await improveIncumbent(
+        run,
+        state,
+        incumbent.solution,
+        createWorker,
+        adaptiveOptions,
+        candidateIndex,
+        maxGenerated,
+        waveSize,
+      );
+      return {
+        solution: improved.solution,
+        discoveryOrder: incumbent.discoveryOrder,
+        improved: improved.improved,
+      };
+    }));
+    rewrittenCandidates.push(...results);
   }
 
-  if (rewrittenCandidates.length === 0) {
-    rewrittenCandidates.push({
-      solution: firstIncumbent,
-      discoveryOrder: 0,
-    });
+  // If a basin was productive and earlier lanes returned budget unused, spend
+  // the remainder at the best improved route instead of abandoning it.
+  const productive = rewrittenCandidates.filter((candidate) => candidate.improved);
+  if (productive.length && !run.context.signal.aborted) {
+    const usage = aggregate(run);
+    const remainingVisited = Math.max(
+      0,
+      totalRewriteVisited - (usage.expandedStates - rewriteStarted.expandedStates),
+    );
+    const remainingGenerated = Math.max(
+      0,
+      totalRewriteGenerated - (usage.generatedStates - rewriteStarted.generatedStates),
+    );
+    const remainingElapsed = Math.max(0, rewriteDeadline - run.context.now());
+    if (remainingVisited >= 1 && remainingGenerated >= 1 && remainingElapsed >= 1) {
+      const bestProductiveSolution = selectBest(productive);
+      const bestProductive = productive.find(
+        (candidate) => candidate.solution === bestProductiveSolution,
+      ) ?? productive[0];
+      const refinement = await improveIncumbent(
+        run,
+        state,
+        bestProductive.solution,
+        createWorker,
+        {
+          ...options,
+          improvementMaxVisited: remainingVisited,
+          improvementMaxElapsedMs: remainingElapsed,
+          improvementMaxPasses: 1,
+        },
+        100 + bestProductive.discoveryOrder,
+        remainingGenerated,
+        1,
+      );
+      if (refinement.improved) {
+        rewrittenCandidates.push({
+          solution: refinement.solution,
+          discoveryOrder: bestProductive.discoveryOrder,
+          improved: true,
+        });
+      }
+    }
   }
 
   const bestSolution = selectBest(rewrittenCandidates);
@@ -2415,6 +3050,9 @@ export function createSokomindSolverAdapter(
       let engineWorkersStarted = 0;
       let engineWorkersFailed = 0;
       const structural = isStructuralPuzzle(request);
+      let analysisPlan: SokomindAnalysisPlan | undefined;
+      let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
+        Object.freeze([]);
 
       if (structural) {
         const preparation = await runPhase(
@@ -2428,6 +3066,7 @@ export function createSokomindSolverAdapter(
           run.budget.preparedBoardEstimatedMemoryBytes =
             preparedBoardMemoryEstimate(preparation.preparedBoard);
         }
+        analysisPlan = preparation.analysisPlan;
         errors = [...errors, ...preparation.errors];
         cutoff ||= preparation.cutoff;
         if (preparation.stopReason) {
@@ -2445,13 +3084,21 @@ export function createSokomindSolverAdapter(
           if (structuralRequest) {
             const outcome = await runPhase(
               run,
-              [structuralPlan(state, structuralRequest, tuning)],
+              [
+                structuralPlan(
+                  state,
+                  structuralRequest,
+                  tuning,
+                  sokomindOptions.mode,
+                ),
+              ],
               createWorker,
               1,
               structuralHeadStartMs(run),
             );
             engineWorkersStarted += outcome.startedWorkers;
             engineWorkersFailed += outcome.failedWorkers;
+            structuralCheckpoints = outcome.checkpoints ?? structuralCheckpoints;
             cutoff ||= outcome.cutoff || Boolean(outcome.phaseTimedOut);
             errors = [...errors, ...outcome.errors];
             if (outcome.solution) {
@@ -2464,6 +3111,7 @@ export function createSokomindSolverAdapter(
                 sokomindOptions,
                 tuning,
                 maxWorkers,
+                analysisPlan,
               );
             }
             if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2494,17 +3142,36 @@ export function createSokomindSolverAdapter(
                     Math.floor(remainingStateLaneBudget),
                   ),
                 );
-          const discoveryPlanCount =
-            discoveryWorkers >= 3 ? 3 : 1;
+          const rootPlanCount =
+            discoveryWorkers >= 3 && reverseLaneCount(analysisPlan) > 0
+              ? 3
+              : 1;
+          const checkpointPlanCount = Math.min(
+            2,
+            structuralCheckpoints.length,
+          );
+          const discoveryPlanCount = rootPlanCount + checkpointPlanCount;
+          const rootPlans = discoveryPlans(
+            state,
+            discoveryRequest,
+            discoveryWorkers,
+            tuning,
+            discoveryPlanCount,
+            analysisPlan,
+            sokomindOptions.mode === "fast",
+          );
+          const continuationPlans = checkpointContinuationPlans(
+            structuralCheckpoints,
+            state,
+            discoveryRequest,
+            tuning,
+            discoveryPlanCount,
+            analysisPlan,
+            sokomindOptions.mode === "fast",
+          );
           const outcome = await runPhase(
             run,
-            discoveryPlans(
-              state,
-              discoveryRequest,
-              discoveryWorkers,
-              tuning,
-              discoveryPlanCount,
-            ),
+            Object.freeze([...rootPlans, ...continuationPlans]),
             createWorker,
             discoveryWorkers,
           );
@@ -2522,6 +3189,7 @@ export function createSokomindSolverAdapter(
               sokomindOptions,
               tuning,
               maxWorkers,
+              analysisPlan,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;
@@ -2541,7 +3209,7 @@ export function createSokomindSolverAdapter(
         ) {
           const outcome = await runPhase(
             run,
-            bidirectionalPlans(state, bidirectionalRequest, 2),
+            bidirectionalPlans(state, bidirectionalRequest, 2, analysisPlan),
             createWorker,
             2,
           );
@@ -2559,6 +3227,7 @@ export function createSokomindSolverAdapter(
               sokomindOptions,
               tuning,
               maxWorkers,
+              analysisPlan,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;

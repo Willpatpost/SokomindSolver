@@ -1,9 +1,9 @@
 # Solver V3 -- Legacy Engine Discovery Pipeline
 
-Last updated: August 14, 2026
+Last updated: August 21, 2026
 
 This document maps the discovery pipeline that produces first-found solutions,
-analyzes why Grand Hall currently yields ~1,010 moves, and proposes concrete
+analyzes why Grand Hall currently yields 1,066 moves, and proposes concrete
 improvements targeting **< 700 moves in < 10 seconds**. Proof kernels (A\*,
 IDA\*) and rewrite passes are out of scope.
 
@@ -52,7 +52,7 @@ Request
 
 ### 2.1 Structural Plan
 
-**Algorithm:** `planMacroBeamSearch` in `solver-search.js:1178`
+**Algorithm:** `planMacroBeamSearch` in `solver-search.js:1445`
 
 Macro-level beam search where each transition is a multi-push sequence
 moving one box. Uses doorway scheduling (export/import/packing order),
@@ -65,11 +65,11 @@ goal-access analysis, and evacuation planning to guide box ordering.
 | Plan slack | 240 pushes | `tuning.planSlack` |
 | Box branches/step | 6 | `tuning.planBoxBranches` |
 | Macro limit | 24 pushes | `tuning.sequenceMacroLimit` |
-| Macro explored | 64-96 states | adaptive |
+| Macro explored | 48 general / 64 targeted states | adapter payload |
 | Time budget | 25s head start | `tuning.structuralHeadStartMs` |
 | State share | 60% of total | `tuning.structuralStateShare` |
 
-Scoring formula (`scoreCandidate`, line 1300):
+Scoring formula (`scoreCandidate`, line 1598):
 ```
 score = pushCost + 0.005 * moves
       + (evacActive ? 0.25 : 1.15) * heuristic
@@ -84,7 +84,7 @@ space.
 
 ### 2.2 Guided Push Portfolio ("ultimate")
 
-**Algorithm:** `searchCore` → `ultimate` portfolio in `solver-search.js:3752`
+**Algorithm:** `searchCore` → `ultimate` portfolio in `solver-search.js:4352`
 
 Sequential cascade of four algorithms, each consuming a fraction of the
 remaining budget:
@@ -101,7 +101,7 @@ of the state budget.
 
 ### 2.3 Beam Search (The Actual Solver)
 
-**Algorithm:** `beamSearch` in `solver-search.js:1651`
+**Algorithm:** `beamSearch` in `solver-search.js:2055`
 
 Layered beam search over push states. Each layer:
 1. Expand all beam nodes: generate push neighbors with sequence macros
@@ -109,9 +109,10 @@ Layered beam search over push states. Each layer:
 3. Select top-W by feature-space diversity + banded quality selection
 4. Compact transpositions, advance to next layer
 
-**Scoring formula** (line 1858):
+**Scoring formula** (base score at line 2324, mobility adjustment at line 2485):
 ```
 score = costWeight * pushCost           [default: 0 — PUSH COST IS IGNORED]
+      + 0.002 * accumulated moves       [small move/walk-distance signal]
       + 3.0 * heuristic                 [assignment lower bound]
       + 0.7 * topologyPenalty            [room flow, gate blocking]
       + 0   * evacuation                [disabled by default]
@@ -121,9 +122,10 @@ score = costWeight * pushCost           [default: 0 — PUSH COST IS IGNORED]
       + 0.35 * (0.2*doorwayPenalty + doorwayDelta)
       + 0.6 * relevanceScore            [goal relevance of this push]
       + 1.5 * signatureNoise            [Zobrist-based diversity jitter]
+      - 0.03 * reachable cells          [keeper-mobility reward]
 ```
 
-**Beam selection** (`selectBeamLayer`, line 311):
+**Beam selection** (`selectBeamLayer`, line 570):
 - Feature-space diversity: 35% of beam from unique feature cells
   (heuristic slack × topology × evacuation × packing × doorway × dependency × mobility)
 - Banded selection: remaining 65% from four quality bands
@@ -139,21 +141,21 @@ score = costWeight * pushCost           [default: 0 — PUSH COST IS IGNORED]
 - Push depth: with macros averaging ~2 pushes, reaches ~280 pushes → enough
 
 **What beam search IS good at:**
-- Finding solutions quickly (the push-count path is decent: 316 pushes)
+- Finding solutions quickly (the current first path uses 322 pushes)
 - Feature-space diversity prevents premature convergence
 - Doorway/dependency/room ordering guide box sequencing well
 
 **What beam search IS NOT good at:**
-- Move-count quality — **costWeight is 0**, so push cost doesn't factor
-  into scoring at all
-- Keeper walk distance — a push reachable from across the board scores
-  the same as one next to the keeper
+- Push-count quality — **costWeight is 0**, so accumulated push cost does not
+  affect the base score
+- Move-count quality — accumulated moves have only a 0.002 weight, too weak to
+  repair a globally poor push agenda
 - The relevanceWeight (0.6) includes proximity but it's weak relative to
   the heuristic weight (3.0)
 
 ### 2.4 FESS (Feature-Space Search)
 
-**Algorithm:** `fessSearch` in `solver-search.js:856`
+**Algorithm:** `fessSearch` in `solver-search.js:1118`
 
 Best-first search using a typed-array arena for memory efficiency. States
 are ranked by `weight * 1e9 + moves * 1000 + order`, where weight
@@ -183,181 +185,81 @@ within the budget.
 
 ---
 
-## 3. Why Grand Hall Produces ~1,010 Moves
+## 3. Why Grand Hall Produces 1,066 Moves
 
-Grand Hall: 15×15 grid, 17 typed boxes (a,b,c,d,g,h,A,B,C,D,G,H + X),
-127 floor cells, 4 rooms connected through narrow gates, robot starts at
-center-bottom.
+Grand Hall is a 15×15 grid with six typed boxes (A/B/C/D/G/H), eleven
+generic boxes (X), 127 floor cells, and a robot that starts at center-bottom.
+The certified doorway analysis focuses on the gated lower room.
 
 ### 3.1 Root Cause Analysis
 
-**1. Push cost has zero weight in beam scoring** (`costWeight: 0`)
+The reviewed 628-move route has 244 pushes and 384 keeper walks. The current
+first solution has 322 pushes and 744 keeper walks. Replay analysis found no
+repeated exact states, and every walk between consecutive pushes in the
+solver route is already shortest for that chosen push sequence. The quality
+gap is therefore primarily the push agenda, not local pathfinding.
 
-The beam search optimizes for reducing the heuristic estimate (remaining
-pushes to goal), not for finding short paths. A sequence that adds 50
-moves to reduce the heuristic by 5 scores the same as one that adds 10
-moves to reduce it by 3. Result: 316 pushes is decent, but the 1,010
-moves include excessive keeper walking.
+The lower room has six mandatory exports and four mandatory imports. Its
+two-sided barrier requires four exports before the first import; after those
+four exports, exactly two imports are safe. The earlier schedule admitted only
+one, and its distance term continued to prioritize every pending export. The
+current schedule uses the capacity formula and measures the nearest imports
+that are actually unlocked.
 
-**2. Move count has negligible weight** (`planMoveWeight: 0.005`)
-
-The plan-macro-beam scoring uses `0.005 * moves`, which for a 1,000-move
-solution adds only 5.0 to the score — negligible compared to heuristic
-and topology contributions (typically 50-150).
-
-**3. No keeper-proximity bias in push ordering**
-
-The beam search treats all pushable boxes equally regardless of how far
-the keeper has to walk. The `relevanceWeight: 0.6` includes some
-proximity signal but it's dominated by the `heuristicWeight: 3.0`.
-
-**4. Structural plan checkpoints are discarded**
-
-The structural plan runs for 25s and produces good intermediate
-checkpoints, but if it doesn't find a complete solution, those
-checkpoints are thrown away. The discovery phase starts over from the
-initial state instead of seeding from the plan's best checkpoint.
-
-**5. 30% of portfolio budget wasted on infeasible lanes**
-
-The "ultimate" portfolio reserves 30% for greedy/weighted-A\*/A\* that
-cannot possibly solve a 17-box puzzle. These states do nothing.
-
-**6. No continuation/endgame probes**
-
-The beam search supports `continuationVisited` and `endgameVisited`
-parameters that launch DFS/beam probes from near-solution checkpoints,
-but the discovery payload doesn't set these. The beam search may get
-close to a solution (heuristic ≤ 20) but lack the depth budget to
-finish.
-
-**7. Beam width may be too narrow**
-
-256 for Grand Hall gives ~140 layers after portfolio reservation.
-Each layer explores at most 256 candidates. For a puzzle with complex
-room interactions, more beam width means more diverse strategies
-survive to the endgame.
+The remaining large gap is sequencing. The first solution still exports all
+six lower boxes before importing, while the 628-move route follows a
+four-export, two-import, two-export, two-import cadence. It also places H on h
+too early and later reopens it. Global move weights and hard phase bonuses were
+tested, but they destabilized the bounded beam instead of fixing that agenda.
 
 ### 3.2 What a 700-Move Solution Looks Like
 
 A human solving Grand Hall in < 700 moves typically:
+
 1. Clears staging areas systematically (export surplus boxes first)
 2. Moves boxes in batch along corridors to minimize keeper backtracking
 3. Packs goal rooms in dependency order (deepest goals first)
 4. Minimizes keeper walks by choosing pushes near the current position
 
-The solver's 1,010-move solution does steps 1 and 3 well (thanks to
-doorway scheduling and packing order), but steps 2 and 4 poorly
-because the scoring function doesn't penalize long keeper walks.
+The solver performs valid local routing, but its longer-lived staging and goal
+commitments make the keeper traverse the board far more often.
 
 ---
 
-## 4. Improvement Proposals
+## 4. Implemented and Rejected Changes
 
-### Sprint 1: Scoring Rebalance (Expected: −200 to −300 moves)
+Implemented:
 
-**Rationale:** The single highest-impact change. The beam search finds
-good push sequences but terrible move sequences because moves don't
-factor into scoring.
+1. Fast mode returns the first replay-verified solution immediately. It does
+   not harvest, compare another final layer, or start a rewrite worker.
+2. Perfect-matching domains certify mandatory room crossings without treating
+   ambiguous generic assignments as facts.
+3. The doorway-capacity rule admits the number of imports made safe by completed
+   exports. The distance term alternates naturally between unlocked imports and
+   the exports needed to unlock the next slot.
+4. Structural goal-access evaluation uses a compact, plan-local summary instead
+   of retaining full goal-access object graphs in the global signature memo.
+   Equivalence tests lock the penalty and blocked-goal outputs used by scoring.
+5. Dense occupancy and non-allocating hot paths remove repeated box scans and
+   temporary arrays while preserving the selected route.
+6. Plan-local doorway and analysis caches are bounded and included in live
+   memory telemetry. Reusing a prepared board under a smaller ceiling replaces
+   oversized derived caches instead of reporting a limit they do not honor.
 
-**Changes:**
-1. Increase `costWeight` from 0 to **0.3** — factor push cost into
-   beam scoring to prefer shorter push paths
-2. Increase `planMoveWeight` from 0.005 to **0.03** — give move count
-   meaningful influence in plan scoring
-3. Increase `relevanceWeight` from 0.6 to **1.0** — stronger keeper
-   proximity bias to prefer pushes near the keeper
-4. Add a `moveWeight` term to beam scoring: `moveWeight * moveCount`
-   with a small coefficient (0.01-0.03) to penalize long keeper walks
+Rejected after deterministic Grand Hall trials:
 
-**Risk:** Higher cost/move weights could cause the beam to converge
-prematurely on greedy-looking but ultimately suboptimal paths. Needs
-A/B evaluation on the full benchmark corpus.
+- larger global move weights;
+- move-aware transposition and macro Pareto variants;
+- hard doorway branch quotas;
+- global crossing-progress rewards or reduced evacuation-completion bonuses;
+- keeper-distance weighting at the first-push rank;
+- goal-transit penalties for premature H placement; and
+- import-to-goal continuation or reserved import branch slots.
 
-**Validation:** Run Grand Hall with old and new weights, compare move
-count and solve time. Verify no regression on the 43-fixture matrix.
-
-### Sprint 2: Eliminate Portfolio Waste (Expected: −50 to −100 moves)
-
-**Rationale:** For 17-box puzzles, giving 100% of the state budget to
-beam search instead of wasting 30% on impossible lanes gives the beam
-36,000 → 52,000 visited states (+44%).
-
-**Changes:**
-1. In the "ultimate" portfolio, skip greedy/A\* lanes when box count ≥ 8
-2. Or: route 100% of budget to push-beam for structural puzzles
-3. Consider using `beamRestartSearch` (3 restarts with different seeds)
-   instead of the portfolio cascade for large puzzles
-
-**Risk:** Low. The skipped lanes never produce solutions for large
-puzzles anyway.
-
-### Sprint 3: Enable Continuation Probes (Expected: −50 to −150 moves)
-
-**Rationale:** The beam search collects near-solution checkpoints
-(heuristic ≤ threshold) but never launches finishers from them. Adding
-continuation/endgame probes lets the beam "finish off" promising
-positions.
-
-**Changes:**
-1. Add `endgameVisited` and `continuationVisited` parameters to the
-   discovery payload in `discoveryPlans()`
-2. Set `endgameThreshold: 40` (launch probes when heuristic drops below
-   40 pushes remaining)
-3. Budget: allocate 20% of visited budget to endgame probes
-
-Beam search already has the infrastructure for this (lines 2027-2125):
-`beamRestartSearch` launches continuation beam searches and
-`boundedPushDepthFirstSearch` endgame DFS probes from the best
-checkpoints.
-
-### Sprint 4: Seed Discovery from Plan Checkpoints (Expected: −100 moves)
-
-**Rationale:** The structural plan runs for up to 25s and produces good
-intermediate checkpoints. Currently these are discarded when the plan
-doesn't find a complete solution. Seeding the beam search from these
-checkpoints would give it a 100-200 push head start.
-
-**Changes:**
-1. When structural plan returns without a solution, extract its best
-   checkpoint(s) from the result
-2. Pass checkpoint states to the discovery phase as initial beam members
-3. The beam search would start with both the original initial state AND
-   the plan checkpoints in its beam
-
-**Complexity:** Medium. Requires modifying `discoveryPlans()` to accept
-checkpoint seeds and `beamSearch()` to accept an initial beam.
-
-### Sprint 5: FESS as Discovery Lane (Expected: exploration)
-
-**Rationale:** FESS uses a completely different search strategy (best-first
-with feature-cell diversity) and might find solutions the beam search
-misses. It's already implemented but not included in the discovery
-portfolio.
-
-**Changes:**
-1. Add FESS as a fourth discovery lane (or replace bidirectional reverse)
-2. Configure with modest budget (20,000 visited states)
-3. FESS arena is memory-efficient (typed arrays), so memory impact is low
-
-**Risk:** FESS might not find solutions for 17-box puzzles within the
-budget. Its advisor system needs tuning for large puzzles. Worth
-experimenting.
-
-### Sprint 6: Wider Beam for Complex Topologies (Expected: −50 moves)
-
-**Rationale:** Grand Hall has 4 distinct rooms with narrow gates. More
-beam width preserves more diverse room-packing strategies through the
-search.
-
-**Changes:**
-1. Increase beam width for structural puzzles from 256 to 512
-2. Or: scale beam width by room count * gate connectivity
-3. Compensate by reducing visited budget proportionally to maintain
-   solve time
-
-**Trade-off:** Wider beam = fewer layers but more diversity per layer.
-For complex room puzzles, diversity is more valuable than depth.
+Those variants either exhausted the bounded frontier or returned a slower,
+longer first solution. Future work should add phase-aware macro diversity only
+with fixed branch/beam budgets and a corpus gate; the all-export fallback must
+remain represented.
 
 ---
 
@@ -371,7 +273,7 @@ For complex room puzzles, diversity is more valuable than depth.
 | `heuristicWeight` | 3.0 | Beam scoring: remaining-push estimate |
 | `costWeight` | 0.0 | Beam scoring: accumulated push cost (**zero!**) |
 | `goalPackingWeight` | 0.8 | Beam scoring: reward for solved goals |
-| `mobilityWeight` | 0.03 | Beam selection: keeper mobility |
+| `mobilityWeight` | 0.03 | Beam score: keeper-reachability reward |
 | `topologyWeight` | 0.7 | Beam scoring: room flow balance |
 | `evacuationWeight` | 0.0 | Beam scoring: evacuation penalty (**disabled**) |
 | `supportDependencyWeight` | 0.8 | Beam scoring: blocking dependency |
@@ -407,7 +309,8 @@ For complex room puzzles, diversity is more valuable than depth.
 | "Moderate" puzzle | ≥ 5 boxes OR ≥ 45 floor | Adjust budgets |
 | Box complexity | ≥ 8 boxes | Narrow beam width |
 | Endgame threshold | not configured | Would enable probes |
-| Solution comparison | 96 states | Plan: how long to keep searching after first solution found |
+| Plan solution comparison | fast: 0; quality/optimal: 96 states | Fast returns the first plan solution; other modes compare a bounded final layer |
+| Fallback-beam solution comparison | fast: 0; quality/optimal: 64 candidates | Fast also returns the first fallback-beam solution without a hidden comparison tail |
 
 ---
 

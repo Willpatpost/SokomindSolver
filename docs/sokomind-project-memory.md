@@ -147,12 +147,12 @@ The user's favorite 17-box hand-designed puzzle is the same puzzle as Grand Hall
 
 Known deterministic Grand Hall regression result:
 
-- Moves: `1010`
-- Pushes: `316`
-- Visited states: `1843`
-- Generated states: `13844`
-- Retained states: `3471`
-- Peak frontier: `387`
+- Moves: `1066`
+- Pushes: `322`
+- Visited states: `1616`
+- Generated states: `9329`
+- Retained states: `3077`
+- Peak frontier: `330`
 
 These values describe the deterministic search regression and are separate from whether a full benchmark child process completed under its outer timeout.
 
@@ -504,7 +504,7 @@ Current validation evidence:
 
 - TypeScript, ESLint, generated-source checks, production build, documentation
   validation, and all nine static-delivery checks pass.
-- The unit suite passes 1,305 tests.
+- The unit suite passes 1,381 tests.
 - All 25 frozen known-optimum fixtures match exact A*; `expert-tetris` remains
   a performance warning because its proof needs an extended run.
 - The independent `inter-rooms` oracle and both exact kernels agree at 28

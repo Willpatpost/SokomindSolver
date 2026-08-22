@@ -37,19 +37,20 @@ const MAXIMUMS = Object.freeze({
 });
 
 const REVIEWED_DETERMINISTIC_RESULT = Object.freeze({
-  moves: 1_010,
-  pushes: 316,
-  visited: 1_843,
-  generated: 13_844,
-  retained: 3_471,
-  peakFrontier: 387,
+  moves: 1_066,
+  pushes: 322,
+  visited: 1_616,
+  generated: 9_329,
+  retained: 3_077,
+  peakFrontier: 330,
 });
 
 const REVIEWED_REWRITE_RESULT = Object.freeze({
-  moves: 874,
-  pushes: 304,
-  visited: 50_000,
-  moveVisited: 25_000,
+  moves: 918,
+  pushes: 310,
+  visited: 29_000,
+  moveVisited: 4_000,
+  moveWindowAdaptiveStop: true,
 });
 
 const HARD_PROCESS_TIMEOUT_MS = MAXIMUMS.totalElapsedMs + 30_000 * TIMING_SCALE;
@@ -120,6 +121,7 @@ function runHugePerformanceGate(t: TestContext): void {
       sequenceMacroExplored: 48,
       sequenceMacroResults: 4,
       targetedMacroExplored: 64,
+      planSolutionComparisonBudget: 0,
       progressIntervalMs: 5_000,
     });
     const elapsedMs = performance.now() - started;
@@ -166,6 +168,10 @@ function runHugePerformanceGate(t: TestContext): void {
       REVIEWED_DETERMINISTIC_RESULT,
       `${name} deterministic result`,
     );
+    assert.ok(
+      Number(result.performance?.doorwayScheduleCacheHits ?? 0) > 0,
+      `${name} doorway schedule cache`,
+    );
     if (name === "base") {
       const rewriteStarted = performance.now();
       const rewrite = search({
@@ -186,6 +192,9 @@ function runHugePerformanceGate(t: TestContext): void {
         perMoveWindowVisited: 4_000,
         moveWindowExtraPushes: 4,
         moveWindowMinimumOverhead: 6,
+        adaptiveMoveWindows: true,
+        adaptiveMoveMinimumPriorImprovements: 8,
+        moveWindowMissLimit: 1,
       });
       const rewriteElapsedMs = performance.now() - rewriteStarted;
       assert.ok(
@@ -209,6 +218,7 @@ function runHugePerformanceGate(t: TestContext): void {
           pushes: rewrittenSolution.pushes,
           visited: rewrite.visited,
           moveVisited: rewrite.moveVisited,
+          moveWindowAdaptiveStop: rewrite.moveWindowAdaptiveStop,
         },
         REVIEWED_REWRITE_RESULT,
         "base deterministic rewrite",

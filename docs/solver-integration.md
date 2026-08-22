@@ -77,22 +77,21 @@ available as diagnostics. Chromium's non-standard process-wide heap sample is
 not multiplied across workers. Unlimited runs also have a two-minute
 worker-silence watchdog; active progress resets it.
 
-Once discovery finds a verified route of at least 100 moves, one bounded
-`solution-window-rewrite` worker canonicalizes walking, reorders compatible
-push chains, and searches local bridge windows for fewer total moves. The
-50,000-state budget explicitly reserves 25,000 states for move-cost windows;
-the previous implementation allowed push-window work to consume that entire
-budget first. Runs of at least 90 seconds may perform a second pass. Every
-candidate is replayed again, and a timeout or optional-worker failure returns
-the already verified incumbent. Results report `optimality: "unknown"` because
-this is bounded anytime improvement, not a proof.
+Fast mode returns its first replay-verified route immediately. Quality and
+optimal modes may harvest up to three diverse incumbents and run bounded
+`solution-window-rewrite` workers that canonicalize walking, reorder compatible
+push chains, and search local bridge windows for fewer total moves. The rewrite
+budget reserves move-cost windows so push-window work cannot consume the whole
+allowance. Every candidate is replayed again, and a timeout or optional-worker
+failure returns the already verified incumbent. Bounded improvement reports
+`optimality: "unknown"`; only the separate proof phase may certify optimality.
 
-The reviewed Grand Hall guardrail uses the same structural and rewrite
-settings as the production adapter. Base, mirrored, and rotated discovery
-cases replay with identical `1,010 moves / 316 pushes`, `1,843 visited`, and
-`13,844 generated` results. The base rewrite is locked at `874 moves /
-304 pushes` with 50,000 visited states. A separate production Chrome test
-covers the nested-worker and UI path. Run the guardrail explicitly with:
+The reviewed Grand Hall guardrail uses production fast mode's zero-comparison
+structural setting. Base, mirrored, and rotated discovery cases replay with
+identical `1,066 moves / 322 pushes`, `1,616 visited`, and `9,329 generated`
+results. The optional base rewrite is locked at `918 moves / 310 pushes`,
+stopping adaptively after 29,000 visited states. A separate production Chrome
+test covers the nested-worker and UI path. Run the guardrail explicitly with:
 
 ```powershell
 npm.cmd run test:solver:huge

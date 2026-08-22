@@ -147,6 +147,11 @@ describe("Sokomind engine worker protocol", () => {
     assert.equal(isEngineResult({ type: "progress", visited: "12" }), false);
     assert.equal(isEngineResult({ type: "done", path: [42] }), false);
     assert.equal(isEngineResult({ type: "records", records: {} }), false);
+    assert.equal(
+      isEngineResult({ type: "done", checkpoints: [{ path: ["Up"] }] }),
+      true,
+    );
+    assert.equal(isEngineResult({ type: "done", checkpoints: {} }), false);
   });
 
   it("rejects negative or fractional engine counters", () => {

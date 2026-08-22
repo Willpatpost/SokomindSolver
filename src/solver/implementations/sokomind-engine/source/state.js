@@ -133,12 +133,20 @@ function denseBoxLayout(boxes, board) {
 
 function ensureIndexByCell(layout, board) {
   if (layout.indexByCell) return layout.indexByCell;
-  const indexByCell = new Int32Array(board.dense.keys.length);
-  indexByCell.fill(-1);
-  for (let i = 0; i < layout.cells.length; i++) {
-    indexByCell[layout.cells[i]] = i;
+  let indexByCell;
+  if (layout.parentIndexByCell) {
+    indexByCell = layout.parentIndexByCell.slice();
+    indexByCell[layout.previousCell] = -1;
+    indexByCell[layout.destinationCell] = layout.changedIndex;
+  } else {
+    indexByCell = new Int32Array(board.dense.keys.length);
+    indexByCell.fill(-1);
+    for (let i = 0; i < layout.cells.length; i++) {
+      indexByCell[layout.cells[i]] = i;
+    }
   }
   layout.indexByCell = indexByCell;
+  layout.parentIndexByCell = null;
   board.metrics.workspaceAllocations++;
   return indexByCell;
 }
@@ -164,6 +172,10 @@ function deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, b
     tokens,
     orderedSignature: tokens.join("."),
     indexByCell: null,
+    parentIndexByCell: parent.indexByCell,
+    previousCell: previousId,
+    destinationCell: destinationId,
+    changedIndex,
     occupancyBits: null,
     valid: true,
     ...packed,

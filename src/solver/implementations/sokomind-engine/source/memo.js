@@ -50,14 +50,30 @@ const GOAL_COMMITMENT = Object.freeze({
 
 class ClockCache {
   constructor(capacity) {
-    this._capacity = capacity;
-    this._keys = new Array(capacity).fill(undefined);
-    this._values = new Array(capacity).fill(undefined);
-    this._ref = new Uint8Array(capacity);
+    this._capacity = Math.max(1, Math.floor(capacity) || 1);
+    // Large board caches used to reserve every backing slot before the search
+    // inserted its first value. Grow geometrically instead: an unused 100k
+    // cache now costs only its Map and this small object, while a productive
+    // cache still reaches the same hard capacity and eviction semantics.
+    this._keys = [];
+    this._values = [];
+    this._ref = new Uint8Array(0);
+    this._allocated = 0;
     this._index = new Map();
     this._hand = 0;
     this._size = 0;
     this.evictions = 0;
+  }
+  _ensureAllocated(required) {
+    if (required <= this._allocated) return;
+    let allocated = this._allocated || Math.min(64, this._capacity);
+    while (allocated < required) allocated = Math.min(this._capacity, allocated * 2);
+    this._keys.length = allocated;
+    this._values.length = allocated;
+    const references = new Uint8Array(allocated);
+    references.set(this._ref);
+    this._ref = references;
+    this._allocated = allocated;
   }
   get(key) {
     const slot = this._index.get(key);
@@ -91,12 +107,29 @@ class ClockCache {
       return;
     }
     const slot = this._size++;
+    this._ensureAllocated(this._size);
     this._keys[slot] = key;
     this._values[slot] = value;
     this._ref[slot] = 1;
     this._index.set(key, slot);
   }
   get size() { return this._index.size; }
+  get capacity() { return this._capacity; }
+  get allocatedCapacity() { return this._allocated; }
+  estimatedMemoryBytes() {
+    // References are implementation-dependent; these conservative constants
+    // intentionally include array slots and the Map index entry.
+    return 160 + this._allocated * 17 + this._index.size * 64;
+  }
+  clear() {
+    this._keys = [];
+    this._values = [];
+    this._ref = new Uint8Array(0);
+    this._allocated = 0;
+    this._index.clear();
+    this._hand = 0;
+    this._size = 0;
+  }
 }
 
 function memoLookup(memo, key) {

@@ -60,6 +60,9 @@ function createPerformanceMetrics() {
     denseLayoutDerivations: 0,
     denseTransitionCacheHits: 0,
     denseTransitionCacheEvictions: 0,
+    denseDistanceTables: 0,
+    denseDistanceCells: 0,
+    denseDistanceBytes: 0,
     denseIdentityUpdates: 0,
     occupancyWordsBuilt: 0,
     occupancyWordCopies: 0,
@@ -75,6 +78,9 @@ function createPerformanceMetrics() {
     preparedBoardHydrateMs: 0,
     preparedSeedBytes: 0,
     preparedPlayerDistanceTables: 0,
+    cacheBudgetBytes: 0,
+    cacheCapacityEntries: 0,
+    cacheConfigurationSkips: 0,
     heuristicCalls: 0,
     heuristicCacheHits: 0,
     heuristicMs: 0,
@@ -144,6 +150,7 @@ function createPerformanceMetrics() {
     doorwayFlowCacheHits: 0,
     doorwayFlowMs: 0,
     doorwayScheduleCalls: 0,
+    doorwayScheduleCacheHits: 0,
     doorwayScheduleMs: 0,
     roomEvacuationCalls: 0,
     roomEvacuationMs: 0,
@@ -186,11 +193,19 @@ function createPerformanceMetrics() {
     planAnalysisCacheEvictions: 0,
     staticDeadPrunes: 0,
     dynamicDeadPrunes: 0,
+    dynamicDeadlockCalls: 0,
+    dynamicDeadlockCacheHits: 0,
+    dynamicDeadlockMs: 0,
+    dynamicDeadlockRuleHits: {},
     patternDeadlockCalls: 0,
+    patternDeadlockBypasses: 0,
+    patternDeadlockBoardBypasses: 0,
     patternDeadlockCacheHits: 0,
     patternDeadlockStates: 0,
     patternDeadlockPrunes: 0,
     patternCanonicalizations: 0,
+    patternEligibleCells: 0,
+    patternIneligibleCells: 0,
     recursiveFreezeChecks: 0,
     recursiveFreezeBoxes: 0,
     zobristFullRecomputations: 0,
@@ -223,6 +238,12 @@ function sampleEngineMemory(metrics) {
     ? Math.max(0, Math.round(sample.cacheBytes))
     : 0;
   const currentBytes = boardBytes + cacheBytes;
+  const cacheBreakdownBytes = sample.cacheBreakdownBytes &&
+    typeof sample.cacheBreakdownBytes === "object"
+    ? Object.fromEntries(Object.entries(sample.cacheBreakdownBytes)
+      .filter(([, bytes]) => Number.isFinite(bytes) && bytes >= 0)
+      .map(([name, bytes]) => [name, Math.round(bytes)]))
+    : undefined;
   metrics._engineMemoryPeakBytes = Math.max(
     metrics._engineMemoryPeakBytes || 0,
     currentBytes,
@@ -236,6 +257,7 @@ function sampleEngineMemory(metrics) {
     cacheEntries,
     peakCacheEntries: metrics._engineCachePeakEntries,
     cacheBytes,
+    cacheBreakdownBytes,
     currentBytes,
     peakBytes: metrics._engineMemoryPeakBytes,
   };
@@ -268,7 +290,7 @@ function performanceSnapshot(metrics) {
     "preparedBoardHydrateMs", "signatureMs", "heuristicMs", "commitmentMs",
     "supportDependencyMs", "localRoomMs", "localCorralMs", "doorwayFlowMs",
     "doorwayScheduleMs", "roomEvacuationMs", "pushDistanceMs", "goalTableMs",
-    "reachabilityMs"]) {
+    "reachabilityMs", "dynamicDeadlockMs"]) {
     rounded[key] = Math.round((rounded[key] || 0) * 1000) / 1000;
   }
   return rounded;

@@ -162,10 +162,10 @@ This repository is the static user application and extension architecture.
 legacy typed-box kernel into an isolated nested worker and combines a
 deterministic structural plan lane with guided and bidirectional discovery.
 Every candidate is replayed through the immutable Sokomind core before the UI
-can expose it. Its deterministic Grand Hall discovery route is 1,010 moves /
-316 pushes; the production move-rewrite pass reduces that to 874 moves /
-304 pushes in the Node benchmark. This is a substantial quality gain, not a
-claim of optimality.
+can expose it. Fast mode's deterministic Grand Hall first solution is 1,066
+moves / 322 pushes and returns without comparison, harvesting, or rewriting.
+The optional quality-mode rewrite reduces that route to 918 moves / 310 pushes
+in the Node benchmark. Neither bounded result is a claim of optimality.
 
 The classic family remains available for comparison and exact-search research.
 Its A* and IDA* results are accepted as move-optimal proof only after exact

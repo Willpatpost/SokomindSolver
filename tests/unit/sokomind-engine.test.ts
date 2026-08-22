@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
+import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import {
   createSession,
   type PuzzleDefinition,
@@ -105,6 +106,95 @@ describe("vendored Sokomind engine", () => {
     assert.equal(verifySolverSolution(request, solution).valid, true);
   });
 
+  it("certifies Grand Hall's Hall-tight lower-room traffic", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const result = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+    });
+    const analysis = result.analysis as {
+      readonly mandatoryDoorwayExports: number;
+      readonly mandatoryDoorwayImports: number;
+      readonly rooms: ReadonlyArray<{
+        readonly gate: string;
+        readonly forcedExports: number;
+        readonly forcedImports: number;
+        readonly interfacePhase: string;
+        readonly interfaceMinimumCrossings: number;
+        readonly interfaceMinimumExportsBeforeImport: number;
+        readonly interfaceClearanceMethod: string;
+      }>;
+      readonly doorwayAssignment: {
+        readonly complete: boolean;
+        readonly eliminatedEdges: number;
+        readonly mandatoryCrossings: number;
+        readonly boxDomains: ReadonlyArray<{
+          readonly box: string;
+          readonly allowedTargets: readonly string[];
+        }>;
+      };
+      readonly roomInterfaces: ReadonlyArray<{
+        readonly gate: string;
+        readonly keeperSide: string;
+        readonly pendingExports: number;
+        readonly remainingImports: number;
+        readonly minimumExportsBeforeFirstImport: number;
+        readonly preferredAction: string;
+        readonly availableActions: readonly string[];
+        readonly hardPruning: boolean;
+      }>;
+    };
+
+    assert.equal(analysis.doorwayAssignment.complete, true);
+    assert.equal(analysis.doorwayAssignment.eliminatedEdges, 28);
+    assert.equal(analysis.doorwayAssignment.mandatoryCrossings, 10);
+    assert.equal(analysis.mandatoryDoorwayExports, 6);
+    assert.equal(analysis.mandatoryDoorwayImports, 4);
+    const lowerInterface = analysis.roomInterfaces.find(
+      room => room.gate === "10,7",
+    );
+    assert.ok(lowerInterface);
+    assert.equal(lowerInterface.keeperSide, "inside");
+    assert.equal(lowerInterface.pendingExports, 6);
+    assert.equal(lowerInterface.remainingImports, 4);
+    assert.equal(lowerInterface.minimumExportsBeforeFirstImport, 4);
+    assert.equal(lowerInterface.preferredAction, "export");
+    assert.deepEqual(lowerInterface.availableActions, ["export"]);
+    assert.equal(lowerInterface.hardPruning, false);
+    assert.deepEqual(
+      new Set(
+        analysis.doorwayAssignment.boxDomains.find(
+          domain => domain.box === "10,6",
+        )?.allowedTargets,
+      ),
+      new Set(["13,2", "13,12"]),
+    );
+    assert.equal(
+      analysis.doorwayAssignment.boxDomains.find(
+        domain => domain.box === "12,4",
+      )?.allowedTargets.some(target => target === "13,2" || target === "13,12"),
+      false,
+    );
+    assert.deepEqual(
+      analysis.rooms.find(room => room.gate === "10,7"),
+      {
+        gate: "10,7",
+        cells: 27,
+        goals: 4,
+        boxes: 6,
+        surplus: 4,
+        forcedExports: 6,
+        forcedImports: 4,
+        dependencies: 2,
+        maxDepth: 9,
+        interfacePhase: "export",
+        interfaceMinimumCrossings: 10,
+        interfaceMinimumExportsBeforeImport: 4,
+        interfaceClearanceMethod: "shallow-two-sided-barrier",
+      },
+    );
+  });
+
   it("shares one state budget across the ultimate portfolio", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const result = search({
@@ -128,6 +218,9 @@ describe("vendored Sokomind engine", () => {
   it("reserves rewrite states for move-specific windows", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const state = toLegacyState(request);
+    const analysis = search({algorithm: "analyze-puzzle", state}).analysis as {
+      readonly preparedBoardStats: { readonly graphNodes: number };
+    };
     const incumbent = search({
       algorithm: "ultimate",
       state,
@@ -152,6 +245,11 @@ describe("vendored Sokomind engine", () => {
 
     assert.ok(Array.isArray(rewritten.path));
     assert.ok(Number(rewritten.moveVisited) > 0);
+    assert.equal(
+      Number(rewritten.performance?.graphNodes),
+      analysis.preparedBoardStats.graphNodes,
+      "rewrite windows must reuse the outer compiled board",
+    );
     const solution = solutionFromLegacyPath(request, rewritten.path);
     assert.ok(solution);
     assert.equal(verifySolverSolution(request, solution).valid, true);

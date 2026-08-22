@@ -52,6 +52,18 @@ function requestFor(puzzle: PuzzleDefinition): SolverRequest {
 // --- ClockCache ---
 
 describe("ClockCache", () => {
+  it("allocates backing storage lazily and grows only as needed", () => {
+    const cache = new ClockCache(100_000);
+    assert.equal(cache.allocatedCapacity, 0);
+    assert.ok(cache.estimatedMemoryBytes() < 1024);
+
+    cache.set("first", 1);
+    assert.equal(cache.size, 1);
+    assert.ok(cache.allocatedCapacity >= 1);
+    assert.ok(cache.allocatedCapacity <= 64);
+    assert.equal(cache.capacity, 100_000);
+  });
+
   it("stores and retrieves values", () => {
     const cache = new ClockCache(8);
     cache.set("a", 1);
@@ -133,6 +145,19 @@ describe("ClockCache", () => {
     assert.equal(cache.get("b"), 2);
     assert.equal(cache.has("a"), false);
     assert.equal(cache.size, 1);
+  });
+
+  it("clear releases backing slots without changing the configured capacity", () => {
+    const cache = new ClockCache(128);
+    for (let index = 0; index < 70; index++) cache.set(index, index);
+    assert.ok(cache.allocatedCapacity >= 70);
+    cache.clear();
+    assert.equal(cache.size, 0);
+    assert.equal(cache.allocatedCapacity, 0);
+    assert.equal(cache.capacity, 128);
+    assert.equal(cache.get(1), undefined);
+    cache.set("again", 2);
+    assert.equal(cache.get("again"), 2);
   });
 });
 

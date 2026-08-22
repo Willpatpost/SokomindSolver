@@ -40,18 +40,35 @@ function pushNeighbors(state, board, reachable = reachablePaths(state, board), o
         continue;
       }
       board.assignmentParentMemo.set(boxes, {parentBoxes: state.boxes, changedIndex: index});
-      result.push({
+      const neighbor = {
         robot: [y, x],
         boxes,
-        path: [...reachable.getId(supportId), move],
         pushClass: `${label}:${y},${x}:${move}`,
         pushedFrom: board.dense.keys[boxId],
         pushedTo: dest,
-      });
+      };
+      if (options.deferPath === true) {
+        neighbor.pathSupportId = supportId;
+        neighbor.pathPushMove = move;
+      } else {
+        neighbor.path = [...reachable.getId(supportId), move];
+      }
+      result.push(neighbor);
       board.metrics.pushesRetained++;
     }
   });
   return result;
+}
+
+function materializePushNeighborPath(neighbor, reachable) {
+  if (Array.isArray(neighbor.path)) return neighbor;
+  const supportId = neighbor.pathSupportId;
+  const move = neighbor.pathPushMove;
+  if (!Number.isInteger(supportId) || typeof move !== "string") return neighbor;
+  neighbor.path = [...reachable.getId(supportId), move];
+  delete neighbor.pathSupportId;
+  delete neighbor.pathPushMove;
+  return neighbor;
 }
 
 function pushBoxNeighbors(
@@ -204,6 +221,99 @@ function materializeMacroPath(state) {
   return {...result, path};
 }
 
+function macroPairDominates(left, right) {
+  return left.pushes <= right.pushes && left.moves <= right.moves;
+}
+
+function macroParetoAccept(seen, signature, pushes, moves, limit = 1) {
+  const candidate = {pushes, moves};
+  const records = seen.get(signature) || [];
+  if (records.some(record => macroPairDominates(record, candidate))) return false;
+  const retained = records.filter(record => !macroPairDominates(candidate, record));
+  retained.push(candidate);
+  retained.sort((left, right) => left.pushes - right.pushes || left.moves - right.moves);
+  if (retained.length > limit) {
+    const minimumMoves = [...retained].sort((left, right) =>
+      left.moves - right.moves || left.pushes - right.pushes)[0];
+    const bounded = [retained[0]];
+    if (minimumMoves !== retained[0] && bounded.length < limit) bounded.push(minimumMoves);
+    for (const record of retained) {
+      if (bounded.length >= limit) break;
+      if (!bounded.includes(record)) bounded.push(record);
+    }
+    seen.set(signature, bounded);
+  } else {
+    seen.set(signature, retained);
+  }
+  return (seen.get(signature) || []).includes(candidate);
+}
+
+function macroParetoActive(seen, signature, pushes, moves) {
+  return (seen.get(signature) || []).some(record =>
+    record.pushes === pushes && record.moves === moves);
+}
+
+function macroApproachSide(endpoint) {
+  const [toY, toX] = endpoint.pushedTo.split(",").map(Number);
+  return `${toY - endpoint.robot[0]},${toX - endpoint.robot[1]}`;
+}
+
+function selectMacroEndpoints(
+  endpoints,
+  maxReturned,
+  viable = () => true,
+  reserveAlternateApproach = false,
+) {
+  if (maxReturned <= 0) return [];
+  const ranked = endpoints.filter(viable);
+  const selected = [], destinations = new Set(), approaches = new Set();
+  const add = endpoint => {
+    if (!endpoint || selected.includes(endpoint) || selected.length >= maxReturned) return false;
+    selected.push(endpoint);
+    destinations.add(endpoint.pushedTo);
+    approaches.add(`${endpoint.pushedTo}|${endpoint.robot.join(",")}`);
+    return true;
+  };
+  const alternateQuota = reserveAlternateApproach && maxReturned > 1
+    ? Math.max(1, Math.floor(maxReturned / 4)) : 0;
+  const destinationQuota = maxReturned - alternateQuota;
+  for (const endpoint of ranked) {
+    if (selected.length >= destinationQuota) break;
+    if (destinations.has(endpoint.pushedTo)) continue;
+    add(endpoint);
+  }
+  let alternates = 0;
+  for (const endpoint of ranked) {
+    if (alternates >= alternateQuota || selected.length >= maxReturned) break;
+    const approach = `${endpoint.pushedTo}|${endpoint.robot.join(",")}`;
+    if (!destinations.has(endpoint.pushedTo) || approaches.has(approach)) continue;
+    if (add(endpoint)) alternates++;
+  }
+  const representedSides = new Set(selected.map(macroApproachSide));
+  for (const endpoint of ranked) {
+    if (selected.length >= maxReturned) break;
+    const side = macroApproachSide(endpoint);
+    if (representedSides.has(side)) continue;
+    representedSides.add(side);
+    add(endpoint);
+  }
+  for (const endpoint of ranked) {
+    if (selected.length >= maxReturned) break;
+    const approach = `${endpoint.pushedTo}|${endpoint.robot.join(",")}`;
+    if (approaches.has(approach)) continue;
+    add(endpoint);
+  }
+  return selected;
+}
+
+function compareTargetedMacroEndpoints(left, right) {
+  return Number(Boolean(left.targetDeadEnd)) - Number(Boolean(right.targetDeadEnd)) ||
+    left.targetDistance - right.targetDistance ||
+    left.pushes - right.pushes ||
+    left.macroPath.length - right.macroPath.length ||
+    left.macroOrder - right.macroOrder;
+}
+
 function expandPushSequences(
   first,
   board,
@@ -213,12 +323,23 @@ function expandPushSequences(
   options = {},
 ) {
   const metrics = activePerformance;
+  const moveAwareDedupe = options.moveAwareDedupe === true;
   const initial = {...first, pushes: 1, macroPath: macroPathRoot(first.path)};
   const queue = [initial], endpoints = [];
-  const seen = new Set([exactPushKey(initial, board)]);
+  const initialSignature = exactPushKey(initial, board);
+  const seen = moveAwareDedupe
+    ? new Map([[initialSignature, [{
+        pushes: initial.pushes,
+        moves: initial.macroPath.length,
+      }]]])
+    : new Set([initialSignature]);
   let head = 0;
   for (; head < queue.length && queue.length < maxExplored; head++) {
     const current = queue[head];
+    const currentSignature = exactPushKey(current, board);
+    if (moveAwareDedupe && !macroParetoActive(
+      seen, currentSignature, current.pushes, current.macroPath.length,
+    )) continue;
     if (current.pushes >= maxPushes || goal(current.boxes, board.goals)) {
       endpoints.push(current);
       continue;
@@ -259,19 +380,31 @@ function expandPushSequences(
         continue;
       }
       const signature = exactPushKey(sequence, board);
-      if (seen.has(signature)) continue;
-      seen.add(signature);
+      if (moveAwareDedupe) {
+        if (!macroParetoAccept(
+          seen, signature, sequence.pushes, sequence.macroPath.length,
+          options.paretoLimit ?? 2,
+        )) continue;
+      } else {
+        if (seen.has(signature)) continue;
+        seen.add(signature);
+      }
       queue.push(sequence);
       if (queue.length >= maxExplored) break;
     }
   }
-  endpoints.push(...queue.slice(head));
+  endpoints.push(...queue.slice(head).filter(sequence =>
+    !moveAwareDedupe || macroParetoActive(
+      seen,
+      exactPushKey(sequence, board),
+      sequence.pushes,
+      sequence.macroPath.length,
+    )));
   endpoints.sort((left, right) =>
     Number(Boolean(right.macroDecision)) - Number(Boolean(left.macroDecision)) ||
     right.pushes - left.pushes ||
     (left.path?.length ?? left.macroPath.length) -
       (right.path?.length ?? right.macroPath.length));
-  const selected = [], destinations = new Set();
   const viableEndpoint = endpoint => {
     if (!(endpoint.targetDistance > 0)) return true;
     const state = {robot: endpoint.robot, boxes: endpoint.boxes};
@@ -284,22 +417,12 @@ function expandPushSequences(
       {lockProven: options.lockProven},
     ).length > 0;
   };
-  for (const endpoint of endpoints) {
-    if (destinations.has(endpoint.pushedTo)) continue;
-    if (!viableEndpoint(endpoint)) continue;
-    destinations.add(endpoint.pushedTo);
-    selected.push(endpoint);
-    if (selected.length >= maxReturned) break;
-  }
-  const approaches = new Set(selected.map(endpoint =>
-    `${endpoint.pushedTo}|${endpoint.robot.join(",")}`));
-  for (const endpoint of endpoints) {
-    if (selected.length >= maxReturned) break;
-    const approach = `${endpoint.pushedTo}|${endpoint.robot.join(",")}`;
-    if (approaches.has(approach) || !viableEndpoint(endpoint)) continue;
-    approaches.add(approach);
-    selected.push(endpoint);
-  }
+  const selected = selectMacroEndpoints(
+    endpoints,
+    maxReturned,
+    viableEndpoint,
+    options.reserveAlternateApproach === true,
+  );
   if (metrics) metrics.macroEndpointsRetained += selected.length;
   return [
     materializeMacroPath(initial),
@@ -319,6 +442,7 @@ function expandTargetedPushSequence(
   options = {},
 ) {
   const metrics = activePerformance;
+  const moveAwareDedupe = options.moveAwareDedupe === true;
   const room = Number.isInteger(objective?.roomIndex)
     ? board.topology.rooms[objective.roomIndex] : null;
   const distance = state => {
@@ -356,6 +480,11 @@ function expandTargetedPushSequence(
     macroPath: macroPathRoot(first.path),
   };
   initial.targetDistance = distance(initial);
+  if (!Number.isFinite(initial.targetDistance) &&
+      options.pruneUnreachable !== false) {
+    initial.macroDecision = true;
+    initial.targetDeadEnd = true;
+  }
   const open = new Heap(), endpoints = [], completedTargets = new Map();
   const openPriority = sequence => {
     const combined = sequence.pushes + sequence.targetDistance;
@@ -364,7 +493,13 @@ function expandTargetedPushSequence(
       : 1e15 + sequence.macroOrder;
   };
   open.push([openPriority(initial), initial]);
-  const seen = new Set([exactPushKey(initial, board)]);
+  const initialSignature = exactPushKey(initial, board);
+  const seen = moveAwareDedupe
+    ? new Map([[initialSignature, [{
+        pushes: initial.pushes,
+        moves: initial.macroPath.length,
+      }]]])
+    : new Set([initialSignature]);
   let explored = 0;
   while (open.length && explored++ < maxExplored) {
     if (options.targetBound !== false && completedTargets.size >= maxReturned) {
@@ -378,12 +513,27 @@ function expandTargetedPushSequence(
       }
     }
     const current = open.pop()[1];
+    const currentSignature = exactPushKey(current, board);
+    if (moveAwareDedupe && !macroParetoActive(
+      seen, currentSignature, current.pushes, current.macroPath.length,
+    )) continue;
+    if (!Number.isFinite(current.targetDistance) &&
+        options.pruneUnreachable !== false) {
+      endpoints.push({...current, macroDecision: true, targetDeadEnd: true});
+      continue;
+    }
     if (current.targetDistance === 0 || current.pushes >= maxPushes) {
       endpoints.push(current);
       if (current.targetDistance === 0) {
-        const previous = completedTargets.get(current.pushedTo);
-        if (!previous || current.pushes < previous.pushes) {
-          completedTargets.set(current.pushedTo, current);
+        // Exact targets share one pushed-to cell. Distinguish keeper arrival
+        // sides so the bounded search can collect the requested alternatives
+        // and prove the remaining OPEN states cannot improve them.
+        const completionKey = `${current.pushedTo}|${current.robot.join(",")}`;
+        const previous = completedTargets.get(completionKey);
+        if (!previous || current.pushes < previous.pushes ||
+            (current.pushes === previous.pushes &&
+              current.macroPath.length < previous.macroPath.length)) {
+          completedTargets.set(completionKey, current);
         }
       }
       continue;
@@ -415,7 +565,8 @@ function expandTargetedPushSequence(
       };
       if (metrics) metrics.macroIntermediateStates++;
       sequence.targetDistance = distance(sequence);
-      if (!Number.isFinite(sequence.targetDistance)) {
+      if (!Number.isFinite(sequence.targetDistance) &&
+          options.pruneUnreachable !== false) {
         if (metrics) metrics.macroTargetUnreachableStates++;
       }
       const rejection = options.intermediateGuard?.(sequence, current);
@@ -424,34 +575,38 @@ function expandTargetedPushSequence(
         endpoints.push({...sequence, macroRejectedReason: rejection});
         continue;
       }
+      if (!Number.isFinite(sequence.targetDistance) &&
+          options.pruneUnreachable !== false) {
+        endpoints.push({...sequence, macroDecision: true, targetDeadEnd: true});
+        continue;
+      }
       const signature = exactPushKey(sequence, board);
-      if (seen.has(signature)) continue;
-      seen.add(signature);
+      if (moveAwareDedupe) {
+        if (!macroParetoAccept(
+          seen, signature, sequence.pushes, sequence.macroPath.length,
+          options.paretoLimit ?? 2,
+        )) continue;
+      } else {
+        if (seen.has(signature)) continue;
+        seen.add(signature);
+      }
       open.push([openPriority(sequence), sequence]);
     }
   }
-  endpoints.push(...open.items.map(item => item[1]));
-  endpoints.sort((left, right) =>
-    Number(Boolean(left.targetDeadEnd)) - Number(Boolean(right.targetDeadEnd)) ||
-    left.targetDistance - right.targetDistance ||
-    left.pushes - right.pushes ||
-    left.macroOrder - right.macroOrder);
-  const selected = [], destinations = new Set();
-  for (const endpoint of endpoints) {
-    if (destinations.has(endpoint.pushedTo)) continue;
-    destinations.add(endpoint.pushedTo);
-    selected.push(endpoint);
-    if (selected.length >= maxReturned) break;
-  }
-  const approaches = new Set(selected.map(endpoint =>
-    `${endpoint.pushedTo}|${endpoint.robot.join(",")}`));
-  for (const endpoint of endpoints) {
-    if (selected.length >= maxReturned) break;
-    const approach = `${endpoint.pushedTo}|${endpoint.robot.join(",")}`;
-    if (approaches.has(approach)) continue;
-    approaches.add(approach);
-    selected.push(endpoint);
-  }
+  endpoints.push(...open.items.map(item => item[1]).filter(sequence =>
+    !moveAwareDedupe || macroParetoActive(
+      seen,
+      exactPushKey(sequence, board),
+      sequence.pushes,
+      sequence.macroPath.length,
+    )));
+  endpoints.sort(compareTargetedMacroEndpoints);
+  const selected = selectMacroEndpoints(
+    endpoints,
+    maxReturned,
+    () => true,
+    options.reserveAlternateApproach === true,
+  );
   if (metrics) metrics.macroEndpointsRetained += selected.length;
   return [
     materializeMacroPath(initial),
@@ -609,6 +764,7 @@ function reverseShardOwns(signature, shard) {
 // --- Module registration ---
 const SokomindPushGeneration = {
   pushNeighbors,
+  materializePushNeighborPath,
   pushBoxNeighbors,
   pushKey,
   collapseForcedPushes,
@@ -618,6 +774,11 @@ const SokomindPushGeneration = {
   macroPathRoot,
   extendMacroPath,
   materializeMacroPath,
+  macroParetoAccept,
+  macroParetoActive,
+  macroApproachSide,
+  selectMacroEndpoints,
+  compareTargetedMacroEndpoints,
   expandPushSequences,
   expandTargetedPushSequence,
   expandStraightPushes,
