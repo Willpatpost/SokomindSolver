@@ -4,6 +4,7 @@
 
 .dialog {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   max-height: calc(100dvh - 32px);
   overflow: hidden;
   border: 1px solid rgb(23 25 22 / 0.1);
