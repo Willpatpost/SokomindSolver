@@ -451,7 +451,7 @@ describe("Sokomind Solver adapter", () => {
         "sokomind-solver": {
           mode: "quality",
           maximumIncumbents: 4,
-          harvestElapsedMs: 500,
+          harvestElapsedMs: 2000,
         },
       },
     });
