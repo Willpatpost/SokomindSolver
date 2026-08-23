@@ -120,7 +120,8 @@ test("named drafts migrate, create, duplicate, rename, switch, delete, and reloa
   });
   await page.goto("./#/editor");
   const selector = page.getByRole("combobox", { name: "Local draft" });
-  await expect(selector.locator("option")).toHaveCount(1);
+  await selector.waitFor({ state: "visible" });
+  await expect(selector.locator("option")).toHaveCount(1, { timeout: 10_000 });
   await expect(selector.locator("option")).toHaveText(["Legacy puzzle"]);
 
   await page.getByLabel("Draft name").fill("Primary draft");

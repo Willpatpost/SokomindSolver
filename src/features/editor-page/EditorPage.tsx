@@ -221,16 +221,17 @@ export function EditorPage({ customData }: EditorPageProps) {
       ? notice
       : null;
 
+  const { restoreActiveDraft } = editor;
   useEffect(() => {
     if (sharedPuzzle) {
       draftRevisionRef.current += 1;
       shareOperationRef.current += 1;
       dispatch({ type: "load", puzzle: sharedPuzzle });
     } else if (previousCustomDataRef.current !== customData) {
-      editor.restoreActiveDraft();
+      restoreActiveDraft();
     }
     previousCustomDataRef.current = customData;
-  }, [customData, dispatch, editor.restoreActiveDraft, sharedPuzzle]);
+  }, [customData, dispatch, restoreActiveDraft, sharedPuzzle]);
 
   const handleImportShared = useCallback(() => {
     if (!sharedPuzzle) return;
