@@ -55,8 +55,6 @@ import { createZobristTable, type ZobristTable } from "./zobrist-state.ts";
 import {
   sortedBoxes,
   movedBoxes,
-  fillOccupancy,
-  fillDeadlockOccupancy,
   estimateStaticSearchBytes,
   OPPOSITE_DIRECTION,
   PROGRESS_INTERVAL_MS,
@@ -64,7 +62,7 @@ import {
   YIELD_WORK_INTERVAL,
 } from "./engine.ts";
 import { delayForEventLoop } from "./scheduling.ts";
-import { objectiveScore } from "./exact-search-types.ts";
+import { fillOccupancy, fillDeadlockOccupancy, isSolved, objectiveScore } from "./exact-search-types.ts";
 import {
   createExactSearchFeatureTelemetry,
   exactSearchFeatureMask,
@@ -193,15 +191,6 @@ interface IdaMemorySnapshot extends IdaMemoryBreakdown {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function isSolved(
-  board: CompiledSearchBoard,
-  boxes: readonly DenseBox[],
-): boolean {
-  return boxes.every(
-    (box) => board.goalLabelByCell[box.cell] === box.label,
-  );
-}
 
 /**
  * Identify frozen boxes: boxes on their matching goal and locked on both

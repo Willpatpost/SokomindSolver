@@ -169,9 +169,6 @@ export default defineConfig(({ mode }) => {
             ) {
               return "react-vendor";
             }
-            if (id.includes("generated-puzzles.json")) {
-              return "puzzle-catalog";
-            }
           },
         },
       },

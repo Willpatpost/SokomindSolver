@@ -152,8 +152,6 @@ function occupancyFor(
   return occupied;
 }
 
-export { fillOccupancy, fillDeadlockOccupancy } from "./exact-search-types.ts";
-
 export function movedBoxes(
   boxes: readonly DenseBox[],
   movedIndex: number,
