@@ -191,6 +191,7 @@ function ValidatedPlayPage({
   const { session, progress } = game;
   const boardWrapRef = useRef<HTMLDivElement>(null);
   const stopButtonRef = useRef<HTMLButtonElement>(null);
+  const pauseResumeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     document.title = `${session.puzzle.title} · Sokomind`;
   }, [session.puzzle.title]);
@@ -202,6 +203,12 @@ function ValidatedPlayPage({
       stopButtonRef.current?.focus();
     }
   }, [game.playback.active]);
+
+  useEffect(() => {
+    if (game.manualPaused) {
+      pauseResumeRef.current?.focus();
+    }
+  }, [game.manualPaused]);
 
   useSwipeControls(boardWrapRef, {
     enabled: !game.playback.active,
@@ -373,11 +380,11 @@ function ValidatedPlayPage({
 
           <div className={styles.boardWrap} ref={boardWrapRef}>
             {game.manualPaused && (
-              <div className={styles.pauseOverlay}>
+              <div className={styles.pauseOverlay} role="alert" aria-label="Game paused">
                 <div className={styles.pauseContent}>
                   <span className={styles.pauseIcon} aria-hidden="true">⏸</span>
                   <strong>Paused</strong>
-                  <button type="button" onClick={game.resumeFromPause}>
+                  <button ref={pauseResumeRef} type="button" onClick={game.resumeFromPause}>
                     Resume
                   </button>
                   <span className={styles.pauseHint}>or press P</span>

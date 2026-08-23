@@ -1,5 +1,18 @@
+import { useEffect, useState } from "react";
 import type { Direction } from "@/src/core/model";
 import styles from "./GameControls.module.css";
+
+function HintThinkingLabel() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    const id = setInterval(() => {
+      setElapsed(Math.floor((performance.now() - start) / 1000));
+    }, 250);
+    return () => clearInterval(id);
+  }, []);
+  return <>Thinking{elapsed > 0 ? ` ${elapsed}s` : ""}…</>;
+}
 
 interface GameControlsProps {
   canUndo: boolean;
@@ -84,7 +97,7 @@ export function GameControls({
           onClick={onHint}
           disabled={disabled || !canHint}
         >
-          <span>{hintThinking ? "Thinking…" : "Hint"}</span>
+          <span>{hintThinking ? <HintThinkingLabel /> : "Hint"}</span>
           <kbd>H</kbd>
         </button>
         <button type="button" onClick={onReset} disabled={disabled}>

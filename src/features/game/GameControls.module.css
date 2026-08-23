@@ -130,7 +130,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 41px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--paper-300);
   border-radius: 11px;

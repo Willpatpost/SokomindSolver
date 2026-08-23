@@ -17,7 +17,6 @@ export function useSwipeControls(
   useEffect(() => {
     const element = ref.current;
     if (!element || !enabled) return;
-    if (!("ontouchstart" in window)) return;
 
     let startX = 0;
     let startY = 0;
