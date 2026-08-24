@@ -48,8 +48,7 @@ structural substrate capable of supporting deliberate puzzle design.
 | File | Purpose |
 |---|---|
 | `src/features/generator/v2/blueprint-types.ts` | Type definitions |
-| `src/features/generator/v2/blueprint-graph.ts` | Topology graph generation |
-| `src/features/generator/v2/rasterize.ts` | Blueprint → grid conversion |
+| `src/features/generator/v2/blueprint-graph.ts` | Topology graph generation + grid rasterization |
 | `src/features/generator/v2/blueprint-diagnostics.ts` | Structural diagnostics |
 | `src/features/generator/v2/index.ts` | Public API |
 | `tests/unit/blueprint-generation.test.ts` | Unit tests |
@@ -181,7 +180,7 @@ them randomly.
 |---|---|
 | `src/features/generator/v2/room-roles.ts` | Role assignment |
 | `src/features/generator/v2/goal-placement.ts` | Goal placement |
-| `tests/unit/room-roles.test.ts` | Tests |
+| `tests/unit/room-roles-goals.test.ts` | Tests |
 
 ### Inputs and outputs
 
