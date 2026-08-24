@@ -197,7 +197,6 @@ describe("TunnelMacroDetector", () => {
           dest, 3, occupancy, board.goalLabelByCell, "X",
         );
         if (result !== null) {
-          const goalCell = board.cellAt(1, 3);
           const hasGoalStop = result.some(
             (s) => board.goalLabelByCell[s.finalCell] === "X",
           );
