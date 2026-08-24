@@ -127,7 +127,7 @@ describe("vendored Sokomind engine", () => {
   });
 
   it("derives the fixed-work box-agenda reserve from topology and pressure", () => {
-    const roomPuzzle = PUZZLE_BY_ID["gen-expert-335"];
+    const roomPuzzle = PUZZLE_BY_ID["huge"];
     const openPuzzle = PUZZLE_BY_ID["open-field"];
     assert.ok(roomPuzzle);
     assert.ok(openPuzzle);
