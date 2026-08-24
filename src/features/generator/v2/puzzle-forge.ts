@@ -1,34 +1,42 @@
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
+import type { TopologyFamily } from "./blueprint-types.ts";
+import type { BeamSearchParams } from "./reverse-beam-search.ts";
+import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
+import type { MotifType, DependencyHint } from "./motifs.ts";
 import type {
-  BeamSearchParams,
   ComposedPuzzleResult,
   CompositionType,
   DependencyDAG,
-  DependencyHint,
-  MotifType,
-  PuzzleEvaluationVector,
-  TighteningParams,
-  TighteningResult,
-  TopologyFamily,
-} from "./index.ts";
+} from "./dependency-graph.ts";
+import type { TighteningParams, TighteningResult } from "./geometry-tightening.ts";
 
 import {
   generateBlueprintWithRetry,
-  assignRoomRoles,
-  generateComposedPuzzle,
-  generateVerifiedMotifPuzzle,
-  placeGoals,
-  reverseBeamSearch,
-  toSolvedTemplate,
-  evaluatePuzzle,
-  tightenPuzzle,
+} from "./blueprint-graph.ts";
+import {
   TOPOLOGY_FAMILIES,
   DEFAULT_BLUEPRINT_PARAMS,
   DEFAULT_GOAL_PARAMS,
+} from "./blueprint-types.ts";
+import { assignRoomRoles } from "./room-roles.ts";
+import {
+  placeGoals,
+  toSolvedTemplate,
+} from "./goal-placement.ts";
+import {
+  reverseBeamSearch,
   DEFAULT_BEAM_PARAMS,
+} from "./reverse-beam-search.ts";
+import { evaluatePuzzle } from "./puzzle-evaluator.ts";
+import {
+  generateComposedPuzzle,
+  generateVerifiedMotifPuzzle,
   DEFAULT_COMPOSITION_PARAMS,
+} from "./dependency-graph.ts";
+import {
+  tightenPuzzle,
   DEFAULT_TIGHTENING_PARAMS,
-} from "./index.ts";
+} from "./geometry-tightening.ts";
 
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
