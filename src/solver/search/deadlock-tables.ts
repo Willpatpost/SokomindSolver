@@ -13,6 +13,32 @@ const MIN_BOX_COUNT = 2;
 const BFS_STATE_LIMIT = 5000;
 const TIME_BUDGET_MS = 2000;
 
+function forEachLabelAssignment(
+  allLabels: readonly string[],
+  boxCount: number,
+  callback: (labels: readonly string[]) => boolean,
+): void {
+  const numLabels = allLabels.length;
+  const indices = new Array<number>(boxCount).fill(0);
+  const labels = new Array<string>(boxCount).fill(allLabels[0]);
+  outer:
+  while (true) {
+    if (callback(labels)) return;
+    let carry = boxCount - 1;
+    while (carry >= 0) {
+      indices[carry]++;
+      if (indices[carry] < numLabels) {
+        labels[carry] = allLabels[indices[carry]];
+        continue outer;
+      }
+      indices[carry] = 0;
+      labels[carry] = allLabels[0];
+      carry--;
+    }
+    break;
+  }
+}
+
 export interface DeadlockTableStats {
   readonly regionCount: number;
   readonly patternCount: number;
@@ -268,14 +294,15 @@ export function buildDeadlockTables(
 
         const cells = indices.map((i) => region.cells[i]);
 
-        for (const label of allLabels) {
-          const labels = new Array<string>(boxCount).fill(label);
+        forEachLabelAssignment(allLabels, boxCount, (labels) => {
+          if (Date.now() - startTime > TIME_BUDGET_MS) return true;
           if (isDeadlockedBFS(board, region, cells, labels)) {
             const key = configKey(cells, labels);
             deadlocks.add(key);
             patternCount++;
           }
-        }
+          return false;
+        });
 
         let j = boxCount - 1;
         while (j >= 0 && indices[j] === region.cells.length - boxCount + j) j--;
@@ -365,8 +392,8 @@ export async function buildDeadlockTablesAsync(
 
         const cells = indices.map((i) => region.cells[i]);
 
-        for (const label of allLabels) {
-          const labels = new Array<string>(boxCount).fill(label);
+        forEachLabelAssignment(allLabels, boxCount, (labels) => {
+          if (Date.now() - startTime > TIME_BUDGET_MS) return true;
           if (isDeadlockedBFS(
             board,
             region,
@@ -383,7 +410,8 @@ export async function buildDeadlockTablesAsync(
               estimateDeadlockTableBytes(retainedRegions, patternCount),
             );
           }
-        }
+          return false;
+        });
 
         let j = boxCount - 1;
         while (j >= 0 && indices[j] === region.cells.length - boxCount + j) j--;

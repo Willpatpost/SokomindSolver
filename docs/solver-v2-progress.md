@@ -1,6 +1,6 @@
 # Solver V2 — Current Implementation Status
 
-Last reconciled: August 21, 2026
+Last reconciled: August 23, 2026
 
 This document describes the code that exists now. It replaces the former
 sprint-by-sprint diary, which mixed historical intentions, intermediate test
@@ -246,6 +246,32 @@ every deterministic group is accepted, it has at least five timed samples, the
 Git commit is a known full hash, and the worktree is clean. A/B classifications
 also qualify median elapsed time and peak RSS; a reviewed regression in either
 resource vetoes an apparent node-count win or makes conflicting evidence mixed.
+
+## Sprint 3: Mixed-label deadlock tables (August 23, 2026)
+
+### Mixed-label deadlock tables
+
+The deadlock-table build phase previously tested only uniform-label box
+configurations (e.g. [A,A], [B,B]) when enumerating region patterns. The lookup
+side already handled mixed labels correctly. The build now enumerates the full
+Cartesian product of labels (e.g. [A,B], [B,A]) via `forEachLabelAssignment`,
+bounded by the existing 2-second time budget. Both sync and async builders were
+updated. An exhaustive false-positive oracle test on a typed board confirms
+soundness.
+
+### Attempted and reverted
+
+**Deeper pi-corral boundary analysis** — consulting deadlock tables after
+simulating a boundary push produced a false positive on the "tiny" typed puzzle.
+Root cause: pi-corral evaluates each corral independently. When post-push
+deadlock patterns involve boxes in *other* single-cell corrals (which can be
+moved first), the "all pushes deadlocked" conclusion is unsound.
+
+**Pattern-deadlock eligibility relaxation** — removing the >2-floor-neighbor
+gate caused the windowed BFS (which strips the robot and drops boxes leaving
+the window) to produce false positives on wider geometries. The no-robot
+abstraction is only sound in corridors where the robot position is uniquely
+determined by box positions.
 
 ## Remaining performance work
 

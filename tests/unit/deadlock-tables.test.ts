@@ -141,6 +141,68 @@ describe("DeadlockTableLookup.check", () => {
     }
   });
 
+  it("detects mixed-label deadlock on typed board", () => {
+    // Minimal board: 6 floor cells, 2 typed goals.
+    // A and B at row 2 are against the bottom wall, mutually blocking.
+    // Old uniform-only build would add keys for [A,A] and [B,B] but miss
+    // the [A,B] key that the lookup generates for actual mixed-label boxes.
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOO",
+      "ORabO",
+      "O ABO",
+      "OOOOO",
+    ]));
+    const lookup = buildDeadlockTables(board);
+    assert.ok(lookup.stats.patternCount > 0);
+    const cellA = board.cellAt(2, 2);
+    const cellB = board.cellAt(2, 3);
+    assert.ok(cellA >= 0 && cellB >= 0, "cells must exist");
+    const boxes: readonly DenseBox[] = [
+      { id: "A:0", label: "A", cell: cellA },
+      { id: "B:0", label: "B", cell: cellB },
+    ];
+    const detected = lookup.check(boxes, cellA) || lookup.check(boxes, cellB);
+    assert.ok(detected, "mixed-label corner deadlock should be detected");
+  });
+
+  it("does not produce false positives on exhaustive typed board", () => {
+    const parsed = parsePuzzleRows([
+      "OOOOOO",
+      "ORAb O",
+      "O    O",
+      "O aB O",
+      "OOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const lookup = buildDeadlockTables(board);
+    let falsePositives = 0;
+
+    for (let left = 0; left < board.cellCount; left++) {
+      for (let right = left + 1; right < board.cellCount; right++) {
+        for (const [labelL, labelR] of [["A", "B"], ["B", "A"], ["A", "A"], ["B", "B"]]) {
+          const boxes: readonly DenseBox[] = [
+            { id: `${labelL}:0`, label: labelL, cell: left },
+            { id: `${labelR}:1`, label: labelR, cell: right },
+          ];
+          const dead1 = lookup.check(boxes, left);
+          const dead2 = lookup.check(boxes, right);
+          if (!dead1 && !dead2) continue;
+
+          for (let robot = 0; robot < board.cellCount; robot++) {
+            if (robot === left || robot === right) continue;
+            const exact = exactRemainingPushes(board, robot, boxes);
+            if (exact !== null) {
+              falsePositives++;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    assert.equal(falsePositives, 0, "Mixed-label deadlock tables must not prune solvable states");
+  });
+
   it("does not produce false positives on exhaustive small board", () => {
     const parsed = parsePuzzleRows([
       "OOOOOO",

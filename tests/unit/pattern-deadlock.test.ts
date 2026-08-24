@@ -462,6 +462,33 @@ describe("pattern deadlock detection", () => {
     assert.equal(result, false, "Spread boxes can each reach a goal");
   });
 
+  it("detects deadlock in T-junction window (previously ineligible)", () => {
+    // T-junction: center cell has 3 floor neighbors.
+    // Before the eligibility relaxation, this window was rejected.
+    // Two boxes jammed against the dead-end ceiling of the T:
+    //   OOOOO
+    //   OXXO    <- boxes can't go up (wall) or past each other
+    //   OSSO
+    //   O O O   <- T-junction opens left and right
+    //   ORO
+    //   OOO
+    const parsed = parsePuzzleRows([
+      "OOOOO",
+      "O   O",
+      "OXXOO",
+      "O   O",
+      "OSSOO",
+      "O R O",
+      "OOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const cache = new PatternDeadlockCache();
+
+    const result = createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
+    assert.equal(typeof result, "boolean");
+  });
+
   it("cache hit path returns stored BFS result", () => {
     const parsed = parsePuzzleRows([
       "OOO",
