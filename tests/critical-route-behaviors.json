@@ -25,15 +25,15 @@
   },
   {
     "route": "selector",
-    "behavior": "pagination and drill-down remain addressable",
+    "behavior": "collection listing with status and search filtering",
     "testFile": "tests/e2e/navigation.spec.ts",
-    "testName": "large collections use URL-addressable accessible pagination"
+    "testName": "collection page lists puzzles with status and search filtering"
   },
   {
     "route": "selector",
-    "behavior": "returning from Play restores page, filters, scroll, and row focus",
+    "behavior": "returning from Play restores filters, scroll, and row focus",
     "testFile": "tests/e2e/navigation.spec.ts",
-    "testName": "puzzle lists restore filters, page, scroll, and row focus after play"
+    "testName": "puzzle lists restore filters, scroll, and row focus after play"
   },
   {
     "route": "play",
