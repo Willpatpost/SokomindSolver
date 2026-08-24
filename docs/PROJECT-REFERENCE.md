@@ -166,8 +166,8 @@ fails when the generated facts below differ from source.
 - Package version: `0.1.0`
 - Supported Node.js: `^22.13.0 || >=24.0.0`
 - Catalog schema: `1`
-- Puzzles: **2,095** across **2** collections and **42** shards
-- Difficulty counts: `tutorial` 10, `beginner` 451, `intermediate` 434, `advanced` 400, `expert` 400, `master` 400
+- Puzzles: **87** across **2** collections and **2** shards
+- Difficulty counts: `tutorial` 10, `beginner` 15, `intermediate` 17, `advanced` 19, `expert` 14, `master` 12
 
 ### Routes
 
