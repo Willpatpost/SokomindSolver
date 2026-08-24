@@ -679,6 +679,7 @@ const FEATURE_EXERCISE_COUNTER: Readonly<
   patternDeadlockPruning: "patternDeadlockChecks",
   deadlockTablePruning: "deadlockTableChecks",
   goalCommitmentPruning: "goalCommitmentChecks",
+  tunnelMacros: "tunnelMacroApplications",
 });
 
 function median(values: readonly number[]): number {

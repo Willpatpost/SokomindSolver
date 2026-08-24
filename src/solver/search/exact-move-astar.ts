@@ -38,6 +38,10 @@ import {
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import {
+  TunnelMacroDetector,
+  encodeTunnelPushDirection,
+} from "./tunnel-macros.ts";
+import {
   hasPotentialInteractionBoost,
   InteractionBoostEvaluator,
   isExactInteractionSearchLimitError,
@@ -347,6 +351,9 @@ export async function runExactMoveAStar(
     const macroDetector = features.forcedPushMacros
       ? new ForcedPushMacroDetector(board)
       : null;
+    const tunnelDetector = features.tunnelMacros
+      ? new TunnelMacroDetector(board)
+      : null;
     const deadlockTableLookup = features.deadlockTablePruning
       ? await buildDeadlockTablesAsync(
           board,
@@ -507,6 +514,8 @@ export async function runExactMoveAStar(
       goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
       goalCommitments: commitmentDetector?.stats.commitments ?? 0,
       goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
+      tunnelMacroChecks: tunnelDetector?.stats.checks ?? 0,
+      tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
     });
 
     const metrics = () =>
@@ -1106,6 +1115,144 @@ export async function runExactMoveAStar(
           if (isStaticDeadCell(board, destination, box.label)) {
             counters.deadlockPrunes += 1;
             continue;
+          }
+
+          // Tunnel macro: skip intermediate non-goal tunnel positions
+          const tunnelStops = tunnelDetector?.resolve(
+            destination, directionIndex, occupied, board.goalLabelByCell, box.label,
+          );
+          if (tunnelStops) {
+            const tSavedCell = expansionBoxes[boxIndex].cell;
+            const tDistance = reachable.distanceTo(support);
+            if (tDistance < 0) {
+              throw new Error("Reachable support cell has no keeper distance.");
+            }
+            counters.generated += tunnelStops.length - 1;
+            workSinceYield += tunnelStops.length - 1;
+
+            for (const stop of tunnelStops) {
+              if (isStaticDeadCell(board, stop.finalCell, box.label)) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+
+              (expansionBoxes[boxIndex] as { cell: number }).cell = stop.finalCell;
+              fillDeadlockOccupancy(deadlockOccupancyBuffer, expansionBoxes);
+
+              if (
+                createsFullyBlockedTwoByTwoDeadlock(
+                  board, expansionBoxes, stop.finalCell, deadlockOccupancyBuffer,
+                )
+              ) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+              if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer)) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+              if (
+                patternCache !== null &&
+                createsPatternDeadlock(board, expansionBoxes, stop.finalCell, patternCache)
+              ) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.patternDeadlockPrunes += 1;
+                continue;
+              }
+              if (deadlockTableCheck(expansionBoxes, stop.finalCell)) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.deadlockTablePrunes += 1;
+                continue;
+              }
+
+              const tChildMoves = nodeMoves + tDistance + stop.pushCount;
+              const tChildPushes = arena.pushes(nodeIndex) + stop.pushCount;
+              const tOldToken = parentTokenBuf[boxIndex];
+              const tNewLabelId = tokenToLabelId(tOldToken);
+              const tNewToken = tNewLabelId * cellCount + stop.finalCell;
+              sortedInsertToken(parentTokenBuf, boxCount, boxIndex, tNewToken, childTokenBuf);
+
+              const tChildKey = exactCodec.packMoveState(stop.robotCell, childTokenBuf);
+              const tChildZobristKey = zobristTable.hashFromTokens(childTokenBuf, stop.robotCell);
+              const tPrevBestG = bestGLookup(tChildZobristKey, tChildKey);
+              if (tPrevBestG !== undefined && tChildMoves >= tPrevBestG) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.duplicates += 1;
+                continue;
+              }
+
+              const tChildBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+              const tMovedLabel = labels[tNewLabelId];
+              const tPushLowerBound = features.incrementalAssignment
+                ? heuristic.evaluateIncremental(
+                    expansionBoxes, tChildBoxKey, parentBoxKey, tMovedLabel,
+                  )
+                : heuristic.evaluate(expansionBoxes);
+              if (!Number.isFinite(tPushLowerBound)) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.infeasiblePrunes += 1;
+                continue;
+              }
+
+              const tLabelCosts = heuristic.lastLabelCosts;
+              const tInteractionBoost = tLabelCosts && boostEvaluator
+                ? boostEvaluator.evaluate(expansionBoxes, tLabelCosts, tChildBoxKey)
+                : 0;
+              if (tInteractionBoost > 0) counters.interactionBoostTotal += tInteractionBoost;
+              const tLC = linearConflict(expansionBoxes);
+              const tPdb = pdbValue(expansionBoxes);
+              const tWalkBound = minimumManhattanWalkToPotentialPush(
+                board, stop.robotCell, expansionBoxes,
+              );
+              const tH = Math.max(tPushLowerBound + Math.max(tLC, tInteractionBoost), tPdb) + tWalkBound;
+              const tF = tChildMoves + tH;
+
+              (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+
+              if (tF >= U) continue;
+
+              const tProjectedArenaBytes = arena.estimatedRetainedBytes() + arena.estimatedBytesPerNode();
+              const tMaxMemory = request.limits?.maxMemoryBytes;
+              if (tMaxMemory !== undefined) {
+                const tStats = heuristic.stats;
+                const tProjectedMemory = estimatedArenaMemoryBytes(
+                  currentStaticBytes(), tProjectedArenaBytes,
+                  uniqueStates + 1, heap.size + 1, tStats.cacheEntries, boxCount,
+                );
+                if (tProjectedMemory > tMaxMemory) {
+                  limitDetail = "Estimated solver memory limit reached.";
+                  syncState();
+                  break searchLoop;
+                }
+              }
+
+              const tChildIndex = arena.allocate();
+              arena.setRobotCell(tChildIndex, stop.robotCell);
+              arena.setGMoves(tChildIndex, tChildMoves);
+              arena.setPushes(tChildIndex, tChildPushes);
+              arena.setParentNode(tChildIndex, nodeIndex);
+              arena.setPushedFromCell(tChildIndex, box.cell);
+              arena.setPushDirection(
+                tChildIndex,
+                encodeTunnelPushDirection(directionIndex, stop.pushCount),
+              );
+              arena.setHeuristic(tChildIndex, tH);
+              arena.writeBoxTokens(tChildIndex, childTokenBuf);
+              counters.retainedBytes = arena.estimatedRetainedBytes();
+              counters.maxDepth = Math.max(counters.maxDepth, tChildPushes);
+
+              const tIsNewState = bestGStore(tChildZobristKey, tChildKey, tChildMoves);
+              if (tIsNewState) {
+                uniqueStates += 1;
+              } else {
+                counters.reopens += 1;
+              }
+              heap.enqueue(tChildIndex);
+              syncState();
+              counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
+            }
           }
 
           const savedCell = expansionBoxes[boxIndex].cell;

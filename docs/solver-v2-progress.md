@@ -287,6 +287,48 @@ Correctness changes can expose performance costs. Current priorities are:
   and
 - treat mixed or no-effect A/B outcomes as evidence, not as successes.
 
+## Sprint 4 — Tunnel macros (August 2026)
+
+**Goal.** When a box is pushed into a tunnel cell (exactly 2 collinear floor
+neighbors), generate additional successors at "interesting" stopping points:
+matching goal cells, the tunnel exit (first non-tunnel cell), or where another
+box blocks further progress. The macro produces look-ahead successors alongside
+the normal single-push successor; it does not replace it.
+
+**Implementation.**
+
+| File | Change |
+|---|---|
+| `src/solver/search/tunnel-macros.ts` | New: `TunnelMacroDetector`, `encodeTunnelPushDirection`, `decodeTunnelPushDirection` |
+| `src/solver/search/exact-move-astar.ts` | Tunnel macro successor generation after static dead cell check |
+| `src/solver/search/ida-star.ts` | Tunnel macro child generation with frame-persisted stop state |
+| `src/solver/search/exact-search-features.ts` | `tunnelMacros` feature flag (default: enabled) |
+| `src/solver/search/exact-search-types.ts` | `pushCount` on `PushRecord`; multi-push `reconstructFromArena` |
+| `scripts/solver-v2-benchmark-lib.ts` | `tunnelMacros` → `tunnelMacroApplications` counter mapping |
+| `tests/unit/tunnel-macros.test.ts` | 17 tests: detector unit tests, encode/decode, A*/IDA* integration, oracle comparison |
+
+**Design decision.** Tunnel macros are additive, not replacing. The normal
+single-push successor is always generated alongside macro stops. Early prototype
+used replacement (`continue` after macro block), which caused the "2-box
+T-junction" puzzle to become unsolvable — the robot can navigate around short
+tunnels to reach the opposite side, making intermediate stops load-bearing.
+
+**Benchmark (deterministic, Waterfield).**
+
+| Fixture | Visited (before) | Visited (after) | Generated (before) | Generated (after) |
+|---|---|---|---|---|
+| beginner-three | 13 | 13 | 30 | 30 |
+| classic-1 | 46 | 46 | 177 | 177 |
+| box-7x7 | 44 | 44 | 437 | 437 |
+| expert-maze | 381 | 381 | 1715 | 1715 |
+
+No measurable state-count change on benchmark corpus. The macro primarily
+benefits corridor-heavy puzzles not represented in the current fixture set.
+
+**Items deferred.**
+- #7 Persistent IDA* TT — unsafe; backed f-values are path-dependent.
+- #8 Greedy fallback >20 labels — negligible impact; typical puzzles have 1–3 labels.
+
 ## Validation commands
 
 ```text

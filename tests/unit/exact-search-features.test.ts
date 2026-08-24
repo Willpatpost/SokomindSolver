@@ -65,7 +65,7 @@ describe("exact-search feature configuration", () => {
       exactSearchFeatureFingerprint(resolveExactSearchFeatures()),
       exactSearchFeatureFingerprint(resolveExactSearchFeatures({})),
     );
-    assert.equal(exactSearchFeatureMask(resolved), 0b1_1111_1111);
+    assert.equal(exactSearchFeatureMask(resolved), 0b11_1111_1111);
   });
 
   it("rejects unknown and non-boolean feature overrides", () => {

@@ -10,6 +10,7 @@ import { KeeperReachability } from "./reachability.ts";
 export interface PushRecord {
   readonly boxCell: number;
   readonly directionIndex: number;
+  readonly pushCount?: number;
 }
 
 export type StateKey = string | bigint;
@@ -193,7 +194,9 @@ export function reconstructFromArena(
 
     const reachable = reachability.flood(arena.robotCell(parentIdx), occupancyBuffer);
     const pushCell = arena.pushedFromCell(childIdx);
-    const dirIdx = arena.pushDirection(childIdx);
+    const encoded = arena.pushDirection(childIdx);
+    const dirIdx = encoded & 3;
+    const pushCount = (encoded >> 2) + 1;
     const support =
       board.neighbors[pushCell]?.[OPPOSITE_DIRECTION[dirIdx]! ?? -1] ?? -1;
     const walk = reachable.pathTo(support);
@@ -204,7 +207,9 @@ export function reconstructFromArena(
     for (const direction of walk) {
       steps.push({ direction, kind: "walk" });
     }
-    steps.push({ direction: pushDirection, kind: "push" });
+    for (let p = 0; p < pushCount; p++) {
+      steps.push({ direction: pushDirection, kind: "push" });
+    }
   }
   return steps;
 }

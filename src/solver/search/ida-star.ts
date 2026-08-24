@@ -42,6 +42,7 @@ import {
 } from "./goal-commitment.ts";
 import { buildDeadlockTablesAsync } from "./deadlock-tables.ts";
 import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
+import { TunnelMacroDetector } from "./tunnel-macros.ts";
 import {
   hasPotentialInteractionBoost,
   InteractionBoostEvaluator,
@@ -115,6 +116,7 @@ export interface ExactMoveIdaStarOptions {
 interface PushRecord {
   readonly boxCell: number;
   readonly directionIndex: number;
+  readonly pushCount?: number;
 }
 
 /**
@@ -141,6 +143,13 @@ interface StackFrame {
   committedBoxes: ReadonlySet<number> | null;
   /** Which (boxIndex * 4 + directionIndex) to try next. */
   childCursor: number;
+  tunnelMacro: {
+    readonly stops: readonly import("./tunnel-macros.ts").TunnelMacroStop[];
+    readonly boxIndex: number;
+    readonly directionIndex: number;
+    readonly walkDistance: number;
+    cursor: number;
+  } | null;
   /** Whether this node has been expanded (passed f-bound, TT, solved checks). */
   expanded: boolean;
   /** Heuristic value at expansion (for TT-IDA* backed-up f computation). */
@@ -448,9 +457,16 @@ function reconstructSolution(
     for (const direction of walk) {
       steps.push({ direction, kind: "walk" });
     }
-    steps.push({ direction: pushDirection, kind: "push" });
+    const pc = push.pushCount ?? 1;
+    for (let p = 0; p < pc; p++) {
+      steps.push({ direction: pushDirection, kind: "push" });
+    }
 
-    currentRobot = push.boxCell;
+    let robotAfter = push.boxCell;
+    for (let p = 1; p < pc; p++) {
+      robotAfter = board.neighbors[robotAfter]?.[push.directionIndex] ?? robotAfter;
+    }
+    currentRobot = robotAfter;
   }
 
   return steps;
@@ -620,6 +636,9 @@ export async function runIdaStarSearch(
     const macroDetector = features.forcedPushMacros
       ? new ForcedPushMacroDetector(board)
       : null;
+    const tunnelDetector = features.tunnelMacros
+      ? new TunnelMacroDetector(board)
+      : null;
     const deadlockTableLookup = features.deadlockTablePruning
       ? await buildDeadlockTablesAsync(
           board,
@@ -754,6 +773,8 @@ export async function runIdaStarSearch(
       goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
       goalCommitments: commitmentDetector?.stats.commitments ?? 0,
       goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
+      tunnelMacroChecks: tunnelDetector?.stats.checks ?? 0,
+      tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
     });
 
     const currentMemory = (): IdaMemoryBreakdown =>
@@ -1096,6 +1117,7 @@ export async function runIdaStarSearch(
         frozenBoxes: null,
         committedBoxes: null,
         childCursor: 0,
+        tunnelMacro: null,
         expanded: false,
         h: 0,
         minChildF: Number.POSITIVE_INFINITY,
@@ -1514,6 +1536,7 @@ export async function runIdaStarSearch(
               cachedReachable: null,
               estimatedStackBytes: estimateStackFrameBytes(fpNewBoxes!, true),
               estimatedReachabilityBytes: 0,
+              tunnelMacro: null,
             });
             if (memoryLimitReached()) {
               limitDetail = "Estimated solver memory limit reached.";
@@ -1526,6 +1549,82 @@ export async function runIdaStarSearch(
         let foundChild = false;
 
         while (frame.childCursor < totalChildren) {
+          // Active tunnel macro: process remaining stops
+          if (frame.tunnelMacro !== null) {
+            const tm = frame.tunnelMacro;
+            while (tm.cursor < tm.stops.length) {
+              const stop = tm.stops[tm.cursor++]!;
+              const tmBox = frame.boxes[tm.boxIndex]!;
+
+              if (isStaticDeadCell(board, stop.finalCell, tmBox.label)) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+
+              const tmNewBoxes = movedBoxes(frame.boxes, tm.boxIndex, stop.finalCell);
+              fillDeadlockOccupancy(deadlockOccupancyBuffer, tmNewBoxes);
+              if (
+                createsFullyBlockedTwoByTwoDeadlock(
+                  board, tmNewBoxes, stop.finalCell, deadlockOccupancyBuffer,
+                )
+              ) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+              if (hasFreezeDeadlock(board, tmNewBoxes, deadlockOccupancyBuffer)) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+              if (
+                patternCache !== null &&
+                createsPatternDeadlock(board, tmNewBoxes, stop.finalCell, patternCache)
+              ) {
+                counters.patternDeadlockPrunes += 1;
+                continue;
+              }
+              if (deadlockTableCheck(tmNewBoxes, stop.finalCell)) {
+                counters.deadlockTablePrunes += 1;
+                continue;
+              }
+
+              const tmNewMoves = frame.moves + tm.walkDistance + stop.pushCount;
+              const tmNewPushes = frame.pushes + stop.pushCount;
+              const tmNewExactKey = exactKey(tmBox.cell, tmNewBoxes);
+              const tmNewZobristKey = zobristKey(tmBox.cell, tmNewBoxes);
+
+              pushFrame({
+                robot: stop.robotCell,
+                boxes: tmNewBoxes,
+                exactKey: tmNewExactKey,
+                zobristKey: tmNewZobristKey,
+                moves: tmNewMoves,
+                pushes: tmNewPushes,
+                g: tmNewMoves,
+                push: { boxCell: tmBox.cell, directionIndex: tm.directionIndex, pushCount: stop.pushCount },
+                frozenBoxes: null,
+                committedBoxes: null,
+                childCursor: 0,
+                tunnelMacro: null,
+                expanded: false,
+                h: 0,
+                minChildF: Number.POSITIVE_INFINITY,
+                reachabilitySnapshot: null,
+                cachedReachable: null,
+                estimatedStackBytes: estimateStackFrameBytes(tmNewBoxes, true),
+                estimatedReachabilityBytes: 0,
+              });
+              if (memoryLimitReached()) {
+                limitDetail = "Estimated solver memory limit reached.";
+                break idaLoop;
+              }
+              foundChild = true;
+              break;
+            }
+            if (foundChild) break;
+            frame.tunnelMacro = null;
+            continue;
+          }
+
           const cursor = frame.childCursor;
           frame.childCursor += 1;
 
@@ -1575,6 +1674,26 @@ export async function runIdaStarSearch(
           if (isStaticDeadCell(board, destination, box.label)) {
             counters.deadlockPrunes += 1;
             continue;
+          }
+
+          // Tunnel macro: chain pushes through tunnel
+          const tStops = tunnelDetector?.resolve(
+            destination, directionIndex, occupancyBuffer, board.goalLabelByCell, box.label,
+          );
+          if (tStops) {
+            const tDistance = reachable.distanceTo(support);
+            if (tDistance < 0) {
+              throw new Error("Reachable support cell has no keeper distance.");
+            }
+            counters.generated += tStops.length - 1;
+            workSinceYield += tStops.length - 1;
+            frame.tunnelMacro = {
+              stops: tStops,
+              boxIndex,
+              directionIndex,
+              walkDistance: tDistance,
+              cursor: 0,
+            };
           }
 
           // Move box
@@ -1645,6 +1764,7 @@ export async function runIdaStarSearch(
               true,
             ),
             estimatedReachabilityBytes: 0,
+            tunnelMacro: null,
           };
 
           pushFrame(childFrame);
