@@ -246,6 +246,7 @@ fails when the generated facts below differ from source.
 - `patternDeadlockPruning`: enabled by default
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default
+- `tunnelMacros`: enabled by default
 
 ### Frozen solver evidence
 
