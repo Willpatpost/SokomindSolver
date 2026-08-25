@@ -4,6 +4,9 @@ import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import { directionDelta } from "../../../core/position.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
+import { enumerateReachablePushes } from "./reachable-pushes.ts";
+import { analyzeSolutionUsage } from "./solution-usage.ts";
+import { analyzeInteraction } from "./interaction-analysis.ts";
 
 // ---------------------------------------------------------------------------
 // Evaluation vector — all raw metrics, no premature aggregation
@@ -25,16 +28,31 @@ export interface PuzzleEvaluationVector {
   readonly pushRatio: number;
   readonly boxCount: number;
 
-  // --- Decision branching ---
+  // --- Decision branching (adjacent-only, legacy) ---
   readonly avgLegalPushes: number;
   readonly maxLegalPushes: number;
   readonly singleChoiceRatio: number;
   readonly highBranchCount: number;
 
-  // --- Box interaction ---
+  // --- Decision branching (reachable, correct) ---
+  readonly avgReachablePushes: number;
+  readonly maxReachablePushes: number;
+  readonly reachableSingleChoiceRatio: number;
+  readonly reachableHighBranchCount: number;
+  readonly reachableForcedPushRatio: number;
+
+  // --- Box interaction (push-switch, legacy name) ---
   readonly boxIndependenceRatio: number;
   readonly boxInteractionEvents: number;
   readonly pushesPerBox: number;
+  readonly pushSwitchRatio: number;
+
+  // --- Causal interaction ---
+  readonly sharedRouteCells: number;
+  readonly sharedSupportCells: number;
+  readonly sharedChokepointUses: number;
+  readonly causalEnableCount: number;
+  readonly causalDisableCount: number;
 
   // --- Packing / room traffic ---
   readonly roomCrossingsInSolution: number;
@@ -57,6 +75,10 @@ export interface PuzzleEvaluationVector {
   readonly repetitivePushRatio: number;
   readonly unusedFloorRatio: number;
   readonly movesPerPush: number;
+
+  // --- Solution floor usage (correct, replaces static unusedFloorRatio) ---
+  readonly solutionFloorCoverage: number;
+  readonly solutionUnusedFloorRatio: number;
 
   // --- Board properties ---
   readonly boardWidth: number;
@@ -107,6 +129,10 @@ export async function evaluatePuzzle(
   const roomMetrics = analyzeRoomTraffic(steps, grid, structMetrics);
   const tediumMetrics = analyzeTedium(steps, structMetrics, grid);
   const effortMetrics = extractEffort(metrics);
+  const usageMetrics = analyzeSolutionUsage(grid, steps, structMetrics.totalFloor);
+  const interactionMetrics = analyzeInteraction(
+    grid, steps, structMetrics.chokepoints, grid[0]?.length ?? 0,
+  );
 
   return {
     // Solver effort
@@ -124,16 +150,31 @@ export async function evaluatePuzzle(
     pushRatio: solution.moves > 0 ? solution.pushes / solution.moves : 0,
     boxCount: puzzle.boxes,
 
-    // Decision branching
+    // Decision branching (adjacent, legacy)
     avgLegalPushes: branchMetrics.avgLegalPushes,
     maxLegalPushes: branchMetrics.maxLegalPushes,
     singleChoiceRatio: branchMetrics.singleChoiceRatio,
     highBranchCount: branchMetrics.highBranchCount,
 
-    // Box interaction
+    // Decision branching (reachable, correct)
+    avgReachablePushes: branchMetrics.avgReachablePushes,
+    maxReachablePushes: branchMetrics.maxReachablePushes,
+    reachableSingleChoiceRatio: branchMetrics.reachableSingleChoiceRatio,
+    reachableHighBranchCount: branchMetrics.reachableHighBranchCount,
+    reachableForcedPushRatio: branchMetrics.reachableForcedPushRatio,
+
+    // Box interaction (push-switch)
     boxIndependenceRatio: boxMetrics.independenceRatio,
     boxInteractionEvents: boxMetrics.interactionEvents,
     pushesPerBox: puzzle.boxes > 0 ? solution.pushes / puzzle.boxes : 0,
+    pushSwitchRatio: boxMetrics.independenceRatio,
+
+    // Causal interaction
+    sharedRouteCells: interactionMetrics.sharedRouteCells,
+    sharedSupportCells: interactionMetrics.sharedSupportCells,
+    sharedChokepointUses: interactionMetrics.sharedChokepointUses,
+    causalEnableCount: interactionMetrics.causalEnableCount,
+    causalDisableCount: interactionMetrics.causalDisableCount,
 
     // Packing / room traffic
     roomCrossingsInSolution: roomMetrics.roomCrossings,
@@ -158,6 +199,10 @@ export async function evaluatePuzzle(
     repetitivePushRatio: tediumMetrics.repetitivePushRatio,
     unusedFloorRatio: tediumMetrics.unusedFloorRatio,
     movesPerPush: solution.pushes > 0 ? solution.moves / solution.pushes : 0,
+
+    // Solution floor usage
+    solutionFloorCoverage: usageMetrics.solutionFloorCoverage,
+    solutionUnusedFloorRatio: usageMetrics.solutionUnusedFloorRatio,
 
     // Board
     boardWidth: grid[0]?.length ?? 0,
@@ -199,9 +244,22 @@ function buildUnsolvedVector(
     singleChoiceRatio: 0,
     highBranchCount: 0,
 
+    avgReachablePushes: 0,
+    maxReachablePushes: 0,
+    reachableSingleChoiceRatio: 0,
+    reachableHighBranchCount: 0,
+    reachableForcedPushRatio: 0,
+
     boxIndependenceRatio: 1,
     boxInteractionEvents: 0,
     pushesPerBox: 0,
+    pushSwitchRatio: 1,
+
+    sharedRouteCells: 0,
+    sharedSupportCells: 0,
+    sharedChokepointUses: 0,
+    causalEnableCount: 0,
+    causalDisableCount: 0,
 
     roomCrossingsInSolution: 0,
 
@@ -220,6 +278,9 @@ function buildUnsolvedVector(
     repetitivePushRatio: 0,
     unusedFloorRatio: computeUnusedFloorRatio(grid, metrics),
     movesPerPush: 0,
+
+    solutionFloorCoverage: 0,
+    solutionUnusedFloorRatio: 1,
 
     boardWidth: grid[0]?.length ?? 0,
     boardHeight: grid.length,
@@ -295,6 +356,11 @@ interface BranchMetrics {
   singleChoiceRatio: number;
   highBranchCount: number;
   forcedPushRatio: number;
+  avgReachablePushes: number;
+  maxReachablePushes: number;
+  reachableSingleChoiceRatio: number;
+  reachableHighBranchCount: number;
+  reachableForcedPushRatio: number;
 }
 
 const DR = [-1, 1, 0, 0];
@@ -304,9 +370,12 @@ function analyzeBranching(
   puzzle: PuzzleDefinition,
   steps: readonly SolutionStep[],
 ): BranchMetrics {
-  if (steps.length === 0) {
-    return { avgLegalPushes: 0, maxLegalPushes: 0, singleChoiceRatio: 0, highBranchCount: 0, forcedPushRatio: 0 };
-  }
+  const zeroBranch: BranchMetrics = {
+    avgLegalPushes: 0, maxLegalPushes: 0, singleChoiceRatio: 0, highBranchCount: 0, forcedPushRatio: 0,
+    avgReachablePushes: 0, maxReachablePushes: 0, reachableSingleChoiceRatio: 0, reachableHighBranchCount: 0, reachableForcedPushRatio: 0,
+  };
+
+  if (steps.length === 0) return zeroBranch;
 
   const grid = puzzle.rows.map((r) => [...r]);
   const h = grid.length;
@@ -326,7 +395,9 @@ function analyzeBranching(
   }
 
   const pushCounts: number[] = [];
+  const reachablePushCounts: number[] = [];
   let forcedPushes = 0;
+  let reachableForcedPushes = 0;
 
   const boxSet = new Set(boxes.map((b) => `${b.row},${b.column}`));
 
@@ -335,6 +406,10 @@ function analyzeBranching(
       const legalPushes = countLegalPushes(robot, boxes, boxSet, grid, h, w);
       pushCounts.push(legalPushes);
       if (legalPushes <= 1) forcedPushes++;
+
+      const reachable = enumerateReachablePushes(grid, robot, boxes);
+      reachablePushCounts.push(reachable.length);
+      if (reachable.length <= 1) reachableForcedPushes++;
     }
 
     const dir = directionDelta(step.direction);
@@ -353,14 +428,17 @@ function analyzeBranching(
     robot = { row: nr, column: nc };
   }
 
-  if (pushCounts.length === 0) {
-    return { avgLegalPushes: 0, maxLegalPushes: 0, singleChoiceRatio: 0, highBranchCount: 0, forcedPushRatio: 0 };
-  }
+  if (pushCounts.length === 0) return zeroBranch;
 
   const avg = pushCounts.reduce((a, b) => a + b, 0) / pushCounts.length;
   const max = Math.max(...pushCounts);
   const singles = pushCounts.filter((c) => c <= 1).length;
   const highs = pushCounts.filter((c) => c >= 4).length;
+
+  const rAvg = reachablePushCounts.reduce((a, b) => a + b, 0) / reachablePushCounts.length;
+  const rMax = Math.max(...reachablePushCounts);
+  const rSingles = reachablePushCounts.filter((c) => c <= 1).length;
+  const rHighs = reachablePushCounts.filter((c) => c >= 4).length;
 
   return {
     avgLegalPushes: avg,
@@ -368,6 +446,11 @@ function analyzeBranching(
     singleChoiceRatio: singles / pushCounts.length,
     highBranchCount: highs,
     forcedPushRatio: forcedPushes / pushCounts.length,
+    avgReachablePushes: rAvg,
+    maxReachablePushes: rMax,
+    reachableSingleChoiceRatio: rSingles / reachablePushCounts.length,
+    reachableHighBranchCount: rHighs,
+    reachableForcedPushRatio: reachableForcedPushes / reachablePushCounts.length,
   };
 }
 
@@ -626,9 +709,20 @@ const NUMERIC_KEYS: readonly (keyof PuzzleEvaluationVector)[] = [
   "maxLegalPushes",
   "singleChoiceRatio",
   "highBranchCount",
+  "avgReachablePushes",
+  "maxReachablePushes",
+  "reachableSingleChoiceRatio",
+  "reachableHighBranchCount",
+  "reachableForcedPushRatio",
   "boxIndependenceRatio",
   "boxInteractionEvents",
   "pushesPerBox",
+  "pushSwitchRatio",
+  "sharedRouteCells",
+  "sharedSupportCells",
+  "sharedChokepointUses",
+  "causalEnableCount",
+  "causalDisableCount",
   "roomCrossingsInSolution",
   "deadlockDensity",
   "articulationPoints",
@@ -643,6 +737,8 @@ const NUMERIC_KEYS: readonly (keyof PuzzleEvaluationVector)[] = [
   "repetitivePushRatio",
   "unusedFloorRatio",
   "movesPerPush",
+  "solutionFloorCoverage",
+  "solutionUnusedFloorRatio",
   "boardWidth",
   "boardHeight",
   "totalFloor",

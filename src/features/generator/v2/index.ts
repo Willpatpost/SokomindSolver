@@ -188,3 +188,28 @@ export type {
   ForgeCombination,
   ForgeScheduleEntry,
 } from "./forge-sampling.ts";
+
+export {
+  enumerateReachablePushes,
+  floodKeeperReachable,
+} from "./reachable-pushes.ts";
+
+export type {
+  ReachablePush,
+} from "./reachable-pushes.ts";
+
+export {
+  analyzeSolutionUsage,
+} from "./solution-usage.ts";
+
+export type {
+  SolutionUsageMetrics,
+} from "./solution-usage.ts";
+
+export {
+  analyzeInteraction,
+} from "./interaction-analysis.ts";
+
+export type {
+  InteractionMetrics,
+} from "./interaction-analysis.ts";

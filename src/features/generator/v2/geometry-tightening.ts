@@ -3,6 +3,7 @@ import type { SolutionStep } from "../../../solver/contracts.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
+import { analyzeSolutionUsage } from "./solution-usage.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,6 +26,7 @@ export const DEFAULT_TIGHTENING_PARAMS: TighteningParams = {
 export interface TighteningMetrics {
   readonly totalFloor: number;
   readonly unusedFloorRatio: number;
+  readonly solutionUnusedFloorRatio: number;
   readonly emptyWalkRatio: number;
   readonly longestWalkStreak: number;
   readonly repetitivePushRatio: number;
@@ -32,6 +34,7 @@ export interface TighteningMetrics {
   readonly solutionMoves: number;
   readonly solutionPushes: number;
   readonly boxIndependenceRatio: number;
+  readonly pushSwitchRatio: number;
   readonly solverExpandedStates: number;
   readonly deadlockDensity: number;
 }
@@ -457,6 +460,7 @@ function computeTighteningMetrics(
   const movesPerPush = pushes > 0 ? totalMoves / pushes : 0;
 
   const boxIndependenceRatio = computeBoxIndependence(puzzle, steps);
+  const usageMetrics = analyzeSolutionUsage(grid, steps, totalFloor);
 
   const expanded = solverMetrics.expandedStates ?? 0;
   const counters = solverMetrics.counters ?? {};
@@ -468,6 +472,7 @@ function computeTighteningMetrics(
   return {
     totalFloor,
     unusedFloorRatio,
+    solutionUnusedFloorRatio: usageMetrics.solutionUnusedFloorRatio,
     emptyWalkRatio,
     longestWalkStreak,
     repetitivePushRatio,
@@ -475,6 +480,7 @@ function computeTighteningMetrics(
     solutionMoves: totalMoves,
     solutionPushes: pushes,
     boxIndependenceRatio,
+    pushSwitchRatio: boxIndependenceRatio,
     solverExpandedStates: expanded,
     deadlockDensity,
   };

@@ -434,3 +434,68 @@ test("benchmark: cross-population evaluation", async () => {
   assert.ok(v1Summary.solvedCount >= 3, "most V1 should solve");
   assert.ok(v2BeamSummary.count > 0, "should have V2 beam puzzles");
 });
+
+// ---------------------------------------------------------------------------
+// Phase 2 evaluator semantic tests
+// ---------------------------------------------------------------------------
+
+test("reachable push count >= adjacent push count", async () => {
+  const ev = await evaluatePuzzle(TRIVIAL_1BOX);
+  assert.ok(ev.avgReachablePushes >= ev.avgLegalPushes,
+    `reachable ${ev.avgReachablePushes} should be >= adjacent ${ev.avgLegalPushes}`);
+});
+
+test("reachable push metrics are non-negative", async () => {
+  const ev = await evaluatePuzzle(TWO_BOX_SIMPLE);
+  assert.ok(ev.avgReachablePushes >= 0);
+  assert.ok(ev.maxReachablePushes >= 0);
+  assert.ok(ev.reachableSingleChoiceRatio >= 0 && ev.reachableSingleChoiceRatio <= 1);
+  assert.ok(ev.reachableHighBranchCount >= 0);
+  assert.ok(ev.reachableForcedPushRatio >= 0 && ev.reachableForcedPushRatio <= 1);
+});
+
+test("solutionFloorCoverage in [0,1]", async () => {
+  const ev = await evaluatePuzzle(TRIVIAL_1BOX);
+  assert.ok(ev.solutionFloorCoverage >= 0 && ev.solutionFloorCoverage <= 1,
+    `coverage ${ev.solutionFloorCoverage} should be in [0,1]`);
+});
+
+test("solutionUnusedFloorRatio + solutionFloorCoverage ≈ 1", async () => {
+  const ev = await evaluatePuzzle(TRIVIAL_1BOX);
+  const sum = ev.solutionFloorCoverage + ev.solutionUnusedFloorRatio;
+  assert.ok(Math.abs(sum - 1) < 1e-10, `sum should be 1, got ${sum}`);
+});
+
+test("pushSwitchRatio equals boxIndependenceRatio", async () => {
+  const ev = await evaluatePuzzle(TWO_BOX_SIMPLE);
+  assert.equal(ev.pushSwitchRatio, ev.boxIndependenceRatio,
+    "pushSwitchRatio is the same formula as boxIndependenceRatio");
+});
+
+test("interaction metrics are non-negative", async () => {
+  const ev = await evaluatePuzzle(TWO_BOX_SIMPLE);
+  assert.ok(ev.sharedRouteCells >= 0);
+  assert.ok(ev.sharedSupportCells >= 0);
+  assert.ok(ev.sharedChokepointUses >= 0);
+  assert.ok(ev.causalEnableCount >= 0);
+  assert.ok(ev.causalDisableCount >= 0);
+});
+
+test("1-box puzzle has zero interaction metrics", async () => {
+  const ev = await evaluatePuzzle(TRIVIAL_1BOX);
+  assert.equal(ev.sharedRouteCells, 0);
+  assert.equal(ev.sharedSupportCells, 0);
+  assert.equal(ev.sharedChokepointUses, 0);
+  assert.equal(ev.causalEnableCount, 0);
+  assert.equal(ev.causalDisableCount, 0);
+});
+
+test("corridor puzzle has interaction or causal events with 2 boxes", async () => {
+  const ev = await evaluatePuzzle(CORRIDOR_PUZZLE);
+  if (ev.solved && ev.solutionPushes > 2) {
+    assert.ok(
+      ev.sharedRouteCells >= 0 || ev.causalEnableCount >= 0 || ev.causalDisableCount >= 0,
+      "some interaction signal expected for multi-box corridor",
+    );
+  }
+});

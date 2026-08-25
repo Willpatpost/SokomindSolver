@@ -379,15 +379,15 @@ test("summarizeTighteningResults computes correct averages", () => {
     elapsedMs: 100,
     metrics: {
       before: {
-        totalFloor: 20, unusedFloorRatio: 0.5, emptyWalkRatio: 0.6,
+        totalFloor: 20, unusedFloorRatio: 0.5, solutionUnusedFloorRatio: 0.4, emptyWalkRatio: 0.6,
         longestWalkStreak: 4, repetitivePushRatio: 0.2, movesPerPush: 3,
-        solutionMoves: 12, solutionPushes: 4, boxIndependenceRatio: 0.8,
+        solutionMoves: 12, solutionPushes: 4, boxIndependenceRatio: 0.8, pushSwitchRatio: 0.8,
         solverExpandedStates: 100, deadlockDensity: 0.1,
       },
       after: {
-        totalFloor: 15, unusedFloorRatio: 0.3, emptyWalkRatio: 0.4,
+        totalFloor: 15, unusedFloorRatio: 0.3, solutionUnusedFloorRatio: 0.2, emptyWalkRatio: 0.4,
         longestWalkStreak: 2, repetitivePushRatio: 0.1, movesPerPush: 2.5,
-        solutionMoves: 10, solutionPushes: 4, boxIndependenceRatio: 0.7,
+        solutionMoves: 10, solutionPushes: 4, boxIndependenceRatio: 0.7, pushSwitchRatio: 0.7,
         solverExpandedStates: 80, deadlockDensity: 0.08,
       },
     },
