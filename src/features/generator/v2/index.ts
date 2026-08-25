@@ -135,17 +135,31 @@ export type {
   DependencyRealizationResult,
   EdgeRealizationDetail,
   ComposedPuzzleResult,
+  VerificationConfidence,
+  DependencyEvidence,
 } from "./dependency-graph.ts";
+
+export {
+  verifyDependenciesWithEvidence,
+  collectPassageCells,
+} from "./dependency-verification.ts";
+
+export type {
+  DependencyEdgeVerification,
+  DependencyVerificationResult,
+} from "./dependency-verification.ts";
 
 export {
   tightenPuzzle,
   tightenPuzzles,
   summarizeTighteningResults,
+  buildPreservationContext,
   DEFAULT_TIGHTENING_PARAMS,
 } from "./geometry-tightening.ts";
 
 export type {
   TighteningParams,
+  TighteningPreservationContext,
   TighteningMetrics,
   TighteningResult,
   TighteningSummary,

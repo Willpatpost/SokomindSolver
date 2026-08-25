@@ -463,10 +463,12 @@ export function selectGoals(
 
     if (!wouldBlockExistingGoals(goals, cell, grid)) {
       used.add(key);
+      const rid = defaultRoomId >= 0 ? defaultRoomId : 0;
       goals.push({
+        goalId: `r${rid}-g${goals.length}`,
         row: cell.row,
         column: cell.column,
-        roomId: defaultRoomId >= 0 ? defaultRoomId : 0,
+        roomId: rid,
         depthFromDoorway: cell.depthFromDoorway,
         reversePullDirs: cell.reversePullDirs,
       });

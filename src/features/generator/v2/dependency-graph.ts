@@ -33,8 +33,8 @@ import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { PuzzleDefinition } from "../../../core/model.ts";
-import { directionDelta } from "../../../core/position.ts";
 import type { GridPosition } from "../generator-types.ts";
+import { verifyDependenciesWithEvidence, collectPassageCells } from "./dependency-verification.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +48,7 @@ export type DependencyEdgeType =
 
 export interface DependencyNode {
   readonly id: number;
+  readonly goalId?: string;
   readonly goalIndex: number;
   readonly roomId: number;
   readonly role: string;
@@ -93,6 +94,13 @@ export const DEFAULT_COMPOSITION_PARAMS: CompositionParams = {
   maxRetries: 5,
 };
 
+export type VerificationConfidence = "structural" | "observed" | "counterfactual";
+
+export interface DependencyEvidence {
+  readonly kind: string;
+  readonly description: string;
+}
+
 export interface DependencyRealizationResult {
   readonly dag: DependencyDAG;
   readonly totalEdges: number;
@@ -104,7 +112,9 @@ export interface DependencyRealizationResult {
 export interface EdgeRealizationDetail {
   readonly edge: DependencyEdge;
   readonly realized: boolean;
+  readonly confidence: VerificationConfidence;
   readonly reason: string;
+  readonly evidence: readonly DependencyEvidence[];
 }
 
 export interface ComposedPuzzleResult {
@@ -346,6 +356,7 @@ function gatePackComposition(
 
     const gateCell = gateCandidates[0];
     const gateGoal: GoalCell = {
+      goalId: `r${nearRoom.id}-gate`,
       row: gateCell.row,
       column: gateCell.column,
       roomId: nearRoom.id,
@@ -372,6 +383,7 @@ function gatePackComposition(
 
     const nodes: DependencyNode[] = goals.map((g, i) => ({
       id: i,
+      goalId: g.goalId ?? `r${g.roomId}-g${i}`,
       goalIndex: i,
       roomId: g.roomId,
       role: i === 0 ? "gatekeeper" : "inner-pack",
@@ -483,6 +495,7 @@ function gateStagingComposition(
 
     const gateCell = gateCandidates[0];
     const gateGoal: GoalCell = {
+      goalId: `r${nearRoom.id}-gate`,
       row: gateCell.row,
       column: gateCell.column,
       roomId: nearRoom.id,
@@ -493,6 +506,7 @@ function gateStagingComposition(
     const goals: GoalCell[] = [
       gateGoal,
       {
+        goalId: `r${farRoom.id}-deep`,
         row: deepGoal.row,
         column: deepGoal.column,
         roomId: farRoom.id,
@@ -500,6 +514,7 @@ function gateStagingComposition(
         reversePullDirs: deepGoal.reversePullDirs,
       },
       {
+        goalId: `r${farRoom.id}-blocker`,
         row: blockerGoal.row,
         column: blockerGoal.column,
         roomId: farRoom.id,
@@ -527,6 +542,7 @@ function gateStagingComposition(
 
     const nodes: DependencyNode[] = goals.map((g, i) => ({
       id: i,
+      goalId: g.goalId ?? `r${g.roomId}-g${i}`,
       goalIndex: i,
       roomId: g.roomId,
       role: i === 0 ? "gatekeeper" : i === 1 ? "staging-deep" : i === 2 ? "staging-blocker" : "extra",
@@ -636,6 +652,7 @@ function trafficStagingComposition(
 
     const goals: GoalCell[] = [
       {
+        goalId: `r${stagingRoom.id}-deep`,
         row: deepGoal.row,
         column: deepGoal.column,
         roomId: stagingRoom.id,
@@ -643,6 +660,7 @@ function trafficStagingComposition(
         reversePullDirs: deepGoal.reversePullDirs,
       },
       {
+        goalId: `r${stagingRoom.id}-blocker`,
         row: blockerGoal.row,
         column: blockerGoal.column,
         roomId: stagingRoom.id,
@@ -684,6 +702,7 @@ function trafficStagingComposition(
 
     const nodes: DependencyNode[] = goals.map((g, i) => ({
       id: i,
+      goalId: g.goalId ?? `r${g.roomId}-g${i}`,
       goalIndex: i,
       roomId: g.roomId,
       role:
@@ -823,168 +842,29 @@ function pickStagingRoom(
 }
 
 // ---------------------------------------------------------------------------
-// Dependency verification via solution analysis
+// Dependency verification via solution analysis (delegated to dependency-verification.ts)
 // ---------------------------------------------------------------------------
-
-interface BoxCompletionRecord {
-  readonly boxIndex: number;
-  readonly completionStep: number;
-  readonly goalIndex: number;
-}
-
-function trackBoxCompletions(
-  puzzle: PuzzleDefinition,
-  steps: readonly SolutionStep[],
-): BoxCompletionRecord[] {
-  const grid = puzzle.rows.map((r) => [...r]);
-  const h = grid.length;
-  const w = h > 0 ? grid[0].length : 0;
-
-  let robot = { row: 0, column: 0 };
-  const boxes: Array<{ row: number; column: number }> = [];
-  const goalPositions: Array<{ row: number; column: number }> = [];
-
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z"))
-        boxes.push({ row: r, column: c });
-      if (ch === "S" || (ch >= "a" && ch <= "z"))
-        goalPositions.push({ row: r, column: c });
-    }
-  }
-
-  const goalSet = new Set(goalPositions.map((g) => `${g.row},${g.column}`));
-
-  const completions: BoxCompletionRecord[] = [];
-  const completedBoxes = new Set<number>();
-
-  for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
-    const step = steps[stepIdx];
-    const dir = directionDelta(step.direction);
-    const nr = robot.row + dir.row;
-    const nc = robot.column + dir.column;
-
-    if (step.kind === "push") {
-      const bi = boxes.findIndex((b) => b.row === nr && b.column === nc);
-      if (bi >= 0) {
-        const destR = nr + dir.row;
-        const destC = nc + dir.column;
-        boxes[bi] = { row: destR, column: destC };
-
-        if (
-          goalSet.has(`${destR},${destC}`) &&
-          !completedBoxes.has(bi)
-        ) {
-          const gi = goalPositions.findIndex(
-            (g) => g.row === destR && g.column === destC,
-          );
-          if (gi >= 0) {
-            completions.push({
-              boxIndex: bi,
-              completionStep: stepIdx,
-              goalIndex: gi,
-            });
-            completedBoxes.add(bi);
-          }
-        }
-      }
-    }
-    robot = { row: nr, column: nc };
-  }
-
-  return completions;
-}
 
 export function verifyDependencies(
   dag: DependencyDAG,
   puzzle: PuzzleDefinition,
   steps: readonly SolutionStep[],
+  passageCells?: ReadonlySet<string>,
 ): DependencyRealizationResult {
-  const completions = trackBoxCompletions(puzzle, steps);
-
-  const goalToCompletion = new Map<number, number>();
-  for (const c of completions) {
-    goalToCompletion.set(c.goalIndex, c.completionStep);
-  }
-
-  const edgeDetails: EdgeRealizationDetail[] = [];
-
-  for (const edge of dag.edges) {
-    const fromNode = dag.nodes.find((n) => n.id === edge.from);
-    const toNode = dag.nodes.find((n) => n.id === edge.to);
-    if (!fromNode || !toNode) {
-      edgeDetails.push({
-        edge,
-        realized: false,
-        reason: "Node not found in DAG",
-      });
-      continue;
-    }
-
-    const fromStep = goalToCompletion.get(fromNode.goalIndex);
-    const toStep = goalToCompletion.get(toNode.goalIndex);
-
-    if (fromStep === undefined || toStep === undefined) {
-      edgeDetails.push({
-        edge,
-        realized: false,
-        reason:
-          fromStep === undefined
-            ? `Goal ${fromNode.goalIndex} never completed`
-            : `Goal ${toNode.goalIndex} never completed`,
-      });
-      continue;
-    }
-
-    switch (edge.type) {
-      case "must-precede":
-      case "blocks-access": {
-        const realized = fromStep < toStep;
-        edgeDetails.push({
-          edge,
-          realized,
-          reason: realized
-            ? `Goal ${fromNode.goalIndex} completed at step ${fromStep} before goal ${toNode.goalIndex} at step ${toStep}`
-            : `Goal ${fromNode.goalIndex} completed at step ${fromStep}, but goal ${toNode.goalIndex} completed at step ${toStep} (expected earlier)`,
-        });
-        break;
-      }
-      case "must-stage": {
-        const realized = fromStep < toStep;
-        edgeDetails.push({
-          edge,
-          realized,
-          reason: realized
-            ? `Staging: goal ${fromNode.goalIndex} filled at step ${fromStep} before blocker goal ${toNode.goalIndex} at step ${toStep}`
-            : `Staging not realized: goal ${fromNode.goalIndex} at step ${fromStep}, blocker ${toNode.goalIndex} at step ${toStep}`,
-        });
-        break;
-      }
-      case "shares-passage": {
-        const realized = fromStep !== toStep;
-        edgeDetails.push({
-          edge,
-          realized,
-          reason: realized
-            ? `Goals ${fromNode.goalIndex} and ${toNode.goalIndex} completed at different steps (${fromStep} vs ${toStep}), passage sequencing observed`
-            : `Goals completed simultaneously — no passage interaction`,
-        });
-        break;
-      }
-    }
-  }
-
-  const totalEdges = dag.edges.length;
-  const realizedEdges = edgeDetails.filter((d) => d.realized).length;
-
+  const result = verifyDependenciesWithEvidence(dag, puzzle, steps, passageCells);
+  const edgeMap = new Map(dag.edges.map((e) => [`${e.from}-${e.to}-${e.type}`, e]));
   return {
     dag,
-    totalEdges,
-    realizedEdges,
-    realizationRate: totalEdges > 0 ? realizedEdges / totalEdges : 1,
-    edgeDetails,
+    totalEdges: result.totalEdges,
+    realizedEdges: result.realizedEdges,
+    realizationRate: result.realizationRate,
+    edgeDetails: result.edgeDetails.map((d) => ({
+      edge: edgeMap.get(`${d.edge.from}-${d.edge.to}-${d.edge.type}`) ?? dag.edges[0],
+      realized: d.realized,
+      confidence: d.confidence,
+      reason: d.reason,
+      evidence: d.evidence,
+    })),
   };
 }
 
@@ -1054,7 +934,8 @@ export async function generateComposedPuzzle(
     const solveResult = await solvePuzzleForVerification(puzzle);
     if (!solveResult) continue;
 
-    const realization = verifyDependencies(dag, puzzle, solveResult.steps);
+    const pCells = collectPassageCells(blueprint.passages);
+    const realization = verifyDependencies(dag, puzzle, solveResult.steps, pCells);
 
     if (realization.realizationRate < 0.5 && retry < maxRetries - 1) {
       continue;

@@ -10,6 +10,7 @@ import {
   tightenPuzzle,
   tightenPuzzles,
   summarizeTighteningResults,
+  buildPreservationContext,
   generateVerifiedMotifPuzzle,
   generateComposedPuzzle,
   DEFAULT_BLUEPRINT_PARAMS,
@@ -20,6 +21,8 @@ import {
   type TighteningResult,
   type FunctionalBlueprint,
 } from "../../src/features/generator/v2/index.ts";
+
+import { analyzeGrid, parseRowsToGrid } from "../../src/features/generator/v2/structural-metrics.ts";
 
 import { buildPuzzleFromScramble } from "../../src/features/generator/generate-puzzle.ts";
 import { validatePuzzle } from "../../src/core/puzzle.ts";
@@ -697,4 +700,128 @@ test("benchmark: tightened vs untightened across topology/motif/composition type
     summary.avgUnusedAfter <= summary.avgUnusedBefore + 0.02,
     "unused floor ratio should not increase overall",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Phase 7: Preservation context tests
+// ---------------------------------------------------------------------------
+
+test("tightening: preservation context protects cells from removal", async () => {
+  const puzzle: PuzzleDefinition = {
+    id: "test-protected",
+    title: "Protected cells test",
+    difficulty: "beginner",
+    boxes: 2,
+    rows: [
+      "OOOOOOOO",
+      "OR     O",
+      "OOOO X O",
+      "OS   X O",
+      "OS     O",
+      "OOOOOOOO",
+    ],
+  };
+
+  const protectedCells = new Set<string>();
+  for (let r = 0; r < puzzle.rows.length; r++) {
+    for (let c = 0; c < puzzle.rows[r].length; c++) {
+      if (puzzle.rows[r][c] !== "O") {
+        protectedCells.add(`${r},${c}`);
+      }
+    }
+  }
+
+  const result = await tightenPuzzle(puzzle, DEFAULT_TIGHTENING_PARAMS, {
+    protectedCells,
+  });
+
+  assert.ok(result !== null, "tightening should succeed");
+  if (result) {
+    assert.equal(result.cellsRemoved, 0, "no cells should be removed when all are protected");
+  }
+});
+
+test("tightening: buildPreservationContext produces valid context", () => {
+  const puzzle: PuzzleDefinition = {
+    id: "test-context",
+    title: "Context test",
+    difficulty: "beginner",
+    boxes: 2,
+    rows: [
+      "OOOOOOOO",
+      "OR     O",
+      "OOOO X O",
+      "OS   X O",
+      "OS     O",
+      "OOOOOOOO",
+    ],
+  };
+
+  const grid = parseRowsToGrid(puzzle.rows);
+  const context = buildPreservationContext(grid);
+
+  assert.ok(context.baselineStructural !== undefined);
+  assert.ok(context.baselineStructural!.totalFloor > 0);
+  assert.ok(context.minRoomFloorFraction !== undefined);
+  assert.ok(context.minRoomFloorFraction! > 0 && context.minRoomFloorFraction! <= 1);
+  assert.ok(context.roomFloorBaselines !== undefined);
+});
+
+test("tightening: tightening with preservation removes fewer cells", async () => {
+  for (let seed = 4000; seed < 4050; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const puzzle = await generatePuzzleFromBlueprint(fb, seed);
+    if (!puzzle) continue;
+
+    const grid = parseRowsToGrid(puzzle.rows);
+    const context = buildPreservationContext(grid);
+
+    const [withPres, withoutPres] = await Promise.all([
+      tightenPuzzle(puzzle, DEFAULT_TIGHTENING_PARAMS, context),
+      tightenPuzzle(puzzle, DEFAULT_TIGHTENING_PARAMS),
+    ]);
+
+    if (withPres && withoutPres) {
+      assert.ok(
+        withPres.cellsRemoved <= withoutPres.cellsRemoved,
+        `preservation should remove ≤ cells: ${withPres.cellsRemoved} vs ${withoutPres.cellsRemoved}`,
+      );
+      return;
+    }
+  }
+});
+
+test("tightening: structural integrity preserved with context", async () => {
+  for (let seed = 4100; seed < 4150; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const puzzle = await generatePuzzleFromBlueprint(fb, seed);
+    if (!puzzle) continue;
+
+    const grid = parseRowsToGrid(puzzle.rows);
+    const beforeMetrics = analyzeGrid(grid);
+    const context = buildPreservationContext(grid);
+
+    const result = await tightenPuzzle(puzzle, DEFAULT_TIGHTENING_PARAMS, context);
+    if (!result) continue;
+
+    const afterGrid = parseRowsToGrid(result.tightened.rows);
+    const afterMetrics = analyzeGrid(afterGrid);
+
+    assert.ok(
+      afterMetrics.connectedComponents <= beforeMetrics.connectedComponents,
+      "should not increase connected components",
+    );
+
+    if (beforeMetrics.regionCount > 1) {
+      assert.ok(
+        afterMetrics.regionCount >= beforeMetrics.regionCount - 1,
+        `region count should not drop significantly: ${afterMetrics.regionCount} vs ${beforeMetrics.regionCount}`,
+      );
+    }
+    return;
+  }
 });

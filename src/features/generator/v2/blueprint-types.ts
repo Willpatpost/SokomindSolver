@@ -94,6 +94,7 @@ export const DEFAULT_GOAL_PARAMS: GoalPlacementParams = {
 };
 
 export interface GoalCell {
+  readonly goalId?: string;
   readonly row: number;
   readonly column: number;
   readonly roomId: number;

@@ -836,3 +836,125 @@ test("dependency-graph: composed goals are on valid floor positions", () => {
   }
   assert.ok(checked > 0, "should validate at least one composition");
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6: Evidence-based dependency verification
+// ---------------------------------------------------------------------------
+
+test("dependency-graph: edge verification includes confidence and evidence", async () => {
+  for (let seed = 1700; seed < 1800; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const result = await generateComposedPuzzle(fb, {
+      ...DEFAULT_COMPOSITION_PARAMS,
+      seed,
+    });
+    if (!result) continue;
+
+    const { realization } = result;
+    for (const detail of realization.edgeDetails) {
+      assert.ok(
+        ["structural", "observed", "counterfactual"].includes(detail.confidence),
+        `confidence should be valid, got ${detail.confidence}`,
+      );
+      assert.ok(Array.isArray(detail.evidence), "evidence should be an array");
+      assert.ok(detail.evidence.length >= 0, "evidence should be non-negative length");
+      for (const ev of detail.evidence) {
+        assert.ok(typeof ev.kind === "string" && ev.kind.length > 0);
+        assert.ok(typeof ev.description === "string" && ev.description.length > 0);
+      }
+    }
+    return;
+  }
+  assert.fail("no composed puzzle generated for evidence test");
+});
+
+test("dependency-graph: must-stage requires displacement evidence", async () => {
+  for (let seed = 1800; seed < 1900; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const result = await generateComposedPuzzle(fb, {
+      ...DEFAULT_COMPOSITION_PARAMS,
+      seed,
+      composition: "gate-staging",
+    });
+    if (!result) continue;
+
+    const stagingEdges = result.realization.edgeDetails.filter(
+      (d) => d.edge.type === "must-stage",
+    );
+
+    for (const detail of stagingEdges) {
+      if (detail.realized) {
+        assert.ok(
+          detail.confidence === "structural",
+          `realized staging should be structural confidence, got ${detail.confidence}`,
+        );
+        assert.ok(
+          detail.evidence.some((e) => e.kind === "staging-displacement"),
+          "realized staging should have displacement evidence",
+        );
+      }
+    }
+    return;
+  }
+  assert.fail("no gate-staging composed puzzle generated");
+});
+
+test("dependency-graph: goalId is assigned to nodes", () => {
+  for (let seed = 1900; seed < 1950; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const result = composeMotifs(fb, { ...DEFAULT_COMPOSITION_PARAMS, seed });
+    if (!result) continue;
+
+    for (const node of result.dag.nodes) {
+      assert.ok(
+        typeof node.goalId === "string" && node.goalId.length > 0,
+        `node ${node.id} should have a goalId, got ${node.goalId}`,
+      );
+    }
+
+    const goalIds = result.dag.nodes.map((n) => n.goalId);
+    const uniqueIds = new Set(goalIds);
+    assert.equal(goalIds.length, uniqueIds.size, "goalIds should be unique within a composition");
+    return;
+  }
+  assert.fail("no composition produced for goalId test");
+});
+
+test("dependency-graph: blocks-access has structural evidence when realized", async () => {
+  for (let seed = 1950; seed < 2050; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const result = await generateComposedPuzzle(fb, {
+      ...DEFAULT_COMPOSITION_PARAMS,
+      seed,
+      composition: "gate-pack",
+    });
+    if (!result) continue;
+
+    const accessEdges = result.realization.edgeDetails.filter(
+      (d) => d.edge.type === "blocks-access",
+    );
+
+    for (const detail of accessEdges) {
+      if (detail.realized) {
+        assert.ok(
+          detail.evidence.length >= 1,
+          "realized blocks-access should have evidence",
+        );
+        assert.ok(
+          detail.evidence.some((e) => e.kind === "completion-order"),
+          "should have completion-order evidence",
+        );
+      }
+    }
+    return;
+  }
+  assert.fail("no gate-pack composed puzzle generated for evidence test");
+});

@@ -4,6 +4,7 @@ import { validatePuzzle } from "../../../core/puzzle.ts";
 import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
+import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,6 +15,13 @@ export interface TighteningParams {
   readonly maxAccepted: number;
   readonly solverLimitMs: number;
   readonly solverLimitStates: number;
+}
+
+export interface TighteningPreservationContext {
+  readonly protectedCells?: ReadonlySet<string>;
+  readonly baselineStructural?: StructuralMetrics;
+  readonly minRoomFloorFraction?: number;
+  readonly roomFloorBaselines?: ReadonlyMap<number, number>;
 }
 
 export const DEFAULT_TIGHTENING_PARAMS: TighteningParams = {
@@ -60,6 +68,7 @@ export interface TighteningResult {
 export async function tightenPuzzle(
   puzzle: PuzzleDefinition,
   params: TighteningParams = DEFAULT_TIGHTENING_PARAMS,
+  preservation?: TighteningPreservationContext,
 ): Promise<TighteningResult | null> {
   const start = performance.now();
 
@@ -70,13 +79,15 @@ export async function tightenPuzzle(
 
   const entities = findEntities(grid);
   const solutionCells = trackSolutionCells(puzzle, baseline.steps);
+  const protectedCells = preservation?.protectedCells;
 
   let accepted = 0;
   let rejected = 0;
   let tried = 0;
   let currentMetrics = baseline.metrics;
+  let currentStructural = preservation?.baselineStructural ?? analyzeGrid(grid);
 
-  const candidates = rankCandidates(grid, entities, solutionCells);
+  const candidates = rankCandidates(grid, entities, solutionCells, protectedCells);
 
   for (const cell of candidates) {
     if (tried >= params.maxMutationsPerPass) break;
@@ -103,6 +114,15 @@ export async function tightenPuzzle(
       continue;
     }
 
+    if (preservation) {
+      const afterStructural = analyzeGrid(grid);
+      if (hasStructuralRegression(currentStructural, afterStructural, preservation)) {
+        grid[row][col] = original;
+        rejected++;
+        continue;
+      }
+    }
+
     const solveResult = await solvAndMeasure(mutatedPuzzle, params);
     if (!solveResult) {
       grid[row][col] = original;
@@ -118,6 +138,9 @@ export async function tightenPuzzle(
 
     accepted++;
     currentMetrics = solveResult.metrics;
+    if (preservation) {
+      currentStructural = analyzeGrid(grid);
+    }
   }
 
   if (accepted === 0) {
@@ -253,6 +276,7 @@ function rankCandidates(
   grid: string[][],
   entities: EntitySet,
   solutionCells: Set<string>,
+  protectedCells?: ReadonlySet<string>,
 ): CellCandidate[] {
   const h = grid.length;
   const w = h > 0 ? grid[0].length : 0;
@@ -265,6 +289,7 @@ function rankCandidates(
 
       const key = `${r},${c}`;
       if (entities.allKeys.has(key)) continue;
+      if (protectedCells?.has(key)) continue;
 
       const onSolutionPath = solutionCells.has(key);
       const minEntityDist = minDistToEntities(r, c, entities);
@@ -539,6 +564,30 @@ function computeBoxIndependence(
 // Regression detection
 // ---------------------------------------------------------------------------
 
+function hasStructuralRegression(
+  before: StructuralMetrics,
+  after: StructuralMetrics,
+  preservation: TighteningPreservationContext,
+): boolean {
+  if (after.connectedComponents > before.connectedComponents) return true;
+
+  if (after.articulationCount < before.articulationCount - 1) return true;
+
+  if (before.regionCount > 1 && after.regionCount < before.regionCount) return true;
+
+  if (before.chokepointCount > 0 && after.chokepointCount < before.chokepointCount - 1) return true;
+
+  if (preservation.roomFloorBaselines && preservation.minRoomFloorFraction) {
+    const fraction = preservation.minRoomFloorFraction;
+    for (const [regionGate, baselineFloor] of preservation.roomFloorBaselines) {
+      const currentRegion = after.regions.find((r) => r.gate === regionGate);
+      if (currentRegion && currentRegion.size < baselineFloor * fraction) return true;
+    }
+  }
+
+  return false;
+}
+
 function hasRegression(before: TighteningMetrics, after: TighteningMetrics): boolean {
   if (after.boxIndependenceRatio > before.boxIndependenceRatio + 0.15) return true;
 
@@ -562,16 +611,39 @@ function hasRegression(before: TighteningMetrics, after: TighteningMetrics): boo
 }
 
 // ---------------------------------------------------------------------------
+// Convenience: build preservation context from puzzle grid
+// ---------------------------------------------------------------------------
+
+export function buildPreservationContext(
+  grid: readonly (readonly string[])[],
+  protectedCells?: ReadonlySet<string>,
+  minRoomFloorFraction: number = 0.6,
+): TighteningPreservationContext {
+  const structural = analyzeGrid(grid);
+  const roomFloorBaselines = new Map<number, number>();
+  for (const region of structural.regions) {
+    roomFloorBaselines.set(region.gate, region.size);
+  }
+  return {
+    protectedCells,
+    baselineStructural: structural,
+    minRoomFloorFraction,
+    roomFloorBaselines,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Batch tightening helper
 // ---------------------------------------------------------------------------
 
 export async function tightenPuzzles(
   puzzles: readonly PuzzleDefinition[],
   params: TighteningParams = DEFAULT_TIGHTENING_PARAMS,
+  preservation?: TighteningPreservationContext,
 ): Promise<readonly TighteningResult[]> {
   const results: TighteningResult[] = [];
   for (const puzzle of puzzles) {
-    const result = await tightenPuzzle(puzzle, params);
+    const result = await tightenPuzzle(puzzle, params, preservation);
     if (result) results.push(result);
   }
   return results;
