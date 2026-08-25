@@ -40,6 +40,7 @@
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
     "benchmark:solver:memory": "node --experimental-strip-types scripts/benchmark-solver-memory.ts",
+    "generate:v2-catalog": "node --experimental-strip-types scripts/generate-v2-catalog.ts",
     "solve": "node --experimental-strip-types scripts/solve-sokomind.ts",
     "test:static": "node --test tests/static-build.test.mjs",
     "typecheck": "tsc --noEmit",
