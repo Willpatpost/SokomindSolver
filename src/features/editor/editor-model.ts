@@ -225,7 +225,7 @@ export function stateToPuzzle(state: EditorState): PuzzleDefinition {
   };
 }
 
-export interface EditorValidation {
+interface EditorValidation {
   readonly valid: boolean;
   readonly errors: readonly string[];
 }

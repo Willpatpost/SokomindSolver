@@ -106,6 +106,7 @@ export function usePlayController(
   );
   const [deadlockModalOpen, setDeadlockModalOpen] = useState(false);
   const hintCancelRef = useRef<() => void>(() => {});
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resetConfirmOpen = resetConfirmPuzzleId === session.puzzle.id;
   const completionOpen = completionPuzzleId === session.puzzle.id;
   const solverOpen = solverPuzzleId === session.puzzle.id;
@@ -193,7 +194,8 @@ export function usePlayController(
       );
       if (newAchievements.length > 0) {
         const names = newAchievements.map((a) => a.title).join(", ");
-        setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
       }
     } else if (feedback === "push" || feedback === "goal" || feedback === "goal-leave") {
       const pushed = findPushedBox(current.snapshot.boxes, next.snapshot.boxes);
@@ -426,6 +428,8 @@ export function usePlayController(
         }
       : undefined,
   });
+
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
   return {
     session,

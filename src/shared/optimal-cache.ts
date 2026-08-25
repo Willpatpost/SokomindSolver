@@ -8,6 +8,7 @@ import {
 } from "./storage.ts";
 import { trackPersistenceResult } from "./persistence-health.ts";
 import { idbFencedGet, idbFencedUpdate } from "./idb-storage.ts";
+import { isRecord } from "../core/type-guards.ts";
 
 export interface OptimalRecord {
   readonly moves: number;
@@ -19,7 +20,7 @@ export interface OptimalCache {
   readonly records: Readonly<Record<string, OptimalRecord>>;
 }
 
-export type OptimalCacheMutationResult = StorageMutationResult & {
+type OptimalCacheMutationResult = StorageMutationResult & {
   readonly cache: OptimalCache;
 };
 
@@ -29,10 +30,6 @@ const EMPTY_CACHE: OptimalCache = Object.freeze({
 });
 
 const IDB_KEY = STORAGE_KEYS.optimal;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isValidCount(value: unknown): value is number {
   return Number.isInteger(value) && typeof value === "number" && value >= 0;

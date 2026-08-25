@@ -1,8 +1,8 @@
 export { Link } from "./Link";
-export { parseHash, type ParseResult } from "./parse-hash";
+export { parseHash } from "./parse-hash";
 export { RouterProvider } from "./RouterProvider";
 export { useRouter } from "./use-router";
-export type { Route, PageName } from "./routes";
+export type { Route } from "./routes";
 export type { RouterValue } from "./router-context";
 export {
   homeHash,

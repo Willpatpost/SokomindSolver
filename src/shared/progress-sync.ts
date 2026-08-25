@@ -15,6 +15,7 @@ import {
   writeStoredValue,
   type StorageMutationResult,
 } from "./storage.ts";
+import { isRecord } from "../core/type-guards.ts";
 
 export const STORED_PROGRESS_VERSION = 2 as const;
 
@@ -48,10 +49,6 @@ function emptySnapshot(): ProgressSyncSnapshot {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function parseProgressSyncSnapshot(

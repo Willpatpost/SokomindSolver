@@ -3,7 +3,7 @@ import type { SolverLogEntry, SolverUiPhase } from "./solver-ui-types";
 
 const MAX_LOG_ENTRIES = 80;
 
-export interface UseSolverLogReturn {
+interface UseSolverLogReturn {
   readonly logEntries: readonly SolverLogEntry[];
   readonly liveElapsedMs: number;
   readonly elapsedRef: React.RefObject<number>;

@@ -11,6 +11,7 @@ import {
   type CollectionInfo,
   SOKOMIND_ORIGINALS,
 } from "./catalog-types.ts";
+import { isRecord } from "../core/type-guards.ts";
 
 type MetadataTuple = readonly [
   id: string,
@@ -32,10 +33,6 @@ export interface PuzzleMetadata {
   readonly height: number;
   readonly collection: string;
   readonly shard: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function metadataTupleError(value: unknown): string | undefined {

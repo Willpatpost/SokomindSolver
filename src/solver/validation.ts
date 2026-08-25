@@ -20,6 +20,10 @@ import type {
   SolverSolution,
 } from "./contracts.ts";
 import { collectProofIssues } from "./proof.ts";
+import { isRecord, type UnknownRecord } from "../core/type-guards.ts";
+
+export { isRecord } from "../core/type-guards.ts";
+export type { UnknownRecord } from "../core/type-guards.ts";
 
 export interface SolverValidationIssue {
   readonly path: string;
@@ -44,7 +48,6 @@ export class SolverValidationError extends TypeError {
 }
 
 type Issues = SolverValidationIssue[];
-type UnknownRecord = Record<string, unknown>;
 
 const OBJECTIVE_KINDS = new Set(["moves"]);
 const PHASES = new Set(["preparing", "searching", "improving", "verifying", "proving", "harvesting"]);
@@ -61,14 +64,6 @@ const UNSOLVED_REASONS = new Set([
 function issue(issues: Issues, path: string, message: string): false {
   issues.push({ path, message });
   return false;
-}
-
-export function isRecord(value: unknown): value is UnknownRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 function checkRecord(
@@ -1235,47 +1230,5 @@ export function assertValidSolverMetadata(
   const issues = collectMetadataIssues(value);
   if (!isValid(issues)) {
     throw new SolverValidationError("Solver metadata", issues);
-  }
-}
-
-export class ProgressMonotonicityTracker {
-  #lastLowerBound: number | undefined;
-  #lastUpperBound: number | undefined;
-
-  check(progress: SolverProgress): readonly SolverValidationIssue[] {
-    const issues: SolverValidationIssue[] = [];
-
-    if (progress.lowerBound !== undefined) {
-      if (
-        this.#lastLowerBound !== undefined &&
-        progress.lowerBound < this.#lastLowerBound
-      ) {
-        issues.push({
-          path: "progress.lowerBound",
-          message: `must not decrease (was ${this.#lastLowerBound}, now ${progress.lowerBound})`,
-        });
-      }
-      this.#lastLowerBound = progress.lowerBound;
-    }
-
-    if (progress.upperBound !== undefined) {
-      if (
-        this.#lastUpperBound !== undefined &&
-        progress.upperBound > this.#lastUpperBound
-      ) {
-        issues.push({
-          path: "progress.upperBound",
-          message: `must not increase (was ${this.#lastUpperBound}, now ${progress.upperBound})`,
-        });
-      }
-      this.#lastUpperBound = progress.upperBound;
-    }
-
-    return issues;
-  }
-
-  reset(): void {
-    this.#lastLowerBound = undefined;
-    this.#lastUpperBound = undefined;
   }
 }

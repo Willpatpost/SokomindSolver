@@ -6,6 +6,7 @@ import {
   type StorageMutationResult,
 } from "../../shared/storage.ts";
 import { trackPersistenceResult } from "../../shared/persistence-health.ts";
+import { isRecord } from "../../core/type-guards.ts";
 
 export const EXPERIENCE_PREFERENCES_VERSION = 1 as const;
 export const EXPERIENCE_PREFERENCES_STORAGE_KEY = STORAGE_KEYS.experience;
@@ -45,10 +46,6 @@ export const DEFAULT_EXPERIENCE_PREFERENCES: ExperiencePreferences =
     motion: "system",
     theme: "system",
   });
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
 
 function isMotionPreference(value: unknown): value is MotionPreference {
   return (

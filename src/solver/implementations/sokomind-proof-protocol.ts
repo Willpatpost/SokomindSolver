@@ -7,6 +7,7 @@ import type {
   SolverSolution,
 } from "../contracts.ts";
 import { isSolverRunMetrics, isSolverSolution } from "../validation.ts";
+import { isRecord } from "../../core/type-guards.ts";
 import {
   compileSearchBoard,
   SEARCH_DIRECTIONS,
@@ -14,16 +15,6 @@ import {
 } from "../search/compiled-board.ts";
 import { KeeperReachability } from "../search/reachability.ts";
 
-export type ProofCommandType =
-  | "proof/start-partition"
-  | "solver/update-upper-bound"
-  | "proof/cancel";
-
-export type ProofResultType =
-  | "proof/progress"
-  | "proof/solution"
-  | "proof/partition-complete"
-  | "proof/error";
 
 export interface ProofStartPartition {
   readonly type: "proof/start-partition";
@@ -99,14 +90,6 @@ const PROOF_RESULT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/partition-complete",
   "proof/error",
 ]);
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value) as unknown;
-  return prototype === Object.prototype || prototype === null;
-}
 
 function isNonNegativeSafeCost(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

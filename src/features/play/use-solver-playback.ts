@@ -22,7 +22,6 @@ const EMPTY_PLAYBACK: SolutionPlayback = Object.freeze({
 });
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
-export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
 interface UseSolverPlaybackOptions {
   readonly sessionRef: { readonly current: GameSession };

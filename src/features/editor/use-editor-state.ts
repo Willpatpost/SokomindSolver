@@ -93,16 +93,6 @@ function saveEditorDraftStore(store: EditorDraftStore): StorageMutationResult {
   );
 }
 
-/** Compatibility helper: save one state as a valid named-draft store. */
-export function saveEditorDraft(state: EditorState): StorageMutationResult {
-  const now = new Date().toISOString();
-  const initial = createEditorDraftStore(state);
-  return saveEditorDraftStore({
-    ...initial,
-    drafts: initial.drafts.map((draft) => ({ ...draft, updatedAt: now })),
-  });
-}
-
 interface InitialEditorData {
   readonly store: EditorDraftStore;
   readonly needsSave: boolean;
@@ -139,10 +129,6 @@ function loadEditorData(): InitialEditorData {
   };
 }
 
-export function clearEditorDraft(): void {
-  trackPersistenceResult(removeStoredValue(STORAGE_KEYS.editorDraft));
-}
-
 export interface EditorDraftSummary {
   readonly id: string;
   readonly name: string;
@@ -153,7 +139,7 @@ export type EditorDraftOperationResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly message: string };
 
-export interface EditorStateResult {
+interface EditorStateResult {
   readonly state: EditorState;
   readonly dispatch: (action: EditorAction) => void;
   readonly undo: () => void;

@@ -765,7 +765,7 @@ This must be handled carefully because relaxing hard guards indiscriminately can
 
 # 6.12 Learn/Tune Analyzer Features From the Full Corpus
 
-The repository contains 2,095 puzzles, which can serve as a powerful offline tuning corpus.
+The repository contains 150 puzzles, which can serve as a powerful offline tuning corpus.
 
 Without requiring neural networks, generate:
 

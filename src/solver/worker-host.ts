@@ -23,7 +23,7 @@ import {
 } from "./validation.ts";
 import { assertVerifiedSolverSolution } from "./verification.ts";
 
-export interface SolverMessageEvent {
+interface SolverMessageEvent {
   readonly data: unknown;
 }
 

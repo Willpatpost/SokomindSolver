@@ -19,5 +19,3 @@ export type Route =
   | { readonly page: "play"; readonly puzzleId: string; readonly actionLog?: string }
   | { readonly page: "editor"; readonly customData?: string }
   | { readonly page: "stats" };
-
-export type PageName = Route["page"];

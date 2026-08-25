@@ -52,6 +52,16 @@ executable tests remain authoritative when any prose disagrees.
 - npm run benchmark:solver
 - npm run benchmark:solver:v2
 - npm run benchmark:solver:memory
+- npm run test:static
+- npm run test:browser
+- npm run test:solver:known
+- npm run test:solver:known:extended
+- npm run test:solver:parallel
+- npm run test:solver:proof-regressions
+- npm run lint:docs
+- npm run generate:v2-catalog
+- npm run check:catalog
+- npm run check:project-reference
 
 ## Environment variables
 

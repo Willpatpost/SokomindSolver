@@ -3,6 +3,7 @@ import type { SolverSolution, SolutionStep } from "../../solver/contracts.ts";
 import { parsePuzzle } from "../../core/puzzle.ts";
 import { stepSnapshot } from "../../core/game-session.ts";
 import type { GridPosition } from "./generator-types.ts";
+import { shuffleArray } from "./shuffle.ts";
 
 export const VALID_LABELS = [
   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -117,15 +118,6 @@ function pathsCross(pathA: GridPosition[], pathB: GridPosition[]): boolean {
     (startA.column - startB.column) * (endA.column - endB.column) < 0;
 
   return rowOrderFlipped || colOrderFlipped;
-}
-
-function shuffleArray<T>(arr: T[], rng: () => number): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
 }
 
 export function assignLabels(

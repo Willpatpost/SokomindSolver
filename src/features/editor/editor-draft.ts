@@ -24,7 +24,7 @@ export interface EditorDraftStore {
   readonly drafts: readonly EditorDraftDocument[];
 }
 
-export interface ParsedEditorDraftStore {
+interface ParsedEditorDraftStore {
   readonly store: EditorDraftStore;
   readonly migrated: boolean;
 }

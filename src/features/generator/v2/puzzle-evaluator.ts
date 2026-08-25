@@ -2,6 +2,7 @@ import type { PuzzleDefinition } from "../../../core/model.ts";
 import type { SolverResult, SolverRunMetrics, SolutionStep } from "../../../solver/contracts.ts";
 import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
+import { directionDelta } from "../../../core/position.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 
 // ---------------------------------------------------------------------------
@@ -392,16 +393,6 @@ function countLegalPushes(
     count++;
   }
   return count;
-}
-
-function directionDelta(dir: string): { row: number; column: number } {
-  switch (dir) {
-    case "up": return { row: -1, column: 0 };
-    case "down": return { row: 1, column: 0 };
-    case "left": return { row: 0, column: -1 };
-    case "right": return { row: 0, column: 1 };
-    default: return { row: 0, column: 0 };
-  }
 }
 
 // ---------------------------------------------------------------------------

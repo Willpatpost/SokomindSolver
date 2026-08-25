@@ -88,7 +88,7 @@ export function isDefaultExactSearchFeatures(
   );
 }
 
-export interface ExactSearchFeatureTelemetry {
+interface ExactSearchFeatureTelemetry {
   linearConflictEvaluations: number;
   linearConflictTotal: number;
   pdbBuildTimeMs: number;

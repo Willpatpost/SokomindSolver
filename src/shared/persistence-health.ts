@@ -8,7 +8,7 @@ export interface PersistenceHealthSnapshot {
   readonly canRetry: boolean;
 }
 
-export interface PersistenceHealthStore {
+interface PersistenceHealthStore {
   readonly getSnapshot: () => PersistenceHealthSnapshot;
   readonly report: (result: StorageMutationResult, retry?: () => void) => void;
   readonly retryFailures: () => void;

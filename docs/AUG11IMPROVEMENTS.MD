@@ -29,10 +29,10 @@ undifferentiated feature list.
 
 ## Current opportunity baseline
 
-- 2,095 validated puzzles across all six difficulty tiers.
-- Difficulty is now broadly balanced, but 2,058 puzzles come from one generated
-  collection and only 37 are originals.
-- 2,078 puzzles exercise typed boxes, so the earlier lack of labeled content is
+- 150 validated puzzles across all six difficulty tiers.
+- Difficulty is now broadly balanced, but 118 puzzles come from one generated
+  collection and only 32 are originals.
+- All 150 puzzles exercise typed boxes, so the earlier lack of labeled content is
   no longer a concern.
 - The immutable game core, route sharing, local progress, editor, exact replay,
   multiple solvers, and offline shell already provide a strong product base.

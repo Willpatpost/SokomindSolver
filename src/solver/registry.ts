@@ -73,12 +73,6 @@ function validatedSolverMetadata(adapter: SolverAdapter): SolverMetadata {
   return metadata;
 }
 
-export function assertValidSolverAdapter(
-  adapter: SolverAdapter,
-): asserts adapter is SolverAdapter {
-  void validatedSolverMetadata(adapter);
-}
-
 /**
  * Process-local solver discovery. The registry owns no UI and starts no
  * workers; composition roots choose which adapters to register.

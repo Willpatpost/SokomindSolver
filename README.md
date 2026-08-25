@@ -6,7 +6,7 @@ hosting layer with a portable Vite build.
 
 ## Highlights
 
-- 2,095 validated puzzles, including 2,078 typed-box rooms
+- 150 validated puzzles, all with typed-box rooms
 - Responsive keyboard, touch, and mouse controls
 - Animated crates, matching goal sockets, and a characterful keeper
 - Optional procedural sound effects and ambient music with no downloaded audio

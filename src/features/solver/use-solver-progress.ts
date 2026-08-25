@@ -9,7 +9,7 @@ import {
 } from "./solver-internals";
 import type { SolverLogEntry, SolverRunFingerprint } from "./solver-ui-types";
 
-export interface UseSolverProgressOptions extends SolverSharedState {
+interface UseSolverProgressOptions extends SolverSharedState {
   session: GameSession; open: boolean; uiPhase: string;
   appendLog: (msg: string, tone?: SolverLogEntry["tone"], ms?: number) => void;
   resetLog: (entries?: readonly SolverLogEntry[]) => void;

@@ -9,6 +9,7 @@ import type {
 } from "./blueprint-types.ts";
 import type { GridPosition, SolvedTemplate } from "../generator-types.ts";
 import { rasterizeBlueprint } from "./blueprint-graph.ts";
+import { shuffleArray } from "../shuffle.ts";
 
 // ---------------------------------------------------------------------------
 // Directions
@@ -647,13 +648,6 @@ function distributeEvenly(total: number, buckets: number): number[] {
   const base = Math.floor(total / buckets);
   const remainder = total % buckets;
   return Array.from({ length: buckets }, (_, i) => base + (i < remainder ? 1 : 0));
-}
-
-function shuffleArray<T>(arr: T[], rng: () => number): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
 }
 
 export function findRoomForCell(blueprint: FunctionalBlueprint, row: number, col: number): number {

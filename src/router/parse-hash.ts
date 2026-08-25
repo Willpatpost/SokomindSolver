@@ -18,7 +18,7 @@ function decodePathSegment(segment: string): string | null {
   }
 }
 
-export type ParseResult =
+type ParseResult =
   | { readonly kind: "route"; readonly route: Route }
   | { readonly kind: "redirect"; readonly hash: string };
 

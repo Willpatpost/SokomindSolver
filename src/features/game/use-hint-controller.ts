@@ -52,6 +52,7 @@ export function useHintController({
   const tokenRef = useRef(0);
   const failureCountRef = useRef(0);
   const cooldownUntilRef = useRef(0);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const canHint = !disabled && !session.solved && phase === "idle";
 
@@ -173,7 +174,8 @@ export function useHintController({
           const hintSteps = result.solution.steps.slice(0, HINT_STEPS);
           setPhase("playing");
           onPlaySteps(hintSteps, fingerprint);
-          setTimeout(() => {
+          clearTimeout(hintTimerRef.current);
+          hintTimerRef.current = setTimeout(() => {
             setPhase((current) => current === "playing" ? "idle" : current);
           }, hintSteps.length * 200 + 300);
         } else if (result.status === "unsolved") {
@@ -192,6 +194,8 @@ export function useHintController({
       }
     })();
   }, [session, disabled, onPlaySteps, onToast, recordFailure]);
+
+  useEffect(() => () => clearTimeout(hintTimerRef.current), []);
 
   return { phase, canHint, requestHint, cancel };
 }

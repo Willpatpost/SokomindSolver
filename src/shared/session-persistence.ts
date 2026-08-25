@@ -21,6 +21,7 @@ import {
   idbFencedGet,
   idbFencedUpdate,
 } from "./idb-storage.ts";
+import { isRecord } from "../core/type-guards.ts";
 
 export const SAVED_SESSION_VERSION = 1 as const;
 export const MAX_SAVED_ACTIONS = 100_000;
@@ -50,10 +51,6 @@ let lastSavedAtMs = 0;
 function nextSavedSessionTimestamp(): string {
   lastSavedAtMs = Math.max(Date.now(), lastSavedAtMs + 1);
   return new Date(lastSavedAtMs).toISOString();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
 }
 
 function isCanonicalTimestamp(value: unknown): value is string {

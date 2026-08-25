@@ -1,3 +1,5 @@
+import { isRecord } from "../../../core/type-guards.ts";
+
 export const ENGINE_MODES = Object.freeze([
   "search",
   "bidir-forward",
@@ -22,7 +24,7 @@ export type EngineResultType =
   | "reverse-starts";
 
 /** Fields returned by search or consumed from incremental worker telemetry. */
-export interface EngineResultPayload {
+interface EngineResultPayload {
   readonly adaptiveMovePriorImprovements?: number;
   readonly analysis?: unknown;
   readonly arenaStates?: number;
@@ -69,14 +71,6 @@ export interface EngineResult extends EngineResultPayload {
 export interface EngineRuntime {
   search(payload: EnginePayload): EngineSearchResult;
   bidirectionalSide(payload: EnginePayload): void;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value) as unknown;
-  return prototype === Object.prototype || prototype === null;
 }
 
 function isNonEmptyString(value: unknown): value is string {

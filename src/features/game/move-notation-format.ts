@@ -1,7 +1,7 @@
 export const GLYPH: Readonly<Record<string, string>> = { U: "↑", D: "↓", L: "←", R: "→" };
 export const MAX_VISIBLE = 24;
 
-export interface FormattedNotation {
+interface FormattedNotation {
   readonly glyphs: readonly string[];
   readonly truncated: boolean;
   readonly offset: number;
