@@ -36,13 +36,16 @@ test("drill-down from home to puzzles to play", async ({ page }) => {
   await page.getByText("Tutorial").click();
   await expect(page).toHaveURL(/#\/puzzles\/tutorial$/);
   await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Sokomind Originals" }).click();
+  await expect(page).toHaveURL(/#\/puzzles\/tutorial\/Sokomind%20Originals$/);
   await expect(page.getByText("First Steps")).toBeVisible();
 
   await page.getByText("First Steps").click();
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
 });
 
-test("single-collection Tutorial keeps a usable difficulty back link", async ({
+test("Tutorial collection grid keeps a usable difficulty back link", async ({
   page,
 }) => {
   await page.goto("./#/puzzles/tutorial");
@@ -51,7 +54,6 @@ test("single-collection Tutorial keeps a usable difficulty back link", async ({
   await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
   const breadcrumb = page.getByRole("navigation");
   await expect(breadcrumb).toHaveText(/Puzzles\s*›\s*Tutorial/);
-  await expect(breadcrumb.getByRole("link")).toHaveCount(1);
 
   await page.getByRole("link", { name: "Back to difficulties" }).click();
   await expect(page).toHaveURL(/#\/puzzles$/);
