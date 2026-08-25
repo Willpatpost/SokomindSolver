@@ -1201,7 +1201,7 @@ describe("concurrent proof coordinator", () => {
   it("enforces one remaining wall-clock deadline across silent partitions", async () => {
     const request: SolverRequest = {
       ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
-      limits: { maxElapsedMs: 110 },
+      limits: { maxElapsedMs: 500 },
     };
     const silent = new MockProofWorker();
     const started = performance.now();
@@ -1210,10 +1210,10 @@ describe("concurrent proof coordinator", () => {
       makeContext(),
       { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
       makeDiscoveryResult(10, 5),
-      { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 1_000 },
+      { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 5_000 },
     );
     assert.equal(result.status, "solved");
-    assert.ok(performance.now() - started < 2000);
+    assert.ok(performance.now() - started < 4000);
     assert.equal(silent.terminated, true);
   });
 
