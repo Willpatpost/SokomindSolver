@@ -13,6 +13,8 @@ import type { TighteningParams, TighteningResult } from "./geometry-tightening.t
 import {
   generateBlueprintWithRetry,
 } from "./blueprint-graph.ts";
+import { enumerateForgeCombinations, createForgeSchedule, type ForgeGenerationMode } from "./forge-sampling.ts";
+import { boardHash } from "./puzzle-identity.ts";
 import {
   TOPOLOGY_FAMILIES,
   DEFAULT_BLUEPRINT_PARAMS,
@@ -45,7 +47,7 @@ import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
 // Types
 // ---------------------------------------------------------------------------
 
-export type ForgeGenerationMode = "plain" | "motif" | "composed";
+export type { ForgeGenerationMode } from "./forge-sampling.ts";
 
 export interface ForgeConfig {
   readonly batchSize: number;
@@ -150,7 +152,8 @@ export type ForgeRejectionReason =
   | "gate-moves-per-push"
   | "gate-solver-effort"
   | "motif-failed"
-  | "composition-failed";
+  | "composition-failed"
+  | "duplicate-exact";
 
 export interface ForgeRejection {
   readonly seed: number;
@@ -166,6 +169,7 @@ export interface ForgeRunResult {
   readonly totalRetained: number;
   readonly elapsedMs: number;
   readonly rejectionCounts: Readonly<Record<ForgeRejectionReason, number>>;
+  readonly exactDuplicatesRejected: number;
 }
 
 export interface ForgeSummary {
@@ -437,17 +441,17 @@ export async function runForge(
   const rejections: ForgeRejection[] = [];
   const validCandidates: ForgeCandidate[] = [];
 
-  const familyCount = config.families.length;
-  const boxCountCount = config.boxCounts.length;
-  const modeCount = config.modes.length;
-  const diffCount = config.difficulties.length;
+  const combinations = enumerateForgeCombinations({
+    families: config.families,
+    boxCounts: config.boxCounts,
+    modes: config.modes,
+    difficulties: config.difficulties,
+  });
+  const schedule = createForgeSchedule(combinations, config.batchSize, config.baseSeed);
 
-  for (let i = 0; i < config.batchSize; i++) {
-    const seed = config.baseSeed + i;
-    const family = config.families[i % familyCount];
-    const boxCount = config.boxCounts[i % boxCountCount];
-    const mode = config.modes[i % modeCount];
-    const difficulty = config.difficulties[i % diffCount];
+  for (let i = 0; i < schedule.length; i++) {
+    const { seed, combination } = schedule[i];
+    const { family, boxCount, mode, difficulty } = combination;
 
     const raw = await generateRawCandidate(
       config,
@@ -515,8 +519,31 @@ export async function runForge(
     });
   }
 
+  const seen = new Map<string, { candidate: ForgeCandidate; index: number }>();
+  const dedupedCandidates: ForgeCandidate[] = [];
+  let exactDuplicatesRejected = 0;
+
+  for (let i = 0; i < validCandidates.length; i++) {
+    const c = validCandidates[i];
+    const hash = boardHash(c.puzzle.rows);
+    const existing = seen.get(hash);
+    if (existing) {
+      const existingScore = paretoScore(existing.candidate);
+      const currentScore = paretoScore(c);
+      if (currentScore > existingScore) {
+        dedupedCandidates[existing.index] = c;
+        seen.set(hash, { candidate: c, index: existing.index });
+      }
+      rejections.push({ seed: c.provenance.seed, reason: "duplicate-exact" });
+      exactDuplicatesRejected++;
+    } else {
+      seen.set(hash, { candidate: c, index: dedupedCandidates.length });
+      dedupedCandidates.push(c);
+    }
+  }
+
   const retained = selectDiverse(
-    validCandidates,
+    dedupedCandidates,
     config.retainTarget,
     config.diversityMinDistance,
   );
@@ -535,6 +562,7 @@ export async function runForge(
     totalRetained: retained.length,
     elapsedMs: performance.now() - start,
     rejectionCounts,
+    exactDuplicatesRejected,
   };
 }
 

@@ -6,6 +6,8 @@ import {
   summarizeForgeRun,
   forgeCandidateToAscii,
   forgeRunReport,
+  enumerateForgeCombinations,
+  createForgeSchedule,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
@@ -293,8 +295,8 @@ test("rejection counts sum correctly", async () => {
   assert.equal(totalRejections, result.rejections.length);
   assert.equal(
     result.totalAttempted,
-    result.totalValid + result.rejections.length,
-    "attempted = valid + rejected",
+    result.totalValid + result.rejections.length - result.exactDuplicatesRejected,
+    "attempted = valid + rejected (excluding dedup rejections, which come from valid candidates)",
   );
 });
 
@@ -413,4 +415,93 @@ test("benchmark: forge batch with full pipeline and reporting", async () => {
     summary.metricRanges.solutionPushes.avg > 0,
     "avg pushes should be positive",
   );
+});
+
+// ---------------------------------------------------------------------------
+// 16. enumerateForgeCombinations produces full Cartesian product
+// ---------------------------------------------------------------------------
+
+test("enumerateForgeCombinations produces full Cartesian product", () => {
+  const combos = enumerateForgeCombinations({
+    families: ["linear", "hub", "loop"],
+    boxCounts: [2, 3, 4],
+    modes: ["plain", "motif", "composed"],
+    difficulties: ["beginner"],
+  });
+  assert.equal(combos.length, 3 * 3 * 3 * 1);
+
+  const seen = new Set(
+    combos.map((c) => `${c.family}-${c.boxCount}-${c.mode}-${c.difficulty}`),
+  );
+  assert.equal(seen.size, 27, "all combinations should be unique");
+});
+
+// ---------------------------------------------------------------------------
+// 17. createForgeSchedule covers all combinations before repeating
+// ---------------------------------------------------------------------------
+
+test("createForgeSchedule covers all combinations before repeating", () => {
+  const combos = enumerateForgeCombinations({
+    families: ["linear", "hub"],
+    boxCounts: [3],
+    modes: ["plain", "motif"],
+    difficulties: ["intermediate"],
+  });
+  const schedule = createForgeSchedule(combos, combos.length, 100);
+
+  const seenFamilies = new Set(schedule.map((e) => e.combination.family));
+  const seenModes = new Set(schedule.map((e) => e.combination.mode));
+  assert.equal(seenFamilies.size, 2, "all families should appear");
+  assert.equal(seenModes.size, 2, "all modes should appear");
+});
+
+// ---------------------------------------------------------------------------
+// 18. createForgeSchedule wraps for batchSize > combinations
+// ---------------------------------------------------------------------------
+
+test("createForgeSchedule wraps for batchSize > combinations", () => {
+  const combos = enumerateForgeCombinations({
+    families: ["linear"],
+    boxCounts: [3],
+    modes: ["plain"],
+    difficulties: ["beginner"],
+  });
+  assert.equal(combos.length, 1);
+
+  const schedule = createForgeSchedule(combos, 5, 200);
+  assert.equal(schedule.length, 5);
+  for (const entry of schedule) {
+    assert.equal(entry.combination.family, "linear");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 19. createForgeSchedule is deterministic
+// ---------------------------------------------------------------------------
+
+test("createForgeSchedule is deterministic", () => {
+  const combos = enumerateForgeCombinations({
+    families: ["linear", "hub", "loop"],
+    boxCounts: [2, 3],
+    modes: ["plain", "motif"],
+    difficulties: ["intermediate"],
+  });
+  const s1 = createForgeSchedule(combos, 20, 42);
+  const s2 = createForgeSchedule(combos, 20, 42);
+
+  assert.deepEqual(s1, s2);
+});
+
+// ---------------------------------------------------------------------------
+// 20. ForgeRunResult includes exactDuplicatesRejected field
+// ---------------------------------------------------------------------------
+
+test("ForgeRunResult includes exactDuplicatesRejected field", async () => {
+  const result = await runForge({
+    ...SMALL_CONFIG,
+    batchSize: 6,
+    retainTarget: 3,
+  });
+  assert.equal(typeof result.exactDuplicatesRejected, "number");
+  assert.ok(result.exactDuplicatesRejected >= 0);
 });

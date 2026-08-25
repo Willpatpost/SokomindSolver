@@ -13,6 +13,7 @@ import {
   forgeCandidateToAscii,
   evaluatePuzzles,
   summarizePopulation,
+  createGeneratedPuzzleId,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
@@ -210,9 +211,8 @@ function forgeCandidateToCatalogEntry(
   difficulty: Difficulty,
   index: number,
 ): PuzzleDefinition {
-  const num = String(index + 1).padStart(3, "0");
   return {
-    id: `gen-${difficulty}-${num}`,
+    id: createGeneratedPuzzleId(candidate.provenance.seed, candidate.puzzle.rows),
     title: `${TITLE_LABELS[difficulty]} ${index + 1}`,
     difficulty,
     boxes: candidate.puzzle.boxes,

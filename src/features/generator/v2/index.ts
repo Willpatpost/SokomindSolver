@@ -171,3 +171,20 @@ export type {
   ForgeRunResult,
   ForgeSummary,
 } from "./puzzle-forge.ts";
+
+export {
+  canonicalizeRows,
+  boardHash,
+  symmetryHash,
+  createGeneratedPuzzleId,
+} from "./puzzle-identity.ts";
+
+export {
+  enumerateForgeCombinations,
+  createForgeSchedule,
+} from "./forge-sampling.ts";
+
+export type {
+  ForgeCombination,
+  ForgeScheduleEntry,
+} from "./forge-sampling.ts";
