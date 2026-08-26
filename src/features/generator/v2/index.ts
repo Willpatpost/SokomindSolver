@@ -232,3 +232,29 @@ export {
 export type {
   InteractionMetrics,
 } from "./interaction-analysis.ts";
+
+export {
+  evaluateFinalist,
+  evaluateFinalists,
+  computeCurationObjectives,
+  DEFAULT_FINALIST_CONFIG,
+} from "./finalist-evaluator.ts";
+
+export type {
+  SolverEvidence,
+  FinalistEvaluation,
+  CurationObjectives,
+  FinalistEvaluatorConfig,
+} from "./finalist-evaluator.ts";
+
+export {
+  nonDominatedSort,
+  computeNoveltyScores,
+  selectByParetoNovelty,
+  diagnosePopulation,
+} from "./curation.ts";
+
+export type {
+  CuratedCandidate,
+  PopulationDiagnostics,
+} from "./curation.ts";
