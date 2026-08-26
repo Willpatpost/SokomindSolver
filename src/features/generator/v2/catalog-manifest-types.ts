@@ -26,6 +26,10 @@ export interface GeneratedPuzzleManifestEntry {
   readonly solutionMoves: number;
   readonly solutionPushes: number;
   readonly totalFloor: number;
+  readonly solversAttempted?: number;
+  readonly solversSucceeded?: number;
+  readonly solverAgreement?: boolean;
+  readonly avgExpandedStates?: number;
 }
 
 export interface GeneratedPuzzleManifest {

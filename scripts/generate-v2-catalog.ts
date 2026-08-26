@@ -16,6 +16,12 @@ import {
   createGeneratedPuzzleId,
   boardHash,
   symmetryHash,
+  evaluateFinalist,
+  computeCurationObjectives,
+  nonDominatedSort,
+  computeNoveltyScores,
+  selectByParetoNovelty,
+  diagnosePopulation,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
@@ -27,6 +33,8 @@ import {
   type ForgeGenerationMode,
   type GeneratedPuzzleManifest,
   type GeneratedPuzzleManifestEntry,
+  type FinalistEvaluation,
+  type CurationObjectives,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -218,6 +226,8 @@ interface CatalogCandidate {
   assignedDifficulty: Difficulty;
   rejected: boolean;
   rejectionReason?: ForgeRejectionReason;
+  finalistEval?: FinalistEvaluation;
+  curationObjectives?: CurationObjectives;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,12 +469,16 @@ function buildManifest(
       solutionMoves: ev?.solutionMoves ?? 0,
       solutionPushes: ev?.solutionPushes ?? 0,
       totalFloor: ev?.totalFloor ?? 0,
+      solversAttempted: cc?.finalistEval?.solversAttempted,
+      solversSucceeded: cc?.finalistEval?.solversSucceeded,
+      solverAgreement: cc?.finalistEval?.solverAgreement,
+      avgExpandedStates: cc?.finalistEval?.avgExpandedStates,
     };
   });
 
   return {
     schemaVersion: 1,
-    generatorVersion: "2.1.0",
+    generatorVersion: "2.2.0",
     catalogHash: catalogHashValue,
     tierQuotas,
     puzzles,
@@ -679,6 +693,80 @@ async function main(): Promise<void> {
         `    WARNING: ${difficulty} tier has ${active.length}/${target} candidates after ${maxSeedWindows} retry windows`,
       );
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Phase 4b: Finalist multi-solver evaluation + Pareto curation
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 4b: Finalist evaluation + Pareto curation...");
+
+  for (const difficulty of DIFFICULTIES) {
+    if (!tierTargets.has(difficulty)) continue;
+    const candidates = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+    if (candidates.length === 0) continue;
+
+    console.log(`    [finalist] ${difficulty}: evaluating ${candidates.length} candidates...`);
+    for (const cc of candidates) {
+      cc.finalistEval = await evaluateFinalist(cc.candidate.puzzle);
+      cc.curationObjectives = computeCurationObjectives(
+        cc.candidate.evaluation,
+        cc.finalistEval,
+        cc.candidate.provenance.dependencyRealizationRate,
+      );
+    }
+
+    const target = tierTargets.get(difficulty) ?? 0;
+    if (candidates.length > target) {
+      const sorted = nonDominatedSort(
+        candidates.map((cc) => ({
+          item: cc,
+          objectives: cc.curationObjectives!,
+        })),
+      );
+      const scored = computeNoveltyScores(sorted);
+      const selected = selectByParetoNovelty(scored, target);
+      const selectedSet = new Set(selected.map((s) => s.item));
+
+      let culled = 0;
+      for (const cc of candidates) {
+        if (!selectedSet.has(cc)) {
+          cc.rejected = true;
+          culled++;
+        }
+      }
+
+      const diag = diagnosePopulation(scored);
+      console.log(
+        `    [curation] ${difficulty}: ${diag.totalCandidates} → ${selected.length} ` +
+        `(${diag.frontCount} Pareto fronts, culled ${culled})`,
+      );
+      if (verbose) {
+        console.log(`      Front sizes: [${diag.frontSizes.join(", ")}]`);
+        console.log(
+          `      Novelty range: ${diag.noveltyRange.min.toFixed(3)}–${diag.noveltyRange.max.toFixed(3)} ` +
+          `(avg ${diag.noveltyRange.avg.toFixed(3)})`,
+        );
+      }
+    } else {
+      console.log(`    [curation] ${difficulty}: ${candidates.length} ≤ target ${target}, keeping all`);
+    }
+  }
+
+  // Within-tier ordering: sort by solution pushes ascending (progressive difficulty)
+  for (const difficulty of DIFFICULTIES) {
+    if (!tierTargets.has(difficulty)) continue;
+    const pool = pools.get(difficulty);
+    if (!pool) continue;
+    pool.sort((a, b) => {
+      if (a.rejected !== b.rejected) return a.rejected ? 1 : -1;
+      const pa = a.candidate.evaluation.solutionPushes;
+      const pb = b.candidate.evaluation.solutionPushes;
+      if (pa !== pb) return pa - pb;
+      return boardHash(a.candidate.puzzle.rows).localeCompare(
+        boardHash(b.candidate.puzzle.rows),
+      );
+    });
   }
 
   // -----------------------------------------------------------------------
