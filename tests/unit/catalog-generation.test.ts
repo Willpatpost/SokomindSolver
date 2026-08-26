@@ -312,3 +312,49 @@ test("V1 benchmark fixture exists and has expected structure", () => {
     assert.equal(typeof entry.boxes, "number");
   }
 });
+
+test("handcrafted benchmark fixture exists and contains only non-generated IDs", () => {
+  const fixturePath = join(__dirname, "../fixtures/generator/handcrafted-benchmark.json");
+
+  let entries: { id: string; difficulty: string; boxes: number; title: string }[];
+  try {
+    entries = JSON.parse(readFileSync(fixturePath, "utf-8"));
+  } catch {
+    assert.fail("Handcrafted benchmark fixture must exist");
+    return;
+  }
+
+  assert.ok(entries.length > 0, "handcrafted fixture must have entries");
+  for (const entry of entries) {
+    assert.equal(typeof entry.id, "string");
+    assert.ok(
+      !entry.id.startsWith("gen-"),
+      `Handcrafted fixture must not contain generated IDs: ${entry.id}`,
+    );
+    assert.ok(DIFFICULTIES.includes(entry.difficulty as Difficulty));
+    assert.equal(typeof entry.boxes, "number");
+    assert.equal(typeof entry.title, "string");
+  }
+});
+
+test("V1 and handcrafted benchmark fixtures have no overlapping IDs", () => {
+  const v1Path = join(__dirname, "../fixtures/generator/v1-generated-benchmark.json");
+  const hcPath = join(__dirname, "../fixtures/generator/handcrafted-benchmark.json");
+
+  let v1: { id: string }[];
+  let hc: { id: string }[];
+  try {
+    v1 = JSON.parse(readFileSync(v1Path, "utf-8"));
+    hc = JSON.parse(readFileSync(hcPath, "utf-8"));
+  } catch {
+    return;
+  }
+
+  const v1Ids = new Set(v1.map((e) => e.id));
+  for (const entry of hc) {
+    assert.ok(
+      !v1Ids.has(entry.id),
+      `Overlap between V1 and handcrafted benchmarks: ${entry.id}`,
+    );
+  }
+});

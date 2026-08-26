@@ -32,7 +32,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CATALOG_PATH = join(__dirname, "../src/catalog/generated-puzzles.json");
 const MANIFEST_PATH = join(__dirname, "../src/catalog/generated-puzzles.manifest.json");
-const BENCHMARK_PATH = join(__dirname, "../tests/fixtures/generator/v1-generated-benchmark.json");
+const HANDCRAFTED_BENCHMARK_PATH = join(__dirname, "../tests/fixtures/generator/handcrafted-benchmark.json");
 
 // ---------------------------------------------------------------------------
 // CLI flags
@@ -256,40 +256,40 @@ function formatMetric(value: number, decimals = 2): string {
 }
 
 function comparisonReport(
-  v1Summary: PopulationSummary,
+  baselineSummary: PopulationSummary,
   v2Summary: PopulationSummary,
 ): string {
   const lines: string[] = [
     "",
     "=".repeat(60),
-    "V1 vs V2 Comparison",
+    "Handcrafted Baseline vs V2.1 Generated",
     "=".repeat(60),
     "",
-    `${"Metric".padEnd(30)} ${"V1 Avg".padStart(10)} ${"V2 Avg".padStart(10)} ${"Δ".padStart(8)}`,
+    `${"Metric".padEnd(30)} ${"Baseline".padStart(10)} ${"V2.1".padStart(10)} ${"Δ".padStart(8)}`,
     "-".repeat(60),
   ];
 
   const m = (s: PopulationSummary, key: string): number => s.avg[key] ?? 0;
 
-  const metrics: { label: string; v1: number; v2: number; lowerBetter: boolean }[] = [
-    { label: "Solution Moves", v1: m(v1Summary, "solutionMoves"), v2: m(v2Summary, "solutionMoves"), lowerBetter: false },
-    { label: "Solution Pushes", v1: m(v1Summary, "solutionPushes"), v2: m(v2Summary, "solutionPushes"), lowerBetter: false },
-    { label: "Box Independence", v1: m(v1Summary, "boxIndependenceRatio"), v2: m(v2Summary, "boxIndependenceRatio"), lowerBetter: true },
-    { label: "Empty Walk Ratio", v1: m(v1Summary, "emptyWalkRatio"), v2: m(v2Summary, "emptyWalkRatio"), lowerBetter: true },
-    { label: "Unused Floor Ratio", v1: m(v1Summary, "unusedFloorRatio"), v2: m(v2Summary, "unusedFloorRatio"), lowerBetter: true },
-    { label: "Deadlock Density", v1: m(v1Summary, "deadlockDensity"), v2: m(v2Summary, "deadlockDensity"), lowerBetter: false },
-    { label: "Solver Expanded States", v1: m(v1Summary, "solverExpandedStates"), v2: m(v2Summary, "solverExpandedStates"), lowerBetter: false },
-    { label: "Moves Per Push", v1: m(v1Summary, "movesPerPush"), v2: m(v2Summary, "movesPerPush"), lowerBetter: true },
-    { label: "Repetitive Push Ratio", v1: m(v1Summary, "repetitivePushRatio"), v2: m(v2Summary, "repetitivePushRatio"), lowerBetter: true },
-    { label: "Total Floor", v1: m(v1Summary, "totalFloor"), v2: m(v2Summary, "totalFloor"), lowerBetter: false },
+  const metrics: { label: string; baseline: number; v2: number; lowerBetter: boolean }[] = [
+    { label: "Solution Moves", baseline: m(baselineSummary, "solutionMoves"), v2: m(v2Summary, "solutionMoves"), lowerBetter: false },
+    { label: "Solution Pushes", baseline: m(baselineSummary, "solutionPushes"), v2: m(v2Summary, "solutionPushes"), lowerBetter: false },
+    { label: "Box Independence", baseline: m(baselineSummary, "boxIndependenceRatio"), v2: m(v2Summary, "boxIndependenceRatio"), lowerBetter: true },
+    { label: "Empty Walk Ratio", baseline: m(baselineSummary, "emptyWalkRatio"), v2: m(v2Summary, "emptyWalkRatio"), lowerBetter: true },
+    { label: "Unused Floor Ratio", baseline: m(baselineSummary, "unusedFloorRatio"), v2: m(v2Summary, "unusedFloorRatio"), lowerBetter: true },
+    { label: "Deadlock Density", baseline: m(baselineSummary, "deadlockDensity"), v2: m(v2Summary, "deadlockDensity"), lowerBetter: false },
+    { label: "Solver Expanded States", baseline: m(baselineSummary, "solverExpandedStates"), v2: m(v2Summary, "solverExpandedStates"), lowerBetter: false },
+    { label: "Moves Per Push", baseline: m(baselineSummary, "movesPerPush"), v2: m(v2Summary, "movesPerPush"), lowerBetter: true },
+    { label: "Repetitive Push Ratio", baseline: m(baselineSummary, "repetitivePushRatio"), v2: m(v2Summary, "repetitivePushRatio"), lowerBetter: true },
+    { label: "Total Floor", baseline: m(baselineSummary, "totalFloor"), v2: m(v2Summary, "totalFloor"), lowerBetter: false },
   ];
 
   for (const mt of metrics) {
-    const delta = mt.v2 - mt.v1;
+    const delta = mt.v2 - mt.baseline;
     const sign = delta >= 0 ? "+" : "";
     const indicator = (delta > 0) === !mt.lowerBetter ? " ✓" : delta === 0 ? "" : " ✗";
     lines.push(
-      `${mt.label.padEnd(30)} ${formatMetric(mt.v1).padStart(10)} ${formatMetric(mt.v2).padStart(10)} ${(sign + formatMetric(delta)).padStart(8)}${indicator}`,
+      `${mt.label.padEnd(30)} ${formatMetric(mt.baseline).padStart(10)} ${formatMetric(mt.v2).padStart(10)} ${(sign + formatMetric(delta)).padStart(8)}${indicator}`,
     );
   }
 
@@ -704,16 +704,27 @@ async function main(): Promise<void> {
   const manifest = buildManifest(catalogEntries, ccMap, tierTargets);
 
   // -----------------------------------------------------------------------
-  // Phase 6: Frozen benchmark comparison
+  // Phase 6: Benchmark comparison against handcrafted puzzles
   // -----------------------------------------------------------------------
+  // Compare V2.1 generated candidates against the stable handcrafted
+  // (canonical) puzzles, NOT against the mutable generated-puzzles.json.
+  // This prevents circular self-comparison where the baseline is the
+  // very file being overwritten.
 
-  console.log("\n>>> Phase 6: Benchmark comparison...");
-  let benchmarkReport = "(skipped — no benchmark or no V2 non-tutorial puzzles)";
+  console.log("\n>>> Phase 6: Benchmark comparison (vs handcrafted baseline)...");
+  let benchmarkReport = "(skipped — no handcrafted baseline or no V2 non-tutorial puzzles)";
 
   try {
-    const benchmarkData: readonly { id: string; difficulty: Difficulty; boxes: number }[] =
-      JSON.parse(readFileSync(BENCHMARK_PATH, "utf-8"));
-    const v1NonTutorial = benchmarkData.filter((p) => p.difficulty !== "tutorial");
+    const handcraftedMeta: readonly { id: string; difficulty: Difficulty }[] =
+      JSON.parse(readFileSync(HANDCRAFTED_BENCHMARK_PATH, "utf-8"));
+    const handcraftedIds = new Set(
+      handcraftedMeta.filter((p) => p.difficulty !== "tutorial").map((p) => p.id),
+    );
+
+    const { PUZZLES: allPuzzles } = await import("../src/catalog/puzzles.ts");
+    const handcraftedPuzzles = (allPuzzles as readonly PuzzleDefinition[]).filter(
+      (p) => handcraftedIds.has(p.id),
+    );
 
     const v2Evals: PuzzleEvaluationVector[] = [];
     for (const difficulty of DIFFICULTIES) {
@@ -722,20 +733,14 @@ async function main(): Promise<void> {
       for (const c of candidates) v2Evals.push(c.candidate.evaluation);
     }
 
-    if (v1NonTutorial.length > 0 && v2Evals.length > 0) {
-      const v1Puzzles: PuzzleDefinition[] = JSON.parse(
-        readFileSync(CATALOG_PATH, "utf-8"),
-      );
-      const v1PuzzlesNonTutorial = v1Puzzles.filter((p) => p.difficulty !== "tutorial");
-      if (v1PuzzlesNonTutorial.length > 0) {
-        const v1EvalsComputed = await evaluatePuzzles(v1PuzzlesNonTutorial);
-        const v1Summary = summarizePopulation(v1EvalsComputed);
-        const v2Summary = summarizePopulation(v2Evals);
-        benchmarkReport = comparisonReport(v1Summary, v2Summary);
-      }
+    if (handcraftedPuzzles.length > 0 && v2Evals.length > 0) {
+      const handcraftedEvals = await evaluatePuzzles(handcraftedPuzzles);
+      const handcraftedSummary = summarizePopulation(handcraftedEvals);
+      const v2Summary = summarizePopulation(v2Evals);
+      benchmarkReport = comparisonReport(handcraftedSummary, v2Summary);
     }
   } catch {
-    benchmarkReport = "(skipped — benchmark fixture or current catalog not available)";
+    benchmarkReport = "(skipped — handcrafted benchmark fixture not available)";
   }
 
   // -----------------------------------------------------------------------
