@@ -486,7 +486,7 @@ export async function runForge(
     }
 
     const evalResult = await evaluatePuzzleWithSteps(puzzle);
-    let ev = evalResult.vector;
+    const ev = evalResult.vector;
     if (!ev.solved) {
       rejections.push({ seed, reason: "unsolvable" });
       continue;
