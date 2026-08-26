@@ -193,6 +193,11 @@ export {
   createGeneratedPuzzleId,
 } from "./puzzle-identity.ts";
 
+export type {
+  GeneratedPuzzleManifest,
+  GeneratedPuzzleManifestEntry,
+} from "./catalog-manifest-types.ts";
+
 export {
   enumerateForgeCombinations,
   createForgeSchedule,

@@ -153,7 +153,10 @@ export type ForgeRejectionReason =
   | "gate-solver-effort"
   | "motif-failed"
   | "composition-failed"
-  | "duplicate-exact";
+  | "duplicate-exact"
+  | "difficulty-mismatch"
+  | "duplicate-cross-tier"
+  | "duplicate-symmetry";
 
 export interface ForgeRejection {
   readonly seed: number;

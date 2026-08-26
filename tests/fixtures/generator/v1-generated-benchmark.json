@@ -1,0 +1,946 @@
+[
+  {
+    "id": "gen-tutorial-001",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 9
+  },
+  {
+    "id": "gen-tutorial-002",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 10
+  },
+  {
+    "id": "gen-tutorial-003",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 11
+  },
+  {
+    "id": "gen-tutorial-004",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-tutorial-005",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-tutorial-006",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 11
+  },
+  {
+    "id": "gen-tutorial-007",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 16
+  },
+  {
+    "id": "gen-tutorial-008",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 16
+  },
+  {
+    "id": "gen-tutorial-009",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 20
+  },
+  {
+    "id": "gen-tutorial-010",
+    "difficulty": "tutorial",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-beginner-001",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-beginner-002",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-beginner-003",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 24
+  },
+  {
+    "id": "gen-beginner-004",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 25
+  },
+  {
+    "id": "gen-beginner-005",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-beginner-006",
+    "difficulty": "beginner",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 10
+  },
+  {
+    "id": "gen-beginner-007",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 17
+  },
+  {
+    "id": "gen-beginner-008",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 14
+  },
+  {
+    "id": "gen-beginner-009",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 22
+  },
+  {
+    "id": "gen-beginner-010",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 17
+  },
+  {
+    "id": "gen-beginner-011",
+    "difficulty": "beginner",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 12
+  },
+  {
+    "id": "gen-beginner-012",
+    "difficulty": "beginner",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-beginner-013",
+    "difficulty": "beginner",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 20
+  },
+  {
+    "id": "gen-beginner-014",
+    "difficulty": "beginner",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 11
+  },
+  {
+    "id": "gen-beginner-015",
+    "difficulty": "beginner",
+    "boxes": 2,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 15
+  },
+  {
+    "id": "gen-intermediate-001",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 22
+  },
+  {
+    "id": "gen-intermediate-002",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-intermediate-003",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-intermediate-004",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 26
+  },
+  {
+    "id": "gen-intermediate-005",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 16
+  },
+  {
+    "id": "gen-intermediate-006",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 22
+  },
+  {
+    "id": "gen-intermediate-007",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 22
+  },
+  {
+    "id": "gen-intermediate-008",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 14
+  },
+  {
+    "id": "gen-intermediate-009",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 12
+  },
+  {
+    "id": "gen-intermediate-010",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 11
+  },
+  {
+    "id": "gen-intermediate-011",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 26
+  },
+  {
+    "id": "gen-intermediate-012",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 13
+  },
+  {
+    "id": "gen-intermediate-013",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 24
+  },
+  {
+    "id": "gen-intermediate-014",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-intermediate-015",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 24
+  },
+  {
+    "id": "gen-intermediate-016",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 24
+  },
+  {
+    "id": "gen-intermediate-017",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 23
+  },
+  {
+    "id": "gen-intermediate-018",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-intermediate-019",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-intermediate-020",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 19
+  },
+  {
+    "id": "gen-intermediate-021",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 17
+  },
+  {
+    "id": "gen-intermediate-022",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-intermediate-023",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 31
+  },
+  {
+    "id": "gen-intermediate-024",
+    "difficulty": "intermediate",
+    "boxes": 4,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 27
+  },
+  {
+    "id": "gen-intermediate-025",
+    "difficulty": "intermediate",
+    "boxes": 3,
+    "width": 12,
+    "height": 12,
+    "totalFloor": 20
+  },
+  {
+    "id": "gen-advanced-001",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-advanced-002",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-advanced-003",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-advanced-004",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 21
+  },
+  {
+    "id": "gen-advanced-005",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-advanced-006",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 20
+  },
+  {
+    "id": "gen-advanced-007",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 19
+  },
+  {
+    "id": "gen-advanced-008",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 25
+  },
+  {
+    "id": "gen-advanced-009",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-advanced-010",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 27
+  },
+  {
+    "id": "gen-advanced-011",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-advanced-012",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-advanced-013",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 41
+  },
+  {
+    "id": "gen-advanced-014",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 27
+  },
+  {
+    "id": "gen-advanced-015",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 42
+  },
+  {
+    "id": "gen-advanced-016",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 32
+  },
+  {
+    "id": "gen-advanced-017",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 25
+  },
+  {
+    "id": "gen-advanced-018",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-advanced-019",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 32
+  },
+  {
+    "id": "gen-advanced-020",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-advanced-021",
+    "difficulty": "advanced",
+    "boxes": 4,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-advanced-022",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-advanced-023",
+    "difficulty": "advanced",
+    "boxes": 4,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-advanced-024",
+    "difficulty": "advanced",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-advanced-025",
+    "difficulty": "advanced",
+    "boxes": 3,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 19
+  },
+  {
+    "id": "gen-expert-001",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-expert-002",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 31
+  },
+  {
+    "id": "gen-expert-003",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 32
+  },
+  {
+    "id": "gen-expert-004",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 40
+  },
+  {
+    "id": "gen-expert-005",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-expert-006",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-expert-007",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-expert-008",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 32
+  },
+  {
+    "id": "gen-expert-009",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-expert-010",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-expert-011",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 39
+  },
+  {
+    "id": "gen-expert-012",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 43
+  },
+  {
+    "id": "gen-expert-013",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 23
+  },
+  {
+    "id": "gen-expert-014",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 29
+  },
+  {
+    "id": "gen-expert-015",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 43
+  },
+  {
+    "id": "gen-expert-016",
+    "difficulty": "expert",
+    "boxes": 4,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 33
+  },
+  {
+    "id": "gen-expert-017",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-expert-018",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-expert-019",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 28
+  },
+  {
+    "id": "gen-expert-020",
+    "difficulty": "expert",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 40
+  },
+  {
+    "id": "gen-expert-021",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-expert-022",
+    "difficulty": "expert",
+    "boxes": 4,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 26
+  },
+  {
+    "id": "gen-expert-023",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 23
+  },
+  {
+    "id": "gen-expert-024",
+    "difficulty": "expert",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-expert-025",
+    "difficulty": "expert",
+    "boxes": 4,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-master-001",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-master-002",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 26
+  },
+  {
+    "id": "gen-master-003",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 27
+  },
+  {
+    "id": "gen-master-004",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-master-005",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 27
+  },
+  {
+    "id": "gen-master-006",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 41
+  },
+  {
+    "id": "gen-master-007",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 36
+  },
+  {
+    "id": "gen-master-008",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-master-009",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 34
+  },
+  {
+    "id": "gen-master-010",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 31
+  },
+  {
+    "id": "gen-master-011",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 31
+  },
+  {
+    "id": "gen-master-012",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-master-013",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 39
+  },
+  {
+    "id": "gen-master-014",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 30
+  },
+  {
+    "id": "gen-master-015",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 37
+  },
+  {
+    "id": "gen-master-016",
+    "difficulty": "master",
+    "boxes": 6,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  },
+  {
+    "id": "gen-master-017",
+    "difficulty": "master",
+    "boxes": 7,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 35
+  },
+  {
+    "id": "gen-master-018",
+    "difficulty": "master",
+    "boxes": 5,
+    "width": 14,
+    "height": 14,
+    "totalFloor": 38
+  }
+]

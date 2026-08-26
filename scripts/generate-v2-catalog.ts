@@ -14,19 +14,43 @@ import {
   evaluatePuzzles,
   summarizePopulation,
   createGeneratedPuzzleId,
+  boardHash,
+  symmetryHash,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
   type ForgeCandidate,
+  type ForgeRejectionReason,
   type PuzzleEvaluationVector,
   type PopulationSummary,
   type TopologyFamily,
   type ForgeGenerationMode,
+  type GeneratedPuzzleManifest,
+  type GeneratedPuzzleManifestEntry,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CATALOG_PATH = join(__dirname, "../src/catalog/generated-puzzles.json");
+const MANIFEST_PATH = join(__dirname, "../src/catalog/generated-puzzles.manifest.json");
+const BENCHMARK_PATH = join(__dirname, "../tests/fixtures/generator/v1-generated-benchmark.json");
+
+// ---------------------------------------------------------------------------
+// CLI flags
+// ---------------------------------------------------------------------------
+
 const dryRun = process.argv.includes("--dry-run");
+const verbose = process.argv.includes("--verbose");
+
+function cliFlag(name: string): string | undefined {
+  const idx = process.argv.indexOf(name);
+  return idx >= 0 && idx + 1 < process.argv.length
+    ? process.argv[idx + 1]
+    : undefined;
+}
+
+const tierFilter = cliFlag("--tier") as Difficulty | undefined;
+const maxSeedWindows = Number(cliFlag("--max-seed-windows") ?? "3");
+const SEED_WINDOW_SIZE = 10000;
 
 // ---------------------------------------------------------------------------
 // Per-tier forge configurations
@@ -37,9 +61,6 @@ interface TierConfig {
   readonly config: ForgeConfig;
 }
 
-// Board size note: the blueprint generator needs ≥12×12 to reliably place
-// rooms + corridors. Easier tiers use 12×12 with fewer boxes; tightening
-// removes unused floor to keep the effective area small.
 const TIER_CONFIGS: readonly TierConfig[] = [
   {
     difficulty: "tutorial",
@@ -168,29 +189,35 @@ const TIER_CONFIGS: readonly TierConfig[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Difficulty reclassification
+// Difficulty policy
 // ---------------------------------------------------------------------------
 
 const TIER_RANK = new Map<Difficulty, number>(
   DIFFICULTIES.map((d, i) => [d, i]),
 );
 
-function reclassifyDifficulty(
-  intended: Difficulty,
+function classifyCandidate(
   ev: PuzzleEvaluationVector,
-): { classified: Difficulty; note: string } {
-  const classified = classifyFromMetrics(
+): Difficulty {
+  return classifyFromMetrics(
     ev.solutionMoves,
     ev.solutionPushes,
     ev.boxCount,
   );
+}
 
-  const intendedRank = TIER_RANK.get(intended)!;
-  const classifiedRank = TIER_RANK.get(classified)!;
-  const gap = intendedRank - classifiedRank;
+function difficultyGap(intended: Difficulty, classified: Difficulty): number {
+  return (TIER_RANK.get(intended) ?? 0) - (TIER_RANK.get(classified) ?? 0);
+}
 
-  if (gap <= 0) return { classified, note: "matches or harder" };
-  return { classified, note: `${gap} tier(s) easier per V1 thresholds` };
+interface CatalogCandidate {
+  readonly candidate: ForgeCandidate;
+  readonly intendedDifficulty: Difficulty;
+  readonly classifiedDifficulty: Difficulty;
+  readonly gap: number;
+  assignedDifficulty: Difficulty;
+  rejected: boolean;
+  rejectionReason?: ForgeRejectionReason;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,18 +233,17 @@ const TITLE_LABELS: Record<Difficulty, string> = {
   master: "Master",
 };
 
-function forgeCandidateToCatalogEntry(
-  candidate: ForgeCandidate,
-  difficulty: Difficulty,
+function catalogCandidateToEntry(
+  cc: CatalogCandidate,
   index: number,
 ): PuzzleDefinition {
   return {
-    id: createGeneratedPuzzleId(candidate.provenance.seed, candidate.puzzle.rows),
-    title: `${TITLE_LABELS[difficulty]} ${index + 1}`,
-    difficulty,
-    boxes: candidate.puzzle.boxes,
+    id: createGeneratedPuzzleId(cc.candidate.provenance.seed, cc.candidate.puzzle.rows),
+    title: `${TITLE_LABELS[cc.assignedDifficulty]} ${index + 1}`,
+    difficulty: cc.assignedDifficulty,
+    boxes: cc.candidate.puzzle.boxes,
     collection: "Sokomind Generated",
-    rows: [...candidate.puzzle.rows],
+    rows: [...cc.candidate.puzzle.rows],
   };
 }
 
@@ -258,12 +284,12 @@ function comparisonReport(
     { label: "Total Floor", v1: m(v1Summary, "totalFloor"), v2: m(v2Summary, "totalFloor"), lowerBetter: false },
   ];
 
-  for (const m of metrics) {
-    const delta = m.v2 - m.v1;
+  for (const mt of metrics) {
+    const delta = mt.v2 - mt.v1;
     const sign = delta >= 0 ? "+" : "";
-    const indicator = (delta > 0) === !m.lowerBetter ? " ✓" : delta === 0 ? "" : " ✗";
+    const indicator = (delta > 0) === !mt.lowerBetter ? " ✓" : delta === 0 ? "" : " ✗";
     lines.push(
-      `${m.label.padEnd(30)} ${formatMetric(m.v1).padStart(10)} ${formatMetric(m.v2).padStart(10)} ${(sign + formatMetric(delta)).padStart(8)}${indicator}`,
+      `${mt.label.padEnd(30)} ${formatMetric(mt.v1).padStart(10)} ${formatMetric(mt.v2).padStart(10)} ${(sign + formatMetric(delta)).padStart(8)}${indicator}`,
     );
   }
 
@@ -272,141 +298,510 @@ function comparisonReport(
 }
 
 // ---------------------------------------------------------------------------
+// Global dedup
+// ---------------------------------------------------------------------------
+
+function globalDedup(
+  pools: Map<Difficulty, CatalogCandidate[]>,
+): { exactDupes: number; symmetryDupes: number } {
+  let exactDupes = 0;
+  let symmetryDupes = 0;
+
+  const exactSeen = new Map<string, { cc: CatalogCandidate; diff: Difficulty }>();
+  const symSeen = new Map<string, { cc: CatalogCandidate; diff: Difficulty }>();
+
+  for (const difficulty of DIFFICULTIES) {
+    const candidates = pools.get(difficulty) ?? [];
+    for (const cc of candidates) {
+      if (cc.rejected) continue;
+
+      const hash = boardHash(cc.candidate.puzzle.rows);
+      const existing = exactSeen.get(hash);
+      if (existing) {
+        const existingGap = Math.abs(existing.cc.gap);
+        const currentGap = Math.abs(cc.gap);
+        if (currentGap < existingGap) {
+          existing.cc.rejected = true;
+          existing.cc.rejectionReason = "duplicate-cross-tier";
+          exactSeen.set(hash, { cc, diff: cc.assignedDifficulty });
+        } else {
+          cc.rejected = true;
+          cc.rejectionReason = "duplicate-cross-tier";
+        }
+        exactDupes++;
+        continue;
+      }
+      exactSeen.set(hash, { cc, diff: cc.assignedDifficulty });
+
+      const symHash = symmetryHash(cc.candidate.puzzle.rows);
+      const symExisting = symSeen.get(symHash);
+      if (symExisting) {
+        const existingGap = Math.abs(symExisting.cc.gap);
+        const currentGap = Math.abs(cc.gap);
+        if (currentGap < existingGap) {
+          symExisting.cc.rejected = true;
+          symExisting.cc.rejectionReason = "duplicate-symmetry";
+          symSeen.set(symHash, { cc, diff: cc.assignedDifficulty });
+        } else {
+          cc.rejected = true;
+          cc.rejectionReason = "duplicate-symmetry";
+        }
+        symmetryDupes++;
+        continue;
+      }
+      symSeen.set(symHash, { cc, diff: cc.assignedDifficulty });
+    }
+  }
+
+  return { exactDupes, symmetryDupes };
+}
+
+// ---------------------------------------------------------------------------
+// Difficulty reclassification policy
+// ---------------------------------------------------------------------------
+
+function applyDifficultyPolicy(
+  pools: Map<Difficulty, CatalogCandidate[]>,
+  tierTargets: Map<Difficulty, number>,
+): number {
+  let rejectedCount = 0;
+
+  for (const difficulty of DIFFICULTIES) {
+    const candidates = pools.get(difficulty) ?? [];
+    for (const cc of candidates) {
+      if (cc.rejected) continue;
+
+      const absGap = Math.abs(cc.gap);
+      if (absGap >= 2) {
+        cc.rejected = true;
+        cc.rejectionReason = "difficulty-mismatch";
+        rejectedCount++;
+        if (verbose) {
+          console.log(
+            `    [difficulty] Rejecting seed ${cc.candidate.provenance.seed}: ` +
+            `intended=${cc.intendedDifficulty}, classified=${cc.classifiedDifficulty} (gap=${cc.gap})`,
+          );
+        }
+        continue;
+      }
+
+      if (absGap === 1 && cc.classifiedDifficulty !== cc.intendedDifficulty) {
+        const classifiedPool = pools.get(cc.classifiedDifficulty) ?? [];
+        const classifiedActive = classifiedPool.filter((c) => !c.rejected).length;
+        const classifiedTarget = tierTargets.get(cc.classifiedDifficulty) ?? 0;
+
+        if (classifiedActive < classifiedTarget) {
+          const oldPool = pools.get(cc.intendedDifficulty);
+          if (oldPool) {
+            const idx = oldPool.indexOf(cc);
+            if (idx >= 0) oldPool.splice(idx, 1);
+          }
+          cc.assignedDifficulty = cc.classifiedDifficulty;
+          classifiedPool.push(cc);
+          if (verbose) {
+            console.log(
+              `    [difficulty] Reclassifying seed ${cc.candidate.provenance.seed}: ` +
+              `${cc.intendedDifficulty} → ${cc.classifiedDifficulty}`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return rejectedCount;
+}
+
+// ---------------------------------------------------------------------------
+// Build manifest
+// ---------------------------------------------------------------------------
+
+function buildManifest(
+  entries: readonly PuzzleDefinition[],
+  ccMap: Map<string, CatalogCandidate>,
+  tierTargets: Map<Difficulty, number>,
+): GeneratedPuzzleManifest {
+  const allRows = entries.map((e) => e.rows.join("\n")).join("\n\n");
+  const catalogHashValue = boardHash(allRows.split("\n"));
+
+  const tierQuotas = {} as Record<Difficulty, { target: number; actual: number }>;
+  for (const d of DIFFICULTIES) {
+    tierQuotas[d] = {
+      target: tierTargets.get(d) ?? 0,
+      actual: entries.filter((e) => e.difficulty === d).length,
+    };
+  }
+
+  const puzzles: GeneratedPuzzleManifestEntry[] = entries.map((entry) => {
+    const cc = ccMap.get(entry.id);
+    const p = cc?.candidate.provenance;
+    const ev = cc?.candidate.evaluation;
+    return {
+      id: entry.id,
+      title: entry.title,
+      difficulty: entry.difficulty,
+      seed: p?.seed ?? 0,
+      family: p?.family ?? ("linear" as const),
+      boxCount: p?.boxCount ?? entry.boxes,
+      mode: p?.mode ?? ("plain" as const),
+      motifType: p?.motifType,
+      compositionType: p?.compositionType,
+      boardHash: boardHash(entry.rows),
+      symmetryHash: symmetryHash(entry.rows),
+      tightened: p?.tightened ?? false,
+      cellsRemoved: p?.cellsRemoved ?? 0,
+      dependencyEdges: p?.dependencyEdges,
+      dependencyRealized: p?.dependencyRealized,
+      dependencyRealizationRate: p?.dependencyRealizationRate,
+      intendedDifficulty: cc?.intendedDifficulty ?? entry.difficulty,
+      classifiedDifficulty: cc?.classifiedDifficulty ?? entry.difficulty,
+      difficultyGap: cc?.gap ?? 0,
+      solutionMoves: ev?.solutionMoves ?? 0,
+      solutionPushes: ev?.solutionPushes ?? 0,
+      totalFloor: ev?.totalFloor ?? 0,
+    };
+  });
+
+  return {
+    schemaVersion: 1,
+    generatorVersion: "2.1.0",
+    catalogHash: catalogHashValue,
+    tierQuotas,
+    puzzles,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Invariant checks
+// ---------------------------------------------------------------------------
+
+interface InvariantResult {
+  readonly passed: boolean;
+  readonly errors: readonly string[];
+  readonly warnings: readonly string[];
+}
+
+function checkInvariants(
+  entries: readonly PuzzleDefinition[],
+  tierTargets: Map<Difficulty, number>,
+): InvariantResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    if (ids.has(entry.id)) {
+      errors.push(`DUPLICATE ID: ${entry.id}`);
+    }
+    ids.add(entry.id);
+
+    if (!entry.id.startsWith("gen-v2-")) {
+      errors.push(`ID does not use gen-v2- prefix: ${entry.id}`);
+    }
+
+    const validation = validatePuzzle(entry);
+    if (!validation.valid) {
+      errors.push(
+        `VALIDATION FAILED: ${entry.id} — ${validation.errors.map((e) => e.message).join("; ")}`,
+      );
+    }
+  }
+
+  const boardHashes = new Map<string, string>();
+  for (const entry of entries) {
+    const hash = boardHash(entry.rows);
+    const existing = boardHashes.get(hash);
+    if (existing) {
+      errors.push(`DUPLICATE CANONICAL BOARD: ${entry.id} and ${existing} (hash=${hash})`);
+    }
+    boardHashes.set(hash, entry.id);
+  }
+
+  const symHashes = new Map<string, string>();
+  for (const entry of entries) {
+    const hash = symmetryHash(entry.rows);
+    const existing = symHashes.get(hash);
+    if (existing) {
+      errors.push(`DUPLICATE SYMMETRY BOARD: ${entry.id} and ${existing} (hash=${hash})`);
+    }
+    symHashes.set(hash, entry.id);
+  }
+
+  for (const difficulty of DIFFICULTIES) {
+    const count = entries.filter((e) => e.difficulty === difficulty).length;
+    const target = tierTargets.get(difficulty) ?? 0;
+    if (count < target) {
+      warnings.push(
+        `QUOTA SHORTFALL: tier=${difficulty} expected=${target} actual=${count}`,
+      );
+    }
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const totalStart = performance.now();
-  console.log(`\nSokomind V2 Catalog Generator${dryRun ? " (DRY RUN)" : ""}`);
-  console.log("=".repeat(50));
+  console.log(`\nSokomind V2.1 Atomic Catalog Generator${dryRun ? " (DRY RUN)" : ""}`);
+  console.log("=".repeat(60));
 
-  // Phase 1: Run forge per tier
-  const allCandidates = new Map<Difficulty, readonly ForgeCandidate[]>();
+  const activeTierConfigs = tierFilter
+    ? TIER_CONFIGS.filter((tc) => tc.difficulty === tierFilter)
+    : TIER_CONFIGS;
+
+  if (tierFilter && activeTierConfigs.length === 0) {
+    console.error(`Unknown tier: ${tierFilter}`);
+    process.exit(1);
+  }
+
+  const tierTargets = new Map<Difficulty, number>(
+    activeTierConfigs.map((tc) => [tc.difficulty, tc.config.retainTarget]),
+  );
+
+  // -----------------------------------------------------------------------
+  // Phase 1: Per-tier forge generation
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 1: Per-tier forge generation...");
+  const pools = new Map<Difficulty, CatalogCandidate[]>();
   const tierReports: string[] = [];
 
-  for (const { difficulty, config } of TIER_CONFIGS) {
-    console.log(`\n>>> Generating ${difficulty} tier (batch=${config.batchSize}, target=${config.retainTarget})...`);
+  for (const { difficulty, config } of activeTierConfigs) {
+    console.log(`\n    [forge] ${difficulty} tier (batch=${config.batchSize}, target=${config.retainTarget})...`);
     const result = await runForge(config);
-    const summary = summarizeForgeRun(result);
     const report = forgeRunReport(result);
     tierReports.push(report);
 
-    console.log(`    Attempted: ${result.totalAttempted} | Valid: ${result.totalValid} | Retained: ${result.totalRetained} (${summary.elapsedMs.toFixed(0)}ms)`);
-    allCandidates.set(difficulty, result.candidates);
+    const summary = summarizeForgeRun(result);
+    console.log(
+      `    Attempted: ${result.totalAttempted} | Valid: ${result.totalValid} | ` +
+      `Retained: ${result.totalRetained} (${summary.elapsedMs.toFixed(0)}ms)`,
+    );
+
+    const candidates: CatalogCandidate[] = result.candidates.map((c) => {
+      const classified = classifyCandidate(c.evaluation);
+      const gap = difficultyGap(difficulty, classified);
+      return {
+        candidate: c,
+        intendedDifficulty: difficulty,
+        classifiedDifficulty: classified,
+        gap,
+        assignedDifficulty: difficulty,
+        rejected: false,
+      };
+    });
+
+    pools.set(difficulty, candidates);
   }
 
-  // Phase 2: Log difficulty classification (informational — forge gates
-  // already enforce quality, so we trust the assigned tier)
-  console.log("\n>>> Difficulty classification check...");
-  const retainedByTier = new Map<Difficulty, readonly ForgeCandidate[]>();
-  let classifierMismatches = 0;
+  // -----------------------------------------------------------------------
+  // Phase 2: Difficulty policy
+  // -----------------------------------------------------------------------
 
-  for (const difficulty of DIFFICULTIES) {
-    const candidates = allCandidates.get(difficulty) ?? [];
-    retainedByTier.set(difficulty, candidates);
+  console.log("\n>>> Phase 2: Difficulty policy...");
+  const diffRejects = applyDifficultyPolicy(pools, tierTargets);
+  console.log(`    Difficulty mismatches rejected: ${diffRejects}`);
 
-    for (const c of candidates) {
-      const { classified, note } = reclassifyDifficulty(
-        difficulty,
-        c.evaluation,
+  // -----------------------------------------------------------------------
+  // Phase 3: Global cross-tier dedup
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 3: Global cross-tier dedup...");
+  const { exactDupes, symmetryDupes } = globalDedup(pools);
+  console.log(`    Exact cross-tier duplicates removed: ${exactDupes}`);
+  console.log(`    Symmetry duplicates removed: ${symmetryDupes}`);
+
+  // -----------------------------------------------------------------------
+  // Phase 4: Quota reconciliation with retry seed windows
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 4: Quota reconciliation...");
+  for (const { difficulty, config } of activeTierConfigs) {
+    for (let window = 1; window <= maxSeedWindows; window++) {
+      const active = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+      const target = tierTargets.get(difficulty) ?? 0;
+      if (active.length >= target) break;
+
+      const shortfall = target - active.length;
+      const retrySeed = config.baseSeed + SEED_WINDOW_SIZE * window;
+      console.log(
+        `    [quota] ${difficulty}: ${active.length}/${target} — ` +
+        `retrying with seed window ${window} (baseSeed=${retrySeed}, need ${shortfall} more)`,
       );
-      if (classified !== difficulty) {
-        classifierMismatches++;
-        console.log(`    [info] ${c.puzzle.id}: intended=${difficulty}, classified=${classified} — ${note}`);
-      }
+
+      const retryConfig: ForgeConfig = {
+        ...config,
+        baseSeed: retrySeed,
+        retainTarget: shortfall + 5,
+      };
+      const retryResult = await runForge(retryConfig);
+
+      const retryCandidates: CatalogCandidate[] = retryResult.candidates.map((c) => {
+        const classified = classifyCandidate(c.evaluation);
+        const gap = difficultyGap(difficulty, classified);
+        return {
+          candidate: c,
+          intendedDifficulty: difficulty,
+          classifiedDifficulty: classified,
+          gap,
+          assignedDifficulty: difficulty,
+          rejected: false,
+        };
+      });
+
+      const pool = pools.get(difficulty) ?? [];
+      pool.push(...retryCandidates);
+      pools.set(difficulty, pool);
+
+      applyDifficultyPolicy(pools, tierTargets);
+      globalDedup(pools);
+
+      console.log(
+        `    [quota] ${difficulty}: now ${pool.filter((c) => !c.rejected).length}/${target}`,
+      );
     }
   }
-
-  console.log(`    Classifier mismatches: ${classifierMismatches} (informational only, all candidates kept)`);
-
-  // Phase 3: Convert to catalog format
-  console.log("\n>>> Converting to catalog format...");
-  const catalogEntries: PuzzleDefinition[] = [];
 
   for (const difficulty of DIFFICULTIES) {
-    const candidates = retainedByTier.get(difficulty) ?? [];
-    for (let i = 0; i < candidates.length; i++) {
-      const entry = forgeCandidateToCatalogEntry(candidates[i], difficulty, i);
-      const validation = validatePuzzle(entry);
-      if (!validation.valid) {
-        console.error(`    VALIDATION FAILED: ${entry.id} — ${validation.errors.map(e => e.message).join("; ")}`);
-        continue;
-      }
-      catalogEntries.push(entry);
+    if (!tierTargets.has(difficulty)) continue;
+    const active = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+    const target = tierTargets.get(difficulty) ?? 0;
+    if (active.length < target) {
+      console.warn(
+        `    WARNING: ${difficulty} tier has ${active.length}/${target} candidates after ${maxSeedWindows} retry windows`,
+      );
     }
   }
 
-  // Check ID uniqueness
-  const ids = new Set<string>();
-  for (const entry of catalogEntries) {
-    if (ids.has(entry.id)) {
-      console.error(`    DUPLICATE ID: ${entry.id}`);
+  // -----------------------------------------------------------------------
+  // Phase 5: Catalog conversion + manifest
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 5: Catalog conversion + manifest...");
+  const catalogEntries: PuzzleDefinition[] = [];
+  const ccMap = new Map<string, CatalogCandidate>();
+
+  for (const difficulty of DIFFICULTIES) {
+    if (!tierTargets.has(difficulty)) continue;
+    const candidates = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+    for (let i = 0; i < candidates.length; i++) {
+      const entry = catalogCandidateToEntry(candidates[i], i);
+      catalogEntries.push(entry);
+      ccMap.set(entry.id, candidates[i]);
     }
-    ids.add(entry.id);
   }
 
   console.log(`    Total catalog entries: ${catalogEntries.length}`);
 
-  // Phase 4: V1 vs V2 comparison
-  console.log("\n>>> Evaluating V1 catalog for comparison...");
-  const v1Puzzles: PuzzleDefinition[] = JSON.parse(
-    readFileSync(CATALOG_PATH, "utf-8"),
-  );
-  const v1NonTutorial = v1Puzzles.filter((p) => p.difficulty !== "tutorial");
-  const v2NonTutorial = catalogEntries.filter((p) => p.difficulty !== "tutorial");
+  const manifest = buildManifest(catalogEntries, ccMap, tierTargets);
 
-  let v1CompReport = "(skipped — no V1 non-tutorial puzzles)";
-  if (v1NonTutorial.length > 0 && v2NonTutorial.length > 0) {
-    const v1Evals = await evaluatePuzzles(v1NonTutorial);
-    const v1Summary = summarizePopulation(v1Evals);
+  // -----------------------------------------------------------------------
+  // Phase 6: Frozen benchmark comparison
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Phase 6: Benchmark comparison...");
+  let benchmarkReport = "(skipped — no benchmark or no V2 non-tutorial puzzles)";
+
+  try {
+    const benchmarkData: readonly { id: string; difficulty: Difficulty; boxes: number }[] =
+      JSON.parse(readFileSync(BENCHMARK_PATH, "utf-8"));
+    const v1NonTutorial = benchmarkData.filter((p) => p.difficulty !== "tutorial");
 
     const v2Evals: PuzzleEvaluationVector[] = [];
     for (const difficulty of DIFFICULTIES) {
       if (difficulty === "tutorial") continue;
-      const candidates = retainedByTier.get(difficulty) ?? [];
-      for (const c of candidates) {
-        v2Evals.push(c.evaluation);
+      const candidates = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+      for (const c of candidates) v2Evals.push(c.candidate.evaluation);
+    }
+
+    if (v1NonTutorial.length > 0 && v2Evals.length > 0) {
+      const v1Puzzles: PuzzleDefinition[] = JSON.parse(
+        readFileSync(CATALOG_PATH, "utf-8"),
+      );
+      const v1PuzzlesNonTutorial = v1Puzzles.filter((p) => p.difficulty !== "tutorial");
+      if (v1PuzzlesNonTutorial.length > 0) {
+        const v1EvalsComputed = await evaluatePuzzles(v1PuzzlesNonTutorial);
+        const v1Summary = summarizePopulation(v1EvalsComputed);
+        const v2Summary = summarizePopulation(v2Evals);
+        benchmarkReport = comparisonReport(v1Summary, v2Summary);
       }
     }
-    const v2Summary = summarizePopulation(v2Evals);
-    v1CompReport = comparisonReport(v1Summary, v2Summary);
+  } catch {
+    benchmarkReport = "(skipped — benchmark fixture or current catalog not available)";
   }
 
-  // Phase 5: Distribution table
+  // -----------------------------------------------------------------------
+  // Invariant checks
+  // -----------------------------------------------------------------------
+
+  console.log("\n>>> Invariant checks...");
+  const invariants = checkInvariants(catalogEntries, tierTargets);
+
+  for (const error of invariants.errors) {
+    console.error(`    ERROR: ${error}`);
+  }
+  for (const warning of invariants.warnings) {
+    console.warn(`    WARNING: ${warning}`);
+  }
+
+  if (invariants.passed) {
+    console.log("    All invariants passed.");
+  } else {
+    console.error(`    ${invariants.errors.length} invariant(s) failed.`);
+  }
+
+  // -----------------------------------------------------------------------
+  // Report
+  // -----------------------------------------------------------------------
+
   const distribution: string[] = [
     "",
-    "=".repeat(50),
+    "=".repeat(60),
     "Final Distribution",
-    "=".repeat(50),
+    "=".repeat(60),
     "",
-    `${"Tier".padEnd(15)} ${"Count".padStart(8)}`,
-    "-".repeat(25),
+    `${"Tier".padEnd(15)} ${"Target".padStart(8)} ${"Actual".padStart(8)} ${"Status".padStart(10)}`,
+    "-".repeat(45),
   ];
   for (const difficulty of DIFFICULTIES) {
+    if (!tierTargets.has(difficulty)) continue;
     const count = catalogEntries.filter((e) => e.difficulty === difficulty).length;
-    distribution.push(`${difficulty.padEnd(15)} ${String(count).padStart(8)}`);
+    const target = tierTargets.get(difficulty) ?? 0;
+    const status = count >= target ? "OK" : `SHORT -${target - count}`;
+    distribution.push(
+      `${difficulty.padEnd(15)} ${String(target).padStart(8)} ${String(count).padStart(8)} ${status.padStart(10)}`,
+    );
   }
-  distribution.push("-".repeat(25));
-  distribution.push(`${"Total".padEnd(15)} ${String(catalogEntries.length).padStart(8)}`);
+  distribution.push("-".repeat(45));
+  distribution.push(
+    `${"Total".padEnd(15)} ${" ".repeat(8)} ${String(catalogEntries.length).padStart(8)}`,
+  );
 
-  // Phase 6: ASCII samples (up to 2 per tier)
   const samples: string[] = [
     "",
-    "=".repeat(50),
+    "=".repeat(60),
     "Sample Puzzles (up to 2 per tier)",
-    "=".repeat(50),
+    "=".repeat(60),
   ];
   for (const difficulty of DIFFICULTIES) {
-    const candidates = retainedByTier.get(difficulty) ?? [];
+    if (!tierTargets.has(difficulty)) continue;
+    const candidates = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
     const sampleCount = Math.min(2, candidates.length);
     for (let i = 0; i < sampleCount; i++) {
       samples.push("");
       samples.push(`--- ${difficulty} sample ${i + 1} ---`);
-      samples.push(forgeCandidateToAscii(candidates[i]));
+      samples.push(forgeCandidateToAscii(candidates[i].candidate));
     }
   }
 
-  // Print full report
   console.log("\n" + "=".repeat(60));
   console.log("FULL REPORT");
   console.log("=".repeat(60));
@@ -415,19 +810,33 @@ async function main(): Promise<void> {
     console.log(report);
   }
 
-  console.log(v1CompReport);
+  console.log(benchmarkReport);
   console.log(distribution.join("\n"));
   console.log(samples.join("\n"));
 
-  // Write output
+  // -----------------------------------------------------------------------
+  // Phase 7: Atomic write
+  // -----------------------------------------------------------------------
+
+  if (!invariants.passed) {
+    console.error("\nCATALOG INVARIANT FAILED — aborting write.");
+    process.exit(1);
+  }
+
+  const catalogJson = JSON.stringify(catalogEntries, null, 2) + "\n";
+  const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
+
   if (dryRun) {
-    console.log("\n[DRY RUN] Would write generated-puzzles.json with " + catalogEntries.length + " puzzles.");
+    console.log(`\n[DRY RUN] Would write ${catalogEntries.length} puzzles to generated-puzzles.json`);
+    console.log(`[DRY RUN] Would write manifest with ${manifest.puzzles.length} entries`);
+    for (const w of invariants.warnings) {
+      console.warn(`[DRY RUN] ${w}`);
+    }
   } else {
-    writeFileSync(
-      CATALOG_PATH,
-      JSON.stringify(catalogEntries, null, 2) + "\n",
-    );
+    writeFileSync(CATALOG_PATH, catalogJson);
+    writeFileSync(MANIFEST_PATH, manifestJson);
     console.log(`\nWrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
+    console.log(`Wrote manifest to ${MANIFEST_PATH}`);
     console.log("Next steps:");
     console.log("  1. npm run prepare:catalog");
     console.log("  2. npm run typecheck");
