@@ -135,9 +135,9 @@ test("collection page lists puzzles with status and search filtering", async ({
   ).toBeVisible();
 
   const rows = page.getByTestId("puzzle-row");
-  await expect(rows).toHaveCount(15);
+  await expect(rows).toHaveCount(20);
   const status = page.getByRole("status").filter({
-    hasText: /Showing 1–15 of 15 puzzles/,
+    hasText: /Showing 1–20 of 20 puzzles/,
   });
   await expect(status).toBeVisible();
 
@@ -175,8 +175,8 @@ test("puzzle lists restore filters, scroll, and row focus after play", async ({
   );
 
   await search.fill("");
-  await expect(rows).toHaveCount(15);
-  const deepRow = rows.nth(13);
+  await expect(rows).toHaveCount(20);
+  const deepRow = rows.nth(18);
   await deepRow.scrollIntoViewIfNeeded();
   const savedScrollY = await page.evaluate(() => window.scrollY);
   const deepPuzzleId = await deepRow.getAttribute("data-puzzle-id");
