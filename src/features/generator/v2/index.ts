@@ -91,12 +91,14 @@ export type {
 
 export {
   evaluatePuzzle,
+  evaluatePuzzleWithSteps,
   evaluatePuzzles,
   summarizePopulation,
 } from "./puzzle-evaluator.ts";
 
 export type {
   PuzzleEvaluationVector,
+  PuzzleEvaluationResult,
   PopulationSummary,
 } from "./puzzle-evaluator.ts";
 

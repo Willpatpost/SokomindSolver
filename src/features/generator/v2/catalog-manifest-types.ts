@@ -17,6 +17,7 @@ export interface GeneratedPuzzleManifestEntry {
   readonly symmetryHash: string;
   readonly tightened: boolean;
   readonly cellsRemoved: number;
+  readonly labeled: boolean;
   readonly dependencyEdges?: number;
   readonly dependencyRealized?: number;
   readonly dependencyRealizationRate?: number;

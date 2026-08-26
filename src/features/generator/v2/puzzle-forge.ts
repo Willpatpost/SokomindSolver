@@ -29,7 +29,7 @@ import {
   reverseBeamSearch,
   DEFAULT_BEAM_PARAMS,
 } from "./reverse-beam-search.ts";
-import { evaluatePuzzle } from "./puzzle-evaluator.ts";
+import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
 import {
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,
@@ -42,6 +42,7 @@ import {
 
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
+import { assignLabels } from "../label-assignment.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,6 +67,7 @@ export interface ForgeConfig {
   readonly gates: ForgeAcceptanceGates;
   readonly diversityMinDistance: number;
   readonly baseSeed: number;
+  readonly useLabels: boolean;
 }
 
 export interface ForgeAcceptanceGates {
@@ -109,6 +111,7 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   gates: DEFAULT_FORGE_GATES,
   diversityMinDistance: 2.0,
   baseSeed: 10000,
+  useLabels: true,
 };
 
 export interface ForgeProvenance {
@@ -121,6 +124,7 @@ export interface ForgeProvenance {
   readonly difficulty: Difficulty;
   readonly tightened: boolean;
   readonly cellsRemoved: number;
+  readonly labeled: boolean;
   readonly dependencyRealizationRate?: number;
   readonly dependencyEdges?: number;
   readonly dependencyRealized?: number;
@@ -481,7 +485,8 @@ export async function runForge(
       cellsRemoved = tResult.cellsRemoved;
     }
 
-    const ev = await evaluatePuzzle(puzzle);
+    const evalResult = await evaluatePuzzleWithSteps(puzzle);
+    let ev = evalResult.vector;
     if (!ev.solved) {
       rejections.push({ seed, reason: "unsolvable" });
       continue;
@@ -497,6 +502,30 @@ export async function runForge(
       continue;
     }
 
+    let labeled = false;
+    if (config.useLabels && boxCount >= 2 && evalResult.steps) {
+      const solution = {
+        steps: evalResult.steps,
+        moves: ev.solutionMoves,
+        pushes: ev.solutionPushes,
+        objective: { kind: "moves" as const },
+        objectiveScore: ev.solutionMoves,
+        optimality: "unknown" as const,
+      };
+      const labelRng = (() => {
+        let s = (seed * 2654435761 + 999983) | 0;
+        return () => { s = (s * 1103515245 + 12345) | 0; return (s >>> 0) / 0x100000000; };
+      })();
+      const labeledPuzzle = assignLabels(puzzle, solution, labelRng);
+      if (labeledPuzzle !== puzzle) {
+        const labelValidation = validatePuzzle(labeledPuzzle);
+        if (labelValidation.valid) {
+          puzzle = labeledPuzzle;
+          labeled = true;
+        }
+      }
+    }
+
     const provenance: ForgeProvenance = {
       seed,
       family,
@@ -507,6 +536,7 @@ export async function runForge(
       difficulty,
       tightened: cellsRemoved > 0,
       cellsRemoved,
+      labeled,
       dependencyRealizationRate: raw.result.dependencyRealizationRate,
       dependencyEdges: raw.result.composedResult?.realization.totalEdges,
       dependencyRealized: raw.result.composedResult?.realization.realizedEdges,

@@ -93,10 +93,15 @@ export interface PuzzleEvaluationVector {
 // Evaluate a puzzle
 // ---------------------------------------------------------------------------
 
-export async function evaluatePuzzle(
+export interface PuzzleEvaluationResult {
+  readonly vector: PuzzleEvaluationVector;
+  readonly steps: readonly SolutionStep[] | null;
+}
+
+export async function evaluatePuzzleWithSteps(
   puzzle: PuzzleDefinition,
   signal?: AbortSignal,
-): Promise<PuzzleEvaluationVector> {
+): Promise<PuzzleEvaluationResult> {
   const session = createSession(puzzle);
   const grid = puzzle.rows.map((r) => [...r]);
 
@@ -117,7 +122,10 @@ export async function evaluatePuzzle(
   const result: SolverResult = await classicGreedySolver.solve(request, context);
 
   if (result.status !== "solved") {
-    return buildUnsolvedVector(puzzle, grid, structMetrics, result.metrics);
+    return {
+      vector: buildUnsolvedVector(puzzle, grid, structMetrics, result.metrics),
+      steps: null,
+    };
   }
 
   const { solution, metrics } = result;
@@ -135,83 +143,69 @@ export async function evaluatePuzzle(
   );
 
   return {
-    // Solver effort
-    solverExpandedStates: effortMetrics.expanded,
-    solverGeneratedStates: effortMetrics.generated,
-    solverElapsedMs: metrics.elapsedMs,
-    solverPeakFrontier: effortMetrics.peakFrontier,
-    solverDeadlockPrunes: effortMetrics.deadlockPrunes,
-    solverDuplicateStates: effortMetrics.duplicates,
-
-    // Solution quality
-    solutionMoves: solution.moves,
-    solutionPushes: solution.pushes,
-    solutionWalks: solution.moves - solution.pushes,
-    pushRatio: solution.moves > 0 ? solution.pushes / solution.moves : 0,
-    boxCount: puzzle.boxes,
-
-    // Decision branching (adjacent, legacy)
-    avgLegalPushes: branchMetrics.avgLegalPushes,
-    maxLegalPushes: branchMetrics.maxLegalPushes,
-    singleChoiceRatio: branchMetrics.singleChoiceRatio,
-    highBranchCount: branchMetrics.highBranchCount,
-
-    // Decision branching (reachable, correct)
-    avgReachablePushes: branchMetrics.avgReachablePushes,
-    maxReachablePushes: branchMetrics.maxReachablePushes,
-    reachableSingleChoiceRatio: branchMetrics.reachableSingleChoiceRatio,
-    reachableHighBranchCount: branchMetrics.reachableHighBranchCount,
-    reachableForcedPushRatio: branchMetrics.reachableForcedPushRatio,
-
-    // Box interaction (push-switch)
-    boxIndependenceRatio: boxMetrics.independenceRatio,
-    boxInteractionEvents: boxMetrics.interactionEvents,
-    pushesPerBox: puzzle.boxes > 0 ? solution.pushes / puzzle.boxes : 0,
-    pushSwitchRatio: boxMetrics.independenceRatio,
-
-    // Causal interaction
-    sharedRouteCells: interactionMetrics.sharedRouteCells,
-    sharedSupportCells: interactionMetrics.sharedSupportCells,
-    sharedChokepointUses: interactionMetrics.sharedChokepointUses,
-    causalEnableCount: interactionMetrics.causalEnableCount,
-    causalDisableCount: interactionMetrics.causalDisableCount,
-
-    // Packing / room traffic
-    roomCrossingsInSolution: roomMetrics.roomCrossings,
-
-    // Deadlock pressure
-    deadlockDensity: effortMetrics.expanded > 0
-      ? effortMetrics.deadlockPrunes / effortMetrics.expanded
-      : 0,
-
-    // Structural
-    articulationPoints: structMetrics.articulationCount,
-    regionCount: structMetrics.regionCount,
-    tunnelCells: structMetrics.tunnelCount,
-    chokepoints: structMetrics.chokepointCount,
-    floorUtilization: structMetrics.floorUtilization,
-    openAreaRatio: structMetrics.openAreaRatio,
-
-    // Tedium
-    emptyWalkRatio: walkMetrics.emptyWalkRatio,
-    longestWalkStreak: walkMetrics.longestWalkStreak,
-    forcedPushRatio: branchMetrics.forcedPushRatio,
-    repetitivePushRatio: tediumMetrics.repetitivePushRatio,
-    unusedFloorRatio: tediumMetrics.unusedFloorRatio,
-    movesPerPush: solution.pushes > 0 ? solution.moves / solution.pushes : 0,
-
-    // Solution floor usage
-    solutionFloorCoverage: usageMetrics.solutionFloorCoverage,
-    solutionUnusedFloorRatio: usageMetrics.solutionUnusedFloorRatio,
-
-    // Board
-    boardWidth: grid[0]?.length ?? 0,
-    boardHeight: grid.length,
-    totalFloor: structMetrics.totalFloor,
-
-    // Status
-    solved: true,
+    vector: {
+      solverExpandedStates: effortMetrics.expanded,
+      solverGeneratedStates: effortMetrics.generated,
+      solverElapsedMs: metrics.elapsedMs,
+      solverPeakFrontier: effortMetrics.peakFrontier,
+      solverDeadlockPrunes: effortMetrics.deadlockPrunes,
+      solverDuplicateStates: effortMetrics.duplicates,
+      solutionMoves: solution.moves,
+      solutionPushes: solution.pushes,
+      solutionWalks: solution.moves - solution.pushes,
+      pushRatio: solution.moves > 0 ? solution.pushes / solution.moves : 0,
+      boxCount: puzzle.boxes,
+      avgLegalPushes: branchMetrics.avgLegalPushes,
+      maxLegalPushes: branchMetrics.maxLegalPushes,
+      singleChoiceRatio: branchMetrics.singleChoiceRatio,
+      highBranchCount: branchMetrics.highBranchCount,
+      avgReachablePushes: branchMetrics.avgReachablePushes,
+      maxReachablePushes: branchMetrics.maxReachablePushes,
+      reachableSingleChoiceRatio: branchMetrics.reachableSingleChoiceRatio,
+      reachableHighBranchCount: branchMetrics.reachableHighBranchCount,
+      reachableForcedPushRatio: branchMetrics.reachableForcedPushRatio,
+      boxIndependenceRatio: boxMetrics.independenceRatio,
+      boxInteractionEvents: boxMetrics.interactionEvents,
+      pushesPerBox: puzzle.boxes > 0 ? solution.pushes / puzzle.boxes : 0,
+      pushSwitchRatio: boxMetrics.independenceRatio,
+      sharedRouteCells: interactionMetrics.sharedRouteCells,
+      sharedSupportCells: interactionMetrics.sharedSupportCells,
+      sharedChokepointUses: interactionMetrics.sharedChokepointUses,
+      causalEnableCount: interactionMetrics.causalEnableCount,
+      causalDisableCount: interactionMetrics.causalDisableCount,
+      roomCrossingsInSolution: roomMetrics.roomCrossings,
+      deadlockDensity: effortMetrics.expanded > 0
+        ? effortMetrics.deadlockPrunes / effortMetrics.expanded
+        : 0,
+      articulationPoints: structMetrics.articulationCount,
+      regionCount: structMetrics.regionCount,
+      tunnelCells: structMetrics.tunnelCount,
+      chokepoints: structMetrics.chokepointCount,
+      floorUtilization: structMetrics.floorUtilization,
+      openAreaRatio: structMetrics.openAreaRatio,
+      emptyWalkRatio: walkMetrics.emptyWalkRatio,
+      longestWalkStreak: walkMetrics.longestWalkStreak,
+      forcedPushRatio: branchMetrics.forcedPushRatio,
+      repetitivePushRatio: tediumMetrics.repetitivePushRatio,
+      unusedFloorRatio: tediumMetrics.unusedFloorRatio,
+      movesPerPush: solution.pushes > 0 ? solution.moves / solution.pushes : 0,
+      solutionFloorCoverage: usageMetrics.solutionFloorCoverage,
+      solutionUnusedFloorRatio: usageMetrics.solutionUnusedFloorRatio,
+      boardWidth: grid[0]?.length ?? 0,
+      boardHeight: grid.length,
+      totalFloor: structMetrics.totalFloor,
+      solved: true,
+    },
+    steps,
   };
+}
+
+export async function evaluatePuzzle(
+  puzzle: PuzzleDefinition,
+  signal?: AbortSignal,
+): Promise<PuzzleEvaluationVector> {
+  const result = await evaluatePuzzleWithSteps(puzzle, signal);
+  return result.vector;
 }
 
 // ---------------------------------------------------------------------------
