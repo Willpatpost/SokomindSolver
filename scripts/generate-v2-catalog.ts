@@ -75,7 +75,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     config: {
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
-      retainTarget: 10,
+      retainTarget: 20,
       families: ["linear", "hub"] as TopologyFamily[],
       boxCounts: [2],
       difficulties: ["tutorial"],
@@ -97,7 +97,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     config: {
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
-      retainTarget: 15,
+      retainTarget: 20,
       families: ["linear", "hub", "loop"] as TopologyFamily[],
       boxCounts: [2, 3],
       difficulties: ["beginner"],
@@ -118,7 +118,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     config: {
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
-      retainTarget: 25,
+      retainTarget: 20,
       families: ["linear", "hub", "loop", "branch"] as TopologyFamily[],
       boxCounts: [3, 4],
       difficulties: ["intermediate"],
@@ -134,7 +134,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     config: {
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
-      retainTarget: 25,
+      retainTarget: 20,
       families: ["linear", "hub", "loop", "branch", "nested"] as TopologyFamily[],
       boxCounts: [3, 4, 5],
       difficulties: ["advanced"],
@@ -154,8 +154,8 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     difficulty: "expert",
     config: {
       ...DEFAULT_FORGE_CONFIG,
-      batchSize: 150,
-      retainTarget: 25,
+      batchSize: 200,
+      retainTarget: 20,
       families: ["hub", "loop", "branch", "nested"] as TopologyFamily[],
       boxCounts: [4, 5, 6],
       difficulties: ["expert"],
@@ -176,7 +176,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
     difficulty: "master",
     config: {
       ...DEFAULT_FORGE_CONFIG,
-      batchSize: 150,
+      batchSize: 200,
       retainTarget: 20,
       families: ["loop", "branch", "nested"] as TopologyFamily[],
       boxCounts: [5, 6, 7],
@@ -382,7 +382,7 @@ function applyDifficultyPolicy(
       if (cc.rejected) continue;
 
       const absGap = Math.abs(cc.gap);
-      if (absGap >= 2) {
+      if (absGap >= 4) {
         cc.rejected = true;
         cc.rejectionReason = "difficulty-mismatch";
         rejectedCount++;

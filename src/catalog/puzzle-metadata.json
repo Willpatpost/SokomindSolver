@@ -322,7 +322,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-001",
+      "gen-v2-100139-ad255928",
       "Tutorial 1",
       "tutorial",
       2,
@@ -332,7 +332,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-002",
+      "gen-v2-100159-7edd1069",
       "Tutorial 2",
       "tutorial",
       2,
@@ -342,7 +342,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-003",
+      "gen-v2-100121-7c73e62d",
       "Tutorial 3",
       "tutorial",
       2,
@@ -352,7 +352,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-004",
+      "gen-v2-120002-add65553",
       "Tutorial 4",
       "tutorial",
       2,
@@ -362,7 +362,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-005",
+      "gen-v2-100103-3a9293c1",
       "Tutorial 5",
       "tutorial",
       2,
@@ -372,7 +372,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-006",
+      "gen-v2-100023-4bcc24cb",
       "Tutorial 6",
       "tutorial",
       2,
@@ -382,7 +382,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-007",
+      "gen-v2-120161-0a3e619d",
       "Tutorial 7",
       "tutorial",
       2,
@@ -392,7 +392,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-008",
+      "gen-v2-130043-cdfc4348",
       "Tutorial 8",
       "tutorial",
       2,
@@ -402,7 +402,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-009",
+      "gen-v2-110150-bccf06c9",
       "Tutorial 9",
       "tutorial",
       2,
@@ -412,7 +412,7 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-tutorial-010",
+      "gen-v2-120033-5e8a6354",
       "Tutorial 10",
       "tutorial",
       2,
@@ -422,59 +422,9 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-beginner-001",
-      "Beginner 1",
-      "beginner",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-000"
-    ],
-    [
-      "gen-beginner-002",
-      "Beginner 2",
-      "beginner",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-000"
-    ],
-    [
-      "gen-beginner-003",
-      "Beginner 3",
-      "beginner",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-000"
-    ],
-    [
-      "gen-beginner-004",
-      "Beginner 4",
-      "beginner",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-000"
-    ],
-    [
-      "gen-beginner-005",
-      "Beginner 5",
-      "beginner",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-000"
-    ],
-    [
-      "gen-beginner-006",
-      "Beginner 6",
-      "beginner",
+      "gen-v2-110178-6b415254",
+      "Tutorial 11",
+      "tutorial",
       2,
       12,
       12,
@@ -482,27 +432,167 @@
       "puzzle-shard-000"
     ],
     [
-      "gen-beginner-007",
+      "gen-v2-100057-997fdbdb",
+      "Tutorial 12",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-100101-ae4224b2",
+      "Tutorial 13",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-110072-3454c4bd",
+      "Tutorial 14",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-120011-b12ad66d",
+      "Tutorial 15",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-100081-b8f47bb8",
+      "Tutorial 16",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-100061-bb6ce4d1",
+      "Tutorial 17",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-100133-c1a4e6ab",
+      "Tutorial 18",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-000"
+    ],
+    [
+      "gen-v2-130061-c451b463",
+      "Tutorial 19",
+      "tutorial",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110199-8b60c421",
+      "Beginner 1",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110122-0454c393",
+      "Beginner 2",
+      "beginner",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110008-27da4ad1",
+      "Beginner 3",
+      "beginner",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110115-df265559",
+      "Beginner 4",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-100001-1d531d59",
+      "Beginner 5",
+      "beginner",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110050-845aed00",
+      "Beginner 6",
+      "beginner",
+      2,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-120168-bb344f91",
       "Beginner 7",
       "beginner",
       3,
       12,
       12,
       "Sokomind Generated",
-      "puzzle-shard-000"
+      "puzzle-shard-001"
     ],
     [
-      "gen-beginner-008",
+      "gen-v2-100107-e8470ea1",
       "Beginner 8",
       "beginner",
-      3,
+      2,
       12,
       12,
       "Sokomind Generated",
-      "puzzle-shard-000"
+      "puzzle-shard-001"
     ],
     [
-      "gen-beginner-009",
+      "gen-v2-110033-394a4da3",
       "Beginner 9",
       "beginner",
       3,
@@ -512,7 +602,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-010",
+      "gen-v2-110165-66b8a082",
       "Beginner 10",
       "beginner",
       3,
@@ -522,27 +612,27 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-011",
+      "gen-v2-110141-a5b3b227",
       "Beginner 11",
       "beginner",
-      2,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-012",
+      "gen-v2-110189-10713ce3",
       "Beginner 12",
       "beginner",
-      2,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-013",
+      "gen-v2-110139-6b1800d4",
       "Beginner 13",
       "beginner",
       3,
@@ -552,47 +642,97 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-014",
+      "gen-v2-110055-e53c2e06",
       "Beginner 14",
       "beginner",
-      2,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-beginner-015",
+      "gen-v2-110177-1a010a60",
       "Beginner 15",
       "beginner",
-      2,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-001",
+      "gen-v2-110093-23aab541",
+      "Beginner 16",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110057-49d8ef78",
+      "Beginner 17",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-120096-021b9904",
+      "Beginner 18",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110187-771cbd01",
+      "Beginner 19",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-110091-8728ac5e",
+      "Beginner 20",
+      "beginner",
+      3,
+      12,
+      12,
+      "Sokomind Generated",
+      "puzzle-shard-001"
+    ],
+    [
+      "gen-v2-120188-92e54c32",
       "Intermediate 1",
       "intermediate",
-      3,
+      4,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-002",
+      "gen-v2-120144-9f26a272",
       "Intermediate 2",
       "intermediate",
-      3,
+      4,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-003",
+      "gen-v2-120164-a705e8a1",
       "Intermediate 3",
       "intermediate",
       4,
@@ -602,7 +742,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-004",
+      "gen-v2-120196-ed869e44",
       "Intermediate 4",
       "intermediate",
       3,
@@ -612,7 +752,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-005",
+      "gen-v2-120172-c7e77869",
       "Intermediate 5",
       "intermediate",
       3,
@@ -622,27 +762,27 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-006",
+      "gen-v2-120074-03a60a33",
       "Intermediate 6",
       "intermediate",
-      3,
+      4,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-007",
+      "gen-v2-120116-fbc8044a",
       "Intermediate 7",
       "intermediate",
-      3,
+      4,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-008",
+      "gen-v2-120029-d107526e",
       "Intermediate 8",
       "intermediate",
       3,
@@ -652,7 +792,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-009",
+      "gen-v2-110021-db94a0b3",
       "Intermediate 9",
       "intermediate",
       3,
@@ -662,17 +802,17 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-010",
+      "gen-v2-120168-79ccc8e1",
       "Intermediate 10",
       "intermediate",
-      3,
+      4,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-011",
+      "gen-v2-120092-b1a0c927",
       "Intermediate 11",
       "intermediate",
       4,
@@ -682,7 +822,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-012",
+      "gen-v2-120101-020b1919",
       "Intermediate 12",
       "intermediate",
       3,
@@ -692,17 +832,17 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-013",
+      "gen-v2-110079-e12b49e1",
       "Intermediate 13",
       "intermediate",
-      4,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-014",
+      "gen-v2-120038-10a449a1",
       "Intermediate 14",
       "intermediate",
       4,
@@ -712,7 +852,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-015",
+      "gen-v2-120078-b2ae1ed4",
       "Intermediate 15",
       "intermediate",
       3,
@@ -722,7 +862,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-016",
+      "gen-v2-120097-7ce3008c",
       "Intermediate 16",
       "intermediate",
       3,
@@ -732,17 +872,17 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-017",
+      "gen-v2-120006-b1069d38",
       "Intermediate 17",
       "intermediate",
-      4,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-018",
+      "gen-v2-120093-0de3ab5d",
       "Intermediate 18",
       "intermediate",
       4,
@@ -752,49 +892,19 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-019",
+      "gen-v2-120090-7966c98f",
       "Intermediate 19",
       "intermediate",
-      4,
+      3,
       12,
       12,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-020",
+      "gen-v2-120086-defba8cb",
       "Intermediate 20",
       "intermediate",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-001"
-    ],
-    [
-      "gen-intermediate-021",
-      "Intermediate 21",
-      "intermediate",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-001"
-    ],
-    [
-      "gen-intermediate-022",
-      "Intermediate 22",
-      "intermediate",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-001"
-    ],
-    [
-      "gen-intermediate-023",
-      "Intermediate 23",
-      "intermediate",
       4,
       12,
       12,
@@ -802,27 +912,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-intermediate-024",
-      "Intermediate 24",
-      "intermediate",
-      4,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-001"
-    ],
-    [
-      "gen-intermediate-025",
-      "Intermediate 25",
-      "intermediate",
-      3,
-      12,
-      12,
-      "Sokomind Generated",
-      "puzzle-shard-001"
-    ],
-    [
-      "gen-advanced-001",
+      "gen-v2-130000-c000e5e5",
       "Advanced 1",
       "advanced",
       5,
@@ -832,47 +922,47 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-002",
+      "gen-v2-130177-f808419d",
       "Advanced 2",
       "advanced",
-      5,
+      3,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-003",
+      "gen-v2-130122-c2477265",
       "Advanced 3",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-004",
+      "gen-v2-130030-cc40a57e",
       "Advanced 4",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-005",
+      "gen-v2-130084-243d1773",
       "Advanced 5",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-006",
+      "gen-v2-130110-a514dc6c",
       "Advanced 6",
       "advanced",
       5,
@@ -882,7 +972,7 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-007",
+      "gen-v2-130024-caca67a1",
       "Advanced 7",
       "advanced",
       5,
@@ -892,178 +982,128 @@
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-008",
+      "gen-v2-130070-585508d5",
       "Advanced 8",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-009",
+      "gen-v2-130041-a4f8e957",
       "Advanced 9",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-001"
     ],
     [
-      "gen-advanced-010",
+      "gen-v2-130125-72bd2f8d",
       "Advanced 10",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-011",
+      "gen-v2-130127-e29db439",
       "Advanced 11",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-012",
+      "gen-v2-130063-9009c626",
       "Advanced 12",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-013",
+      "gen-v2-130091-cd53f362",
       "Advanced 13",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-014",
+      "gen-v2-130045-46db6c4e",
       "Advanced 14",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-015",
+      "gen-v2-130020-9bfa5cd1",
       "Advanced 15",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-016",
+      "gen-v2-130112-8a948f28",
       "Advanced 16",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-017",
+      "gen-v2-130175-4583c7f2",
       "Advanced 17",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-018",
+      "gen-v2-130097-fc88cba1",
       "Advanced 18",
       "advanced",
       5,
       14,
       14,
       "Sokomind Generated",
-      "puzzle-shard-001"
+      "puzzle-shard-002"
     ],
     [
-      "gen-advanced-019",
+      "gen-v2-130186-576a96dc",
       "Advanced 19",
       "advanced",
-      5,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-advanced-020",
+      "gen-v2-130031-c56eb7d7",
       "Advanced 20",
-      "advanced",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-advanced-021",
-      "Advanced 21",
-      "advanced",
-      4,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-advanced-022",
-      "Advanced 22",
-      "advanced",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-advanced-023",
-      "Advanced 23",
-      "advanced",
-      4,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-advanced-024",
-      "Advanced 24",
-      "advanced",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-advanced-025",
-      "Advanced 25",
       "advanced",
       3,
       14,
@@ -1072,7 +1112,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-001",
+      "gen-v2-140065-fb112efe",
       "Expert 1",
       "expert",
       6,
@@ -1082,7 +1122,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-002",
+      "gen-v2-140179-adc52cc8",
       "Expert 2",
       "expert",
       6,
@@ -1092,7 +1132,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-003",
+      "gen-v2-140051-0510aeec",
       "Expert 3",
       "expert",
       6,
@@ -1102,7 +1142,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-004",
+      "gen-v2-140184-7ef799e7",
       "Expert 4",
       "expert",
       6,
@@ -1112,7 +1152,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-005",
+      "gen-v2-140189-1166b197",
       "Expert 5",
       "expert",
       6,
@@ -1122,7 +1162,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-006",
+      "gen-v2-140173-7d9aa844",
       "Expert 6",
       "expert",
       6,
@@ -1132,17 +1172,17 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-007",
+      "gen-v2-140123-1225b0f4",
       "Expert 7",
       "expert",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-008",
+      "gen-v2-140159-58edd3d5",
       "Expert 8",
       "expert",
       6,
@@ -1152,18 +1192,8 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-009",
+      "gen-v2-140181-61d3b611",
       "Expert 9",
-      "expert",
-      6,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-expert-010",
-      "Expert 10",
       "expert",
       5,
       14,
@@ -1172,7 +1202,17 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-011",
+      "gen-v2-140035-cfe8665d",
+      "Expert 10",
+      "expert",
+      6,
+      14,
+      14,
+      "Sokomind Generated",
+      "puzzle-shard-002"
+    ],
+    [
+      "gen-v2-140075-deb55c05",
       "Expert 11",
       "expert",
       6,
@@ -1182,7 +1222,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-012",
+      "gen-v2-140103-e7cafa6f",
       "Expert 12",
       "expert",
       6,
@@ -1192,89 +1232,79 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-013",
+      "gen-v2-140015-cc85c1b3",
       "Expert 13",
       "expert",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-014",
+      "gen-v2-140191-0e307b69",
       "Expert 14",
       "expert",
-      6,
+      4,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-015",
+      "gen-v2-140187-c1bcc8f5",
       "Expert 15",
       "expert",
-      6,
+      5,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-016",
+      "gen-v2-140141-ca5f972c",
       "Expert 16",
       "expert",
-      4,
+      5,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-017",
+      "gen-v2-140107-592fc49d",
       "Expert 17",
       "expert",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-018",
+      "gen-v2-140005-2a3d7119",
       "Expert 18",
       "expert",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-019",
+      "gen-v2-140185-569724be",
       "Expert 19",
       "expert",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-020",
+      "gen-v2-140177-87c60c94",
       "Expert 20",
       "expert",
-      6,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-expert-021",
-      "Expert 21",
-      "expert",
       5,
       14,
       14,
@@ -1282,57 +1312,17 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-expert-022",
-      "Expert 22",
-      "expert",
-      4,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-expert-023",
-      "Expert 23",
-      "expert",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-expert-024",
-      "Expert 24",
-      "expert",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-expert-025",
-      "Expert 25",
-      "expert",
-      4,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-master-001",
+      "gen-v2-150186-fad5f402",
       "Master 1",
       "master",
-      6,
+      5,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-master-002",
+      "gen-v2-150052-09390b4f",
       "Master 2",
       "master",
       5,
@@ -1342,18 +1332,8 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-003",
+      "gen-v2-150024-b3394ef7",
       "Master 3",
-      "master",
-      6,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-master-004",
-      "Master 4",
       "master",
       5,
       14,
@@ -1362,7 +1342,17 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-005",
+      "gen-v2-150109-18568562",
+      "Master 4",
+      "master",
+      7,
+      14,
+      14,
+      "Sokomind Generated",
+      "puzzle-shard-002"
+    ],
+    [
+      "gen-v2-150192-38079ff0",
       "Master 5",
       "master",
       5,
@@ -1372,7 +1362,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-006",
+      "gen-v2-150156-301d2800",
       "Master 6",
       "master",
       5,
@@ -1382,7 +1372,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-007",
+      "gen-v2-150191-6a0fc2c0",
       "Master 7",
       "master",
       6,
@@ -1392,17 +1382,17 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-008",
+      "gen-v2-150004-b99d6d77",
       "Master 8",
       "master",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-master-009",
+      "gen-v2-150059-fb5af29e",
       "Master 9",
       "master",
       5,
@@ -1412,27 +1402,27 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-010",
+      "gen-v2-150193-20735f67",
       "Master 10",
       "master",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-master-011",
+      "gen-v2-150087-dba4907b",
       "Master 11",
       "master",
-      5,
+      7,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
     ],
     [
-      "gen-master-012",
+      "gen-v2-150144-fb6c7875",
       "Master 12",
       "master",
       6,
@@ -1442,7 +1432,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-013",
+      "gen-v2-150030-0a89122a",
       "Master 13",
       "master",
       5,
@@ -1452,7 +1442,7 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-014",
+      "gen-v2-150008-f0ba584b",
       "Master 14",
       "master",
       6,
@@ -1462,18 +1452,8 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-015",
+      "gen-v2-150164-74b2562f",
       "Master 15",
-      "master",
-      5,
-      14,
-      14,
-      "Sokomind Generated",
-      "puzzle-shard-002"
-    ],
-    [
-      "gen-master-016",
-      "Master 16",
       "master",
       6,
       14,
@@ -1482,8 +1462,8 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-017",
-      "Master 17",
+      "gen-v2-150136-ebc8dd2b",
+      "Master 16",
       "master",
       7,
       14,
@@ -1492,14 +1472,44 @@
       "puzzle-shard-002"
     ],
     [
-      "gen-master-018",
-      "Master 18",
+      "gen-v2-150065-244dcb4d",
+      "Master 17",
       "master",
-      5,
+      6,
       14,
       14,
       "Sokomind Generated",
       "puzzle-shard-002"
+    ],
+    [
+      "gen-v2-150085-9b2c6ed6",
+      "Master 18",
+      "master",
+      6,
+      14,
+      14,
+      "Sokomind Generated",
+      "puzzle-shard-002"
+    ],
+    [
+      "gen-v2-150056-f9509a6a",
+      "Master 19",
+      "master",
+      6,
+      14,
+      14,
+      "Sokomind Generated",
+      "puzzle-shard-002"
+    ],
+    [
+      "gen-v2-150029-f6715673",
+      "Master 20",
+      "master",
+      6,
+      14,
+      14,
+      "Sokomind Generated",
+      "puzzle-shard-003"
     ]
   ]
 }
