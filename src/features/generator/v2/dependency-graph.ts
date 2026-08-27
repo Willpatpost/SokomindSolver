@@ -44,7 +44,11 @@ export type DependencyEdgeType =
   | "must-precede"
   | "must-stage"
   | "shares-passage"
-  | "blocks-access";
+  | "blocks-access"
+  | "must-reopen"
+  | "must-park"
+  | "chain-link"
+  | "exchange-cross";
 
 export interface DependencyNode {
   readonly id: number;

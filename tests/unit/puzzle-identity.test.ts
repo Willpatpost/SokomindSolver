@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   canonicalizeRows,
+  framePuzzleRows,
   boardHash,
   symmetryHash,
   createGeneratedPuzzleId,
@@ -204,4 +205,163 @@ test("different seed produces different ID", () => {
 test("V2 ID never matches legacy ordinal format", () => {
   const id = createGeneratedPuzzleId(100, SMALL_BOARD);
   assert.doesNotMatch(id, /^gen-(tutorial|beginner|intermediate|advanced|expert|master)-\d{3}$/);
+});
+
+// ---------------------------------------------------------------------------
+// framePuzzleRows
+// ---------------------------------------------------------------------------
+
+test("framePuzzleRows produces all-wall first and last rows", () => {
+  const board = [
+    "OR O",
+    "OX O",
+    "OSOO",
+  ];
+  const framed = framePuzzleRows(board);
+  for (const ch of framed[0]) {
+    assert.equal(ch, "O");
+  }
+  for (const ch of framed[framed.length - 1]) {
+    assert.equal(ch, "O");
+  }
+});
+
+test("framePuzzleRows produces all-wall first and last columns", () => {
+  const board = [
+    "OR O",
+    "OX O",
+    "OSOO",
+  ];
+  const framed = framePuzzleRows(board);
+  for (const row of framed) {
+    assert.equal(row[0], "O");
+    assert.equal(row[row.length - 1], "O");
+  }
+});
+
+test("framePuzzleRows preserves interior cells", () => {
+  const board = [
+    "OOOO",
+    "OR O",
+    "OX O",
+    "OSOO",
+    "OOOO",
+  ];
+  const framed = framePuzzleRows(board);
+  // Interior should contain R, X, S, spaces
+  const interior = framed.slice(1, -1).map((r) => r.slice(1, -1));
+  const flat = interior.join("");
+  assert.ok(flat.includes("R"), "interior must contain R");
+  assert.ok(flat.includes("X"), "interior must contain X");
+  assert.ok(flat.includes("S"), "interior must contain S");
+});
+
+test("framePuzzleRows is roughly idempotent on already-framed boards", () => {
+  const board = [
+    "OOOO",
+    "OR O",
+    "OX O",
+    "OSOO",
+    "OOOO",
+  ];
+  const framed1 = framePuzzleRows(board);
+  const framed2 = framePuzzleRows(framed1);
+  assert.deepEqual(framed1, framed2);
+});
+
+test("framePuzzleRows handles entities at input edge (no wall border)", () => {
+  // Robot and goal at edges — need synthesized wall perimeter
+  const board = [
+    "R  ",
+    " X ",
+    "  S",
+  ];
+  const framed = framePuzzleRows(board);
+  // Must have wall perimeter
+  for (const ch of framed[0]) {
+    assert.equal(ch, "O");
+  }
+  for (const ch of framed[framed.length - 1]) {
+    assert.equal(ch, "O");
+  }
+  for (const row of framed) {
+    assert.equal(row[0], "O");
+    assert.equal(row[row.length - 1], "O");
+  }
+  // Interior should still contain R, X, S
+  const flat = framed.join("");
+  assert.ok(flat.includes("R"), "must contain R");
+  assert.ok(flat.includes("X"), "must contain X");
+  assert.ok(flat.includes("S"), "must contain S");
+});
+
+test("framePuzzleRows works with small 3x3 boards", () => {
+  const board = [
+    "OOO",
+    "ORO",
+    "OOO",
+  ];
+  const framed = framePuzzleRows(board);
+  // R is the only non-wall, bounding box is (1,1)-(1,1), expand to (0,0)-(2,2)
+  assert.deepEqual(framed, [
+    "OOO",
+    "ORO",
+    "OOO",
+  ]);
+});
+
+test("framePuzzleRows returns [O] for all-wall input", () => {
+  const result = framePuzzleRows(["OOO", "OOO"]);
+  assert.deepEqual(result, ["O"]);
+});
+
+test("framePuzzleRows returns [] for empty input", () => {
+  const result = framePuzzleRows([]);
+  assert.deepEqual(result, []);
+});
+
+test("framePuzzleRows handles ragged rows", () => {
+  const board = [
+    "OOO",
+    "OR",
+    "OXO",
+  ];
+  const framed = framePuzzleRows(board);
+  // All rows must have equal width
+  const widths = framed.map((r) => r.length);
+  assert.ok(widths.every((w) => w === widths[0]), "all rows same width");
+  // Must have wall perimeter
+  for (const ch of framed[0]) assert.equal(ch, "O");
+  for (const ch of framed[framed.length - 1]) assert.equal(ch, "O");
+});
+
+test("framePuzzleRows handles typed boxes and goals", () => {
+  const board = [
+    "OOOOO",
+    "OA aO",
+    "OB bO",
+    "OOOOO",
+  ];
+  const framed = framePuzzleRows(board);
+  const flat = framed.join("");
+  assert.ok(flat.includes("A"), "must contain typed box A");
+  assert.ok(flat.includes("a"), "must contain typed goal a");
+  assert.ok(flat.includes("B"), "must contain typed box B");
+  assert.ok(flat.includes("b"), "must contain typed goal b");
+  // Already framed — should be idempotent
+  assert.deepEqual(framed, framePuzzleRows(framed));
+});
+
+test("framePuzzleRows synthesizes wall when entities touch corner", () => {
+  // Single entity — minimum board
+  const board = ["R"];
+  const framed = framePuzzleRows(board);
+  // Should be 3x3 with R in center
+  assert.equal(framed.length, 3);
+  assert.equal(framed[0].length, 3);
+  assert.deepEqual(framed, [
+    "OOO",
+    "ORO",
+    "OOO",
+  ]);
 });

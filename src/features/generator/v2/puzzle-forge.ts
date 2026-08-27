@@ -1,5 +1,6 @@
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
-import type { TopologyFamily } from "./blueprint-types.ts";
+import type { SolutionStep } from "../../../solver/contracts.ts";
+import type { TopologyFamily, GeometryProfile, ReverseSearchProfile } from "./blueprint-types.ts";
 import type { BeamSearchParams } from "./reverse-beam-search.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
 import type { MotifType, DependencyHint } from "./motifs.ts";
@@ -8,11 +9,13 @@ import type {
   CompositionType,
   DependencyDAG,
 } from "./dependency-graph.ts";
-import type { TighteningParams, TighteningResult } from "./geometry-tightening.ts";
+import type { TighteningParams, TighteningResult, TierTighteningPolicy } from "./geometry-tightening.ts";
 
 import {
   generateBlueprintWithRetry,
 } from "./blueprint-graph.ts";
+import { analyzeGrid, parseRowsToGrid } from "./structural-metrics.ts";
+import { createRng } from "../board-template.ts";
 import { enumerateForgeCombinations, createForgeSchedule, type ForgeGenerationMode } from "./forge-sampling.ts";
 import { boardHash } from "./puzzle-identity.ts";
 import {
@@ -27,9 +30,12 @@ import {
 } from "./goal-placement.ts";
 import {
   reverseBeamSearch,
+  reverseBeamSearchV4,
   DEFAULT_BEAM_PARAMS,
 } from "./reverse-beam-search.ts";
 import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
+import { evaluateFinalist, computeCurationObjectives } from "./finalist-evaluator.ts";
+import { nonDominatedSort, selectByParetoNovelty, computeNoveltyScores } from "./curation.ts";
 import {
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,
@@ -37,18 +43,50 @@ import {
 } from "./dependency-graph.ts";
 import {
   tightenPuzzle,
+  buildPreservationContext,
   DEFAULT_TIGHTENING_PARAMS,
+  DEFAULT_TIER_TIGHTENING_POLICIES,
 } from "./geometry-tightening.ts";
+import { verifyDependenciesWithEvidence } from "./dependency-verification.ts";
+import { createMechanismPlan, placeGoalsFromPlan } from "./mechanism-plan.ts";
+import type { MechanismType } from "./blueprint-types.ts";
 
+import type { GridPosition } from "../generator-types.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
-import { assignLabels } from "../label-assignment.ts";
+import { assignLabels, assignPartialLabels } from "../label-assignment.ts";
+import { createSession, move } from "../../../core/game-session.ts";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type { ForgeGenerationMode } from "./forge-sampling.ts";
+
+export type BoxTypingMode = "generic" | "typed" | "hybrid";
+
+export interface BoxTypingPolicy {
+  readonly modes: readonly BoxTypingMode[];
+  readonly hybridTypedFractionMin: number;
+  readonly hybridTypedFractionMax: number;
+}
+
+export interface FunnelBudgets {
+  readonly rawAttemptBudget: number;
+  readonly preScreenRetain: number;
+  readonly finalistRetain: number;
+  readonly deepRetain: number;
+  readonly catalogQuota: number;
+}
+
+export type QualityPreset = "smoke" | "standard" | "high" | "exhaustive";
+
+export const QUALITY_PRESETS: Readonly<Record<QualityPreset, FunnelBudgets>> = {
+  smoke:      { rawAttemptBudget: 20,    preScreenRetain: 10,   finalistRetain: 6,   deepRetain: 4,   catalogQuota: 3 },
+  standard:   { rawAttemptBudget: 200,   preScreenRetain: 80,   finalistRetain: 30,  deepRetain: 15,  catalogQuota: 10 },
+  high:       { rawAttemptBudget: 2000,  preScreenRetain: 500,  finalistRetain: 100, deepRetain: 40,  catalogQuota: 20 },
+  exhaustive: { rawAttemptBudget: 20000, preScreenRetain: 2000, finalistRetain: 500, deepRetain: 100, catalogQuota: 40 },
+};
 
 export interface ForgeConfig {
   readonly batchSize: number;
@@ -64,10 +102,15 @@ export interface ForgeConfig {
   readonly blueprintRetries: number;
   readonly beamParams: Partial<BeamSearchParams>;
   readonly tighteningParams: TighteningParams;
+  readonly tierTighteningPolicies?: Readonly<Record<string, TierTighteningPolicy>>;
   readonly gates: ForgeAcceptanceGates;
   readonly diversityMinDistance: number;
   readonly baseSeed: number;
-  readonly useLabels: boolean;
+  readonly typingPolicy: BoxTypingPolicy;
+  readonly geometryProfile?: GeometryProfile;
+  readonly reverseSearchProfile?: ReverseSearchProfile;
+  readonly mechanismTier?: string;
+  readonly funnelBudgets?: FunnelBudgets;
 }
 
 export interface ForgeAcceptanceGates {
@@ -80,6 +123,10 @@ export interface ForgeAcceptanceGates {
   readonly minDependencyRealizationRate: number;
   readonly maxMovesPerPush: number;
   readonly minSolverExpandedStates: number;
+  readonly minPlayableFloor?: number;
+  readonly minFloorCoverage?: number;
+  readonly minRegionCount?: number;
+  readonly minChokepointCount?: number;
 }
 
 export const DEFAULT_FORGE_GATES: ForgeAcceptanceGates = {
@@ -111,7 +158,11 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   gates: DEFAULT_FORGE_GATES,
   diversityMinDistance: 2.0,
   baseSeed: 10000,
-  useLabels: true,
+  typingPolicy: {
+    modes: ["generic", "typed", "hybrid"],
+    hybridTypedFractionMin: 0.3,
+    hybridTypedFractionMax: 0.7,
+  },
 };
 
 export interface ForgeProvenance {
@@ -124,10 +175,19 @@ export interface ForgeProvenance {
   readonly difficulty: Difficulty;
   readonly tightened: boolean;
   readonly cellsRemoved: number;
-  readonly labeled: boolean;
+  readonly typingMode: BoxTypingMode;
+  readonly genericBoxCount: number;
+  readonly typedBoxCount: number;
   readonly dependencyRealizationRate?: number;
   readonly dependencyEdges?: number;
   readonly dependencyRealized?: number;
+  readonly playableFloor?: number;
+  readonly floorCoverage?: number;
+  readonly tighteningProtectedCells?: number;
+  readonly preTighteningFloor?: number;
+  readonly postTighteningFloor?: number;
+  readonly mechanismTypes?: readonly MechanismType[];
+  readonly mechanismCount?: number;
 }
 
 export interface ForgeCandidate {
@@ -155,8 +215,10 @@ export type ForgeRejectionReason =
   | "gate-dependency-realization"
   | "gate-moves-per-push"
   | "gate-solver-effort"
+  | "gate-geometry"
   | "motif-failed"
   | "composition-failed"
+  | "replay-validation-failed"
   | "duplicate-exact"
   | "difficulty-mismatch"
   | "duplicate-cross-tier"
@@ -165,6 +227,14 @@ export type ForgeRejectionReason =
 export interface ForgeRejection {
   readonly seed: number;
   readonly reason: ForgeRejectionReason;
+}
+
+export interface FunnelStageStats {
+  readonly stageA_rawGenerated: number;
+  readonly stageB_structuralSurvivors: number;
+  readonly stageC_cheapEvalSurvivors: number;
+  readonly stageD_deepEvalSurvivors: number;
+  readonly stageE_curatedFinal: number;
 }
 
 export interface ForgeRunResult {
@@ -177,6 +247,7 @@ export interface ForgeRunResult {
   readonly elapsedMs: number;
   readonly rejectionCounts: Readonly<Record<ForgeRejectionReason, number>>;
   readonly exactDuplicatesRejected: number;
+  readonly funnelStats?: FunnelStageStats;
 }
 
 export interface ForgeSummary {
@@ -206,6 +277,15 @@ interface RawGenResult {
   readonly motifType?: MotifType;
   readonly compositionType?: string;
   readonly dependencyRealizationRate?: number;
+  readonly mechanismTypes?: readonly MechanismType[];
+}
+
+function sampleDimension(
+  range: readonly [number, number],
+  rng: () => number,
+): number {
+  const [min, max] = range;
+  return min + Math.floor(rng() * (max - min + 1));
 }
 
 async function generateRawCandidate(
@@ -219,13 +299,39 @@ async function generateRawCandidate(
   | { ok: true; result: RawGenResult }
   | { ok: false; reason: ForgeRejectionReason }
 > {
+  const gp = config.geometryProfile;
+
+  let boardWidth = config.boardWidth;
+  let boardHeight = config.boardHeight;
+  let bpMinRooms = DEFAULT_BLUEPRINT_PARAMS.minRooms;
+  let bpMaxRooms = DEFAULT_BLUEPRINT_PARAMS.maxRooms;
+  let bpMinRoomSize = DEFAULT_BLUEPRINT_PARAMS.minRoomSize;
+  let bpMaxRoomSize = DEFAULT_BLUEPRINT_PARAMS.maxRoomSize;
+  let passageWidths: readonly (1 | 2)[] | undefined;
+
+  if (gp) {
+    const dimRng = createRng(seed);
+    boardWidth = sampleDimension(gp.boardWidthRange, dimRng);
+    boardHeight = sampleDimension(gp.boardHeightRange, dimRng);
+    bpMinRooms = gp.minRooms;
+    bpMaxRooms = gp.maxRooms;
+    bpMinRoomSize = gp.minRoomSize;
+    bpMaxRoomSize = gp.maxRoomSize;
+    passageWidths = gp.passageWidths;
+  }
+
   const bp = generateBlueprintWithRetry(
     {
       ...DEFAULT_BLUEPRINT_PARAMS,
       seed,
       family,
-      boardWidth: config.boardWidth,
-      boardHeight: config.boardHeight,
+      boardWidth,
+      boardHeight,
+      minRooms: bpMinRooms,
+      maxRooms: bpMaxRooms,
+      minRoomSize: bpMinRoomSize,
+      maxRoomSize: bpMaxRoomSize,
+      passageWidths,
     },
     config.blueprintRetries,
   );
@@ -238,6 +344,11 @@ async function generateRawCandidate(
       ...DEFAULT_COMPOSITION_PARAMS,
       seed,
       boxCount,
+      beamParams: {
+        ...DEFAULT_BEAM_PARAMS,
+        seed,
+        ...config.beamParams,
+      },
     });
     if (!result) return { ok: false, reason: "composition-failed" };
     return {
@@ -263,6 +374,11 @@ async function generateRawCandidate(
       seed,
       boxCount,
       motif: motifChoice,
+      beamParams: {
+        ...DEFAULT_BEAM_PARAMS,
+        seed,
+        ...config.beamParams,
+      },
     });
     if (!result) return { ok: false, reason: "motif-failed" };
     return {
@@ -275,6 +391,60 @@ async function generateRawCandidate(
     };
   }
 
+  if (mode === "mechanism") {
+    const tier = config.mechanismTier ?? difficulty;
+    const plan = createMechanismPlan(fb, tier, boxCount, seed);
+    if (!plan) return { ok: false, reason: "composition-failed" };
+
+    const placement = placeGoalsFromPlan(fb, plan);
+    if (!placement) return { ok: false, reason: "goal-placement-failed" };
+
+    const template = toSolvedTemplate(placement.solved);
+
+    let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
+
+    if (config.reverseSearchProfile) {
+      const v4Result = reverseBeamSearchV4(placement.solved, seed, config.reverseSearchProfile);
+      if (v4Result.best.depth === 0) {
+        return { ok: false, reason: "beam-search-empty" };
+      }
+      bestCandidate = v4Result.best;
+    } else {
+      const beamParams: BeamSearchParams = {
+        ...DEFAULT_BEAM_PARAMS,
+        seed,
+        ...config.beamParams,
+      };
+      const beam = reverseBeamSearch(placement.solved, beamParams);
+      if (beam.best.depth === 0) {
+        return { ok: false, reason: "beam-search-empty" };
+      }
+      bestCandidate = beam.best;
+    }
+
+    const scrambled = {
+      template,
+      boxPositions: bestCandidate.boxPositions as Array<{ row: number; column: number }>,
+      robotPosition: bestCandidate.robotPosition,
+      reversePulls: bestCandidate.depth,
+    };
+    const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
+    const validation = validatePuzzle(puzzle);
+    if (!validation.valid) {
+      return { ok: false, reason: "validation-failed" };
+    }
+
+    return {
+      ok: true,
+      result: {
+        puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
+        dag: placement.dag,
+        compositionType: placement.dag.compositionId,
+        mechanismTypes: plan.mechanisms.map((m) => m.type),
+      },
+    };
+  }
+
   const solved = placeGoals(fb, {
     ...DEFAULT_GOAL_PARAMS,
     seed,
@@ -283,24 +453,36 @@ async function generateRawCandidate(
   if (!solved) return { ok: false, reason: "goal-placement-failed" };
 
   const template = toSolvedTemplate(solved);
-  const beamParams: BeamSearchParams = {
-    ...DEFAULT_BEAM_PARAMS,
-    seed,
-    ...config.beamParams,
-  };
-  const beam = reverseBeamSearch(solved, beamParams);
-  if (beam.best.depth === 0) {
-    return { ok: false, reason: "beam-search-empty" };
+
+  let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
+
+  if (config.reverseSearchProfile) {
+    const v4Result = reverseBeamSearchV4(solved, seed, config.reverseSearchProfile);
+    if (v4Result.best.depth === 0) {
+      return { ok: false, reason: "beam-search-empty" };
+    }
+    bestCandidate = v4Result.best;
+  } else {
+    const beamParams: BeamSearchParams = {
+      ...DEFAULT_BEAM_PARAMS,
+      seed,
+      ...config.beamParams,
+    };
+    const beam = reverseBeamSearch(solved, beamParams);
+    if (beam.best.depth === 0) {
+      return { ok: false, reason: "beam-search-empty" };
+    }
+    bestCandidate = beam.best;
   }
 
   const scrambled = {
     template,
-    boxPositions: beam.best.boxPositions as Array<{
+    boxPositions: bestCandidate.boxPositions as Array<{
       row: number;
       column: number;
     }>,
-    robotPosition: beam.best.robotPosition,
-    reversePulls: beam.best.depth,
+    robotPosition: bestCandidate.robotPosition,
+    reversePulls: bestCandidate.depth,
   };
   const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
   const validation = validatePuzzle(puzzle);
@@ -343,6 +525,49 @@ function applyGates(
   ) {
     return "gate-dependency-realization";
   }
+  return null;
+}
+
+function applyStructuralGates(
+  rows: readonly string[],
+  gates: ForgeAcceptanceGates,
+): ForgeRejectionReason | null {
+  const hasStructuralGates =
+    gates.minPlayableFloor !== undefined ||
+    gates.minFloorCoverage !== undefined ||
+    gates.minRegionCount !== undefined ||
+    gates.minChokepointCount !== undefined;
+
+  if (!hasStructuralGates) return null;
+
+  const grid = parseRowsToGrid(rows);
+  const metrics = analyzeGrid(grid);
+
+  if (
+    gates.minPlayableFloor !== undefined &&
+    metrics.totalFloor < gates.minPlayableFloor
+  ) {
+    return "gate-geometry";
+  }
+  if (
+    gates.minFloorCoverage !== undefined &&
+    metrics.floorUtilization < gates.minFloorCoverage
+  ) {
+    return "gate-geometry";
+  }
+  if (
+    gates.minRegionCount !== undefined &&
+    metrics.regionCount < gates.minRegionCount
+  ) {
+    return "gate-geometry";
+  }
+  if (
+    gates.minChokepointCount !== undefined &&
+    metrics.chokepointCount < gates.minChokepointCount
+  ) {
+    return "gate-geometry";
+  }
+
   return null;
 }
 
@@ -444,6 +669,15 @@ function paretoScore(c: ForgeCandidate): number {
 export async function runForge(
   config: ForgeConfig = DEFAULT_FORGE_CONFIG,
 ): Promise<ForgeRunResult> {
+  if (config.funnelBudgets) {
+    return runForgeFunnel(config, config.funnelBudgets);
+  }
+  return runForgeFlat(config);
+}
+
+async function runForgeFlat(
+  config: ForgeConfig,
+): Promise<ForgeRunResult> {
   const start = performance.now();
   const rejections: ForgeRejection[] = [];
   const validCandidates: ForgeCandidate[] = [];
@@ -477,14 +711,115 @@ export async function runForge(
     let puzzle = raw.result.puzzle;
     let tighteningResult: TighteningResult | undefined;
     let cellsRemoved = 0;
+    let tighteningProtectedCells: number | undefined;
+    let preTighteningFloor: number | undefined;
+    let postTighteningFloor: number | undefined;
 
-    const tResult = await tightenPuzzle(puzzle, config.tighteningParams);
-    if (tResult && tResult.cellsRemoved > 0) {
-      puzzle = tResult.tightened;
-      tighteningResult = tResult;
-      cellsRemoved = tResult.cellsRemoved;
+    // Step 1: Tighten puzzle geometry with tier-aware policy
+    {
+      const puzzleGrid = parseRowsToGrid(puzzle.rows);
+      const preservation = buildPreservationContext(puzzleGrid);
+      const tierPolicies = config.tierTighteningPolicies ?? DEFAULT_TIER_TIGHTENING_POLICIES;
+      const tierPolicy = tierPolicies[difficulty];
+      preTighteningFloor = analyzeGrid(puzzleGrid).totalFloor;
+
+      const tResult = await tightenPuzzle(puzzle, config.tighteningParams, preservation, tierPolicy);
+      if (tResult && tResult.cellsRemoved > 0) {
+        puzzle = tResult.tightened;
+        tighteningResult = tResult;
+        cellsRemoved = tResult.cellsRemoved;
+      }
+      if (tResult) {
+        tighteningProtectedCells = tResult.protectedCellCount;
+        postTighteningFloor = tResult.metrics.after.totalFloor;
+      } else {
+        postTighteningFloor = preTighteningFloor;
+      }
     }
 
+    // Step 2: Determine typing mode
+    const modeIndex = seed % config.typingPolicy.modes.length;
+    const typingMode = config.typingPolicy.modes[modeIndex];
+
+    // Step 3: If not generic, do preliminary solve for box-goal pairing steps
+    let pairingSteps: readonly SolutionStep[] | null = null;
+    let prelimMoves = 0;
+    let prelimPushes = 0;
+
+    if (typingMode !== "generic" && boxCount >= 2) {
+      const prelimResult = await evaluatePuzzleWithSteps(puzzle);
+      if (!prelimResult.vector.solved || !prelimResult.steps) {
+        rejections.push({ seed, reason: "unsolvable" });
+        continue;
+      }
+      pairingSteps = prelimResult.steps;
+      prelimMoves = prelimResult.vector.solutionMoves;
+      prelimPushes = prelimResult.vector.solutionPushes;
+    }
+
+    // Step 4: Apply typing transformation
+    let puzzleChanged = false;
+    if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
+      const solution = {
+        steps: pairingSteps,
+        moves: prelimMoves,
+        pushes: prelimPushes,
+        objective: { kind: "moves" as const },
+        objectiveScore: prelimMoves,
+        optimality: "unknown" as const,
+      };
+      const labelRng = (() => {
+        let s = (seed * 2654435761 + 999983) | 0;
+        return () => { s = (s * 1103515245 + 12345) | 0; return (s >>> 0) / 0x100000000; };
+      })();
+
+      let candidatePuzzle: PuzzleDefinition;
+      if (typingMode === "typed") {
+        candidatePuzzle = assignLabels(puzzle, solution, labelRng);
+      } else {
+        // hybrid: pick a typed fraction within the configured range
+        const range =
+          config.typingPolicy.hybridTypedFractionMax -
+          config.typingPolicy.hybridTypedFractionMin;
+        const typedFraction =
+          config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
+        candidatePuzzle = assignPartialLabels(
+          puzzle,
+          solution,
+          labelRng,
+          typedFraction,
+        );
+      }
+
+      if (candidatePuzzle !== puzzle) {
+        const labelValidation = validatePuzzle(candidatePuzzle);
+        if (labelValidation.valid) {
+          puzzle = candidatePuzzle;
+          puzzleChanged = true;
+        }
+      }
+    }
+
+    // Step 5: If typed puzzle changed, replay-validate the solution
+    if (puzzleChanged && pairingSteps) {
+      let session = createSession(puzzle);
+      let replayOk = true;
+      for (const step of pairingSteps) {
+        const next = move(session, step.direction);
+        if (next === session) {
+          // Step was blocked — replay failed
+          replayOk = false;
+          break;
+        }
+        session = next;
+      }
+      if (!replayOk || !session.solved) {
+        rejections.push({ seed, reason: "replay-validation-failed" });
+        continue;
+      }
+    }
+
+    // Step 6: Final evaluation on the post-typing puzzle
     const evalResult = await evaluatePuzzleWithSteps(puzzle);
     const ev = evalResult.vector;
     if (!ev.solved) {
@@ -492,39 +827,52 @@ export async function runForge(
       continue;
     }
 
-    const gateResult = applyGates(
-      ev,
-      config.gates,
-      raw.result.dependencyRealizationRate,
-    );
+    // Step 7: Re-verify dependencies if DAG exists
+    let depRate = raw.result.dependencyRealizationRate;
+    let depEdges = raw.result.composedResult?.realization.totalEdges;
+    let depRealized = raw.result.composedResult?.realization.realizedEdges;
+
+    if (raw.result.dag && evalResult.steps) {
+      const reVerification = verifyDependenciesWithEvidence(
+        raw.result.dag,
+        puzzle,
+        evalResult.steps,
+      );
+      depRate = reVerification.realizationRate;
+      depEdges = reVerification.totalEdges;
+      depRealized = reVerification.realizedEdges;
+    }
+
+    // Step 8: Apply gates using final evaluation
+    const gateResult = applyGates(ev, config.gates, depRate);
     if (gateResult) {
       rejections.push({ seed, reason: gateResult });
       continue;
     }
 
-    let labeled = false;
-    if (config.useLabels && boxCount >= 2 && evalResult.steps) {
-      const solution = {
-        steps: evalResult.steps,
-        moves: ev.solutionMoves,
-        pushes: ev.solutionPushes,
-        objective: { kind: "moves" as const },
-        objectiveScore: ev.solutionMoves,
-        optimality: "unknown" as const,
-      };
-      const labelRng = (() => {
-        let s = (seed * 2654435761 + 999983) | 0;
-        return () => { s = (s * 1103515245 + 12345) | 0; return (s >>> 0) / 0x100000000; };
-      })();
-      const labeledPuzzle = assignLabels(puzzle, solution, labelRng);
-      if (labeledPuzzle !== puzzle) {
-        const labelValidation = validatePuzzle(labeledPuzzle);
-        if (labelValidation.valid) {
-          puzzle = labeledPuzzle;
-          labeled = true;
+    // Step 8b: Apply structural gates (geometry profile)
+    const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
+    if (structuralGateResult) {
+      rejections.push({ seed, reason: structuralGateResult });
+      continue;
+    }
+
+    // Step 9: Count generic/typed boxes in final puzzle
+    let genericBoxCount = 0;
+    let typedBoxCount = 0;
+    for (const row of puzzle.rows) {
+      for (const ch of row) {
+        if (ch === "X") {
+          genericBoxCount++;
+        } else if (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S") {
+          typedBoxCount++;
         }
       }
     }
+
+    // Step 10: Construct provenance with all final data
+    const provGrid = parseRowsToGrid(puzzle.rows);
+    const provMetrics = analyzeGrid(provGrid);
 
     const provenance: ForgeProvenance = {
       seed,
@@ -536,10 +884,19 @@ export async function runForge(
       difficulty,
       tightened: cellsRemoved > 0,
       cellsRemoved,
-      labeled,
-      dependencyRealizationRate: raw.result.dependencyRealizationRate,
-      dependencyEdges: raw.result.composedResult?.realization.totalEdges,
-      dependencyRealized: raw.result.composedResult?.realization.realizedEdges,
+      typingMode,
+      genericBoxCount,
+      typedBoxCount,
+      dependencyRealizationRate: depRate,
+      dependencyEdges: depEdges,
+      dependencyRealized: depRealized,
+      playableFloor: provMetrics.totalFloor,
+      floorCoverage: provMetrics.floorUtilization,
+      tighteningProtectedCells,
+      preTighteningFloor,
+      postTighteningFloor,
+      mechanismTypes: raw.result.mechanismTypes,
+      mechanismCount: raw.result.mechanismTypes?.length,
     };
 
     validCandidates.push({
@@ -596,6 +953,309 @@ export async function runForge(
     elapsedMs: performance.now() - start,
     rejectionCounts,
     exactDuplicatesRejected,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Staged funnel pipeline (Phase 7)
+// ---------------------------------------------------------------------------
+
+function structuralPreScore(c: ForgeCandidate): number {
+  const ev = c.evaluation;
+  let score = 0;
+  score += Math.log2(ev.totalFloor + 1) * 2;
+  score += Math.log2(ev.boxCount + 1) * 3;
+  score += ev.regionCount * 1.5;
+  score += ev.chokepoints * 2;
+  score += ev.articulationPoints * 1;
+  score += ev.tunnelCells * 0.5;
+  score += (1 - ev.unusedFloorRatio) * 5;
+  return score;
+}
+
+function cheapEvalScore(c: ForgeCandidate): number {
+  const ev = c.evaluation;
+  let score = paretoScore(c);
+  score += ev.nonMonotonicBoxMoves * 2;
+  score += ev.stagingOperations * 3;
+  score += ev.temporaryGoalVacancies * 4;
+  score += ev.estimatedDependencyDepth * 2;
+  score += ev.boxSwitchRate * 5;
+  score += Math.log2(ev.avgReachablePushes + 1) * 3;
+  score -= ev.emptyWalkRatio * 10;
+  score -= ev.repetitivePushRatio * 8;
+  return score;
+}
+
+async function runForgeFunnel(
+  config: ForgeConfig,
+  budgets: FunnelBudgets,
+): Promise<ForgeRunResult> {
+  const start = performance.now();
+  const rejections: ForgeRejection[] = [];
+
+  // ---- Stage A: Raw generation ----
+  const combinations = enumerateForgeCombinations({
+    families: config.families,
+    boxCounts: config.boxCounts,
+    modes: config.modes,
+    difficulties: config.difficulties,
+  });
+  const schedule = createForgeSchedule(combinations, budgets.rawAttemptBudget, config.baseSeed);
+
+  const rawCandidates: ForgeCandidate[] = [];
+
+  for (let i = 0; i < schedule.length; i++) {
+    const { seed, combination } = schedule[i];
+    const { family, boxCount, mode, difficulty } = combination;
+
+    const raw = await generateRawCandidate(config, seed, family, boxCount, mode, difficulty);
+    if (!raw.ok) {
+      rejections.push({ seed, reason: raw.reason });
+      continue;
+    }
+
+    let puzzle = raw.result.puzzle;
+    let tighteningResult: TighteningResult | undefined;
+    let cellsRemoved = 0;
+    let tighteningProtectedCells: number | undefined;
+    let preTighteningFloor: number | undefined;
+    let postTighteningFloor: number | undefined;
+
+    {
+      const puzzleGrid = parseRowsToGrid(puzzle.rows);
+      const preservation = buildPreservationContext(puzzleGrid);
+      const tierPolicies = config.tierTighteningPolicies ?? DEFAULT_TIER_TIGHTENING_POLICIES;
+      const tierPolicy = tierPolicies[difficulty];
+      preTighteningFloor = analyzeGrid(puzzleGrid).totalFloor;
+
+      const tResult = await tightenPuzzle(puzzle, config.tighteningParams, preservation, tierPolicy);
+      if (tResult && tResult.cellsRemoved > 0) {
+        puzzle = tResult.tightened;
+        tighteningResult = tResult;
+        cellsRemoved = tResult.cellsRemoved;
+      }
+      if (tResult) {
+        tighteningProtectedCells = tResult.protectedCellCount;
+        postTighteningFloor = tResult.metrics.after.totalFloor;
+      } else {
+        postTighteningFloor = preTighteningFloor;
+      }
+    }
+
+    const modeIndex = seed % config.typingPolicy.modes.length;
+    const typingMode = config.typingPolicy.modes[modeIndex];
+
+    let pairingSteps: readonly SolutionStep[] | null = null;
+    let prelimMoves = 0;
+    let prelimPushes = 0;
+
+    if (typingMode !== "generic" && boxCount >= 2) {
+      const prelimResult = await evaluatePuzzleWithSteps(puzzle);
+      if (!prelimResult.vector.solved || !prelimResult.steps) {
+        rejections.push({ seed, reason: "unsolvable" });
+        continue;
+      }
+      pairingSteps = prelimResult.steps;
+      prelimMoves = prelimResult.vector.solutionMoves;
+      prelimPushes = prelimResult.vector.solutionPushes;
+    }
+
+    let puzzleChanged = false;
+    if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
+      const solution = {
+        steps: pairingSteps,
+        moves: prelimMoves,
+        pushes: prelimPushes,
+        objective: { kind: "moves" as const },
+        objectiveScore: prelimMoves,
+        optimality: "unknown" as const,
+      };
+      const labelRng = (() => {
+        let s = (seed * 2654435761 + 999983) | 0;
+        return () => { s = (s * 1103515245 + 12345) | 0; return (s >>> 0) / 0x100000000; };
+      })();
+
+      let candidatePuzzle: PuzzleDefinition;
+      if (typingMode === "typed") {
+        candidatePuzzle = assignLabels(puzzle, solution, labelRng);
+      } else {
+        const range = config.typingPolicy.hybridTypedFractionMax - config.typingPolicy.hybridTypedFractionMin;
+        const typedFraction = config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
+        candidatePuzzle = assignPartialLabels(puzzle, solution, labelRng, typedFraction);
+      }
+
+      if (candidatePuzzle !== puzzle) {
+        const labelValidation = validatePuzzle(candidatePuzzle);
+        if (labelValidation.valid) {
+          puzzle = candidatePuzzle;
+          puzzleChanged = true;
+        }
+      }
+    }
+
+    if (puzzleChanged && pairingSteps) {
+      let session = createSession(puzzle);
+      let replayOk = true;
+      for (const step of pairingSteps) {
+        const next = move(session, step.direction);
+        if (next === session) { replayOk = false; break; }
+        session = next;
+      }
+      if (!replayOk || !session.solved) {
+        rejections.push({ seed, reason: "replay-validation-failed" });
+        continue;
+      }
+    }
+
+    const evalResult = await evaluatePuzzleWithSteps(puzzle);
+    const ev = evalResult.vector;
+    if (!ev.solved) {
+      rejections.push({ seed, reason: "unsolvable" });
+      continue;
+    }
+
+    let depRate = raw.result.dependencyRealizationRate;
+    let depEdges = raw.result.composedResult?.realization.totalEdges;
+    let depRealized = raw.result.composedResult?.realization.realizedEdges;
+
+    if (raw.result.dag && evalResult.steps) {
+      const reVerification = verifyDependenciesWithEvidence(raw.result.dag, puzzle, evalResult.steps);
+      depRate = reVerification.realizationRate;
+      depEdges = reVerification.totalEdges;
+      depRealized = reVerification.realizedEdges;
+    }
+
+    const gateResult = applyGates(ev, config.gates, depRate);
+    if (gateResult) {
+      rejections.push({ seed, reason: gateResult });
+      continue;
+    }
+
+    const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
+    if (structuralGateResult) {
+      rejections.push({ seed, reason: structuralGateResult });
+      continue;
+    }
+
+    let genericBoxCount = 0;
+    let typedBoxCount = 0;
+    for (const row of puzzle.rows) {
+      for (const ch of row) {
+        if (ch === "X") genericBoxCount++;
+        else if (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S") typedBoxCount++;
+      }
+    }
+
+    const provGrid = parseRowsToGrid(puzzle.rows);
+    const provMetrics = analyzeGrid(provGrid);
+
+    rawCandidates.push({
+      puzzle: { ...puzzle, id: `forge-${seed}` },
+      provenance: {
+        seed, family, boxCount, mode,
+        motifType: raw.result.motifType,
+        compositionType: raw.result.compositionType,
+        difficulty, tightened: cellsRemoved > 0, cellsRemoved,
+        typingMode, genericBoxCount, typedBoxCount,
+        dependencyRealizationRate: depRate,
+        dependencyEdges: depEdges,
+        dependencyRealized: depRealized,
+        playableFloor: provMetrics.totalFloor,
+        floorCoverage: provMetrics.floorUtilization,
+        tighteningProtectedCells, preTighteningFloor, postTighteningFloor,
+        mechanismTypes: raw.result.mechanismTypes,
+        mechanismCount: raw.result.mechanismTypes?.length,
+      },
+      evaluation: ev,
+      tighteningResult,
+      dag: raw.result.dag,
+      hints: raw.result.hints,
+    });
+  }
+
+  // Dedup
+  const seen = new Map<string, { candidate: ForgeCandidate; index: number }>();
+  const dedupedRaw: ForgeCandidate[] = [];
+  let exactDuplicatesRejected = 0;
+
+  for (let i = 0; i < rawCandidates.length; i++) {
+    const c = rawCandidates[i];
+    const hash = boardHash(c.puzzle.rows);
+    const existing = seen.get(hash);
+    if (existing) {
+      const existingScore = paretoScore(existing.candidate);
+      const currentScore = paretoScore(c);
+      if (currentScore > existingScore) {
+        dedupedRaw[existing.index] = c;
+        seen.set(hash, { candidate: c, index: existing.index });
+      }
+      rejections.push({ seed: c.provenance.seed, reason: "duplicate-exact" });
+      exactDuplicatesRejected++;
+    } else {
+      seen.set(hash, { candidate: c, index: dedupedRaw.length });
+      dedupedRaw.push(c);
+    }
+  }
+
+  const stageA = dedupedRaw.length;
+
+  // ---- Stage B: Structural pre-screening ----
+  const structuralScored = dedupedRaw.map((c) => ({ c, score: structuralPreScore(c) }));
+  structuralScored.sort((a, b) => b.score - a.score);
+  const stageB_survivors = structuralScored.slice(0, budgets.preScreenRetain).map((s) => s.c);
+
+  // ---- Stage C: Cheap forward eval screening ----
+  const cheapScored = stageB_survivors.map((c) => ({ c, score: cheapEvalScore(c) }));
+  cheapScored.sort((a, b) => b.score - a.score);
+  const stageC_survivors = cheapScored.slice(0, budgets.finalistRetain).map((s) => s.c);
+
+  // ---- Stage D: Deep finalist eval ----
+  const deepScored: Array<{ c: ForgeCandidate; deepScore: number }> = [];
+  for (const c of stageC_survivors) {
+    const finalist = await evaluateFinalist(c.puzzle);
+    const objectives = computeCurationObjectives(
+      c.evaluation,
+      finalist,
+      c.provenance.dependencyRealizationRate,
+    );
+    const deepScore = objectives.interaction + objectives.dependency +
+      objectives.decisionQuality + objectives.structuralRichness +
+      objectives.solverChallenge - objectives.tedium * 3;
+    deepScored.push({ c, deepScore });
+  }
+  deepScored.sort((a, b) => b.deepScore - a.deepScore);
+  const stageD_survivors = deepScored.slice(0, budgets.deepRetain).map((s) => s.c);
+
+  // ---- Stage E: Pareto + novelty curation ----
+  const finalCandidates = selectDiverse(
+    [...stageD_survivors],
+    budgets.catalogQuota,
+    config.diversityMinDistance,
+  );
+
+  const rejectionCounts = {} as Record<ForgeRejectionReason, number>;
+  for (const r of rejections) {
+    rejectionCounts[r.reason] = (rejectionCounts[r.reason] ?? 0) + 1;
+  }
+
+  return {
+    config,
+    candidates: finalCandidates,
+    rejections,
+    totalAttempted: budgets.rawAttemptBudget,
+    totalValid: rawCandidates.length,
+    totalRetained: finalCandidates.length,
+    elapsedMs: performance.now() - start,
+    rejectionCounts,
+    exactDuplicatesRejected,
+    funnelStats: {
+      stageA_rawGenerated: stageA,
+      stageB_structuralSurvivors: stageB_survivors.length,
+      stageC_cheapEvalSurvivors: stageC_survivors.length,
+      stageD_deepEvalSurvivors: stageD_survivors.length,
+      stageE_curatedFinal: finalCandidates.length,
+    },
   };
 }
 

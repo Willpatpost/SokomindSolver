@@ -18,7 +18,9 @@ import {
   DEFAULT_BEAM_PARAMS,
   DEFAULT_TIGHTENING_PARAMS,
   DEFAULT_COMPOSITION_PARAMS,
+  DEFAULT_TIER_TIGHTENING_POLICIES,
   type TighteningResult,
+  type TierTighteningPolicy,
   type FunctionalBlueprint,
 } from "../../src/features/generator/v2/index.ts";
 
@@ -380,6 +382,7 @@ test("summarizeTighteningResults computes correct averages", () => {
     mutationsRejected: tried - accepted,
     cellsRemoved,
     elapsedMs: 100,
+    protectedCellCount: 0,
     metrics: {
       before: {
         totalFloor: 20, unusedFloorRatio: 0.5, solutionUnusedFloorRatio: 0.4, emptyWalkRatio: 0.6,
@@ -823,5 +826,422 @@ test("tightening: structural integrity preserved with context", async () => {
       );
     }
     return;
+  }
+});
+
+// ===========================================================================
+// Phase 3: Tier-aware tightening policy tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// P3-1. Tightening disabled when enabled=false returns no-op result
+// ---------------------------------------------------------------------------
+
+test("tier policy: disabled policy returns no-op result with zero mutations", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  const masterPolicy = DEFAULT_TIER_TIGHTENING_POLICIES.master;
+  assert.equal(masterPolicy.enabled, false, "master policy should be disabled");
+
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, undefined, masterPolicy);
+  assert.ok(result, "should return a result even when disabled");
+  assert.equal(result.mutationsTried, 0, "should try zero mutations");
+  assert.equal(result.mutationsAccepted, 0, "should accept zero mutations");
+  assert.equal(result.cellsRemoved, 0, "should remove zero cells");
+  assert.deepEqual(result.tightened.rows, p.rows, "puzzle should be unchanged");
+  assert.ok(result.tierPolicyUsed !== undefined, "should report tier policy used");
+});
+
+// ---------------------------------------------------------------------------
+// P3-2. Solution path protection prevents removing solution cells
+// ---------------------------------------------------------------------------
+
+test("tier policy: protectSolutionPath prevents removing solution path cells", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  // Use advanced policy which protects solution path
+  const advancedPolicy = DEFAULT_TIER_TIGHTENING_POLICIES.advanced;
+  assert.equal(advancedPolicy.protectSolutionPath, true);
+
+  const grid = parseRowsToGrid(p.rows);
+  const preservation = buildPreservationContext(grid);
+
+  const withProtection = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, preservation, advancedPolicy);
+  const withoutProtection = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS);
+
+  assert.ok(withProtection, "should return a result with protection");
+  assert.ok(withoutProtection, "should return a result without protection");
+
+  // With solution path protection, we should protect more cells and
+  // potentially remove fewer cells
+  assert.ok(
+    withProtection.protectedCellCount > 0,
+    "should have protected cells when protectSolutionPath is true",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// P3-3. Floor minimum constraint respected
+// ---------------------------------------------------------------------------
+
+test("tier policy: minPlayableFloor prevents tightening below threshold", async () => {
+  // Small puzzle with limited floor — set a high minPlayableFloor
+  const p = puzzle([
+    "OOOOOOOO",
+    "O R    O",
+    "O  X   O",
+    "O  S   O",
+    "O      O",
+    "O      O",
+    "OOOOOOOO",
+  ]);
+
+  // Count current floor
+  let currentFloor = 0;
+  for (const row of p.rows) {
+    for (const ch of row) {
+      if (ch !== "O") currentFloor++;
+    }
+  }
+
+  // Set minPlayableFloor to current floor — should prevent any removal
+  const strictPolicy: TierTighteningPolicy = {
+    enabled: true,
+    maxAccepted: 80,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: currentFloor,
+    minFloorCoverage: 0,
+    minRegionCount: 0,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  };
+
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, undefined, strictPolicy);
+  assert.ok(result, "should return a result");
+  assert.equal(result.cellsRemoved, 0, "should not remove any cells when floor is at minimum");
+});
+
+// ---------------------------------------------------------------------------
+// P3-4. Floor coverage constraint respected
+// ---------------------------------------------------------------------------
+
+test("tier policy: minFloorCoverage constraint prevents excessive tightening", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  // Set a very high floor coverage so no cells can be removed
+  const highCoveragePolicy: TierTighteningPolicy = {
+    enabled: true,
+    maxAccepted: 80,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: 1,
+    minFloorCoverage: 0.99,
+    minRegionCount: 0,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  };
+
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, undefined, highCoveragePolicy);
+  assert.ok(result, "should return a result");
+
+  // With a 0.99 floor coverage requirement, the initial coverage (~0.62)
+  // is already below the threshold, so removing any cell would further
+  // reduce it and be rejected. No cells should be removed.
+  assert.equal(
+    result.cellsRemoved,
+    0,
+    "should not remove any cells when floor coverage constraint is very strict",
+  );
+  assert.deepEqual(
+    result.tightened.rows,
+    p.rows,
+    "puzzle should be unchanged",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// P3-5. Region count constraint respected
+// ---------------------------------------------------------------------------
+
+test("tier policy: minRegionCount prevents destroying regions", async () => {
+  // Build a puzzle with multiple regions (has a chokepoint/articulation)
+  const p = puzzle([
+    "OOOOOOOOOOO",
+    "O    O    O",
+    "O R  O    O",
+    "O    O    O",
+    "OOOO OOOOOO",
+    "O    O    O",
+    "O  X O    O",
+    "O  S O    O",
+    "OOOOOOOOOOO",
+  ]);
+
+  const grid = parseRowsToGrid(p.rows);
+  const metrics = analyzeGrid(grid);
+
+  // Set minRegionCount to the current region count
+  const regionPolicy: TierTighteningPolicy = {
+    enabled: true,
+    maxAccepted: 80,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: 1,
+    minFloorCoverage: 0,
+    minRegionCount: Math.max(metrics.regionCount, 1),
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  };
+
+  const preservation = buildPreservationContext(grid);
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, preservation, regionPolicy);
+  assert.ok(result, "should return a result");
+
+  if (result.cellsRemoved > 0) {
+    const afterGrid = parseRowsToGrid(result.tightened.rows);
+    const afterMetrics = analyzeGrid(afterGrid);
+    assert.ok(
+      afterMetrics.regionCount >= regionPolicy.minRegionCount,
+      `region count ${afterMetrics.regionCount} should meet minimum ${regionPolicy.minRegionCount}`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// P3-6. Chokepoint protection prevents removing chokepoint neighbors
+// ---------------------------------------------------------------------------
+
+test("tier policy: protectChokepointNeighborhoods adds chokepoint cells to protection", async () => {
+  // Build a puzzle from a blueprint with chokepoints
+  for (let seed = 4200; seed < 4250; seed++) {
+    const fb = buildBlueprint(seed);
+    if (!fb) continue;
+
+    const p = generatePuzzleFromBlueprint(fb, seed);
+    if (!p) continue;
+
+    const grid = parseRowsToGrid(p.rows);
+    const metrics = analyzeGrid(grid);
+    if (metrics.chokepointCount === 0) continue;
+
+    const preservation = buildPreservationContext(grid);
+    assert.ok(
+      preservation.protectedChokepointNeighborhoods !== undefined &&
+      preservation.protectedChokepointNeighborhoods.size > 0,
+      "should have chokepoint neighborhoods",
+    );
+
+    const expertPolicy = DEFAULT_TIER_TIGHTENING_POLICIES.expert;
+    assert.equal(expertPolicy.protectChokepointNeighborhoods, true);
+
+    const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, preservation, expertPolicy);
+    assert.ok(result, "should return a result");
+    assert.ok(
+      result.protectedCellCount > 0,
+      "should have protected cells when chokepoint neighborhoods are protected",
+    );
+    return;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// P3-7. Master tier returns no-op (enabled=false)
+// ---------------------------------------------------------------------------
+
+test("tier policy: master tier (enabled=false) does not modify puzzle", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  const result = await tightenPuzzle(
+    p,
+    DEFAULT_TIGHTENING_PARAMS,
+    undefined,
+    DEFAULT_TIER_TIGHTENING_POLICIES.master,
+  );
+  assert.ok(result, "should return a result");
+  assert.equal(result.cellsRemoved, 0);
+  assert.equal(result.mutationsTried, 0);
+  assert.deepEqual(result.tightened.rows, p.rows);
+});
+
+// ---------------------------------------------------------------------------
+// P3-8. Backward compatibility: calling without tierPolicy works as before
+// ---------------------------------------------------------------------------
+
+test("tier policy: backward compatibility — no tierPolicy behaves identically", async () => {
+  const p = puzzle([
+    "OOOOOOOO",
+    "O R    O",
+    "O  X   O",
+    "O  S   O",
+    "O      O",
+    "O      O",
+    "OOOOOOOO",
+  ]);
+
+  // Call with only puzzle and params — no preservation, no tier policy
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS);
+  assert.ok(result, "should produce a result");
+  assert.ok(result.protectedCellCount === 0, "no protected cells when no policy");
+  assert.equal(result.tierPolicyUsed, undefined, "no tier policy reported");
+
+  const solved = await solvePuzzle(result.tightened);
+  assert.ok(solved, "tightened puzzle must still be solvable");
+});
+
+// ---------------------------------------------------------------------------
+// P3-9. TighteningResult includes protectedCellCount
+// ---------------------------------------------------------------------------
+
+test("tier policy: result includes protectedCellCount and tierPolicyUsed", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  const grid = parseRowsToGrid(p.rows);
+  const preservation = buildPreservationContext(grid);
+
+  const result = await tightenPuzzle(
+    p,
+    DEFAULT_TIGHTENING_PARAMS,
+    preservation,
+    DEFAULT_TIER_TIGHTENING_POLICIES.expert,
+  );
+  assert.ok(result, "should return a result");
+  assert.ok(typeof result.protectedCellCount === "number", "protectedCellCount should be a number");
+  assert.ok(result.protectedCellCount >= 0, "protectedCellCount should be non-negative");
+  assert.equal(result.tierPolicyUsed, "expert", "tierPolicyUsed should be 'expert'");
+});
+
+// ---------------------------------------------------------------------------
+// P3-10. Tier policy maxAccepted overrides params.maxAccepted
+// ---------------------------------------------------------------------------
+
+test("tier policy: maxAccepted limits cell removal", async () => {
+  const p = puzzle([
+    "OOOOOOOOOO",
+    "O        O",
+    "O R      O",
+    "O   X    O",
+    "O   S    O",
+    "O        O",
+    "O        O",
+    "O        O",
+    "OOOOOOOOOO",
+  ]);
+
+  const tinyPolicy: TierTighteningPolicy = {
+    enabled: true,
+    maxAccepted: 2,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: 1,
+    minFloorCoverage: 0,
+    minRegionCount: 0,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  };
+
+  const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, undefined, tinyPolicy);
+  assert.ok(result, "should return a result");
+  assert.ok(
+    result.mutationsAccepted <= 2,
+    `should accept at most 2 mutations, accepted ${result.mutationsAccepted}`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// P3-11. buildPreservationContext computes passage and chokepoint sets
+// ---------------------------------------------------------------------------
+
+test("buildPreservationContext: computes protectedPassageCells and protectedChokepointNeighborhoods", () => {
+  // A puzzle with a narrow passage connecting two areas
+  const p = puzzle([
+    "OOOOOOOOOOO",
+    "O    O    O",
+    "O R  O    O",
+    "O    O    O",
+    "OOOO OOOOOO",
+    "O    O    O",
+    "O  X O    O",
+    "O  S O    O",
+    "OOOOOOOOOOO",
+  ]);
+
+  const grid = parseRowsToGrid(p.rows);
+  const context = buildPreservationContext(grid);
+
+  assert.ok(
+    context.protectedPassageCells !== undefined,
+    "protectedPassageCells should be defined",
+  );
+  assert.ok(
+    context.protectedChokepointNeighborhoods !== undefined,
+    "protectedChokepointNeighborhoods should be defined",
+  );
+
+  // The grid has structural features, so at least one set should be non-empty
+  const metrics = analyzeGrid(grid);
+  if (metrics.tunnelCells.size > 0) {
+    assert.ok(
+      context.protectedPassageCells!.size > 0,
+      "should have passage cells when tunnels exist",
+    );
+  }
+  if (metrics.chokepointCount > 0) {
+    assert.ok(
+      context.protectedChokepointNeighborhoods!.size > 0,
+      "should have chokepoint neighborhoods when chokepoints exist",
+    );
   }
 });

@@ -1,5 +1,6 @@
 import type { FunctionalBlueprint, GoalCell } from "./blueprint-types.ts";
 import type { GridPosition } from "../generator-types.ts";
+import { floodKeeperReachable } from "./reachable-pushes.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -294,4 +295,69 @@ export function stateFingerprint(
     .map((b) => `${b.row},${b.column}`)
     .sort();
   return sorted.join("|");
+}
+
+// ---------------------------------------------------------------------------
+// Keeper-region-aware state key (V4)
+// ---------------------------------------------------------------------------
+
+function hashKeeperRegion(reachableCells: ReadonlySet<string>): string {
+  const sorted = [...reachableCells].sort();
+  let hash = 0;
+  for (const key of sorted) {
+    for (let i = 0; i < key.length; i++) {
+      hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+    }
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function reverseStateKey(
+  grid: readonly (readonly string[])[],
+  boxPositions: readonly GridPosition[],
+  robotPosition: GridPosition,
+): string {
+  const boxSet = new Set<string>();
+  for (const b of boxPositions) boxSet.add(`${b.row},${b.column}`);
+
+  const reachable = floodKeeperReachable(grid, robotPosition, boxSet);
+  const regionHash = hashKeeperRegion(reachable);
+  const boxFp = stateFingerprint(boxPositions);
+
+  return `${boxFp}#${regionHash}`;
+}
+
+// ---------------------------------------------------------------------------
+// History-based complexity bonus (V4)
+// ---------------------------------------------------------------------------
+
+export interface PullHistoryEntry {
+  readonly boxIndex: number;
+  readonly fromRoom?: number;
+  readonly toRoom?: number;
+}
+
+export function historyComplexityBonus(
+  history: readonly PullHistoryEntry[],
+): number {
+  if (history.length === 0) return 0;
+
+  const distinctBoxes = new Set<number>();
+  let roomCrossings = 0;
+
+  for (const entry of history) {
+    distinctBoxes.add(entry.boxIndex);
+    if (
+      entry.fromRoom !== undefined &&
+      entry.toRoom !== undefined &&
+      entry.fromRoom !== entry.toRoom
+    ) {
+      roomCrossings++;
+    }
+  }
+
+  const boxDiversity = distinctBoxes.size / Math.max(history.length, 1);
+  const crossingRate = roomCrossings / Math.max(history.length, 1);
+
+  return boxDiversity * 2.0 + crossingRate * 3.0;
 }

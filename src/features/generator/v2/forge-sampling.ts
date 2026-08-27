@@ -2,7 +2,7 @@ import type { Difficulty } from "../../../core/model.ts";
 import type { TopologyFamily } from "./blueprint-types.ts";
 import { createRng } from "../board-template.ts";
 
-export type ForgeGenerationMode = "plain" | "motif" | "composed";
+export type ForgeGenerationMode = "plain" | "motif" | "composed" | "mechanism";
 
 export interface ForgeCombination {
   readonly family: TopologyFamily;

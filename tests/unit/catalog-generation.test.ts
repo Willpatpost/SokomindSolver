@@ -50,18 +50,40 @@ test("difficultyGap is correct for matching and mismatched tiers", () => {
   assert.equal(difficultyGap("tutorial", "master"), -5);
 });
 
-test("difficulty mismatch policy: gap >= 2 should be rejected", () => {
-  const intended: Difficulty = "expert";
-  const classified = classifyFromMetrics(10, 5, 2);
-  const gap = difficultyGap(intended, classified);
-  assert.ok(Math.abs(gap) >= 2, `gap ${gap} should be >= 2 for expert vs tutorial metrics`);
+test("difficulty mismatch policy: gap=0 is accepted", () => {
+  // Exact match — should never be rejected
+  const gap = difficultyGap("intermediate", "intermediate");
+  assert.equal(gap, 0);
+  assert.ok(Math.abs(gap) < 2, "gap=0 must be accepted (below rejection threshold)");
 });
 
-test("difficulty mismatch policy: gap 0-1 should be accepted", () => {
-  const intended: Difficulty = "beginner";
-  const classified = classifyFromMetrics(20, 10, 3);
-  const gap = difficultyGap(intended, classified);
-  assert.ok(Math.abs(gap) <= 1, `gap ${gap} should be <= 1 for beginner vs beginner metrics`);
+test("difficulty mismatch policy: gap=1 is accepted (possibly reclassified)", () => {
+  // One tier off — accepted, may be reclassified if target tier has quota room
+  const gap = difficultyGap("advanced", "intermediate");
+  assert.equal(gap, 1);
+  assert.ok(Math.abs(gap) < 2, "gap=1 must be accepted (below rejection threshold)");
+});
+
+test("difficulty mismatch policy: gap=2 is rejected", () => {
+  // Two tiers off — rejected by the absGap >= 2 policy
+  const gap = difficultyGap("expert", "intermediate");
+  assert.equal(gap, 2);
+  assert.ok(Math.abs(gap) >= 2, "gap=2 must be rejected (at or above rejection threshold)");
+});
+
+test("difficulty mismatch policy: gap=3+ is rejected", () => {
+  // Large mismatch — definitely rejected
+  const gapPos = difficultyGap("master", "tutorial");
+  assert.equal(gapPos, 5);
+  assert.ok(Math.abs(gapPos) >= 2, "gap=5 must be rejected");
+
+  const gapNeg = difficultyGap("tutorial", "expert");
+  assert.equal(gapNeg, -4);
+  assert.ok(Math.abs(gapNeg) >= 2, "gap=-4 must be rejected");
+
+  const gap3 = difficultyGap("expert", "beginner");
+  assert.equal(gap3, 3);
+  assert.ok(Math.abs(gap3) >= 2, "gap=3 must be rejected");
 });
 
 // ---------------------------------------------------------------------------

@@ -3,9 +3,20 @@ import type {
   SolverAdapter,
   SolverExecutionContext,
   SolverRequest,
+  SolutionStep,
 } from "../../../solver/contracts.ts";
-import { createSession } from "../../../core/game-session.ts";
-import { classicGreedySolver, classicAStarSolver } from "../../../solver/implementations/classic-solvers.ts";
+import { createSession, stepSnapshot } from "../../../core/game-session.ts";
+import {
+  classicGreedySolver,
+  classicAStarSolver,
+  classicIdaStarSolver,
+} from "../../../solver/implementations/classic-solvers.ts";
+import {
+  assignSolverRoles,
+  type SolverRole,
+  type V4EvaluatorPolicy,
+  DEFAULT_V4_POLICY,
+} from "./solver-bottleneck.ts";
 
 export interface SolverEvidence {
   readonly solverId: string;
@@ -163,31 +174,42 @@ export function computeCurationObjectives(
   dependencyRealizationRate?: number,
 ): CurationObjectives {
   const interaction =
-    ev.sharedRouteCells * 0.3 +
-    ev.causalEnableCount * 0.4 +
-    ev.causalDisableCount * 0.3;
+    Math.log2(ev.sharedRouteCells + 1) * 0.25 +
+    Math.log2(ev.causalEnableCount + 1) * 0.3 +
+    Math.log2(ev.causalDisableCount + 1) * 0.25 +
+    Math.log2(ev.sharedChokepointUses + 1) * 0.2;
 
-  const dependency = dependencyRealizationRate ?? 0;
+  const dependency = (dependencyRealizationRate ?? 0) +
+    ev.estimatedDependencyDepth * 0.15 +
+    ev.goalOrderConstraints * 0.05;
 
   const decisionQuality =
-    ev.avgReachablePushes * 0.4 +
-    (1 - ev.reachableForcedPushRatio) * 0.3 +
-    (1 - ev.repetitivePushRatio) * 0.3;
+    Math.log2(ev.avgReachablePushes + 1) * 0.3 +
+    (1 - ev.reachableForcedPushRatio) * 0.2 +
+    (1 - ev.repetitivePushRatio) * 0.15 +
+    ev.nonMonotonicBoxMoves * 0.15 +
+    ev.stagingOperations * 0.1 +
+    ev.temporaryGoalVacancies * 0.1;
 
   const structuralRichness =
-    (1 - ev.unusedFloorRatio) * 0.4 +
-    ev.deadlockDensity * 0.3 +
-    Math.min(ev.boxCount / 6, 1) * 0.3;
+    (1 - ev.solutionUnusedFloorRatio) * 0.25 +
+    Math.log2(ev.deadlockDensity * 100 + 1) * 0.15 +
+    Math.log2(ev.boxCount + 1) * 0.2 +
+    Math.log2(ev.regionCount + 1) * 0.15 +
+    Math.log2(ev.chokepoints + 1) * 0.15 +
+    Math.log2(ev.articulationPoints + 1) * 0.1;
 
   const solverChallenge =
-    Math.log2(Math.max(finalist.avgExpandedStates, 1)) * 0.5 +
-    Math.min(ev.solutionPushes / 30, 1) * 0.5;
+    Math.log2(Math.max(finalist.avgExpandedStates, 1)) * 0.4 +
+    Math.log2(ev.solutionPushes + 1) * 0.35 +
+    Math.log2(ev.roomCrossingsInSolution + 1) * 0.25;
 
   const tedium =
-    ev.emptyWalkRatio * 0.3 +
-    ev.repetitivePushRatio * 0.3 +
-    Math.min(ev.movesPerPush / 10, 1) * 0.2 +
-    Math.min(ev.longestWalkStreak / 20, 1) * 0.2;
+    ev.emptyWalkRatio * 0.25 +
+    ev.repetitivePushRatio * 0.25 +
+    Math.min(ev.movesPerPush / 15, 1) * 0.2 +
+    Math.min(ev.longestWalkStreak / 30, 1) * 0.15 +
+    ev.solutionUnusedFloorRatio * 0.15;
 
   return {
     interaction,
@@ -197,5 +219,174 @@ export function computeCurationObjectives(
     solverChallenge,
     novelty: 0,
     tedium,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// V4 multi-role evaluator
+// ---------------------------------------------------------------------------
+
+export interface FinalistEvaluationV4 extends FinalistEvaluation {
+  readonly roleResults: ReadonlyMap<SolverRole, SolverEvidence>;
+  readonly policyApplied: V4EvaluatorPolicy;
+  readonly witnessValid: boolean;
+  readonly proofSkipped: boolean;
+  readonly proofSkipReason?: string;
+}
+
+function countFloorCells(puzzle: PuzzleDefinition): number {
+  let count = 0;
+  for (const row of puzzle.rows) {
+    for (const ch of row) {
+      if (ch !== "O") count++;
+    }
+  }
+  return count;
+}
+
+function replayWitnessSteps(
+  puzzle: PuzzleDefinition,
+  steps: readonly SolutionStep[],
+): boolean {
+  const session = createSession(puzzle);
+  let snapshot = session.snapshot;
+  for (const step of steps) {
+    const transition = stepSnapshot(session.board, snapshot, step.direction);
+    if (!transition.moved) return false;
+    snapshot = transition.snapshot;
+  }
+  return snapshot.solved;
+}
+
+export async function evaluateFinalistV4(
+  puzzle: PuzzleDefinition,
+  policy: V4EvaluatorPolicy = DEFAULT_V4_POLICY,
+  witnessSteps?: readonly SolutionStep[],
+  signal?: AbortSignal,
+): Promise<FinalistEvaluationV4> {
+  const totalFloor = countFloorCells(puzzle);
+  const roles = assignSolverRoles(puzzle.boxes, totalFloor, policy);
+
+  const roleResults = new Map<SolverRole, SolverEvidence>();
+  const allEvidence: SolverEvidence[] = [];
+
+  // 1. Witness validation
+  let witnessValid = false;
+  if (witnessSteps && witnessSteps.length > 0) {
+    witnessValid = replayWitnessSteps(puzzle, witnessSteps);
+  }
+  // If no steps provided, attempt greedy with tight witness budget
+  if (!witnessSteps) {
+    const witnessRole = roles.find((r) => r.role === "witness");
+    if (witnessRole) {
+      const ev = await runSolver(
+        "greedy-witness",
+        classicGreedySolver,
+        puzzle,
+        witnessRole.limits,
+        signal,
+      );
+      roleResults.set("witness", ev);
+      allEvidence.push(ev);
+      witnessValid = ev.status === "solved";
+    }
+  } else {
+    roleResults.set("witness", {
+      solverId: "witness-replay",
+      status: witnessValid ? "solved" : "invalid",
+      moves: witnessSteps.filter((s) => s.kind === "walk" || s.kind === "push").length,
+      pushes: witnessSteps.filter((s) => s.kind === "push").length,
+    });
+  }
+
+  // 2. Fast probe (greedy with probe limits)
+  const fastProbeRole = roles.find((r) => r.role === "fast-probe");
+  if (fastProbeRole) {
+    const ev = await runSolver(
+      "greedy",
+      classicGreedySolver,
+      puzzle,
+      fastProbeRole.limits,
+      signal,
+    );
+    roleResults.set("fast-probe", ev);
+    allEvidence.push(ev);
+  }
+
+  // 3. Exact evidence (A* with evidence limits)
+  const exactRole = roles.find((r) => r.role === "exact-evidence");
+  if (exactRole) {
+    const ev = await runSolver(
+      "astar",
+      classicAStarSolver,
+      puzzle,
+      exactRole.limits,
+      signal,
+    );
+    roleResults.set("exact-evidence", ev);
+    allEvidence.push(ev);
+  }
+
+  // 4. Optional proof (IDA* with proof limits, only if puzzle qualifies)
+  const proofRole = roles.find((r) => r.role === "optional-proof");
+  let proofSkipped = false;
+  let proofSkipReason: string | undefined;
+
+  if (proofRole) {
+    const ev = await runSolver(
+      "ida-star",
+      classicIdaStarSolver,
+      puzzle,
+      proofRole.limits,
+      signal,
+    );
+    roleResults.set("optional-proof", ev);
+    allEvidence.push(ev);
+  } else {
+    proofSkipped = true;
+    if (puzzle.boxes > policy.proofMaxBoxes) {
+      proofSkipReason = `boxCount ${puzzle.boxes} exceeds proofMaxBoxes ${policy.proofMaxBoxes}`;
+    } else if (totalFloor > policy.proofMaxFloor) {
+      proofSkipReason = `totalFloor ${totalFloor} exceeds proofMaxFloor ${policy.proofMaxFloor}`;
+    } else {
+      proofSkipReason = "puzzle exceeds proof limits";
+    }
+  }
+
+  // Build base FinalistEvaluation fields from allEvidence
+  const solved = allEvidence.filter((e) => e.status === "solved");
+  const moveValues = solved
+    .filter((e) => e.moves !== undefined)
+    .map((e) => e.moves!);
+  const pushValues = solved
+    .filter((e) => e.pushes !== undefined)
+    .map((e) => e.pushes!);
+  const expandedValues = allEvidence
+    .filter((e) => e.expandedStates !== undefined)
+    .map((e) => e.expandedStates!);
+
+  const solverAgreement =
+    moveValues.length >= 2 && moveValues.every((m) => m === moveValues[0]);
+
+  return {
+    solverEvidence: allEvidence,
+    solverAgreement,
+    minMoves: moveValues.length > 0 ? Math.min(...moveValues) : 0,
+    maxMoves: moveValues.length > 0 ? Math.max(...moveValues) : 0,
+    minPushes: pushValues.length > 0 ? Math.min(...pushValues) : 0,
+    maxPushes: pushValues.length > 0 ? Math.max(...pushValues) : 0,
+    avgExpandedStates:
+      expandedValues.length > 0
+        ? expandedValues.reduce((s, v) => s + v, 0) / expandedValues.length
+        : 0,
+    maxExpandedStates:
+      expandedValues.length > 0 ? Math.max(...expandedValues) : 0,
+    solversSucceeded: solved.length,
+    solversAttempted: allEvidence.length,
+    roleResults,
+    policyApplied: policy,
+    witnessValid,
+    proofSkipped,
+    proofSkipReason,
   };
 }

@@ -232,12 +232,25 @@ function addPassageCells(
   }
 }
 
+function pickPassageWidth(
+  passageWidths: readonly (1 | 2)[] | undefined,
+  fallback: 1 | 2,
+  rng: () => number,
+): 1 | 2 {
+  if (passageWidths && passageWidths.length > 0) {
+    return passageWidths[Math.floor(rng() * passageWidths.length)];
+  }
+  return fallback;
+}
+
 function rasterizeRoomsAndPassages(
   rooms: PlacedRoom[],
   edges: [number, number][],
   passageWidth: 1 | 2,
   boardWidth: number,
   boardHeight: number,
+  passageWidths?: readonly (1 | 2)[],
+  rng?: () => number,
 ): { grid: string[][]; passages: PassageEdge[] } {
   const grid: string[][] = [];
   for (let r = 0; r < boardHeight; r++) {
@@ -262,7 +275,10 @@ function rasterizeRoomsAndPassages(
   for (const [fromId, toId] of edges) {
     const fromRoom = roomById.get(fromId)!;
     const toRoom = roomById.get(toId)!;
-    const cells = routePassage(fromRoom, toRoom, passageWidth, grid);
+    const width = rng
+      ? pickPassageWidth(passageWidths, passageWidth, rng)
+      : passageWidth;
+    const cells = routePassage(fromRoom, toRoom, width, grid);
 
     for (const cell of cells) {
       grid[cell.row][cell.column] = " ";
@@ -271,7 +287,7 @@ function rasterizeRoomsAndPassages(
     passages.push({
       from: fromId,
       to: toId,
-      width: passageWidth,
+      width,
       cells,
     });
   }
@@ -300,6 +316,8 @@ export function generateBlueprint(params: BlueprintParams): StructuralBlueprint 
     params.passageWidth,
     params.boardWidth,
     params.boardHeight,
+    params.passageWidths,
+    rng,
   );
 
   if (!isConnected(grid)) return null;

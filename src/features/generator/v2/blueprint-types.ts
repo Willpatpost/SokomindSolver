@@ -43,6 +43,21 @@ export interface StructuralBlueprint {
   readonly boardHeight: number;
 }
 
+export interface GeometryProfile {
+  readonly boardWidthRange: readonly [number, number];
+  readonly boardHeightRange: readonly [number, number];
+  readonly minRooms: number;
+  readonly maxRooms: number;
+  readonly minRoomSize: number;
+  readonly maxRoomSize: number;
+  readonly passageWidths: readonly (1 | 2)[];
+  readonly minPlayableFloor: number;
+  readonly maxPlayableFloor?: number;
+  readonly minFloorCoverage: number;
+  readonly minRegions: number;
+  readonly minChokepoints: number;
+}
+
 export interface BlueprintParams {
   readonly seed: number;
   readonly family: TopologyFamily | "random";
@@ -51,6 +66,7 @@ export interface BlueprintParams {
   readonly minRoomSize: number;
   readonly maxRoomSize: number;
   readonly passageWidth: 1 | 2;
+  readonly passageWidths?: readonly (1 | 2)[];
   readonly boardWidth: number;
   readonly boardHeight: number;
 }
@@ -119,6 +135,104 @@ export interface SolvedBlueprint {
   readonly robotPosition: { readonly row: number; readonly column: number };
   readonly goalStyle: GoalStyle;
 }
+
+export interface ReverseSearchProfile {
+  readonly beamWidth: number;
+  readonly maxDepth: number;
+  readonly maxExpandedStates?: number;
+  readonly maxElapsedMs?: number;
+  readonly restartCount: number;
+  readonly diverseArchiveSize: number;
+  readonly diversityRadius: number;
+  readonly stochasticTieBreaking: boolean;
+  readonly antiImmediateUndo: boolean;
+}
+
+export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {
+  beamWidth: 8,
+  maxDepth: 60,
+  restartCount: 1,
+  diverseArchiveSize: 16,
+  diversityRadius: 2,
+  stochasticTieBreaking: true,
+  antiImmediateUndo: true,
+};
+
+// ---------------------------------------------------------------------------
+// Mechanism-driven generation (Phase 5)
+// ---------------------------------------------------------------------------
+
+export type MechanismType =
+  | "packing-chain"
+  | "gatekeeper"
+  | "gate-reopening"
+  | "staging-dependency"
+  | "corridor-traffic"
+  | "temporary-parking"
+  | "dependency-chain"
+  | "cross-room-exchange";
+
+export const MECHANISM_TYPES: readonly MechanismType[] = [
+  "packing-chain",
+  "gatekeeper",
+  "gate-reopening",
+  "staging-dependency",
+  "corridor-traffic",
+  "temporary-parking",
+  "dependency-chain",
+  "cross-room-exchange",
+];
+
+export interface MechanismSpec {
+  readonly type: MechanismType;
+  readonly primaryRoomIds: readonly number[];
+  readonly minGoals: number;
+  readonly weight: number;
+}
+
+export type MechanismEvidenceKind =
+  | "completion-order"
+  | "access-blocked"
+  | "staging-displacement"
+  | "shared-route"
+  | "shared-passage"
+  | "gate-displacement"
+  | "gate-return"
+  | "temporary-park"
+  | "chain-ordering"
+  | "cross-exchange";
+
+export interface MechanismEvidenceRequirement {
+  readonly mechanismType: MechanismType;
+  readonly requiredKinds: readonly MechanismEvidenceKind[];
+  readonly minEvidenceCount: number;
+  readonly description: string;
+}
+
+export interface MechanismPlan {
+  readonly mechanisms: readonly MechanismSpec[];
+  readonly intendedDependencies: readonly MechanismDependencyEdge[];
+  readonly evidenceRequirements: readonly MechanismEvidenceRequirement[];
+  readonly tier: string;
+  readonly seed: number;
+}
+
+export interface MechanismDependencyEdge {
+  readonly fromMechanism: number;
+  readonly toMechanism: number;
+  readonly edgeType: MechanismEdgeType;
+  readonly description: string;
+}
+
+export type MechanismEdgeType =
+  | "must-precede"
+  | "must-stage"
+  | "shares-passage"
+  | "blocks-access"
+  | "must-reopen"
+  | "must-park"
+  | "chain-link"
+  | "exchange-cross";
 
 export interface BlueprintDiagnostics {
   readonly seed: number;

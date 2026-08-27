@@ -7,6 +7,7 @@ import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { enumerateReachablePushes } from "./reachable-pushes.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeInteraction } from "./interaction-analysis.ts";
+import { analyzeSolutionDepth } from "./solution-depth-analysis.ts";
 
 // ---------------------------------------------------------------------------
 // Evaluation vector — all raw metrics, no premature aggregation
@@ -80,6 +81,18 @@ export interface PuzzleEvaluationVector {
   readonly solutionFloorCoverage: number;
   readonly solutionUnusedFloorRatio: number;
 
+  // --- Solution depth (Phase 6) ---
+  readonly nonMonotonicBoxMoves: number;
+  readonly nonMonotonicBoxCount: number;
+  readonly stagingOperations: number;
+  readonly temporaryGoalVacancies: number;
+  readonly boxSwitchRate: number;
+  readonly distinctBoxesMoved: number;
+  readonly multiMoveBoxCount: number;
+  readonly maxBoxEpisodes: number;
+  readonly estimatedDependencyDepth: number;
+  readonly goalOrderConstraints: number;
+
   // --- Board properties ---
   readonly boardWidth: number;
   readonly boardHeight: number;
@@ -141,6 +154,7 @@ export async function evaluatePuzzleWithSteps(
   const interactionMetrics = analyzeInteraction(
     grid, steps, structMetrics.chokepoints, grid[0]?.length ?? 0,
   );
+  const depthMetrics = analyzeSolutionDepth(grid, steps);
 
   return {
     vector: {
@@ -191,6 +205,16 @@ export async function evaluatePuzzleWithSteps(
       movesPerPush: solution.pushes > 0 ? solution.moves / solution.pushes : 0,
       solutionFloorCoverage: usageMetrics.solutionFloorCoverage,
       solutionUnusedFloorRatio: usageMetrics.solutionUnusedFloorRatio,
+      nonMonotonicBoxMoves: depthMetrics.nonMonotonicBoxMoves,
+      nonMonotonicBoxCount: depthMetrics.nonMonotonicBoxCount,
+      stagingOperations: depthMetrics.stagingOperations,
+      temporaryGoalVacancies: depthMetrics.temporaryGoalVacancies,
+      boxSwitchRate: depthMetrics.boxSwitchRate,
+      distinctBoxesMoved: depthMetrics.distinctBoxesMoved,
+      multiMoveBoxCount: depthMetrics.multiMoveBoxCount,
+      maxBoxEpisodes: depthMetrics.maxBoxEpisodes,
+      estimatedDependencyDepth: depthMetrics.estimatedDependencyDepth,
+      goalOrderConstraints: depthMetrics.goalOrderConstraints,
       boardWidth: grid[0]?.length ?? 0,
       boardHeight: grid.length,
       totalFloor: structMetrics.totalFloor,
@@ -275,6 +299,17 @@ function buildUnsolvedVector(
 
     solutionFloorCoverage: 0,
     solutionUnusedFloorRatio: 1,
+
+    nonMonotonicBoxMoves: 0,
+    nonMonotonicBoxCount: 0,
+    stagingOperations: 0,
+    temporaryGoalVacancies: 0,
+    boxSwitchRate: 0,
+    distinctBoxesMoved: 0,
+    multiMoveBoxCount: 0,
+    maxBoxEpisodes: 0,
+    estimatedDependencyDepth: 0,
+    goalOrderConstraints: 0,
 
     boardWidth: grid[0]?.length ?? 0,
     boardHeight: grid.length,
@@ -733,6 +768,16 @@ const NUMERIC_KEYS: readonly (keyof PuzzleEvaluationVector)[] = [
   "movesPerPush",
   "solutionFloorCoverage",
   "solutionUnusedFloorRatio",
+  "nonMonotonicBoxMoves",
+  "nonMonotonicBoxCount",
+  "stagingOperations",
+  "temporaryGoalVacancies",
+  "boxSwitchRate",
+  "distinctBoxesMoved",
+  "multiMoveBoxCount",
+  "maxBoxEpisodes",
+  "estimatedDependencyDepth",
+  "goalOrderConstraints",
   "boardWidth",
   "boardHeight",
   "totalFloor",

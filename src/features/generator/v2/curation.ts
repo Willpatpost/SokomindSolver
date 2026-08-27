@@ -5,6 +5,18 @@ export interface CuratedCandidate<T> {
   readonly objectives: CurationObjectives;
   readonly front: number;
   readonly noveltyScore: number;
+  readonly structuralFingerprint?: string;
+}
+
+export interface DiversityQuotas {
+  readonly maxPerTopology?: number;
+  readonly maxPerMode?: number;
+  readonly maxPerMechanism?: number;
+  readonly maxPerMotif?: number;
+}
+
+export interface NormalizationContext {
+  readonly ranges: Readonly<Record<keyof CurationObjectives, { min: number; range: number }>>;
 }
 
 function dominates(a: CurationObjectives, b: CurationObjectives): boolean {
@@ -74,7 +86,42 @@ export function nonDominatedSort<T>(
   }));
 }
 
-function objectiveDistance(a: CurationObjectives, b: CurationObjectives): number {
+export function buildNormalizationContext(
+  objectives: readonly CurationObjectives[],
+): NormalizationContext {
+  const keys: (keyof CurationObjectives)[] = [
+    "interaction", "dependency", "decisionQuality",
+    "structuralRichness", "solverChallenge", "novelty", "tedium",
+  ];
+  const ranges = {} as Record<keyof CurationObjectives, { min: number; range: number }>;
+  for (const key of keys) {
+    const values = objectives.map((o) => o[key]);
+    const min = values.length > 0 ? Math.min(...values) : 0;
+    const max = values.length > 0 ? Math.max(...values) : 0;
+    ranges[key] = { min, range: max - min || 1 };
+  }
+  return { ranges };
+}
+
+function normalizedObjectiveDistance(
+  a: CurationObjectives,
+  b: CurationObjectives,
+  ctx?: NormalizationContext,
+): number {
+  if (!ctx) return objectiveDistanceRaw(a, b);
+
+  const r = ctx.ranges;
+  let d = 0;
+  d += ((a.interaction - b.interaction) / r.interaction.range) ** 2;
+  d += ((a.dependency - b.dependency) / r.dependency.range) ** 2;
+  d += ((a.decisionQuality - b.decisionQuality) / r.decisionQuality.range) ** 2;
+  d += ((a.structuralRichness - b.structuralRichness) / r.structuralRichness.range) ** 2;
+  d += ((a.solverChallenge - b.solverChallenge) / r.solverChallenge.range) ** 2;
+  d += ((a.tedium - b.tedium) / r.tedium.range) ** 2;
+  return Math.sqrt(d);
+}
+
+function objectiveDistanceRaw(a: CurationObjectives, b: CurationObjectives): number {
   let d = 0;
   d += (a.interaction - b.interaction) ** 2;
   d += (a.dependency - b.dependency) ** 2;
@@ -88,12 +135,20 @@ function objectiveDistance(a: CurationObjectives, b: CurationObjectives): number
 export function computeNoveltyScores<T>(
   candidates: readonly CuratedCandidate<T>[],
   k: number = 3,
+  normCtx?: NormalizationContext,
 ): CuratedCandidate<T>[] {
+  const ctx = normCtx ?? buildNormalizationContext(candidates.map((c) => c.objectives));
+
   return candidates.map((c, i) => {
     const distances: number[] = [];
     for (let j = 0; j < candidates.length; j++) {
       if (i === j) continue;
-      distances.push(objectiveDistance(c.objectives, candidates[j].objectives));
+      let dist = normalizedObjectiveDistance(c.objectives, candidates[j].objectives, ctx);
+      if (c.structuralFingerprint && candidates[j].structuralFingerprint &&
+          c.structuralFingerprint !== candidates[j].structuralFingerprint) {
+        dist += 0.5;
+      }
+      distances.push(dist);
     }
     distances.sort((a, b) => a - b);
     const kNearest = distances.slice(0, Math.min(k, distances.length));
@@ -120,6 +175,71 @@ export function selectByParetoNovelty<T>(
 
     for (const c of frontCandidates) {
       if (selected.length >= quota) break;
+      selected.push(c);
+    }
+  }
+
+  return selected;
+}
+
+export function selectWithDiversityQuotas<T extends { structuralFingerprint?: string }>(
+  candidates: readonly CuratedCandidate<T>[],
+  quota: number,
+  quotas?: DiversityQuotas,
+): CuratedCandidate<T>[] {
+  if (!quotas || candidates.length <= quota) {
+    return selectByParetoNovelty(candidates, quota);
+  }
+
+  const sorted = [...candidates].sort((a, b) => {
+    if (a.front !== b.front) return a.front - b.front;
+    return b.noveltyScore - a.noveltyScore;
+  });
+
+  const selected: CuratedCandidate<T>[] = [];
+  const bucketCounts = new Map<string, number>();
+
+  for (const c of sorted) {
+    if (selected.length >= quota) break;
+
+    const fp = c.structuralFingerprint ?? "";
+    const parts = fp.split("|");
+    const topology = parts[0] ?? "";
+    const mode = parts[1] ?? "";
+    const motif = parts[2] ?? "";
+    const mechanism = parts[3] ?? "";
+
+    let blocked = false;
+    if (quotas.maxPerTopology !== undefined && topology) {
+      const key = `topo:${topology}`;
+      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerTopology) blocked = true;
+    }
+    if (quotas.maxPerMode !== undefined && mode) {
+      const key = `mode:${mode}`;
+      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMode) blocked = true;
+    }
+    if (quotas.maxPerMotif !== undefined && motif && motif !== "none") {
+      const key = `motif:${motif}`;
+      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMotif) blocked = true;
+    }
+    if (quotas.maxPerMechanism !== undefined && mechanism && mechanism !== "none") {
+      const key = `mech:${mechanism}`;
+      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMechanism) blocked = true;
+    }
+
+    if (!blocked) {
+      selected.push(c);
+      if (topology) bucketCounts.set(`topo:${topology}`, (bucketCounts.get(`topo:${topology}`) ?? 0) + 1);
+      if (mode) bucketCounts.set(`mode:${mode}`, (bucketCounts.get(`mode:${mode}`) ?? 0) + 1);
+      if (motif && motif !== "none") bucketCounts.set(`motif:${motif}`, (bucketCounts.get(`motif:${motif}`) ?? 0) + 1);
+      if (mechanism && mechanism !== "none") bucketCounts.set(`mech:${mechanism}`, (bucketCounts.get(`mech:${mechanism}`) ?? 0) + 1);
+    }
+  }
+
+  if (selected.length < quota) {
+    for (const c of sorted) {
+      if (selected.length >= quota) break;
+      if (selected.includes(c)) continue;
       selected.push(c);
     }
   }

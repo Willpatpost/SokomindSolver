@@ -14,11 +14,20 @@ export type {
   BlueprintParams,
   FunctionalBlueprint,
   FunctionalRoom,
+  GeometryProfile,
   GoalCell,
   GoalPlacementParams,
   GoalStyle,
+  MechanismDependencyEdge,
+  MechanismEdgeType,
+  MechanismEvidenceKind,
+  MechanismEvidenceRequirement,
+  MechanismPlan,
+  MechanismSpec,
+  MechanismType,
   PassageCell,
   PassageEdge,
+  ReverseSearchProfile,
   RoomNode,
   RoomRole,
   SolvedBlueprint,
@@ -29,6 +38,8 @@ export type {
 export {
   DEFAULT_BLUEPRINT_PARAMS,
   DEFAULT_GOAL_PARAMS,
+  DEFAULT_SEARCH_PROFILE,
+  MECHANISM_TYPES,
   TOPOLOGY_FAMILIES,
 } from "./blueprint-types.ts";
 
@@ -62,15 +73,20 @@ export type {
 
 export {
   reverseBeamSearch,
+  reverseBeamSearchV4,
   replayForwardSolution,
   candidateToRows,
   candidateToAscii,
+  TranspositionTable,
+  DiverseArchive,
 } from "./reverse-beam-search.ts";
 
 export type {
   BeamSearchParams,
   BeamCandidate,
   BeamSearchResult,
+  BeamSearchResultV4,
+  RestartStats,
   PullRecord,
 } from "./reverse-beam-search.ts";
 
@@ -80,6 +96,8 @@ export {
   scoreState,
   buildScoringContext,
   stateFingerprint,
+  reverseStateKey,
+  historyComplexityBonus,
   DEFAULT_WEIGHTS,
 } from "./reverse-scoring.ts";
 
@@ -87,6 +105,7 @@ export type {
   ReverseStateScore,
   ScoringContext,
   ScoringWeights,
+  PullHistoryEntry,
 } from "./reverse-scoring.ts";
 
 export {
@@ -152,11 +171,25 @@ export type {
 } from "./dependency-verification.ts";
 
 export {
+  feasibleMechanisms,
+  createMechanismPlan,
+  placeGoalsFromPlan,
+  mechanismCompatibility,
+  MECHANISM_CATALOG,
+} from "./mechanism-plan.ts";
+
+export type {
+  MechanismCatalogEntry,
+  MechanismPlacementResult,
+} from "./mechanism-plan.ts";
+
+export {
   tightenPuzzle,
   tightenPuzzles,
   summarizeTighteningResults,
   buildPreservationContext,
   DEFAULT_TIGHTENING_PARAMS,
+  DEFAULT_TIER_TIGHTENING_POLICIES,
 } from "./geometry-tightening.ts";
 
 export type {
@@ -165,6 +198,7 @@ export type {
   TighteningMetrics,
   TighteningResult,
   TighteningSummary,
+  TierTighteningPolicy,
 } from "./geometry-tightening.ts";
 
 export {
@@ -174,9 +208,15 @@ export {
   forgeRunReport,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
+  QUALITY_PRESETS,
 } from "./puzzle-forge.ts";
 
 export type {
+  BoxTypingMode,
+  BoxTypingPolicy,
+  FunnelBudgets,
+  FunnelStageStats,
+  QualityPreset,
   ForgeConfig,
   ForgeAcceptanceGates,
   ForgeGenerationMode,
@@ -190,6 +230,7 @@ export type {
 
 export {
   canonicalizeRows,
+  framePuzzleRows,
   boardHash,
   symmetryHash,
   createGeneratedPuzzleId,
@@ -198,7 +239,22 @@ export {
 export type {
   GeneratedPuzzleManifest,
   GeneratedPuzzleManifestEntry,
+  ReviewCandidatePack,
+  ReviewCatalog,
+  ReviewCatalogTierSummary,
 } from "./catalog-manifest-types.ts";
+
+export {
+  buildReviewPack,
+  buildReviewCatalog,
+  formatReviewSummary,
+  validateForAcceptance,
+} from "./review-catalog.ts";
+
+export type {
+  ReviewCatalogOptions,
+  AcceptanceResult,
+} from "./review-catalog.ts";
 
 export {
   enumerateForgeCombinations,
@@ -223,6 +279,31 @@ export {
   analyzeSolutionUsage,
 } from "./solution-usage.ts";
 
+export {
+  analyzeSolutionDepth,
+} from "./solution-depth-analysis.ts";
+
+export type {
+  SolutionDepthMetrics,
+} from "./solution-depth-analysis.ts";
+
+export {
+  computeV4Profile,
+  computeStructuralScale,
+  computeSolutionDepthScore,
+  computeHumanReasoningComplexity,
+  computeTediumPenalty,
+  benchmarkAgainstExpected,
+  summarizeBenchmark,
+  V4_TIER_THRESHOLDS,
+} from "./difficulty-model.ts";
+
+export type {
+  V4DifficultyProfile,
+  V4DifficultyThresholds,
+  V4BenchmarkEntry,
+} from "./difficulty-model.ts";
+
 export type {
   SolutionUsageMetrics,
 } from "./solution-usage.ts";
@@ -238,6 +319,7 @@ export type {
 export {
   evaluateFinalist,
   evaluateFinalists,
+  evaluateFinalistV4,
   computeCurationObjectives,
   DEFAULT_FINALIST_CONFIG,
 } from "./finalist-evaluator.ts";
@@ -245,18 +327,41 @@ export {
 export type {
   SolverEvidence,
   FinalistEvaluation,
+  FinalistEvaluationV4,
   CurationObjectives,
   FinalistEvaluatorConfig,
 } from "./finalist-evaluator.ts";
 
 export {
+  assignSolverRoles,
+  analyzeSolverBottleneck,
+  extractCorrelationData,
+  DEFAULT_V4_POLICY,
+} from "./solver-bottleneck.ts";
+
+export type {
+  SolverRole,
+  SolverRoleAssignment,
+  V4EvaluatorPolicy,
+  SolverBottleneckEntry,
+  SolverBottleneckReport,
+  SolverCorrelationData,
+  CorrelationEvaluationInput,
+  CorrelationFinalistInput,
+} from "./solver-bottleneck.ts";
+
+export {
   nonDominatedSort,
   computeNoveltyScores,
   selectByParetoNovelty,
+  selectWithDiversityQuotas,
+  buildNormalizationContext,
   diagnosePopulation,
 } from "./curation.ts";
 
 export type {
   CuratedCandidate,
+  DiversityQuotas,
+  NormalizationContext,
   PopulationDiagnostics,
 } from "./curation.ts";

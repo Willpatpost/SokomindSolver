@@ -1,4 +1,4 @@
-import type { PuzzleDefinition } from "../../../core/model.ts";
+import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { createSession } from "../../../core/game-session.ts";
@@ -22,7 +22,97 @@ export interface TighteningPreservationContext {
   readonly baselineStructural?: StructuralMetrics;
   readonly minRoomFloorFraction?: number;
   readonly roomFloorBaselines?: ReadonlyMap<number, number>;
+  readonly protectedPassageCells?: ReadonlySet<string>;
+  readonly protectedChokepointNeighborhoods?: ReadonlySet<string>;
 }
+
+export interface TierTighteningPolicy {
+  readonly enabled: boolean;
+  readonly maxAccepted: number;
+  readonly maxMutationsPerPass: number;
+  readonly minPlayableFloor: number;
+  readonly minFloorCoverage: number;
+  readonly minRegionCount: number;
+  readonly minChokepointCount: number;
+  readonly protectSolutionPath: boolean;
+  readonly protectPassageCells: boolean;
+  readonly protectChokepointNeighborhoods: boolean;
+}
+
+export const DEFAULT_TIER_TIGHTENING_POLICIES: Readonly<Record<Difficulty, TierTighteningPolicy>> = {
+  tutorial: {
+    enabled: true,
+    maxAccepted: 80,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: 8,
+    minFloorCoverage: 0.15,
+    minRegionCount: 1,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  },
+  beginner: {
+    enabled: true,
+    maxAccepted: 80,
+    maxMutationsPerPass: 200,
+    minPlayableFloor: 10,
+    minFloorCoverage: 0.15,
+    minRegionCount: 1,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  },
+  intermediate: {
+    enabled: true,
+    maxAccepted: 60,
+    maxMutationsPerPass: 180,
+    minPlayableFloor: 12,
+    minFloorCoverage: 0.20,
+    minRegionCount: 1,
+    minChokepointCount: 0,
+    protectSolutionPath: false,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  },
+  advanced: {
+    enabled: true,
+    maxAccepted: 40,
+    maxMutationsPerPass: 150,
+    minPlayableFloor: 15,
+    minFloorCoverage: 0.25,
+    minRegionCount: 1,
+    minChokepointCount: 0,
+    protectSolutionPath: true,
+    protectPassageCells: false,
+    protectChokepointNeighborhoods: false,
+  },
+  expert: {
+    enabled: true,
+    maxAccepted: 20,
+    maxMutationsPerPass: 120,
+    minPlayableFloor: 18,
+    minFloorCoverage: 0.30,
+    minRegionCount: 2,
+    minChokepointCount: 1,
+    protectSolutionPath: true,
+    protectPassageCells: true,
+    protectChokepointNeighborhoods: true,
+  },
+  master: {
+    enabled: false,
+    maxAccepted: 0,
+    maxMutationsPerPass: 0,
+    minPlayableFloor: 20,
+    minFloorCoverage: 0.35,
+    minRegionCount: 2,
+    minChokepointCount: 1,
+    protectSolutionPath: true,
+    protectPassageCells: true,
+    protectChokepointNeighborhoods: true,
+  },
+};
 
 export const DEFAULT_TIGHTENING_PARAMS: TighteningParams = {
   maxMutationsPerPass: 200,
@@ -59,6 +149,8 @@ export interface TighteningResult {
     readonly before: TighteningMetrics;
     readonly after: TighteningMetrics;
   };
+  readonly protectedCellCount: number;
+  readonly tierPolicyUsed?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,17 +161,70 @@ export async function tightenPuzzle(
   puzzle: PuzzleDefinition,
   params: TighteningParams = DEFAULT_TIGHTENING_PARAMS,
   preservation?: TighteningPreservationContext,
+  tierPolicy?: TierTighteningPolicy,
 ): Promise<TighteningResult | null> {
   const start = performance.now();
 
-  const baseline = await solvAndMeasure(puzzle, params);
+  // If tier policy is provided and disabled, return a no-op result immediately
+  if (tierPolicy && !tierPolicy.enabled) {
+    const baseline = await solvAndMeasure(puzzle, params);
+    if (!baseline) return null;
+    return {
+      original: puzzle,
+      tightened: puzzle,
+      mutationsTried: 0,
+      mutationsAccepted: 0,
+      mutationsRejected: 0,
+      cellsRemoved: 0,
+      elapsedMs: performance.now() - start,
+      metrics: { before: baseline.metrics, after: baseline.metrics },
+      protectedCellCount: 0,
+      tierPolicyUsed: findTierPolicyName(tierPolicy),
+    };
+  }
+
+  // Apply tier policy overrides to params
+  const effectiveParams: TighteningParams = tierPolicy
+    ? {
+        ...params,
+        maxAccepted: tierPolicy.maxAccepted,
+        maxMutationsPerPass: tierPolicy.maxMutationsPerPass,
+      }
+    : params;
+
+  const baseline = await solvAndMeasure(puzzle, effectiveParams);
   if (!baseline) return null;
 
   const grid = puzzle.rows.map((r) => [...r]);
 
   const entities = findEntities(grid);
   const solutionCells = trackSolutionCells(puzzle, baseline.steps);
-  const protectedCells = preservation?.protectedCells;
+
+  // Build the effective protected cells set, merging preservation context
+  // with tier policy protection flags
+  const mergedProtected = new Set<string>(preservation?.protectedCells ?? []);
+
+  if (tierPolicy?.protectSolutionPath) {
+    for (const key of solutionCells) {
+      mergedProtected.add(key);
+    }
+  }
+
+  if (tierPolicy?.protectPassageCells && preservation?.protectedPassageCells) {
+    for (const key of preservation.protectedPassageCells) {
+      mergedProtected.add(key);
+    }
+  }
+
+  if (tierPolicy?.protectChokepointNeighborhoods && preservation?.protectedChokepointNeighborhoods) {
+    for (const key of preservation.protectedChokepointNeighborhoods) {
+      mergedProtected.add(key);
+    }
+  }
+
+  const protectedCellCount = mergedProtected.size;
+  const effectiveProtectedCells: ReadonlySet<string> | undefined =
+    mergedProtected.size > 0 ? mergedProtected : preservation?.protectedCells;
 
   let accepted = 0;
   let rejected = 0;
@@ -87,11 +232,11 @@ export async function tightenPuzzle(
   let currentMetrics = baseline.metrics;
   let currentStructural = preservation?.baselineStructural ?? analyzeGrid(grid);
 
-  const candidates = rankCandidates(grid, entities, solutionCells, protectedCells);
+  const candidates = rankCandidates(grid, entities, solutionCells, effectiveProtectedCells);
 
   for (const cell of candidates) {
-    if (tried >= params.maxMutationsPerPass) break;
-    if (accepted >= params.maxAccepted) break;
+    if (tried >= effectiveParams.maxMutationsPerPass) break;
+    if (accepted >= effectiveParams.maxAccepted) break;
 
     const { row, col } = cell;
     if (grid[row][col] === "O") continue;
@@ -114,16 +259,26 @@ export async function tightenPuzzle(
       continue;
     }
 
-    if (preservation) {
+    // Structural regression check (preservation context or tier policy)
+    if (preservation || tierPolicy) {
       const afterStructural = analyzeGrid(grid);
-      if (hasStructuralRegression(currentStructural, afterStructural, preservation)) {
+      if (preservation && hasStructuralRegression(currentStructural, afterStructural, preservation)) {
         grid[row][col] = original;
         rejected++;
         continue;
       }
+
+      // Tier policy structural constraints
+      if (tierPolicy) {
+        if (!passesTierStructuralConstraints(tierPolicy, afterStructural, grid)) {
+          grid[row][col] = original;
+          rejected++;
+          continue;
+        }
+      }
     }
 
-    const solveResult = await solvAndMeasure(mutatedPuzzle, params);
+    const solveResult = await solvAndMeasure(mutatedPuzzle, effectiveParams);
     if (!solveResult) {
       grid[row][col] = original;
       rejected++;
@@ -138,7 +293,7 @@ export async function tightenPuzzle(
 
     accepted++;
     currentMetrics = solveResult.metrics;
-    if (preservation) {
+    if (preservation || tierPolicy) {
       currentStructural = analyzeGrid(grid);
     }
   }
@@ -153,6 +308,8 @@ export async function tightenPuzzle(
       cellsRemoved: 0,
       elapsedMs: performance.now() - start,
       metrics: { before: baseline.metrics, after: baseline.metrics },
+      protectedCellCount,
+      tierPolicyUsed: tierPolicy ? findTierPolicyName(tierPolicy) : undefined,
     };
   }
 
@@ -169,7 +326,37 @@ export async function tightenPuzzle(
     cellsRemoved: accepted,
     elapsedMs: performance.now() - start,
     metrics: { before: baseline.metrics, after: afterMetrics },
+    protectedCellCount,
+    tierPolicyUsed: tierPolicy ? findTierPolicyName(tierPolicy) : undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tier policy helpers
+// ---------------------------------------------------------------------------
+
+function passesTierStructuralConstraints(
+  policy: TierTighteningPolicy,
+  structural: StructuralMetrics,
+  grid: string[][],
+): boolean {
+  if (structural.totalFloor < policy.minPlayableFloor) return false;
+
+  const totalCells = grid.length * (grid.length > 0 ? grid[0].length : 0);
+  if (totalCells > 0 && structural.totalFloor / totalCells < policy.minFloorCoverage) return false;
+
+  if (structural.regionCount < policy.minRegionCount) return false;
+
+  if (structural.chokepointCount < policy.minChokepointCount) return false;
+
+  return true;
+}
+
+function findTierPolicyName(policy: TierTighteningPolicy): string {
+  for (const [name, p] of Object.entries(DEFAULT_TIER_TIGHTENING_POLICIES)) {
+    if (p === policy) return name;
+  }
+  return "custom";
 }
 
 // ---------------------------------------------------------------------------
@@ -619,16 +806,47 @@ export function buildPreservationContext(
   protectedCells?: ReadonlySet<string>,
   minRoomFloorFraction: number = 0.6,
 ): TighteningPreservationContext {
+  const height = grid.length;
+  const width = height > 0 ? grid[0].length : 0;
   const structural = analyzeGrid(grid);
   const roomFloorBaselines = new Map<number, number>();
   for (const region of structural.regions) {
     roomFloorBaselines.set(region.gate, region.size);
   }
+
+  // Compute protected passage cells: cells in tunnels that connect regions
+  // through narrow corridors. Tunnel cells are cells with exactly 2 floor
+  // neighbors that are collinear (forming a corridor).
+  const protectedPassageCells = new Set<string>();
+  for (const tunnelIdx of structural.tunnelCells) {
+    const r = Math.floor(tunnelIdx / width);
+    const c = tunnelIdx % width;
+    protectedPassageCells.add(`${r},${c}`);
+  }
+
+  // Compute protected chokepoint neighborhoods: each chokepoint cell
+  // plus its cardinal neighbors
+  const protectedChokepointNeighborhoods = new Set<string>();
+  for (const chokepointIdx of structural.chokepoints) {
+    const r = Math.floor(chokepointIdx / width);
+    const c = chokepointIdx % width;
+    protectedChokepointNeighborhoods.add(`${r},${c}`);
+    for (let d = 0; d < 4; d++) {
+      const nr = r + DR[d];
+      const nc = c + DC[d];
+      if (nr >= 0 && nr < height && nc >= 0 && nc < width && grid[nr][nc] !== "O") {
+        protectedChokepointNeighborhoods.add(`${nr},${nc}`);
+      }
+    }
+  }
+
   return {
     protectedCells,
     baselineStructural: structural,
     minRoomFloorFraction,
     roomFloorBaselines,
+    protectedPassageCells,
+    protectedChokepointNeighborhoods,
   };
 }
 

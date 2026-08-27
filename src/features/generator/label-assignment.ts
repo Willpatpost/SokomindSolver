@@ -120,6 +120,76 @@ function pathsCross(pathA: GridPosition[], pathB: GridPosition[]): boolean {
   return rowOrderFlipped || colOrderFlipped;
 }
 
+export function assignPartialLabels(
+  puzzle: PuzzleDefinition,
+  solution: SolverSolution,
+  rng: () => number,
+  typedFraction: number,
+): PuzzleDefinition {
+  const board = parsePuzzle(puzzle);
+  const boxCount = board.initialBoxes.length;
+
+  if (boxCount < 2 || boxCount > VALID_LABELS.length) return puzzle;
+
+  const pairing = traceBoxGoalPairing(puzzle, solution.steps);
+  if (pairing.size !== boxCount) return puzzle;
+
+  // Determine how many pairs to type, ensuring at least 1 typed and 1 generic
+  let typedCount = Math.round(boxCount * typedFraction);
+  typedCount = Math.max(1, Math.min(typedCount, boxCount - 1));
+
+  // Build an index array [0..boxCount-1] and shuffle to pick which pairs get typed
+  const indices = Array.from({ length: boxCount }, (_, i) => i);
+  shuffleArray(indices, rng);
+  const typedSet = new Set(indices.slice(0, typedCount));
+
+  // Assign labels only to typed pairs; leave the rest as X/S
+  const labels = VALID_LABELS.slice(0, typedCount) as unknown as string[];
+  const labelsCopy = [...labels];
+  shuffleArray(labelsCopy, rng);
+
+  const boxLabelMap = new Map<string, string>();
+  const goalLabelMap = new Map<string, string>();
+
+  let labelIdx = 0;
+  for (let i = 0; i < boxCount; i++) {
+    if (!typedSet.has(i)) continue;
+    const goalIdx = pairing.get(i);
+    if (goalIdx === undefined) return puzzle;
+    const label = labelsCopy[labelIdx++];
+    boxLabelMap.set(posKey(board.initialBoxes[i].position), label);
+    goalLabelMap.set(posKey(board.goals[goalIdx].position), label.toLowerCase());
+  }
+
+  const newRows = puzzle.rows.map((row, r) =>
+    row
+      .split("")
+      .map((ch, c) => {
+        const key = `${r},${c}`;
+        if (ch === "X") {
+          const label = boxLabelMap.get(key);
+          return label ?? ch;
+        }
+        if (ch === "S") {
+          const label = goalLabelMap.get(key);
+          return label ?? ch;
+        }
+        return ch;
+      })
+      .join(""),
+  );
+
+  return {
+    id: puzzle.id,
+    title: puzzle.title,
+    difficulty: puzzle.difficulty,
+    boxes: puzzle.boxes,
+    ...(puzzle.hint ? { hint: puzzle.hint } : {}),
+    ...(puzzle.collection ? { collection: puzzle.collection } : {}),
+    rows: newRows,
+  };
+}
+
 export function assignLabels(
   puzzle: PuzzleDefinition,
   solution: SolverSolution,

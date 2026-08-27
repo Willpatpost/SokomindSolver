@@ -15,7 +15,8 @@ interface DepNode {
   readonly role: string;
 }
 
-type DepEdgeType = "must-precede" | "must-stage" | "shares-passage" | "blocks-access";
+type DepEdgeType = "must-precede" | "must-stage" | "shares-passage" | "blocks-access"
+  | "must-reopen" | "must-park" | "chain-link" | "exchange-cross";
 
 interface DepEdge {
   readonly from: number;
@@ -411,6 +412,312 @@ function verifySharesPassage(
   };
 }
 
+function verifyMustReopen(
+  fromNode: DepNode,
+  toNode: DepNode,
+  moveEvents: BoxMoveEvent[],
+  completions: BoxCompletionEvent[],
+): DependencyEdgeVerification & { realized: boolean } {
+  const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
+  const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
+
+  if (!fromCompletion || !toCompletion) {
+    return {
+      edge: null!,
+      realized: false,
+      confidence: "observed",
+      reason: !fromCompletion
+        ? `Goal ${fromNode.goalIndex} never completed`
+        : `Goal ${toNode.goalIndex} never completed`,
+      evidence: [],
+    };
+  }
+
+  const evidence: DependencyEvidence[] = [{
+    kind: "completion-order",
+    description: `Goal ${fromNode.goalIndex} at step ${fromCompletion.completionStep}, goal ${toNode.goalIndex} at step ${toCompletion.completionStep}`,
+  }];
+
+  const fromBoxMoves = moveEvents.filter((e) => e.boxIndex === fromCompletion.boxIndex);
+  const toBoxMoves = moveEvents.filter((e) => e.boxIndex === toCompletion.boxIndex);
+
+  // Look for: from-box moved off goal, then to-box moved, then from-box returned to goal
+  let reopenDetected = false;
+
+  for (let i = 0; i < fromBoxMoves.length; i++) {
+    const offGoalMove = fromBoxMoves[i];
+    if (!offGoalMove.onGoalBefore || offGoalMove.onGoalAfter) continue;
+
+    // from-box was on goal and moved off — find a to-box move after this
+    for (const toMove of toBoxMoves) {
+      if (toMove.stepIdx <= offGoalMove.stepIdx) continue;
+
+      // find from-box returning to a goal after to-box moved
+      for (let j = i + 1; j < fromBoxMoves.length; j++) {
+        const returnMove = fromBoxMoves[j];
+        if (returnMove.stepIdx > toMove.stepIdx && returnMove.onGoalAfter) {
+          reopenDetected = true;
+          evidence.push({
+            kind: "reopen-gate",
+            description: `Gatekeeper box ${fromCompletion.boxIndex} left goal at step ${offGoalMove.stepIdx}, ` +
+              `box ${toCompletion.boxIndex} moved at step ${toMove.stepIdx}, ` +
+              `then gatekeeper returned to goal at step ${returnMove.stepIdx}`,
+          });
+          break;
+        }
+      }
+      if (reopenDetected) break;
+    }
+    if (reopenDetected) break;
+  }
+
+  const realized = reopenDetected;
+
+  return {
+    edge: null!,
+    realized,
+    confidence: reopenDetected ? "structural" : "observed",
+    reason: realized
+      ? `Reopen detected: gatekeeper box for goal ${fromNode.goalIndex} moved off goal, to-box passed, then gatekeeper returned`
+      : `No reopen pattern detected for gatekeeper box ${fromCompletion.boxIndex} (${fromBoxMoves.length} moves)`,
+    evidence,
+  };
+}
+
+function verifyMustPark(
+  fromNode: DepNode,
+  toNode: DepNode,
+  moveEvents: BoxMoveEvent[],
+  completions: BoxCompletionEvent[],
+): DependencyEdgeVerification & { realized: boolean } {
+  const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
+  const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
+
+  if (!fromCompletion || !toCompletion) {
+    return {
+      edge: null!,
+      realized: false,
+      confidence: "observed",
+      reason: !fromCompletion
+        ? `Goal ${fromNode.goalIndex} never completed`
+        : `Goal ${toNode.goalIndex} never completed`,
+      evidence: [],
+    };
+  }
+
+  const evidence: DependencyEvidence[] = [{
+    kind: "completion-order",
+    description: `Goal ${fromNode.goalIndex} at step ${fromCompletion.completionStep}, goal ${toNode.goalIndex} at step ${toCompletion.completionStep}`,
+  }];
+
+  const fromBoxMoves = moveEvents.filter((e) => e.boxIndex === fromCompletion.boxIndex);
+
+  // Look for a move where box lands on non-goal cell, then later lands on a goal cell
+  let parkDetected = false;
+
+  for (let i = 0; i < fromBoxMoves.length; i++) {
+    const parkMove = fromBoxMoves[i];
+    if (parkMove.onGoalAfter) continue;
+
+    // Box was placed on a non-goal cell — look for a later move to a goal cell
+    for (let j = i + 1; j < fromBoxMoves.length; j++) {
+      if (fromBoxMoves[j].onGoalAfter) {
+        parkDetected = true;
+        evidence.push({
+          kind: "park-and-resume",
+          description: `Box ${fromCompletion.boxIndex} parked at non-goal cell at step ${parkMove.stepIdx}, ` +
+            `then moved to goal cell at step ${fromBoxMoves[j].stepIdx}`,
+        });
+        break;
+      }
+    }
+    if (parkDetected) break;
+  }
+
+  const realized = parkDetected;
+
+  return {
+    edge: null!,
+    realized,
+    confidence: parkDetected ? "structural" : "observed",
+    reason: realized
+      ? `Parking detected: box for goal ${fromNode.goalIndex} temporarily placed on non-goal cell before reaching goal`
+      : `No parking pattern detected for box ${fromCompletion.boxIndex} (${fromBoxMoves.length} moves)`,
+    evidence,
+  };
+}
+
+function verifyChainLink(
+  fromNode: DepNode,
+  toNode: DepNode,
+  completions: BoxCompletionEvent[],
+  dag: DepDAG,
+): DependencyEdgeVerification & { realized: boolean } {
+  const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
+  const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
+
+  if (!fromCompletion || !toCompletion) {
+    return {
+      edge: null!,
+      realized: false,
+      confidence: "observed",
+      reason: !fromCompletion
+        ? `Goal ${fromNode.goalIndex} never completed`
+        : `Goal ${toNode.goalIndex} never completed`,
+      evidence: [],
+    };
+  }
+
+  const realized = fromCompletion.completionStep < toCompletion.completionStep;
+  const evidence: DependencyEvidence[] = [{
+    kind: "completion-order",
+    description: `Goal ${fromNode.goalIndex} completed at step ${fromCompletion.completionStep}, goal ${toNode.goalIndex} at step ${toCompletion.completionStep}`,
+  }];
+
+  // Count chain-link edges to determine chain length
+  const chainLinkEdges = dag.edges.filter((e) => e.type === "chain-link");
+  const chainLength = chainLinkEdges.length + 1; // edges + 1 = number of nodes in chain
+
+  if (chainLength >= 3) {
+    evidence.push({
+      kind: "chain-length",
+      description: `Chain has ${chainLength} goals (${chainLinkEdges.length} chain-link edges), enforcing strict sequential ordering`,
+    });
+  }
+
+  // Verify strict ordering: no other chain-link completion falls between from and to
+  if (realized && chainLength >= 3) {
+    const chainNodeIds = new Set<number>();
+    for (const e of chainLinkEdges) {
+      chainNodeIds.add(e.from);
+      chainNodeIds.add(e.to);
+    }
+
+    const chainCompletions = completions
+      .filter((c) => {
+        const node = dag.nodes.find((n) => n.goalIndex === c.goalIndex);
+        return node != null && chainNodeIds.has(node.id);
+      })
+      .sort((a, b) => a.completionStep - b.completionStep);
+
+    let strictOrder = true;
+    for (let i = 1; i < chainCompletions.length; i++) {
+      if (chainCompletions[i].completionStep <= chainCompletions[i - 1].completionStep) {
+        strictOrder = false;
+        break;
+      }
+    }
+
+    if (strictOrder) {
+      evidence.push({
+        kind: "strict-chain-order",
+        description: `All ${chainCompletions.length} chain goals completed in strictly increasing step order`,
+      });
+    }
+  }
+
+  const confidence: VerificationConfidence = chainLength >= 3 ? "structural" : "observed";
+
+  return {
+    edge: null!,
+    realized,
+    confidence,
+    reason: realized
+      ? `Goal ${fromNode.goalIndex} completed at step ${fromCompletion.completionStep} before goal ${toNode.goalIndex} at step ${toCompletion.completionStep} (chain length ${chainLength})`
+      : `Goal ${fromNode.goalIndex} completed at step ${fromCompletion.completionStep}, goal ${toNode.goalIndex} at step ${toCompletion.completionStep} (wrong order)`,
+    evidence,
+  };
+}
+
+function verifyExchangeCross(
+  fromNode: DepNode,
+  toNode: DepNode,
+  boxRoutes: Map<number, Set<string>>,
+  completions: BoxCompletionEvent[],
+  passageCells?: ReadonlySet<string>,
+): DependencyEdgeVerification & { realized: boolean } {
+  const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
+  const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
+
+  if (!fromCompletion || !toCompletion) {
+    return {
+      edge: null!,
+      realized: false,
+      confidence: "observed",
+      reason: !fromCompletion
+        ? `Goal ${fromNode.goalIndex} never completed`
+        : `Goal ${toNode.goalIndex} never completed`,
+      evidence: [],
+    };
+  }
+
+  const fromRoute = boxRoutes.get(fromCompletion.boxIndex) ?? new Set<string>();
+  const toRoute = boxRoutes.get(toCompletion.boxIndex) ?? new Set<string>();
+  const evidence: DependencyEvidence[] = [];
+
+  // Check that both boxes passed through passage cells
+  let fromPassageCells = 0;
+  let toPassageCells = 0;
+  if (passageCells) {
+    for (const cell of fromRoute) {
+      if (passageCells.has(cell)) fromPassageCells++;
+    }
+    for (const cell of toRoute) {
+      if (passageCells.has(cell)) toPassageCells++;
+    }
+  }
+
+  const bothUsedPassage = fromPassageCells > 0 && toPassageCells > 0;
+
+  // Check cross-room movement: box A from room-of-from to room-of-to, box B opposite
+  const crossRoom = fromNode.roomId !== toNode.roomId;
+
+  let realized = false;
+
+  if (bothUsedPassage && crossRoom) {
+    // Shared passage cells indicate the routes crossed through the same passage
+    let sharedPassageCells = 0;
+    for (const cell of fromRoute) {
+      if (passageCells!.has(cell) && toRoute.has(cell)) sharedPassageCells++;
+    }
+
+    if (sharedPassageCells > 0) {
+      realized = true;
+      evidence.push({
+        kind: "exchange-passage",
+        description: `Box ${fromCompletion.boxIndex} (room ${fromNode.roomId}) and box ${toCompletion.boxIndex} (room ${toNode.roomId}) crossed through ${sharedPassageCells} shared passage cells`,
+      });
+    }
+
+    evidence.push({
+      kind: "cross-room-routes",
+      description: `Box ${fromCompletion.boxIndex} used ${fromPassageCells} passage cells, box ${toCompletion.boxIndex} used ${toPassageCells} passage cells, rooms ${fromNode.roomId} ↔ ${toNode.roomId}`,
+    });
+  } else if (!bothUsedPassage) {
+    evidence.push({
+      kind: "no-passage-use",
+      description: `Box ${fromCompletion.boxIndex} used ${fromPassageCells} passage cells, box ${toCompletion.boxIndex} used ${toPassageCells} passage cells — both must use passage`,
+    });
+  } else {
+    evidence.push({
+      kind: "same-room",
+      description: `Both nodes in room ${fromNode.roomId} — exchange requires different rooms`,
+    });
+  }
+
+  return {
+    edge: null!,
+    realized,
+    confidence: realized ? "structural" : "observed",
+    reason: realized
+      ? `Exchange detected: boxes from rooms ${fromNode.roomId} and ${toNode.roomId} crossed through shared passage`
+      : bothUsedPassage
+        ? `Both boxes used passages but no shared crossing detected`
+        : `Passage usage insufficient for exchange (from: ${fromPassageCells}, to: ${toPassageCells})`,
+    evidence,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main verification entry point
 // ---------------------------------------------------------------------------
@@ -454,6 +761,18 @@ export function verifyDependenciesWithEvidence(
         break;
       case "shares-passage":
         result = verifySharesPassage(fromNode, toNode, boxRoutes, completions, passageCells);
+        break;
+      case "must-reopen":
+        result = verifyMustReopen(fromNode, toNode, moveEvents, completions);
+        break;
+      case "must-park":
+        result = verifyMustPark(fromNode, toNode, moveEvents, completions);
+        break;
+      case "chain-link":
+        result = verifyChainLink(fromNode, toNode, completions, dag);
+        break;
+      case "exchange-cross":
+        result = verifyExchangeCross(fromNode, toNode, boxRoutes, completions, passageCells);
         break;
       default:
         result = {

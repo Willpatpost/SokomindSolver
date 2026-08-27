@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,7 @@ import {
   summarizePopulation,
   createGeneratedPuzzleId,
   canonicalizeRows,
+  framePuzzleRows,
   boardHash,
   symmetryHash,
   evaluateFinalist,
@@ -25,8 +26,10 @@ import {
   diagnosePopulation,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
+  QUALITY_PRESETS,
   type ForgeConfig,
   type ForgeCandidate,
+  type FunnelBudgets,
   type ForgeRejectionReason,
   type PuzzleEvaluationVector,
   type PopulationSummary,
@@ -34,8 +37,16 @@ import {
   type ForgeGenerationMode,
   type GeneratedPuzzleManifest,
   type GeneratedPuzzleManifestEntry,
+  type GeometryProfile,
+  type ReverseSearchProfile,
   type FinalistEvaluation,
   type CurationObjectives,
+  computeV4Profile,
+  buildReviewPack,
+  buildReviewCatalog,
+  formatReviewSummary,
+  validateForAcceptance,
+  type ReviewCandidatePack,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,8 +69,14 @@ function cliFlag(name: string): string | undefined {
 }
 
 const tierFilter = cliFlag("--tier") as Difficulty | undefined;
+const qualityPreset = cliFlag("--quality") as keyof typeof QUALITY_PRESETS | undefined;
 const maxSeedWindows = Number(cliFlag("--max-seed-windows") ?? "3");
 const SEED_WINDOW_SIZE = 10000;
+
+const reviewMode = process.argv.includes("--review");
+const acceptPath = cliFlag("--accept");
+
+const REVIEW_DIR = join(__dirname, "../review-catalog");
 
 // ---------------------------------------------------------------------------
 // Per-tier forge configurations
@@ -70,6 +87,149 @@ interface TierConfig {
   readonly config: ForgeConfig;
 }
 
+const GEOMETRY_PROFILES: Record<Difficulty, GeometryProfile> = {
+  tutorial: {
+    boardWidthRange: [8, 12],
+    boardHeightRange: [8, 12],
+    minRooms: 1,
+    maxRooms: 3,
+    minRoomSize: 3,
+    maxRoomSize: 5,
+    passageWidths: [1],
+    minPlayableFloor: 10,
+    maxPlayableFloor: 30,
+    minFloorCoverage: 0.08,
+    minRegions: 1,
+    minChokepoints: 0,
+  },
+  beginner: {
+    boardWidthRange: [10, 14],
+    boardHeightRange: [10, 14],
+    minRooms: 2,
+    maxRooms: 4,
+    minRoomSize: 3,
+    maxRoomSize: 5,
+    passageWidths: [1],
+    minPlayableFloor: 20,
+    maxPlayableFloor: 45,
+    minFloorCoverage: 0.10,
+    minRegions: 2,
+    minChokepoints: 1,
+  },
+  intermediate: {
+    boardWidthRange: [12, 16],
+    boardHeightRange: [12, 16],
+    minRooms: 3,
+    maxRooms: 6,
+    minRoomSize: 3,
+    maxRoomSize: 6,
+    passageWidths: [1, 2],
+    minPlayableFloor: 35,
+    maxPlayableFloor: 70,
+    minFloorCoverage: 0.12,
+    minRegions: 3,
+    minChokepoints: 1,
+  },
+  advanced: {
+    boardWidthRange: [14, 18],
+    boardHeightRange: [14, 18],
+    minRooms: 4,
+    maxRooms: 8,
+    minRoomSize: 3,
+    maxRoomSize: 7,
+    passageWidths: [1, 2],
+    minPlayableFloor: 50,
+    maxPlayableFloor: 95,
+    minFloorCoverage: 0.14,
+    minRegions: 3,
+    minChokepoints: 2,
+  },
+  expert: {
+    boardWidthRange: [16, 22],
+    boardHeightRange: [16, 22],
+    minRooms: 5,
+    maxRooms: 10,
+    minRoomSize: 3,
+    maxRoomSize: 8,
+    passageWidths: [1, 2],
+    minPlayableFloor: 70,
+    maxPlayableFloor: 130,
+    minFloorCoverage: 0.15,
+    minRegions: 4,
+    minChokepoints: 2,
+  },
+  master: {
+    boardWidthRange: [18, 26],
+    boardHeightRange: [18, 26],
+    minRooms: 6,
+    maxRooms: 12,
+    minRoomSize: 4,
+    maxRoomSize: 9,
+    passageWidths: [1, 2],
+    minPlayableFloor: 95,
+    minFloorCoverage: 0.15,
+    minRegions: 5,
+    minChokepoints: 3,
+  },
+};
+
+const SEARCH_PROFILES: Record<Difficulty, ReverseSearchProfile> = {
+  tutorial: {
+    beamWidth: 4,
+    maxDepth: 10,
+    restartCount: 1,
+    diverseArchiveSize: 4,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+  beginner: {
+    beamWidth: 6,
+    maxDepth: 25,
+    restartCount: 1,
+    diverseArchiveSize: 8,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+  intermediate: {
+    beamWidth: 10,
+    maxDepth: 40,
+    restartCount: 2,
+    diverseArchiveSize: 16,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+  advanced: {
+    beamWidth: 16,
+    maxDepth: 55,
+    restartCount: 3,
+    diverseArchiveSize: 24,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+  expert: {
+    beamWidth: 24,
+    maxDepth: 65,
+    restartCount: 4,
+    diverseArchiveSize: 32,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+  master: {
+    beamWidth: 32,
+    maxDepth: 80,
+    restartCount: 6,
+    diverseArchiveSize: 48,
+    diversityRadius: 2,
+    stochasticTieBreaking: true,
+    antiImmediateUndo: true,
+  },
+};
+
 const TIER_CONFIGS: readonly TierConfig[] = [
   {
     difficulty: "tutorial",
@@ -78,18 +238,21 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       batchSize: 200,
       retainTarget: 20,
       families: ["linear", "hub"] as TopologyFamily[],
-      boxCounts: [2],
+      boxCounts: [1, 2, 3],
       difficulties: ["tutorial"],
       modes: ["plain"] as ForgeGenerationMode[],
-      boardWidth: 12,
-      boardHeight: 12,
+      boardWidth: 10,
+      boardHeight: 10,
       beamParams: { maxDepth: 10 },
       baseSeed: 300000,
+      geometryProfile: GEOMETRY_PROFILES.tutorial,
+      reverseSearchProfile: SEARCH_PROFILES.tutorial,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 2,
         maxMovesPerPush: 4,
         minSolverExpandedStates: 2,
+        minPlayableFloor: GEOMETRY_PROFILES.tutorial.minPlayableFloor,
       },
     },
   },
@@ -100,17 +263,20 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       batchSize: 200,
       retainTarget: 20,
       families: ["linear", "hub", "loop"] as TopologyFamily[],
-      boxCounts: [3],
+      boxCounts: [2, 3, 4, 5],
       difficulties: ["beginner"],
       modes: ["plain", "motif"] as ForgeGenerationMode[],
       boardWidth: 12,
       boardHeight: 12,
       beamParams: { maxDepth: 25 },
       baseSeed: 310000,
+      geometryProfile: GEOMETRY_PROFILES.beginner,
+      reverseSearchProfile: SEARCH_PROFILES.beginner,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 4,
         maxMovesPerPush: 5,
+        minPlayableFloor: GEOMETRY_PROFILES.beginner.minPlayableFloor,
       },
     },
   },
@@ -120,18 +286,23 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
       retainTarget: 20,
+      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 15, catalogQuota: 20 },
       families: ["linear", "hub", "loop", "branch"] as TopologyFamily[],
-      boxCounts: [3, 4, 5],
+      boxCounts: [3, 4, 5, 6, 7],
       difficulties: ["intermediate"],
-      modes: ["plain", "motif", "composed"] as ForgeGenerationMode[],
+      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
       boardWidth: 14,
       boardHeight: 14,
       beamParams: { maxDepth: 40 },
       baseSeed: 320000,
+      geometryProfile: GEOMETRY_PROFILES.intermediate,
+      reverseSearchProfile: SEARCH_PROFILES.intermediate,
+      mechanismTier: "intermediate",
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 6,
         minSolverExpandedStates: 5,
+        minPlayableFloor: GEOMETRY_PROFILES.intermediate.minPlayableFloor,
       },
     },
   },
@@ -141,18 +312,23 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
       retainTarget: 20,
+      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 15, catalogQuota: 20 },
       families: ["linear", "hub", "loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [4, 5, 6],
+      boxCounts: [5, 6, 7, 8, 9, 10],
       difficulties: ["advanced"],
-      modes: ["plain", "motif", "composed"] as ForgeGenerationMode[],
+      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
       boardWidth: 16,
       boardHeight: 16,
       beamParams: { maxDepth: 55 },
       baseSeed: 330000,
+      geometryProfile: GEOMETRY_PROFILES.advanced,
+      reverseSearchProfile: SEARCH_PROFILES.advanced,
+      mechanismTier: "advanced",
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 10,
         minSolverExpandedStates: 15,
+        minPlayableFloor: GEOMETRY_PROFILES.advanced.minPlayableFloor,
       },
     },
   },
@@ -162,19 +338,24 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 300,
       retainTarget: 20,
+      funnelBudgets: { rawAttemptBudget: 300, preScreenRetain: 120, finalistRetain: 40, deepRetain: 20, catalogQuota: 20 },
       families: ["hub", "loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [5, 6, 7],
+      boxCounts: [7, 8, 9, 10, 11, 12, 13, 14, 15],
       difficulties: ["expert"],
-      modes: ["plain", "motif", "composed"] as ForgeGenerationMode[],
-      boardWidth: 16,
-      boardHeight: 16,
+      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
+      boardWidth: 19,
+      boardHeight: 19,
       beamParams: { maxDepth: 65 },
       baseSeed: 340000,
+      geometryProfile: GEOMETRY_PROFILES.expert,
+      reverseSearchProfile: SEARCH_PROFILES.expert,
+      mechanismTier: "expert",
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 15,
         minSolverExpandedStates: 30,
         maxBoxIndependenceRatio: 0.80,
+        minPlayableFloor: GEOMETRY_PROFILES.expert.minPlayableFloor,
       },
     },
   },
@@ -184,19 +365,24 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 400,
       retainTarget: 20,
+      funnelBudgets: { rawAttemptBudget: 400, preScreenRetain: 150, finalistRetain: 50, deepRetain: 25, catalogQuota: 20 },
       families: ["loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [6, 7, 8],
+      boxCounts: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
       difficulties: ["master"],
-      modes: ["plain", "motif", "composed"] as ForgeGenerationMode[],
-      boardWidth: 18,
-      boardHeight: 18,
+      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
+      boardWidth: 22,
+      boardHeight: 22,
       beamParams: { maxDepth: 80 },
       baseSeed: 350000,
+      geometryProfile: GEOMETRY_PROFILES.master,
+      reverseSearchProfile: SEARCH_PROFILES.master,
+      mechanismTier: "master",
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 20,
         minSolverExpandedStates: 40,
         maxBoxIndependenceRatio: 0.75,
+        minPlayableFloor: GEOMETRY_PROFILES.master.minPlayableFloor,
       },
     },
   },
@@ -259,7 +445,7 @@ function catalogCandidateToEntry(
     difficulty: cc.assignedDifficulty,
     boxes: cc.candidate.puzzle.boxes,
     collection: "Sokomind Generated",
-    rows: [...canonicalizeRows(cc.candidate.puzzle.rows)],
+    rows: [...framePuzzleRows(cc.candidate.puzzle.rows)],
   };
 }
 
@@ -388,7 +574,7 @@ function applyDifficultyPolicy(
       if (cc.rejected) continue;
 
       const absGap = Math.abs(cc.gap);
-      if (absGap >= 4) {
+      if (absGap >= 2) {
         cc.rejected = true;
         cc.rejectionReason = "difficulty-mismatch";
         rejectedCount++;
@@ -466,7 +652,9 @@ function buildManifest(
       symmetryHash: symmetryHash(entry.rows),
       tightened: p?.tightened ?? false,
       cellsRemoved: p?.cellsRemoved ?? 0,
-      labeled: p?.labeled ?? false,
+      typingMode: p?.typingMode ?? "generic",
+      genericBoxCount: p?.genericBoxCount,
+      typedBoxCount: p?.typedBoxCount,
       dependencyEdges: p?.dependencyEdges,
       dependencyRealized: p?.dependencyRealized,
       dependencyRealizationRate: p?.dependencyRealizationRate,
@@ -569,9 +757,66 @@ function checkInvariants(
 // Main
 // ---------------------------------------------------------------------------
 
+async function runAcceptance(sourcePath: string): Promise<void> {
+  console.log(`\nSokomind Catalog Acceptance: ${sourcePath}`);
+  console.log("=".repeat(60));
+
+  const catalogFile = join(sourcePath, "generated-puzzles.json");
+  const manifestFile = join(sourcePath, "generated-puzzles.manifest.json");
+
+  if (!existsSync(catalogFile)) {
+    console.error(`ERROR: Catalog file not found: ${catalogFile}`);
+    process.exit(1);
+  }
+  if (!existsSync(manifestFile)) {
+    console.error(`ERROR: Manifest file not found: ${manifestFile}`);
+    process.exit(1);
+  }
+
+  const catalogJson = readFileSync(catalogFile, "utf-8");
+  const manifestJson = readFileSync(manifestFile, "utf-8");
+
+  console.log("Validating review catalog...");
+  const result = validateForAcceptance(catalogJson, manifestJson);
+
+  for (const error of result.errors) {
+    console.error(`  ERROR: ${error}`);
+  }
+  for (const warning of result.warnings) {
+    console.warn(`  WARNING: ${warning}`);
+  }
+
+  if (!result.passed) {
+    console.error(`\nACCEPTANCE FAILED: ${result.errors.length} error(s). Fix and retry.`);
+    process.exit(1);
+  }
+
+  console.log(`  Validation passed (${result.puzzleCount} puzzles).`);
+  console.log("\nCopying to production...");
+
+  copyFileSync(catalogFile, CATALOG_PATH);
+  copyFileSync(manifestFile, MANIFEST_PATH);
+
+  console.log(`  Wrote ${CATALOG_PATH}`);
+  console.log(`  Wrote ${MANIFEST_PATH}`);
+  console.log("\nAcceptance complete. Next steps:");
+  console.log("  1. npm run prepare:catalog");
+  console.log("  2. npm run typecheck");
+  console.log("  3. npm run test:unit");
+}
+
 async function main(): Promise<void> {
+  // -----------------------------------------------------------------------
+  // Handle --accept mode: validate and copy to production, then exit
+  // -----------------------------------------------------------------------
+  if (acceptPath) {
+    await runAcceptance(acceptPath);
+    return;
+  }
+
   const totalStart = performance.now();
-  console.log(`\nSokomind V3.0 Typed-Box Catalog Generator${dryRun ? " (DRY RUN)" : ""}`);
+  const modeLabel = reviewMode ? " (REVIEW)" : "";
+  console.log(`\nSokomind V3.0 Typed-Box Catalog Generator${dryRun ? " (DRY RUN)" : ""}${modeLabel}`);
   console.log("=".repeat(60));
 
   const activeTierConfigs = tierFilter
@@ -595,8 +840,16 @@ async function main(): Promise<void> {
   const pools = new Map<Difficulty, CatalogCandidate[]>();
   const tierReports: string[] = [];
 
-  for (const { difficulty, config } of activeTierConfigs) {
-    console.log(`\n    [forge] ${difficulty} tier (batch=${config.batchSize}, target=${config.retainTarget})...`);
+  for (const { difficulty, config: baseConfig } of activeTierConfigs) {
+    let config = baseConfig;
+    if (qualityPreset && qualityPreset in QUALITY_PRESETS) {
+      const presetBudgets = QUALITY_PRESETS[qualityPreset];
+      config = { ...config, funnelBudgets: presetBudgets };
+    }
+    const budgetLabel = config.funnelBudgets
+      ? `raw=${config.funnelBudgets.rawAttemptBudget}, quota=${config.funnelBudgets.catalogQuota}`
+      : `batch=${config.batchSize}, target=${config.retainTarget}`;
+    console.log(`\n    [forge] ${difficulty} tier (${budgetLabel})...`);
     const result = await runForge(config);
     const report = forgeRunReport(result);
     tierReports.push(report);
@@ -606,6 +859,13 @@ async function main(): Promise<void> {
       `    Attempted: ${result.totalAttempted} | Valid: ${result.totalValid} | ` +
       `Retained: ${result.totalRetained} (${summary.elapsedMs.toFixed(0)}ms)`,
     );
+    if (result.funnelStats) {
+      const fs = result.funnelStats;
+      console.log(
+        `    Funnel: A=${fs.stageA_rawGenerated} → B=${fs.stageB_structuralSurvivors} → ` +
+        `C=${fs.stageC_cheapEvalSurvivors} → D=${fs.stageD_deepEvalSurvivors} → E=${fs.stageE_curatedFinal}`,
+      );
+    }
 
     const candidates: CatalogCandidate[] = result.candidates.map((c) => {
       const classified = classifyCandidate(c.evaluation);
@@ -915,7 +1175,7 @@ async function main(): Promise<void> {
   console.log(samples.join("\n"));
 
   // -----------------------------------------------------------------------
-  // Phase 7: Atomic write
+  // Phase 7: Write (production or review)
   // -----------------------------------------------------------------------
 
   if (!invariants.passed) {
@@ -926,7 +1186,65 @@ async function main(): Promise<void> {
   const catalogJson = JSON.stringify(catalogEntries, null, 2) + "\n";
   const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
 
-  if (dryRun) {
+  if (reviewMode) {
+    // ---- REVIEW MODE: write to review-catalog/ directory ----
+    console.log("\n>>> Phase 7 (REVIEW): Building review catalog...");
+
+    // Build ReviewCandidatePacks for all active candidates
+    const tierPacks = new Map<Difficulty, { target: number; packs: ReviewCandidatePack[] }>();
+    for (const difficulty of DIFFICULTIES) {
+      if (!tierTargets.has(difficulty)) continue;
+      const candidates = (pools.get(difficulty) ?? []).filter((c) => !c.rejected);
+      const packs: ReviewCandidatePack[] = [];
+      for (const cc of candidates) {
+        const v4Profile = computeV4Profile(cc.candidate.evaluation);
+        packs.push(
+          buildReviewPack(
+            cc.candidate,
+            cc.intendedDifficulty,
+            cc.classifiedDifficulty,
+            cc.gap,
+            cc.finalistEval,
+            v4Profile,
+          ),
+        );
+      }
+      tierPacks.set(difficulty, { target: tierTargets.get(difficulty) ?? 0, packs });
+    }
+
+    const reviewCatalog = buildReviewCatalog(tierPacks, {
+      generatorVersion: "3.0.0",
+      qualityPreset: qualityPreset,
+      tierFilter: tierFilter,
+    });
+    const reviewSummary = formatReviewSummary(reviewCatalog);
+
+    if (dryRun) {
+      console.log(`\n[DRY RUN] Would write review catalog to ${REVIEW_DIR}/`);
+      console.log(`[DRY RUN] ${catalogEntries.length} puzzles, ${manifest.puzzles.length} manifest entries`);
+    } else {
+      mkdirSync(REVIEW_DIR, { recursive: true });
+      writeFileSync(join(REVIEW_DIR, "review-catalog.json"), JSON.stringify(reviewCatalog, null, 2) + "\n");
+      writeFileSync(join(REVIEW_DIR, "generated-puzzles.json"), catalogJson);
+      writeFileSync(join(REVIEW_DIR, "generated-puzzles.manifest.json"), manifestJson);
+      writeFileSync(join(REVIEW_DIR, "review-summary.txt"), reviewSummary + "\n");
+
+      console.log(`\nWrote review catalog to ${REVIEW_DIR}/`);
+      console.log(`  review-catalog.json        — full candidate packs with V4 profiles`);
+      console.log(`  generated-puzzles.json     — catalog entries (production format)`);
+      console.log(`  generated-puzzles.manifest.json — manifest (production format)`);
+      console.log(`  review-summary.txt         — human-readable summary with ASCII boards`);
+      console.log("");
+      console.log("=".repeat(60));
+      console.log("REVIEW BEFORE ACCEPTING");
+      console.log("=".repeat(60));
+      console.log("1. Read review-catalog/review-summary.txt");
+      console.log("2. Playtest Expert/Master samples");
+      console.log("3. Ask: Would I voluntarily play another from this tier?");
+      console.log("4. Tune thresholds if needed, then regenerate");
+      console.log(`5. Accept: npx tsx scripts/generate-v2-catalog.ts --accept ${REVIEW_DIR}`);
+    }
+  } else if (dryRun) {
     console.log(`\n[DRY RUN] Would write ${catalogEntries.length} puzzles to generated-puzzles.json`);
     console.log(`[DRY RUN] Would write manifest with ${manifest.puzzles.length} entries`);
     for (const w of invariants.warnings) {
