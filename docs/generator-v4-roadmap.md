@@ -618,7 +618,7 @@ Generation should be allowed to spend substantial computation on one board.
 A command such as:
 
 ```bash
-npm run generate:v4 -- --tier master --quality high --target 1
+npm run generate:v2-catalog -- --tier master --quality high --target 1
 ```
 
 may legitimately run a long search if that produces a much better puzzle.
@@ -1672,8 +1672,8 @@ Create tiny budget V4 fixture tests that run quickly in CI.
 Example:
 
 ```bash
-npm run generate:v4 -- --quality smoke --tier tutorial --dry-run
-npm run generate:v4 -- --quality smoke --tier master --dry-run
+npm run generate:v2-catalog -- --quality smoke --tier tutorial --dry-run
+npm run generate:v2-catalog -- --quality smoke --tier master --dry-run
 ```
 
 They should verify pipeline correctness, not final quality.
@@ -1718,16 +1718,16 @@ Suggested commands:
 
 ```bash
 # Tiny deterministic CI/dev check
-npm run generate:v4 -- --quality smoke --dry-run
+npm run generate:v2-catalog -- --quality smoke --dry-run
 
 # One tier, moderate search
-npm run generate:v4 -- --tier master --quality standard --dry-run
+npm run generate:v2-catalog -- --tier master --quality standard --dry-run
 
 # Search aggressively for one or a few exceptional Master puzzles
-npm run generate:v4 -- --tier master --quality exhaustive --target 1 --verbose
+npm run generate:v2-catalog -- --tier master --quality exhaustive --target 1 --verbose
 
 # Full production catalog generation
-npm run generate:v4 -- --quality high
+npm run generate:v2-catalog -- --quality high
 ```
 
 Useful optional flags:
