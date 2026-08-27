@@ -229,6 +229,19 @@ export type {
 } from "./puzzle-forge.ts";
 
 export {
+  DiagnosticCollector,
+  formatDiagnosticReport,
+} from "./generator-diagnostics.ts";
+
+export type {
+  GeneratorDiagnostics,
+  BoxScaleDiagnostics,
+  RestartDiagnostics,
+  RejectionBreakdown,
+  ForgeDiagnosticReport,
+} from "./generator-diagnostics.ts";
+
+export {
   canonicalizeRows,
   framePuzzleRows,
   boardHash,

@@ -1,5 +1,6 @@
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import { directionDelta } from "../../../core/position.ts";
+import { isBoxChar, isGoalChar, isRobotChar } from "./tile-semantics.ts";
 
 export interface SolutionDepthMetrics {
   readonly nonMonotonicBoxMoves: number;
@@ -14,7 +15,6 @@ export interface SolutionDepthMetrics {
   readonly goalOrderConstraints: number;
 }
 
-const WALL = "O";
 
 export function analyzeSolutionDepth(
   grid: readonly (readonly string[])[],
@@ -46,11 +46,11 @@ export function analyzeSolutionDepth(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== WALL && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, column: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, column: c });
       }
-      if (ch === "S" || (ch >= "a" && ch <= "z")) {
+      if (isGoalChar(ch)) {
         goalSet.add(`${r},${c}`);
       }
     }

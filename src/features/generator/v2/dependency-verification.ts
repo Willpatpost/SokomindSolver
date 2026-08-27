@@ -3,6 +3,7 @@ import type { PuzzleDefinition } from "../../../core/model.ts";
 import { directionDelta } from "../../../core/position.ts";
 import { floodKeeperReachable } from "./reachable-pushes.ts";
 import type { PassageEdge } from "./blueprint-types.ts";
+import { isBoxChar, isGoalChar, isRobotChar } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
 // Structural interfaces (avoid importing dependency-graph.ts to prevent cycle)
@@ -77,10 +78,10 @@ function initReplayState(puzzle: PuzzleDefinition): ReplayState {
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < grid[r].length; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S"))
+      if (isRobotChar(ch)) robot = { row: r, column: c };
+      if (isBoxChar(ch))
         boxes.push({ row: r, column: c });
-      if (ch === "S" || (ch >= "a" && ch <= "z"))
+      if (isGoalChar(ch))
         goalPositions.push({ row: r, column: c });
     }
   }

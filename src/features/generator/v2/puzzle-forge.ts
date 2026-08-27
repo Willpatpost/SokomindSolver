@@ -55,6 +55,12 @@ import { validatePuzzle } from "../../../core/puzzle.ts";
 import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
 import { assignLabels, assignPartialLabels } from "../label-assignment.ts";
 import { createSession, move } from "../../../core/game-session.ts";
+import { isGoalChar, isGenericBoxChar, isTypedBoxChar } from "./tile-semantics.ts";
+import {
+  DiagnosticCollector,
+  formatDiagnosticReport,
+  type ForgeDiagnosticReport,
+} from "./generator-diagnostics.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -247,6 +253,7 @@ export interface ForgeRunResult {
   readonly rejectionCounts: Readonly<Record<ForgeRejectionReason, number>>;
   readonly exactDuplicatesRejected: number;
   readonly funnelStats?: FunnelStageStats;
+  readonly diagnostics?: ForgeDiagnosticReport;
 }
 
 export interface ForgeSummary {
@@ -674,12 +681,45 @@ export async function runForge(
   return runForgeFlat(config);
 }
 
+function countBoxesAndGoals(rows: readonly string[]): { boxes: number; goals: number; generic: number; typed: number } {
+  let boxes = 0, goals = 0, generic = 0, typed = 0;
+  for (const row of rows) {
+    for (const ch of row) {
+      if (isGenericBoxChar(ch)) { boxes++; generic++; }
+      else if (isTypedBoxChar(ch)) { boxes++; typed++; }
+      if (isGoalChar(ch)) goals++;
+    }
+  }
+  return { boxes, goals, generic, typed };
+}
+
+function inferStagesFromRejection(reason: ForgeRejectionReason): {
+  blueprint: boolean; mechanism: boolean; goalPlacement: boolean; reverse: boolean; validation: boolean;
+} {
+  switch (reason) {
+    case "blueprint-failed":
+      return { blueprint: false, mechanism: false, goalPlacement: false, reverse: false, validation: false };
+    case "composition-failed":
+    case "motif-failed":
+      return { blueprint: true, mechanism: false, goalPlacement: false, reverse: false, validation: false };
+    case "goal-placement-failed":
+      return { blueprint: true, mechanism: true, goalPlacement: false, reverse: false, validation: false };
+    case "beam-search-empty":
+      return { blueprint: true, mechanism: true, goalPlacement: true, reverse: false, validation: false };
+    case "validation-failed":
+      return { blueprint: true, mechanism: true, goalPlacement: true, reverse: true, validation: false };
+    default:
+      return { blueprint: true, mechanism: true, goalPlacement: true, reverse: true, validation: true };
+  }
+}
+
 async function runForgeFlat(
   config: ForgeConfig,
 ): Promise<ForgeRunResult> {
   const start = performance.now();
   const rejections: ForgeRejection[] = [];
   const validCandidates: ForgeCandidate[] = [];
+  const collector = new DiagnosticCollector();
 
   const combinations = enumerateForgeCombinations({
     families: config.families,
@@ -693,6 +733,8 @@ async function runForgeFlat(
     const { seed, combination } = schedule[i];
     const { family, boxCount, mode, difficulty } = combination;
 
+    collector.recordAttempt();
+
     const raw = await generateRawCandidate(
       config,
       seed,
@@ -704,8 +746,24 @@ async function runForgeFlat(
 
     if (!raw.ok) {
       rejections.push({ seed, reason: raw.reason });
+      const stages = inferStagesFromRejection(raw.reason);
+      if (stages.blueprint) collector.recordBlueprintSuccess();
+      if (stages.mechanism) collector.recordMechanismPlanSuccess();
+      if (stages.goalPlacement) collector.recordGoalPlacementSuccess();
+      if (stages.reverse) collector.recordReverseSearchSuccess();
+      if (stages.validation) collector.recordPuzzleValidationSuccess();
+      collector.recordRejection({
+        reason: raw.reason, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
+
+    collector.recordBlueprintSuccess();
+    collector.recordMechanismPlanSuccess();
+    collector.recordGoalPlacementSuccess();
+    collector.recordReverseSearchSuccess();
+    collector.recordPuzzleValidationSuccess();
 
     let puzzle = raw.result.puzzle;
     let tighteningResult: TighteningResult | undefined;
@@ -749,8 +807,13 @@ async function runForgeFlat(
       const prelimResult = await evaluatePuzzleWithSteps(puzzle);
       if (!prelimResult.vector.solved || !prelimResult.steps) {
         rejections.push({ seed, reason: "unsolvable" });
+        collector.recordRejection({
+          reason: "unsolvable", tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
         continue;
       }
+      collector.recordInitialSolveSuccess();
       pairingSteps = prelimResult.steps;
       prelimMoves = prelimResult.vector.solutionMoves;
       prelimPushes = prelimResult.vector.solutionPushes;
@@ -806,7 +869,6 @@ async function runForgeFlat(
       for (const step of pairingSteps) {
         const next = move(session, step.direction);
         if (next === session) {
-          // Step was blocked — replay failed
           replayOk = false;
           break;
         }
@@ -814,6 +876,10 @@ async function runForgeFlat(
       }
       if (!replayOk || !session.solved) {
         rejections.push({ seed, reason: "replay-validation-failed" });
+        collector.recordRejection({
+          reason: "replay-validation-failed", tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
         continue;
       }
     }
@@ -823,8 +889,13 @@ async function runForgeFlat(
     const ev = evalResult.vector;
     if (!ev.solved) {
       rejections.push({ seed, reason: "unsolvable" });
+      collector.recordRejection({
+        reason: "unsolvable", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
+    collector.recordInitialSolveSuccess();
 
     // Step 7: Re-verify dependencies if DAG exists
     let depRate = raw.result.dependencyRealizationRate;
@@ -846,6 +917,10 @@ async function runForgeFlat(
     const gateResult = applyGates(ev, config.gates, depRate);
     if (gateResult) {
       rejections.push({ seed, reason: gateResult });
+      collector.recordRejection({
+        reason: gateResult, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
 
@@ -853,21 +928,29 @@ async function runForgeFlat(
     const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
     if (structuralGateResult) {
       rejections.push({ seed, reason: structuralGateResult });
+      collector.recordRejection({
+        reason: structuralGateResult, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
 
-    // Step 9: Count generic/typed boxes in final puzzle
-    let genericBoxCount = 0;
-    let typedBoxCount = 0;
-    for (const row of puzzle.rows) {
-      for (const ch of row) {
-        if (ch === "X") {
-          genericBoxCount++;
-        } else if (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S") {
-          typedBoxCount++;
-        }
-      }
-    }
+    collector.recordGatePassed();
+
+    // Step 9: Count generic/typed boxes in final puzzle + box scale diagnostics
+    const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
+    const genericBoxCount = boxGoalCounts.generic;
+    const typedBoxCount = boxGoalCounts.typed;
+    const actualBoxes = boxGoalCounts.boxes;
+
+    collector.recordBoxScale({
+      requestedBoxes: boxCount,
+      actualBoxes,
+      goalCount: boxGoalCounts.goals,
+      genericBoxes: genericBoxCount,
+      typedBoxes: typedBoxCount,
+      difference: actualBoxes - boxCount,
+    });
 
     // Step 10: Construct provenance with all final data
     const provGrid = parseRowsToGrid(puzzle.rows);
@@ -937,6 +1020,10 @@ async function runForgeFlat(
     config.diversityMinDistance,
   );
 
+  for (let ci = 0; ci < retained.length; ci++) {
+    collector.recordCurated();
+  }
+
   const rejectionCounts = {} as Record<ForgeRejectionReason, number>;
   for (const r of rejections) {
     rejectionCounts[r.reason] = (rejectionCounts[r.reason] ?? 0) + 1;
@@ -952,6 +1039,7 @@ async function runForgeFlat(
     elapsedMs: performance.now() - start,
     rejectionCounts,
     exactDuplicatesRejected,
+    diagnostics: collector.build(),
   };
 }
 
@@ -992,6 +1080,7 @@ async function runForgeFunnel(
 ): Promise<ForgeRunResult> {
   const start = performance.now();
   const rejections: ForgeRejection[] = [];
+  const collector = new DiagnosticCollector();
 
   // ---- Stage A: Raw generation ----
   const combinations = enumerateForgeCombinations({
@@ -1008,11 +1097,29 @@ async function runForgeFunnel(
     const { seed, combination } = schedule[i];
     const { family, boxCount, mode, difficulty } = combination;
 
+    collector.recordAttempt();
+
     const raw = await generateRawCandidate(config, seed, family, boxCount, mode, difficulty);
     if (!raw.ok) {
       rejections.push({ seed, reason: raw.reason });
+      const stages = inferStagesFromRejection(raw.reason);
+      if (stages.blueprint) collector.recordBlueprintSuccess();
+      if (stages.mechanism) collector.recordMechanismPlanSuccess();
+      if (stages.goalPlacement) collector.recordGoalPlacementSuccess();
+      if (stages.reverse) collector.recordReverseSearchSuccess();
+      if (stages.validation) collector.recordPuzzleValidationSuccess();
+      collector.recordRejection({
+        reason: raw.reason, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
+
+    collector.recordBlueprintSuccess();
+    collector.recordMechanismPlanSuccess();
+    collector.recordGoalPlacementSuccess();
+    collector.recordReverseSearchSuccess();
+    collector.recordPuzzleValidationSuccess();
 
     let puzzle = raw.result.puzzle;
     let tighteningResult: TighteningResult | undefined;
@@ -1053,8 +1160,13 @@ async function runForgeFunnel(
       const prelimResult = await evaluatePuzzleWithSteps(puzzle);
       if (!prelimResult.vector.solved || !prelimResult.steps) {
         rejections.push({ seed, reason: "unsolvable" });
+        collector.recordRejection({
+          reason: "unsolvable", tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
         continue;
       }
+      collector.recordInitialSolveSuccess();
       pairingSteps = prelimResult.steps;
       prelimMoves = prelimResult.vector.solutionMoves;
       prelimPushes = prelimResult.vector.solutionPushes;
@@ -1103,6 +1215,10 @@ async function runForgeFunnel(
       }
       if (!replayOk || !session.solved) {
         rejections.push({ seed, reason: "replay-validation-failed" });
+        collector.recordRejection({
+          reason: "replay-validation-failed", tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
         continue;
       }
     }
@@ -1111,8 +1227,13 @@ async function runForgeFunnel(
     const ev = evalResult.vector;
     if (!ev.solved) {
       rejections.push({ seed, reason: "unsolvable" });
+      collector.recordRejection({
+        reason: "unsolvable", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
+    collector.recordInitialSolveSuccess();
 
     let depRate = raw.result.dependencyRealizationRate;
     let depEdges = raw.result.composedResult?.realization.totalEdges;
@@ -1128,23 +1249,38 @@ async function runForgeFunnel(
     const gateResult = applyGates(ev, config.gates, depRate);
     if (gateResult) {
       rejections.push({ seed, reason: gateResult });
+      collector.recordRejection({
+        reason: gateResult, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
 
     const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
     if (structuralGateResult) {
       rejections.push({ seed, reason: structuralGateResult });
+      collector.recordRejection({
+        reason: structuralGateResult, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
       continue;
     }
 
-    let genericBoxCount = 0;
-    let typedBoxCount = 0;
-    for (const row of puzzle.rows) {
-      for (const ch of row) {
-        if (ch === "X") genericBoxCount++;
-        else if (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S") typedBoxCount++;
-      }
-    }
+    collector.recordGatePassed();
+
+    const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
+    const genericBoxCount = boxGoalCounts.generic;
+    const typedBoxCount = boxGoalCounts.typed;
+    const actualBoxes = boxGoalCounts.boxes;
+
+    collector.recordBoxScale({
+      requestedBoxes: boxCount,
+      actualBoxes,
+      goalCount: boxGoalCounts.goals,
+      genericBoxes: genericBoxCount,
+      typedBoxes: typedBoxCount,
+      difference: actualBoxes - boxCount,
+    });
 
     const provGrid = parseRowsToGrid(puzzle.rows);
     const provMetrics = analyzeGrid(provGrid);
@@ -1209,6 +1345,10 @@ async function runForgeFunnel(
   cheapScored.sort((a, b) => b.score - a.score);
   const stageC_survivors = cheapScored.slice(0, budgets.finalistRetain).map((s) => s.c);
 
+  for (let ci = 0; ci < stageC_survivors.length; ci++) {
+    collector.recordFinalistPassed();
+  }
+
   // ---- Stage D: Deep finalist eval ----
   const deepScored: Array<{ c: ForgeCandidate; deepScore: number }> = [];
   for (const c of stageC_survivors) {
@@ -1226,12 +1366,20 @@ async function runForgeFunnel(
   deepScored.sort((a, b) => b.deepScore - a.deepScore);
   const stageD_survivors = deepScored.slice(0, budgets.deepRetain).map((s) => s.c);
 
+  for (let ci = 0; ci < stageD_survivors.length; ci++) {
+    collector.recordQualityPassed();
+  }
+
   // ---- Stage E: Pareto + novelty curation ----
   const finalCandidates = selectDiverse(
     [...stageD_survivors],
     budgets.catalogQuota,
     config.diversityMinDistance,
   );
+
+  for (let ci = 0; ci < finalCandidates.length; ci++) {
+    collector.recordCurated();
+  }
 
   const rejectionCounts = {} as Record<ForgeRejectionReason, number>;
   for (const r of rejections) {
@@ -1248,6 +1396,7 @@ async function runForgeFunnel(
     elapsedMs: performance.now() - start,
     rejectionCounts,
     exactDuplicatesRejected,
+    diagnostics: collector.build(),
     funnelStats: {
       stageA_rawGenerated: stageA,
       stageB_structuralSurvivors: stageB_survivors.length,
@@ -1453,6 +1602,10 @@ export function forgeRunReport(result: ForgeRunResult): string {
     );
   }
   lines.push("");
+
+  if (result.diagnostics) {
+    lines.push(formatDiagnosticReport(result.diagnostics));
+  }
 
   if (result.candidates.length > 0) {
     const sampleCount = Math.min(3, result.candidates.length);

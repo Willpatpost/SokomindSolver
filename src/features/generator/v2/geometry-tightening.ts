@@ -5,6 +5,7 @@ import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
+import { isBoxChar, isGoalChar, isRobotChar } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -381,13 +382,13 @@ function findEntities(grid: string[][]): EntitySet {
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") {
+      if (isRobotChar(ch)) {
         robot = { row: r, col: c };
         allKeys.add(`${r},${c}`);
-      } else if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S" && ch !== "X")) {
+      } else if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
         allKeys.add(`${r},${c}`);
-      } else if (ch === "S" || (ch >= "a" && ch <= "z")) {
+      } else if (isGoalChar(ch)) {
         goals.push({ row: r, col: c });
         allKeys.add(`${r},${c}`);
       }
@@ -416,8 +417,8 @@ function trackSolutionCells(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, col: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, col: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
       }
     }
@@ -712,8 +713,8 @@ function computeBoxIndependence(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, col: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, col: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
       }
     }
