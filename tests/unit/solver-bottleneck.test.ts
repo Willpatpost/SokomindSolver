@@ -8,15 +8,11 @@ import {
   evaluateFinalist,
   evaluateFinalistV4,
   DEFAULT_V4_POLICY,
-  DEFAULT_FINALIST_CONFIG,
 } from "../../src/features/generator/v2/index.ts";
 
 import type {
-  SolverRole,
   V4EvaluatorPolicy,
-  SolverCorrelationData,
   FinalistEvaluation,
-  FinalistEvaluationV4,
   PuzzleEvaluationVector,
 } from "../../src/features/generator/v2/index.ts";
 

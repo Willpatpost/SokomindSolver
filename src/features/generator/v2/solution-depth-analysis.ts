@@ -153,7 +153,6 @@ export function analyzeSolutionDepth(
 
   const goalOrderConstraints = countGoalOrderConstraints(
     goalCompletionOrder,
-    boxes.length,
   );
 
   return {
@@ -213,7 +212,6 @@ function estimateDependencyDepth(
 
 function countGoalOrderConstraints(
   completionOrder: readonly number[],
-  boxCount: number,
 ): number {
   if (completionOrder.length <= 1) return 0;
 

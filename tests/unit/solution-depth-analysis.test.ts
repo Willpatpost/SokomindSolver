@@ -142,35 +142,7 @@ describe("analyzeSolutionDepth", () => {
     // row 1: O  R  X  .  X  .  S  S  O
     // row 2: O  .  .  .  .  .  .  .  O
     // row 3: O  O  O  O  O  O  O  O  O
-    const grid = [
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
-      ["O", "R", "X", " ", "X", " ", "S", "S", "O"],
-      ["O", " ", " ", " ", " ", " ", " ", " ", "O"],
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
-    ];
-    const steps: SolutionStep[] = [
-      step("right", "push"),   // push box 0 right: (1,2)→(1,3). Robot at (1,2)
-      // go around to push box 1
-      step("down", "walk"),    // robot (2,2)
-      step("right", "walk"),   // robot (2,3)
-      step("up", "walk"),      // robot (1,3) — box 0 is here! Invalid.
-    ];
-    // Actually the robot can't walk onto the box. Let me redesign:
-    // Push box0, then maneuver around to push box1, then come back to push box0 again
-    const steps2: SolutionStep[] = [
-      step("right", "push"),   // push box 0: (1,2)→(1,3). Robot at (1,2).
-      step("down", "walk"),    // robot (2,2)
-      step("right", "walk"),   // robot (2,3)
-      step("right", "walk"),   // robot (2,4)
-      step("up", "walk"),      // robot (1,4) — box 1 is here! No, box1 is at (1,4) initially.
-    ];
-    // The boxes are at (1,2) and (1,4). After pushing box0 right, box0 is at (1,3).
-    // box1 is still at (1,4).
-    // Robot needs to get to (1,3) to push box1 at (1,4)? No, robot pushes from behind.
-    // Robot at (1,3) pushes box1 at (1,4) right. But box0 is at (1,3) now! Can't step there.
-    // Let me use a different layout.
-
-    // Simpler approach: boxes far apart with room to maneuver
+    // Two boxes far apart with room to maneuver
     //   col: 0  1  2  3  4  5  6  7  8  9
     // row 0: O  O  O  O  O  O  O  O  O  O
     // row 1: O  R  X  .  .  .  X  .  S  O

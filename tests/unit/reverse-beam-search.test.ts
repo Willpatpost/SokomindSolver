@@ -28,7 +28,6 @@ import {
   type BeamSearchParams,
   type GoalPlacementParams,
   type SolvedBlueprint,
-  type ReverseSearchProfile,
   type PullHistoryEntry,
 } from "../../src/features/generator/v2/index.ts";
 import { scrambleByReversePull } from "../../src/features/generator/reverse-play.ts";

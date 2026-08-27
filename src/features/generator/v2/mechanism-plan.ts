@@ -7,7 +7,6 @@ import type {
   GoalStyle,
   MechanismDependencyEdge,
   MechanismEdgeType,
-  MechanismEvidenceKind,
   MechanismEvidenceRequirement,
   MechanismPlan,
   MechanismSpec,
@@ -800,7 +799,7 @@ export function placeGoalsFromPlan(
     grid,
     goals: allGoals,
     robotPosition: robotPos,
-    goalStyle: determineGoalStyle(allGoals, blueprint),
+    goalStyle: determineGoalStyle(allGoals),
   };
 
   const mechanismTypes = plan.mechanisms.map((m) => m.type);
@@ -842,7 +841,6 @@ function mapMechanismEdgeType(mechEdge: MechanismEdgeType): DependencyEdgeType {
 
 function determineGoalStyle(
   goals: readonly GoalCell[],
-  blueprint: FunctionalBlueprint,
 ): GoalStyle {
   const roomIds = new Set(goals.map((g) => g.roomId));
   if (roomIds.size === 1) return "concentrated";

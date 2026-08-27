@@ -6,7 +6,6 @@ import {
   formatReviewSummary,
   validateForAcceptance,
   type ReviewCandidatePack,
-  type ReviewCatalog,
   type ForgeCandidate,
   type PuzzleEvaluationVector,
   type ForgeProvenance,

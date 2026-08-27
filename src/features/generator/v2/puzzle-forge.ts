@@ -35,7 +35,6 @@ import {
 } from "./reverse-beam-search.ts";
 import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
 import { evaluateFinalist, computeCurationObjectives } from "./finalist-evaluator.ts";
-import { nonDominatedSort, selectByParetoNovelty, computeNoveltyScores } from "./curation.ts";
 import {
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,

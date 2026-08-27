@@ -4,10 +4,8 @@ import test from "node:test";
 import {
   generateBlueprintWithRetry,
   assignRoomRoles,
-  rasterizeBlueprint,
-  reverseBeamSearch,
   toSolvedTemplate,
-  chooseRobotPosition,
+  reverseBeamSearch,
   feasibleMechanisms,
   createMechanismPlan,
   placeGoalsFromPlan,
@@ -19,13 +17,11 @@ import {
   isAcyclic,
   type FunctionalBlueprint,
   type MechanismType,
-  type MechanismPlan,
   type ForgeGenerationMode,
 } from "../../src/features/generator/v2/index.ts";
 
 import { buildPuzzleFromScramble } from "../../src/features/generator/generate-puzzle.ts";
 import { validatePuzzle } from "../../src/core/puzzle.ts";
-import { createRng } from "../../src/features/generator/board-template.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,7 +42,7 @@ function buildBlueprint(
 /**
  * Find a blueprint that has at least one width-1 passage and 2+ rooms.
  */
-function findBlueprintWithPassage(boxCount: number = 3): FunctionalBlueprint | null {
+function findBlueprintWithPassage(): FunctionalBlueprint | null {
   for (let seed = 100; seed < 300; seed++) {
     const fb = buildBlueprint(seed, "linear");
     if (!fb) continue;
@@ -55,32 +51,6 @@ function findBlueprintWithPassage(boxCount: number = 3): FunctionalBlueprint | n
   return null;
 }
 
-/**
- * Find a blueprint that is very small (1 room, few floor cells) suitable for
- * infeasibility tests.
- */
-function findSmallBlueprint(): FunctionalBlueprint | null {
-  for (let seed = 1; seed < 200; seed++) {
-    const bp = generateBlueprintWithRetry(
-      {
-        ...DEFAULT_BLUEPRINT_PARAMS,
-        seed,
-        family: "linear",
-        boardWidth: 6,
-        boardHeight: 6,
-        minRooms: 1,
-        maxRooms: 1,
-        minRoomSize: 2,
-        maxRoomSize: 2,
-      },
-      30,
-    );
-    if (!bp) continue;
-    const fb = assignRoomRoles(bp, seed, 1);
-    if (fb.rooms.length === 1) return fb;
-  }
-  return null;
-}
 
 // ===========================================================================
 // 1. MECHANISM CATALOG & FEASIBILITY
@@ -297,7 +267,7 @@ test("mechanism-plan: tutorial tier creates exactly 1 mechanism", () => {
 
 test("mechanism-plan: expert tier creates 2+ mechanisms", () => {
   for (let seed = 100; seed < 300; seed++) {
-    const fb = findBlueprintWithPassage(4);
+    const fb = findBlueprintWithPassage();
     if (!fb) continue;
 
     // Expert with enough boxes should target 2+ mechanisms

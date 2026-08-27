@@ -7,7 +7,6 @@ import {
   selectWithDiversityQuotas,
   type CuratedCandidate,
   type DiversityQuotas,
-  type NormalizationContext,
 } from "../../src/features/generator/v2/curation.ts";
 import type { CurationObjectives } from "../../src/features/generator/v2/finalist-evaluator.ts";
 
