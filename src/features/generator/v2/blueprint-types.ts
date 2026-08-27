@@ -146,6 +146,7 @@ export interface ReverseSearchProfile {
   readonly diversityRadius: number;
   readonly stochasticTieBreaking: boolean;
   readonly antiImmediateUndo: boolean;
+  readonly restartJitterScale?: number;
 }
 
 export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {

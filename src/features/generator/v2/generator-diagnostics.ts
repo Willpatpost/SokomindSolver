@@ -176,11 +176,11 @@ export class DiagnosticCollector {
         restartIndex: rs.restartIndex,
         expanded: rs.expanded,
         maxDepth: rs.maxDepth,
-        archiveOffers: 0,
-        archiveAccepts: 0,
-        transpositionHits: 0,
-        firstLayerGenerated: 0,
-        firstLayerRejected: 0,
+        archiveOffers: rs.archiveOffers ?? 0,
+        archiveAccepts: rs.archiveContributions ?? 0,
+        transpositionHits: rs.transpositionHits ?? 0,
+        firstLayerGenerated: rs.firstLayerGenerated ?? 0,
+        firstLayerRejected: rs.firstLayerRejected ?? 0,
       });
     }
   }
