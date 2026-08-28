@@ -329,6 +329,8 @@ export {
   computeTediumPenalty,
   benchmarkAgainstExpected,
   summarizeBenchmark,
+  buildCalibrationReport,
+  formatCalibrationReport,
   V4_TIER_THRESHOLDS,
 } from "./difficulty-model.ts";
 
@@ -336,6 +338,9 @@ export type {
   V4DifficultyProfile,
   V4DifficultyThresholds,
   V4BenchmarkEntry,
+  CalibrationEntry,
+  CalibrationReport,
+  ConfusionMatrix,
 } from "./difficulty-model.ts";
 
 export type {
@@ -383,6 +388,23 @@ export type {
   CorrelationEvaluationInput,
   CorrelationFinalistInput,
 } from "./solver-bottleneck.ts";
+
+export {
+  assessQuality,
+  computePurposefulGeometry,
+  computeInteractionQuality,
+  computeCausalDepth,
+  computeDecisionQuality,
+  computeMechanismIntegrity,
+  computeElegance,
+  computeTedium,
+  QUALITY_FLOORS,
+} from "./quality-gate.ts";
+
+export type {
+  PuzzleQualityProfile,
+  QualityFloor,
+} from "./quality-gate.ts";
 
 export {
   nonDominatedSort,

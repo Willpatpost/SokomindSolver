@@ -81,6 +81,7 @@ import {
   formatDiagnosticReport,
   type ForgeDiagnosticReport,
 } from "./generator-diagnostics.ts";
+import { assessQuality, type PuzzleQualityProfile } from "./quality-gate.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,6 +243,7 @@ export interface ForgeCandidate {
   readonly hints?: readonly DependencyHint[];
   readonly finalistEvaluation?: FinalistEvaluation | FinalistEvaluationV4;
   readonly curationObjectives?: CurationObjectives;
+  readonly qualityProfile?: PuzzleQualityProfile;
 }
 
 export type ForgeRejectionReason =
@@ -274,7 +276,8 @@ export type ForgeRejectionReason =
   | "difficulty-mismatch"
   | "duplicate-cross-tier"
   | "duplicate-symmetry"
-  | "mechanism-evidence-missing";
+  | "mechanism-evidence-missing"
+  | "quality-gate-failed";
 
 export interface ForgeRejection {
   readonly seed: number;
@@ -2049,7 +2052,22 @@ async function runForgeFunnel(
       objectives.decisionQuality + objectives.structuralRichness +
       objectives.solverChallenge - objectives.tedium * 3;
 
-    // Compute V4 difficulty profile
+    // Quality gate: assess quality BEFORE difficulty classification
+    const qualityProfile = assessQuality(c.evaluation, c.provenance.difficulty);
+    if (!qualityProfile.passed) {
+      rejections.push({ seed: c.provenance.seed, reason: "quality-gate-failed" });
+      collector.recordRejection({
+        reason: "quality-gate-failed",
+        tier: c.provenance.difficulty,
+        family: c.provenance.family,
+        mode: c.provenance.mode,
+        requestedBoxCount: c.provenance.boxCount,
+      });
+      continue;
+    }
+    collector.recordQualityPassed();
+
+    // Compute V4 difficulty profile (after quality gate)
     const v4Profile = computeV4Profile(c.evaluation);
 
     // Optionally reject if V4 classification disagrees with requested difficulty
@@ -2085,15 +2103,12 @@ async function runForgeFunnel(
       },
       finalistEvaluation: finalist,
       curationObjectives: objectives,
+      qualityProfile,
     };
     deepScored.push({ c: enriched, deepScore });
   }
   deepScored.sort((a, b) => b.deepScore - a.deepScore);
   const stageD_survivors = deepScored.slice(0, budgets.deepRetain).map((s) => s.c);
-
-  for (let ci = 0; ci < stageD_survivors.length; ci++) {
-    collector.recordQualityPassed();
-  }
 
   // ---- Stage F: V4 diversity curation (Pareto + novelty + diversity quotas) ----
   let finalCandidates: ForgeCandidate[];
