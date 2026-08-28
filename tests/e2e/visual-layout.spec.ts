@@ -21,7 +21,10 @@ async function expectInsideViewport(page: Page, locator: Locator) {
 
 async function setExperience(
   page: Page,
-  preferences: { readonly motion?: "full"; readonly theme?: "light" },
+  preferences: {
+    readonly motion?: "full" | "reduced";
+    readonly theme?: "light";
+  },
 ) {
   await page.getByRole("button", { name: "Sound and motion settings" }).click();
   const settings = page.getByRole("dialog", { name: "Sound & motion" });
@@ -235,4 +238,69 @@ test("rapid keeper input never animates farther than one adjacent cell", async (
   expect(settled.topError).toBeLessThan(1);
   expect(settled.widthError).toBeLessThan(1);
   expect(settled.heightError).toBeLessThan(1);
+});
+
+test("movement feedback presents blocked recoil, push compression, and a goal ripple", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await setExperience(page, { motion: "full" });
+  const board = page.getByTestId("game-board");
+  const keeper = page.locator('[data-piece-id="keeper"]');
+  await board.click();
+
+  await page.keyboard.press("ArrowUp");
+  await expect(board).toHaveAttribute("data-feedback", "blocked");
+  await expect(board).toHaveAttribute("data-feedback-sequence", "1");
+  await expect(keeper).toHaveAttribute("data-piece-feedback", "blocked");
+  const firstRecoil = await keeper.evaluate((slot) =>
+    slot.getAnimations().some((animation) =>
+      (animation.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => {
+        const matrix = new DOMMatrixReadOnly(String(frame.transform));
+        return Math.abs(matrix.m41) > 2 || Math.abs(matrix.m42) > 2;
+      }) ?? false,
+    ));
+  expect(firstRecoil).toBe(true);
+
+  await page.keyboard.press("ArrowUp");
+  await expect(board).toHaveAttribute("data-feedback-sequence", "2");
+  const repeatedRecoil = await keeper.evaluate((slot) =>
+    slot.getAnimations().length);
+  expect(repeatedRecoil).toBeGreaterThan(0);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(board).toHaveAttribute("data-feedback", "solved");
+  await expect(page.locator('[data-feedback-effect="goal-ripple"]')).toHaveCount(1);
+  const movedBox = page.locator('[data-piece-feedback="solved"]');
+  const compressed = await movedBox.evaluate((slot) =>
+    slot.getAnimations().some((animation) =>
+      (animation.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => {
+        const matrix = new DOMMatrixReadOnly(String(frame.transform));
+        return Math.abs(matrix.a - 1) > 0.01 || Math.abs(matrix.d - 1) > 0.01;
+      }) ?? false,
+    ));
+  expect(compressed).toBe(true);
+});
+
+test("reduced motion preserves feedback state without transient board effects", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await setExperience(page, { motion: "reduced" });
+  const board = page.getByTestId("game-board");
+  const keeper = page.locator('[data-piece-id="keeper"]');
+  await board.click();
+
+  await page.keyboard.press("ArrowUp");
+  await expect(board).toHaveAttribute("data-feedback", "blocked");
+  expect(await keeper.evaluate((slot) => slot.getAnimations().length)).toBe(0);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(board).toHaveAttribute("data-feedback", "solved");
+  await expect(page.locator('[data-feedback-effect="goal-ripple"]')).toHaveCount(0);
+  expect(
+    await page.locator('[data-piece-feedback="solved"]').evaluate(
+      (slot) => slot.getAnimations().length,
+    ),
+  ).toBe(0);
 });

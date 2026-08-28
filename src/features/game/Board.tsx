@@ -6,15 +6,22 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import type { GameSession, Goal, Position } from "@/src/core/model";
+import type {
+  Direction,
+  GameSession,
+  Goal,
+  Position,
+} from "@/src/core/model";
 import { positionKey } from "@/src/core";
 import styles from "./Board.module.css";
+import type { PresentedGameExperienceEvent } from "./game-feedback";
 import { extractTrailPositions } from "./trail-positions";
 
 interface BoardProps {
   session: GameSession;
   reduceMotion?: boolean;
   deadlockedBoxIds?: ReadonlySet<string>;
+  experienceEvent?: PresentedGameExperienceEvent | null;
 }
 
 type BoardStyle = CSSProperties & {
@@ -39,8 +46,16 @@ interface PieceSlotProps {
   puzzleId: string;
   position: Position;
   reduceMotion: boolean;
+  experienceEvent?: PresentedGameExperienceEvent | null;
   children: ReactNode;
 }
+
+const DIRECTION_VECTOR: Readonly<Record<Direction, Position>> = {
+  up: { row: -1, column: 0 },
+  down: { row: 1, column: 0 },
+  left: { row: 0, column: -1 },
+  right: { row: 0, column: 1 },
+};
 
 function typedHue(label: string): number {
   if (label === "X") return 32;
@@ -167,6 +182,7 @@ const PieceSlot = memo(function PieceSlot({
   puzzleId,
   position,
   reduceMotion,
+  experienceEvent,
   children,
 }: PieceSlotProps) {
   const elementRef = useRef<HTMLSpanElement>(null);
@@ -187,6 +203,55 @@ const PieceSlot = memo(function PieceSlot({
       Math.abs(priorPosition.row - position.row) +
         Math.abs(priorPosition.column - position.column) === 1;
 
+    const rememberPosition = () => {
+      previousPosition.current = {
+        row: position.row,
+        column: position.column,
+      };
+      previousPuzzle.current = puzzleId;
+    };
+
+    const presentAnimation = (
+      keyframes: Keyframe[],
+      options: KeyframeAnimationOptions,
+    ) => {
+      const nextAnimation = element.animate(keyframes, options);
+      animation.current = nextAnimation;
+      const clearCancelledAnimation = () => {
+        if (animation.current === nextAnimation) animation.current = null;
+      };
+      nextAnimation.onfinish = () => {
+        clearCancelledAnimation();
+        nextAnimation.cancel();
+      };
+      nextAnimation.oncancel = clearCancelledAnimation;
+    };
+
+    if (
+      id === "keeper" &&
+      experienceEvent?.kind === "blocked" &&
+      !reduceMotion
+    ) {
+      const vector = DIRECTION_VECTOR[experienceEvent.direction];
+      const distance = Math.max(3, Math.min(nextRect.width, nextRect.height) * 0.11);
+      const x = vector.column * distance;
+      const y = vector.row * distance;
+      presentAnimation(
+        [
+          { transform: "translate3d(0, 0, 0)", offset: 0 },
+          { transform: `translate3d(${x}px, ${y}px, 0)`, offset: 0.42 },
+          { transform: `translate3d(${-x * 0.22}px, ${-y * 0.22}px, 0)`, offset: 0.72 },
+          { transform: "translate3d(0, 0, 0)", offset: 1 },
+        ],
+        {
+          duration: 180,
+          easing: "cubic-bezier(0.3, 0.8, 0.3, 1)",
+        },
+      );
+      rememberPosition();
+      return;
+    }
+
     if (
       priorPosition &&
       previousPuzzle.current === puzzleId &&
@@ -206,34 +271,49 @@ const PieceSlot = memo(function PieceSlot({
         (priorPosition.row - position.row) * (nextRect.height + rowGap);
 
       if (Math.abs(x) > 0.5 || Math.abs(y) > 0.5) {
-        const nextAnimation = element.animate(
-          [
-            { transform: `translate3d(${x}px, ${y}px, 0)` },
-            { transform: "translate3d(0, 0, 0)" },
-          ],
+        const pushedBox = experienceEvent?.movedBox?.id === id;
+        const horizontalPush =
+          experienceEvent?.direction === "left" ||
+          experienceEvent?.direction === "right";
+        const keyframes: Keyframe[] = pushedBox
+          ? [
+              {
+                transform: `translate3d(${x}px, ${y}px, 0) ${horizontalPush ? "scale3d(0.9, 1.06, 1)" : "scale3d(1.06, 0.9, 1)"}`,
+                offset: 0,
+              },
+              {
+                transform: `translate3d(${x * 0.2}px, ${y * 0.2}px, 0) ${horizontalPush ? "scale3d(0.96, 1.03, 1)" : "scale3d(1.03, 0.96, 1)"}`,
+                offset: 0.68,
+              },
+              {
+                transform: `translate3d(0, 0, 0) ${horizontalPush ? "scale3d(1.035, 0.985, 1)" : "scale3d(0.985, 1.035, 1)"}`,
+                offset: 0.86,
+              },
+              { transform: "translate3d(0, 0, 0) scale3d(1, 1, 1)", offset: 1 },
+            ]
+          : [
+              { transform: `translate3d(${x}px, ${y}px, 0)` },
+              { transform: "translate3d(0, 0, 0)" },
+            ];
+        presentAnimation(
+          keyframes,
           {
-            duration: 190,
+            duration: pushedBox ? 220 : 190,
             easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
           },
         );
-        animation.current = nextAnimation;
-        const clearCancelledAnimation = () => {
-          if (animation.current === nextAnimation) animation.current = null;
-        };
-        nextAnimation.onfinish = () => {
-          clearCancelledAnimation();
-          nextAnimation.cancel();
-        };
-        nextAnimation.oncancel = clearCancelledAnimation;
       }
     }
 
-    previousPosition.current = {
-      row: position.row,
-      column: position.column,
-    };
-    previousPuzzle.current = puzzleId;
-  }, [position.column, position.row, puzzleId, reduceMotion]);
+    rememberPosition();
+  }, [
+    experienceEvent,
+    id,
+    position.column,
+    position.row,
+    puzzleId,
+    reduceMotion,
+  ]);
 
   useLayoutEffect(
     () => () => {
@@ -248,6 +328,7 @@ const PieceSlot = memo(function PieceSlot({
       data-piece-id={id}
       data-piece-row={position.row}
       data-piece-column={position.column}
+      data-piece-feedback={experienceEvent?.kind}
       ref={elementRef}
       style={{
         gridColumn: position.column + 1,
@@ -269,6 +350,7 @@ export const Board = memo(function Board({
   session,
   reduceMotion = false,
   deadlockedBoxIds = EMPTY_SET,
+  experienceEvent = null,
 }: BoardProps) {
   const { board, snapshot, puzzle } = session;
 
@@ -324,6 +406,8 @@ export const Board = memo(function Board({
       role="img"
       aria-label={boardSummary}
       data-solved={snapshot.solved || undefined}
+      data-feedback={experienceEvent?.kind}
+      data-feedback-sequence={experienceEvent?.sequence}
       data-testid="game-board"
     >
       {cellDescriptors.map((desc) => (
@@ -348,6 +432,24 @@ export const Board = memo(function Board({
         </div>
       ) : null}
 
+      {!reduceMotion &&
+      (experienceEvent?.kind === "goal" ||
+        experienceEvent?.kind === "solved") &&
+      experienceEvent.movedBox ? (
+        <div className={styles.feedbackLayer} aria-hidden="true">
+          <span
+            className={styles.goalRipple}
+            data-feedback-effect="goal-ripple"
+            data-feedback-sequence={experienceEvent.sequence}
+            key={`goal-${experienceEvent.sequence}`}
+            style={{
+              gridColumn: experienceEvent.movedBox.to.column + 1,
+              gridRow: experienceEvent.movedBox.to.row + 1,
+            }}
+          />
+        </div>
+      ) : null}
+
       <div className={styles.pieceLayer} aria-hidden="true">
         {snapshot.boxes.map((box) => {
           const goal = goals.get(positionKey(box.position));
@@ -360,6 +462,11 @@ export const Board = memo(function Board({
               puzzleId={puzzle.id}
               position={box.position}
               reduceMotion={reduceMotion}
+              experienceEvent={
+                experienceEvent?.movedBox?.id === box.id
+                  ? experienceEvent
+                  : null
+              }
             >
               <BoxPiece
                 label={box.label}
@@ -375,6 +482,9 @@ export const Board = memo(function Board({
           puzzleId={puzzle.id}
           position={snapshot.robot}
           reduceMotion={reduceMotion}
+          experienceEvent={
+            experienceEvent?.kind === "blocked" ? experienceEvent : null
+          }
         >
           <KeeperPiece />
         </PieceSlot>

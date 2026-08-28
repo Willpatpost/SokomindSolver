@@ -7,7 +7,10 @@ import {
   type Direction,
   type PuzzleDefinition,
 } from "../../src/core/index.ts";
-import { classifyMove } from "../../src/features/game/game-feedback.ts";
+import {
+  classifyMove,
+  describeMoveExperience,
+} from "../../src/features/game/game-feedback.ts";
 
 function session(rows: readonly string[]) {
   const puzzle: PuzzleDefinition = {
@@ -35,8 +38,28 @@ test("classifies blocked and ordinary keeper movement", () => {
     "OOOOO",
   ]);
 
-  assert.equal(classifyMove(start, move(start, "up")), "blocked");
-  assert.equal(classifyMove(start, move(start, "right")), "move");
+  const blocked = move(start, "up");
+  const moved = move(start, "right");
+
+  assert.equal(classifyMove(start, blocked), "blocked");
+  assert.deepEqual(describeMoveExperience(start, blocked, "up"), {
+    kind: "blocked",
+    direction: "up",
+    movedBox: undefined,
+    matchedGoalsBefore: 0,
+    matchedGoalsAfter: 0,
+    totalGoals: 1,
+  });
+
+  assert.equal(classifyMove(start, moved), "move");
+  assert.deepEqual(describeMoveExperience(start, moved, "right"), {
+    kind: "move",
+    direction: "right",
+    movedBox: undefined,
+    matchedGoalsBefore: 0,
+    matchedGoalsAfter: 0,
+    totalGoals: 1,
+  });
 });
 
 test("distinguishes pushes from pushes onto matching goals", () => {
@@ -48,9 +71,31 @@ test("distinguishes pushes from pushes onto matching goals", () => {
 
   const pushed = move(start, "right");
   assert.equal(classifyMove(start, pushed), "push");
+  assert.deepEqual(
+    describeMoveExperience(start, pushed, "right").movedBox,
+    {
+      id: start.snapshot.boxes[0].id,
+      label: start.snapshot.boxes[0].label,
+      from: start.snapshot.boxes[0].position,
+      to: pushed.snapshot.boxes[0].position,
+    },
+  );
 
   const onGoal = apply(pushed, ["right"]);
   assert.equal(classifyMove(pushed, onGoal), "solved");
+  assert.deepEqual(describeMoveExperience(pushed, onGoal, "right"), {
+    kind: "solved",
+    direction: "right",
+    movedBox: {
+      id: pushed.snapshot.boxes[0].id,
+      label: pushed.snapshot.boxes[0].label,
+      from: pushed.snapshot.boxes[0].position,
+      to: onGoal.snapshot.boxes[0].position,
+    },
+    matchedGoalsBefore: 0,
+    matchedGoalsAfter: 1,
+    totalGoals: 1,
+  });
 });
 
 test("reports an intermediate matching-goal placement", () => {
@@ -72,6 +117,12 @@ test("reports an intermediate matching-goal placement", () => {
 
   assert.equal(classifyMove(beforeGoal, onGoal), "goal");
   assert.equal(onGoal.solved, false);
+  const event = describeMoveExperience(beforeGoal, onGoal, "right");
+  assert.equal(event.kind, "goal");
+  assert.equal(event.matchedGoalsBefore, 0);
+  assert.equal(event.matchedGoalsAfter, 1);
+  assert.equal(event.totalGoals, 2);
+  assert.deepEqual(event.movedBox?.to, onGoal.snapshot.boxes[0].position);
 });
 
 test("reports when a box leaves its matching goal", () => {
@@ -91,4 +142,9 @@ test("reports when a box leaves its matching goal", () => {
   const pushedOffGoal = move(onGoal, "right");
 
   assert.equal(classifyMove(onGoal, pushedOffGoal), "goal-leave");
+  const event = describeMoveExperience(onGoal, pushedOffGoal, "right");
+  assert.equal(event.kind, "goal-leave");
+  assert.equal(event.matchedGoalsBefore, 1);
+  assert.equal(event.matchedGoalsAfter, 0);
+  assert.equal(event.movedBox?.id, onGoal.snapshot.boxes[0].id);
 });

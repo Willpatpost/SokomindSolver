@@ -395,6 +395,7 @@ function ValidatedPlayPage({
               session={session}
               reduceMotion={game.reducedMotion}
               deadlockedBoxIds={game.deadlockedBoxIds}
+              experienceEvent={game.experienceEvent}
             />
           </div>
 

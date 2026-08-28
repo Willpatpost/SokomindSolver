@@ -24,8 +24,12 @@ import {
   useExperience,
   type AudioCue,
 } from "@/src/features/experience";
-import { detectDeadlock, findPushedBox } from "@/src/solver/deadlock-bridge";
-import { classifyMove } from "@/src/features/game/game-feedback";
+import { detectDeadlock } from "@/src/solver/deadlock-bridge";
+import {
+  describeMoveExperience,
+  type GameFeedback,
+  type PresentedGameExperienceEvent,
+} from "@/src/features/game/game-feedback";
 import { useGameKeyboard } from "@/src/features/game/use-game-keyboard";
 import { useHintController } from "@/src/features/game/use-hint-controller";
 import { useTimer } from "@/src/features/game/use-timer";
@@ -40,7 +44,7 @@ import { usePuzzleNavigation } from "./use-puzzle-navigation";
 
 const EMPTY_BOX_SET: ReadonlySet<string> = new Set<string>();
 
-const FEEDBACK_CUES: Readonly<Record<ReturnType<typeof classifyMove>, AudioCue>> = {
+const FEEDBACK_CUES: Readonly<Record<GameFeedback, AudioCue>> = {
   blocked: "blocked",
   move: "step",
   push: "push",
@@ -104,6 +108,9 @@ export function usePlayController(
   const [deadlockedBoxIds, setDeadlockedBoxIds] = useState<ReadonlySet<string>>(
     EMPTY_BOX_SET,
   );
+  const [experienceEvent, setExperienceEvent] =
+    useState<PresentedGameExperienceEvent | null>(null);
+  const experienceSequenceRef = useRef(0);
   const [deadlockModalOpen, setDeadlockModalOpen] = useState(false);
   const hintCancelRef = useRef<() => void>(() => {});
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -163,15 +170,19 @@ export function usePlayController(
     if (current.solved) return false;
 
     const next = move(current, direction);
-    const feedback = classifyMove(current, next);
-    void playCue(FEEDBACK_CUES[feedback]);
-    if (feedback === "blocked") {
+    const event = describeMoveExperience(current, next, direction);
+    setExperienceEvent({
+      ...event,
+      sequence: ++experienceSequenceRef.current,
+    });
+    void playCue(FEEDBACK_CUES[event.kind]);
+    if (event.kind === "blocked") {
       setToast("That route is blocked.");
       return false;
     }
 
     commitSession(next);
-    if (feedback === "solved") {
+    if (event.kind === "solved") {
       setDeadlockedBoxIds(EMPTY_BOX_SET);
       const completedAt = new Date();
       const isDaily = getDailyPuzzleId(PUZZLE_METADATA, completedAt) === next.puzzle.id;
@@ -197,9 +208,12 @@ export function usePlayController(
         clearTimeout(toastTimerRef.current);
         toastTimerRef.current = setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
       }
-    } else if (feedback === "push" || feedback === "goal" || feedback === "goal-leave") {
-      const pushed = findPushedBox(current.snapshot.boxes, next.snapshot.boxes);
-      const result = detectDeadlock(next.board, next.snapshot, pushed?.id);
+    } else if (event.movedBox) {
+      const result = detectDeadlock(
+        next.board,
+        next.snapshot,
+        event.movedBox.id,
+      );
       if (result.severity === "deadlock") {
         setDeadlockedBoxIds(new Set(result.deadlockedBoxIds));
         setDeadlockModalOpen(true);
@@ -273,6 +287,7 @@ export function usePlayController(
     const pid = current.puzzle.id;
 
     const initial = reset(current);
+    setExperienceEvent(null);
     commitSession(initial);
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
@@ -303,6 +318,7 @@ export function usePlayController(
     stopSolutionPlayback();
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
+    setExperienceEvent(null);
     const current = sessionRef.current;
     const previous = undo(current);
     if (previous === current) {
@@ -318,6 +334,7 @@ export function usePlayController(
     stopSolutionPlayback();
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
+    setExperienceEvent(null);
     const current = sessionRef.current;
     const result = undoN(current, count);
     if (result === current) {
@@ -335,6 +352,7 @@ export function usePlayController(
     stopSolutionPlayback();
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
+    setExperienceEvent(null);
     commitSession(reset(sessionRef.current));
     timerResetRef.current();
     setToast("Room restarted.");
@@ -356,6 +374,7 @@ export function usePlayController(
     stopSolutionPlayback();
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
+    setExperienceEvent(null);
     setResetConfirmPuzzleId(null);
     setSolverPuzzleId(null);
     timerResetRef.current();
@@ -436,6 +455,7 @@ export function usePlayController(
     progress,
     completedIds,
     deadlockedBoxIds,
+    experienceEvent,
     deadlockModalOpen,
     closeDeadlockModal: () => setDeadlockModalOpen(false),
     deadlockUndo: () => {
