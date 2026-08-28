@@ -188,6 +188,7 @@ export interface MechanismSpec {
   readonly type: MechanismType;
   readonly primaryRoomIds: readonly number[];
   readonly minGoals: number;
+  readonly allocatedGoals: number;
   readonly weight: number;
 }
 

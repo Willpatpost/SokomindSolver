@@ -9,7 +9,7 @@
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import type { ForgeCandidate } from "./puzzle-forge.ts";
-import { forgeCandidateToAscii } from "./puzzle-forge.ts";
+import { forgeCandidateToAscii, countBoxesAndGoals } from "./puzzle-forge.ts";
 import type { FinalistEvaluation } from "./finalist-evaluator.ts";
 import type { V4DifficultyProfile } from "./difficulty-model.ts";
 import { computeV4Profile } from "./difficulty-model.ts";
@@ -330,6 +330,40 @@ export function validateForAcceptance(
       errors.push(
         `Validation failed for ${entry.id}: ${validation.errors.map((e) => e.message).join("; ")}`,
       );
+    }
+  }
+
+  // Check box count consistency between puzzles and manifest
+  if (manifest.puzzles) {
+    const manifestById = new Map(
+      manifest.puzzles.map((p) => [p.id, p as Record<string, unknown>]),
+    );
+    for (const entry of entries) {
+      if (!entry.rows || !Array.isArray(entry.rows)) continue;
+      const counts = countBoxesAndGoals(entry.rows);
+      const mp = manifestById.get(entry.id);
+      if (!mp) continue;
+
+      if (typeof mp.boxCount === "number" && counts.boxes !== mp.boxCount) {
+        errors.push(
+          `Box count mismatch for ${entry.id}: puzzle has ${counts.boxes} boxes but manifest declares ${mp.boxCount}`,
+        );
+      }
+      if (typeof mp.genericBoxCount === "number" && counts.generic !== mp.genericBoxCount) {
+        errors.push(
+          `Generic box count mismatch for ${entry.id}: puzzle has ${counts.generic} but manifest declares ${mp.genericBoxCount}`,
+        );
+      }
+      if (typeof mp.typedBoxCount === "number" && counts.typed !== mp.typedBoxCount) {
+        errors.push(
+          `Typed box count mismatch for ${entry.id}: puzzle has ${counts.typed} but manifest declares ${mp.typedBoxCount}`,
+        );
+      }
+      if (counts.boxes !== counts.goals) {
+        errors.push(
+          `Box/goal count mismatch for ${entry.id}: ${counts.boxes} boxes but ${counts.goals} goals`,
+        );
+      }
     }
   }
 

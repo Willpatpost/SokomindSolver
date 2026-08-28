@@ -205,6 +205,7 @@ export {
   runForge,
   summarizeForgeRun,
   forgeCandidateToAscii,
+  countBoxesAndGoals,
   forgeRunReport,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,

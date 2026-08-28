@@ -681,7 +681,7 @@ export async function runForge(
   return runForgeFlat(config);
 }
 
-function countBoxesAndGoals(rows: readonly string[]): { boxes: number; goals: number; generic: number; typed: number } {
+export function countBoxesAndGoals(rows: readonly string[]): { boxes: number; goals: number; generic: number; typed: number } {
   let boxes = 0, goals = 0, generic = 0, typed = 0;
   for (const row of rows) {
     for (const ch of row) {
@@ -942,6 +942,23 @@ async function runForgeFlat(
     const genericBoxCount = boxGoalCounts.generic;
     const typedBoxCount = boxGoalCounts.typed;
     const actualBoxes = boxGoalCounts.boxes;
+
+    if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
+      rejections.push({ seed, reason: "validation-failed" });
+      collector.recordRejection({
+        reason: "validation-failed", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount, actualBoxCount: actualBoxes,
+      });
+      collector.recordBoxScale({
+        requestedBoxes: boxCount,
+        actualBoxes,
+        goalCount: boxGoalCounts.goals,
+        genericBoxes: genericBoxCount,
+        typedBoxes: typedBoxCount,
+        difference: actualBoxes - boxCount,
+      });
+      continue;
+    }
 
     collector.recordBoxScale({
       requestedBoxes: boxCount,
@@ -1272,6 +1289,23 @@ async function runForgeFunnel(
     const genericBoxCount = boxGoalCounts.generic;
     const typedBoxCount = boxGoalCounts.typed;
     const actualBoxes = boxGoalCounts.boxes;
+
+    if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
+      rejections.push({ seed, reason: "validation-failed" });
+      collector.recordRejection({
+        reason: "validation-failed", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount, actualBoxCount: actualBoxes,
+      });
+      collector.recordBoxScale({
+        requestedBoxes: boxCount,
+        actualBoxes,
+        goalCount: boxGoalCounts.goals,
+        genericBoxes: genericBoxCount,
+        typedBoxes: typedBoxCount,
+        difference: actualBoxes - boxCount,
+      });
+      continue;
+    }
 
     collector.recordBoxScale({
       requestedBoxes: boxCount,

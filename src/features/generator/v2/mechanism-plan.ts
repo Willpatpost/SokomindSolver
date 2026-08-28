@@ -36,6 +36,8 @@ import type { GridPosition } from "../generator-types.ts";
 export interface MechanismCatalogEntry {
   readonly type: MechanismType;
   readonly minBoxes: number;
+  readonly maxUsefulBoxes: number;
+  readonly scalable: boolean;
   readonly minRooms: number;
   readonly needsNarrowPassage: boolean;
   readonly needsTerminalRoom: boolean;
@@ -48,6 +50,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "packing-chain": {
     type: "packing-chain",
     minBoxes: 2,
+    maxUsefulBoxes: 8,
+    scalable: true,
     minRooms: 1,
     needsNarrowPassage: false,
     needsTerminalRoom: true,
@@ -65,6 +69,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "gatekeeper": {
     type: "gatekeeper",
     minBoxes: 2,
+    maxUsefulBoxes: 6,
+    scalable: true,
     minRooms: 2,
     needsNarrowPassage: true,
     needsTerminalRoom: false,
@@ -82,6 +88,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "gate-reopening": {
     type: "gate-reopening",
     minBoxes: 3,
+    maxUsefulBoxes: 6,
+    scalable: true,
     minRooms: 2,
     needsNarrowPassage: true,
     needsTerminalRoom: false,
@@ -101,6 +109,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "staging-dependency": {
     type: "staging-dependency",
     minBoxes: 2,
+    maxUsefulBoxes: 4,
+    scalable: true,
     minRooms: 1,
     needsNarrowPassage: false,
     needsTerminalRoom: false,
@@ -118,6 +128,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "corridor-traffic": {
     type: "corridor-traffic",
     minBoxes: 2,
+    maxUsefulBoxes: 6,
+    scalable: true,
     minRooms: 2,
     needsNarrowPassage: true,
     needsTerminalRoom: false,
@@ -135,6 +147,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "temporary-parking": {
     type: "temporary-parking",
     minBoxes: 2,
+    maxUsefulBoxes: 6,
+    scalable: true,
     minRooms: 1,
     needsNarrowPassage: false,
     needsTerminalRoom: false,
@@ -152,6 +166,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "dependency-chain": {
     type: "dependency-chain",
     minBoxes: 3,
+    maxUsefulBoxes: 8,
+    scalable: true,
     minRooms: 1,
     needsNarrowPassage: false,
     needsTerminalRoom: true,
@@ -171,6 +187,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
   "cross-room-exchange": {
     type: "cross-room-exchange",
     minBoxes: 2,
+    maxUsefulBoxes: 4,
+    scalable: true,
     minRooms: 2,
     needsNarrowPassage: true,
     needsTerminalRoom: false,
@@ -325,7 +343,9 @@ export function createMechanismPlan(
   const selected = selectMechanisms(feasible, targetCount, blueprint, rng);
   if (selected.length === 0) return null;
 
-  const specs = buildMechanismSpecs(selected, blueprint, rng);
+  const specs = buildMechanismSpecs(selected, blueprint, boxCount, rng);
+  if (!specs) return null;
+
   const intendedDependencies = buildIntendedDependencies(specs);
   const evidenceRequirements = specs.map(
     (s) => MECHANISM_CATALOG[s.type].evidenceRequirements,
@@ -475,17 +495,56 @@ function weightedPick<T>(items: T[], weights: number[], rng: () => number): T {
 function buildMechanismSpecs(
   selected: MechanismType[],
   blueprint: FunctionalBlueprint,
+  boxCount: number,
   rng: () => number,
-): MechanismSpec[] {
+): MechanismSpec[] | null {
   const roomAssignments = assignRoomsToMechanisms(selected, blueprint, rng);
   const catalog = MECHANISM_CATALOG;
+
+  const allocations = allocateBudget(selected, boxCount, rng);
+  if (!allocations) return null;
 
   return selected.map((type, idx) => ({
     type,
     primaryRoomIds: roomAssignments[idx],
     minGoals: catalog[type].minBoxes,
+    allocatedGoals: allocations[idx],
     weight: 1.0,
   }));
+}
+
+function allocateBudget(
+  mechanisms: MechanismType[],
+  boxCount: number,
+  rng: () => number,
+): number[] | null {
+  const catalog = MECHANISM_CATALOG;
+  const allocations = mechanisms.map((m) => catalog[m].minBoxes);
+  const minSum = allocations.reduce((s, n) => s + n, 0);
+
+  if (minSum > boxCount) return null;
+
+  let remaining = boxCount - minSum;
+  if (remaining === 0) return allocations;
+
+  const scalableIndices = mechanisms
+    .map((m, i) => ({ i, entry: catalog[m] }))
+    .filter((x) => x.entry.scalable && allocations[x.i] < x.entry.maxUsefulBoxes);
+
+  if (scalableIndices.length === 0 && remaining > 0) return null;
+
+  while (remaining > 0) {
+    const eligible = scalableIndices.filter(
+      (x) => allocations[x.i] < x.entry.maxUsefulBoxes,
+    );
+    if (eligible.length === 0) return null;
+
+    const pick = eligible[Math.floor(rng() * eligible.length)];
+    allocations[pick.i]++;
+    remaining--;
+  }
+
+  return allocations;
 }
 
 function assignRoomsToMechanisms(
@@ -774,6 +833,12 @@ export function placeGoalsFromPlan(
     mechanismNodeRanges.push({ start: startNodeId, end: nextNodeId });
   }
 
+  const expectedGoalCount = plan.mechanisms.reduce(
+    (sum, m) => sum + m.allocatedGoals,
+    0,
+  );
+  if (allGoals.length !== expectedGoalCount) return null;
+
   // Add cross-mechanism dependency edges from the plan
   for (const dep of plan.intendedDependencies) {
     const fromRange = mechanismNodeRanges[dep.fromMechanism];
@@ -906,7 +971,7 @@ function placePackingChain(
   const viable = cells
     .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-  if (viable.length < spec.minGoals) return null;
+  if (viable.length < spec.allocatedGoals) return null;
 
   viable.sort((a, b) => {
     if (b.depthFromDoorway !== a.depthFromDoorway)
@@ -915,8 +980,8 @@ function placePackingChain(
     return a.reversePullDirs - b.reversePullDirs;
   });
 
-  const goals = selectGoals(viable, spec.minGoals, targetRoom.id, grid);
-  if (goals.length < spec.minGoals) return null;
+  const goals = selectGoals(viable, spec.allocatedGoals, targetRoom.id, grid);
+  if (goals.length < spec.allocatedGoals) return null;
 
   const nodes: DependencyNode[] = goals.map((g, i) => ({
     id: startNodeId + i,
@@ -989,9 +1054,10 @@ function placeGatekeeper(
     const gateCandidates = findGateAdjacentCells(nearCells, passage, usedCells);
     if (gateCandidates.length === 0) continue;
 
+    const innerCount = spec.allocatedGoals - 1;
     const innerViable = farCells
       .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
-    if (innerViable.length < spec.minGoals - 1) continue;
+    if (innerViable.length < innerCount) continue;
 
     const gateCell = gateCandidates[0];
     const gateGoal: GoalCell = {
@@ -1004,8 +1070,8 @@ function placeGatekeeper(
     };
 
     innerViable.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
-    const innerGoals = selectGoals(innerViable, spec.minGoals - 1, farRoom.id, grid);
-    if (innerGoals.length < spec.minGoals - 1) continue;
+    const innerGoals = selectGoals(innerViable, innerCount, farRoom.id, grid);
+    if (innerGoals.length < innerCount) continue;
 
     const goals: GoalCell[] = [gateGoal, ...innerGoals];
 
@@ -1077,10 +1143,10 @@ function placeGateReopening(
     const gateCandidates = findGateAdjacentCells(nearCells, passage, usedCells);
     if (gateCandidates.length === 0) continue;
 
+    const innerCount = spec.allocatedGoals - 1;
     const innerViable = farCells
       .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
-    // Need at least 2 inner goals for gate-reopening
-    if (innerViable.length < 2) continue;
+    if (innerViable.length < innerCount) continue;
 
     const gateCell = gateCandidates[0];
     const gateGoal: GoalCell = {
@@ -1093,8 +1159,8 @@ function placeGateReopening(
     };
 
     innerViable.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
-    const innerGoals = selectGoals(innerViable, spec.minGoals - 1, farRoom.id, grid);
-    if (innerGoals.length < 2) continue;
+    const innerGoals = selectGoals(innerViable, innerCount, farRoom.id, grid);
+    if (innerGoals.length < innerCount) continue;
 
     const goals: GoalCell[] = [gateGoal, ...innerGoals];
 
@@ -1144,7 +1210,7 @@ function placeStagingDependency(
   const viable = cells
     .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-  if (viable.length < spec.minGoals) return null;
+  if (viable.length < spec.allocatedGoals) return null;
 
   viable.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
 
@@ -1178,6 +1244,20 @@ function placeStagingDependency(
       reversePullDirs: blockerGoal.reversePullDirs,
     },
   ];
+
+  const placedKeys = new Set([
+    `${deepGoal.row},${deepGoal.column}`,
+    `${blockerGoal.row},${blockerGoal.column}`,
+  ]);
+  const extraNeeded = spec.allocatedGoals - 2;
+  if (extraNeeded > 0) {
+    const extraViable = viable.filter(
+      (c) => !placedKeys.has(`${c.row},${c.column}`),
+    );
+    const extraGoals = selectGoals(extraViable, extraNeeded, targetRoom.id, grid);
+    if (extraGoals.length < extraNeeded) return null;
+    goals.push(...extraGoals);
+  }
 
   const nodes: DependencyNode[] = goals.map((g, i) => ({
     id: startNodeId + i,
@@ -1238,8 +1318,8 @@ function placeCorridorTraffic(
     const viableB = cellsB
       .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-    const countA = Math.max(1, Math.floor(spec.minGoals / 2));
-    const countB = spec.minGoals - countA;
+    const countA = Math.max(1, Math.floor(spec.allocatedGoals / 2));
+    const countB = spec.allocatedGoals - countA;
 
     if (viableA.length < countA || viableB.length < countB) continue;
 
@@ -1304,11 +1384,10 @@ function placeTemporaryParking(
   const viable = cells
     .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-  if (viable.length < spec.minGoals) return null;
+  if (viable.length < spec.allocatedGoals) return null;
 
-  // Need enough extra floor cells for temporary parking
   const totalFloor = cells.filter((c) => !usedCells.has(`${c.row},${c.column}`)).length;
-  if (totalFloor < spec.minGoals + 1) return null; // need at least 1 parking spot
+  if (totalFloor < spec.allocatedGoals + 1) return null;
 
   viable.sort((a, b) => {
     if (b.depthFromDoorway !== a.depthFromDoorway)
@@ -1316,8 +1395,8 @@ function placeTemporaryParking(
     return a.reversePullDirs - b.reversePullDirs;
   });
 
-  const goals = selectGoals(viable, spec.minGoals, targetRoom.id, grid);
-  if (goals.length < spec.minGoals) return null;
+  const goals = selectGoals(viable, spec.allocatedGoals, targetRoom.id, grid);
+  if (goals.length < spec.allocatedGoals) return null;
 
   const nodes: DependencyNode[] = goals.map((g, i) => ({
     id: startNodeId + i,
@@ -1362,8 +1441,7 @@ function placeDependencyChain(
   const viable = cells
     .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-  // Need at least 3 for a meaningful chain
-  const goalCount = Math.max(spec.minGoals, 3);
+  const goalCount = spec.allocatedGoals;
   if (viable.length < goalCount) return null;
 
   viable.sort((a, b) => {
@@ -1447,19 +1525,20 @@ function placeCrossRoomExchange(
     const viableB = cellsB
       .filter((c) => c.reversePullDirs >= 1 && !usedCells.has(`${c.row},${c.column}`));
 
-    // Each room gets at least 1 goal
-    if (viableA.length < 1 || viableB.length < 1) continue;
+    const countA = Math.max(1, Math.floor(spec.allocatedGoals / 2));
+    const countB = spec.allocatedGoals - countA;
+    if (viableA.length < countA || viableB.length < countB) continue;
 
     viableA.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
     viableB.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
 
-    const goalsA = selectGoals(viableA, 1, roomA.id, grid);
-    if (goalsA.length < 1) continue;
+    const goalsA = selectGoals(viableA, countA, roomA.id, grid);
+    if (goalsA.length < countA) continue;
 
     const usedKeys = new Set([...usedCells, ...goalsA.map((g) => `${g.row},${g.column}`)]);
     const filteredB = viableB.filter((c) => !usedKeys.has(`${c.row},${c.column}`));
-    const goalsB = selectGoals(filteredB, 1, roomB.id, grid);
-    if (goalsB.length < 1) continue;
+    const goalsB = selectGoals(filteredB, countB, roomB.id, grid);
+    if (goalsB.length < countB) continue;
 
     const goals = [...goalsA, ...goalsB];
 
@@ -1471,16 +1550,19 @@ function placeCrossRoomExchange(
       role: "exchange",
     }));
 
-    const edges: DependencyEdge[] = [
-      {
-        from: startNodeId,
-        to: startNodeId + 1,
-        type: "shares-passage",
-        description:
-          `Exchange goals in rooms ${roomA.id} and ${roomB.id} require ` +
-          `cross-passage movement through width-1 passage`,
-      },
-    ];
+    const edges: DependencyEdge[] = [];
+    for (let ai = 0; ai < countA; ai++) {
+      for (let bi = countA; bi < goals.length; bi++) {
+        edges.push({
+          from: startNodeId + ai,
+          to: startNodeId + bi,
+          type: "shares-passage",
+          description:
+            `Exchange goals in rooms ${roomA.id} and ${roomB.id} require ` +
+            `cross-passage movement through width-1 passage`,
+        });
+      }
+    }
 
     return { goals, nodes, edges };
   }
