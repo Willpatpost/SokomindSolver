@@ -32,22 +32,7 @@ function makeGatekeeperPuzzle(): PuzzleDefinition {
   };
 }
 
-function makeLinearChainPuzzle(): PuzzleDefinition {
-  // Two boxes in a corridor — deeper one must be pushed first
-  // Robot at left, goals at right side of corridor
-  return {
-    id: "cf-chain",
-    title: "cf-chain",
-    difficulty: "intermediate",
-    rows: [
-      "OOOOOOOO",
-      "OR.X.X.O",
-      "O....SSO",
-      "OOOOOOOO",
-    ],
-    boxes: 2,
-  };
-}
+// makeLinearChainPuzzle is reserved for future chain-link verification tests.
 
 function makeOpenRoomPuzzle(): PuzzleDefinition {
   // Open room with boxes and goals — no blocking structure
@@ -77,10 +62,13 @@ interface TestDepNode {
   readonly role: string;
 }
 
+type TestDepEdgeType = "must-precede" | "must-stage" | "shares-passage" | "blocks-access"
+  | "must-reopen" | "must-park" | "chain-link" | "exchange-cross";
+
 interface TestDepEdge {
   readonly from: number;
   readonly to: number;
-  readonly type: string;
+  readonly type: TestDepEdgeType;
   readonly description: string;
 }
 
@@ -101,23 +89,6 @@ function makeGatekeeperDAG(): TestDepDAG {
         to: 1,
         type: "blocks-access",
         description: "Gate box blocks access to inner goal",
-      },
-    ],
-  };
-}
-
-function makeChainDAG(): TestDepDAG {
-  return {
-    nodes: [
-      { id: 0, goalIndex: 0, roomId: 0, role: "chain-link" },
-      { id: 1, goalIndex: 1, roomId: 0, role: "chain-link" },
-    ],
-    edges: [
-      {
-        from: 0,
-        to: 1,
-        type: "must-precede",
-        description: "First box must be completed before second",
       },
     ],
   };
@@ -170,8 +141,8 @@ test("counterfactual: preserves edge count from base verifier", () => {
   // Even without real solution steps, both should process the same edges
   const steps: SolutionStep[] = [];
 
-  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const base = verifyDependenciesWithEvidence(dag, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   assert.equal(cf.totalEdges, base.totalEdges);
   assert.equal(cf.edgeDetails.length, base.edgeDetails.length);
@@ -200,8 +171,8 @@ test("counterfactual: upgrades confidence for blocks-access when goal unreachabl
     makePushStep("right"),
   ];
 
-  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const base = verifyDependenciesWithEvidence(dag, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   // If the base verifier shows the edge as realized, the counterfactual should
   // potentially upgrade confidence
@@ -232,8 +203,8 @@ test("counterfactual: appends evidence without losing base evidence", () => {
     makePushStep("right"),
   ];
 
-  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const base = verifyDependenciesWithEvidence(dag, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   for (let i = 0; i < base.edgeDetails.length; i++) {
     const baseEvidence = base.edgeDetails[i].evidence;
@@ -254,7 +225,7 @@ test("counterfactual: open room without blocking structure stays at observed", (
   const dag = makeOpenDAG();
   const steps: SolutionStep[] = [];
 
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   // With no solution steps, edges aren't realized at all
   for (const detail of cf.edgeDetails) {
@@ -290,8 +261,8 @@ test("counterfactual: unknown/unsupported edge types pass through unchanged", ()
   };
   const steps: SolutionStep[] = [];
 
-  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const base = verifyDependenciesWithEvidence(dag, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   assert.equal(cf.edgeDetails[0].confidence, base.edgeDetails[0].confidence);
   assert.equal(cf.edgeDetails[0].evidence.length, base.edgeDetails[0].evidence.length);
@@ -320,7 +291,7 @@ test("counterfactual: realizationRate is consistent", () => {
   const dag = makeGatekeeperDAG();
   const steps: SolutionStep[] = [];
 
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   if (cf.totalEdges > 0) {
     const expectedRate = cf.realizedEdges / cf.totalEdges;
@@ -340,7 +311,7 @@ test("counterfactual: handles empty DAG gracefully", () => {
   const emptyDag: TestDepDAG = { nodes: [], edges: [] };
   const steps: SolutionStep[] = [];
 
-  const cf = verifyDependenciesCounterfactual(emptyDag as any, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(emptyDag, puzzle, steps);
   assert.equal(cf.totalEdges, 0);
   assert.equal(cf.realizedEdges, 0);
   assert.equal(cf.realizationRate, 1);
@@ -352,7 +323,7 @@ test("counterfactual: handles empty DAG gracefully", () => {
 // ---------------------------------------------------------------------------
 
 test("counterfactual: covers all key edge types", () => {
-  const supportedTypes = [
+  const supportedTypes: TestDepEdgeType[] = [
     "blocks-access",
     "must-reopen",
     "must-precede",
@@ -376,7 +347,7 @@ test("counterfactual: covers all key edge types", () => {
       }],
     };
 
-    const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+    const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
     assert.equal(
       cf.totalEdges,
       1,
@@ -406,8 +377,8 @@ test("counterfactual: exchange-cross edge is processed with counterfactual logic
     makePushStep("right"),
   ];
 
-  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
-  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+  const base = verifyDependenciesWithEvidence(dag, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag, puzzle, steps);
 
   assert.equal(cf.totalEdges, 1);
   assert.equal(cf.edgeDetails.length, base.edgeDetails.length);

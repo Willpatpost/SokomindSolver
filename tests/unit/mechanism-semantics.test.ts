@@ -13,7 +13,7 @@ import {
   type MechanismType,
   type MechanismPlan,
   type MechanismEvidenceKind,
-  type MechanismVerificationResult,
+  type DependencyEdgeType,
 } from "../../src/features/generator/v2/index.ts";
 import type {
   DependencyVerificationResult,
@@ -24,7 +24,7 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DEFINING_EDGE_MAP: Record<MechanismType, string> = {
+const DEFINING_EDGE_MAP: Record<MechanismType, DependencyEdgeType> = {
   "packing-chain": "must-precede",
   "gatekeeper": "blocks-access",
   "gate-reopening": "must-reopen",
@@ -51,7 +51,7 @@ function makeMockPlan(
   types: MechanismType[],
 ): MechanismPlan {
   return {
-    mechanisms: types.map((type, i) => ({
+    mechanisms: types.map((type) => ({
       type,
       primaryRoomIds: [0],
       minGoals: MECHANISM_CATALOG[type].minBoxes,
@@ -78,7 +78,7 @@ function makeMockDepResult(
 }
 
 function makeEdgeDetail(
-  edgeType: string,
+  edgeType: DependencyEdgeType,
   realized: boolean,
   evidenceKinds: string[],
 ): DependencyEdgeVerification {
@@ -86,7 +86,7 @@ function makeEdgeDetail(
     edge: {
       from: 0,
       to: 1,
-      type: edgeType as any,
+      type: edgeType,
       description: "test edge",
     },
     realized,
@@ -308,7 +308,7 @@ test("mechanism semantics: generated mechanism plans use correct edge types", ()
 
     for (const edge of placement.dag.edges) {
       const expectedEdge = Object.entries(DEFINING_EDGE_MAP).find(
-        ([_, e]) => e === edge.type,
+        ([, e]) => e === edge.type,
       );
       if (expectedEdge) {
         tested++;

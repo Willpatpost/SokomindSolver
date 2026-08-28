@@ -11,7 +11,6 @@ import {
   countBoxesAndGoals,
   type BlueprintParams,
   type MechanismPlan,
-  type MechanismSpec,
 } from "../../src/features/generator/v2/index.ts";
 import { validateForAcceptance } from "../../src/features/generator/v2/review-catalog.ts";
 import { assignLabels } from "../../src/features/generator/label-assignment.ts";

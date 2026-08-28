@@ -13,14 +13,12 @@ import {
   formatReleaseVerdict,
   DEFAULT_RELEASE_GATE_CONFIG,
   type ReleaseGateConfig,
-  type ReleaseGateVerdict,
 } from "../../src/features/generator/v2/release-gate.ts";
 
 import {
   buildReviewPack,
   buildReviewCatalog,
   buildFinalReviewCatalog,
-  type ReviewCatalogOptions,
   type FinalReviewTierTarget,
 } from "../../src/features/generator/v2/review-catalog.ts";
 

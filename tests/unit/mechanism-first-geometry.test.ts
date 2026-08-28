@@ -11,7 +11,6 @@ import {
   MECHANISM_CATALOG,
   MECHANISM_TYPES,
   DEFAULT_BLUEPRINT_PARAMS,
-  type MechanismType,
   type MechanismGeometryRequirement,
 } from "../../src/features/generator/v2/index.ts";
 

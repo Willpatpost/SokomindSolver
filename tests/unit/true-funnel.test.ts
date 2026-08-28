@@ -5,12 +5,13 @@ import {
   runForge,
   blueprintStructuralScore,
   DEFAULT_FORGE_CONFIG,
-  QUALITY_PRESETS,
   type ForgeConfig,
-  type FunnelBudgets,
   type FunnelStageStats,
   type SolverCallReduction,
   type BlueprintCandidate,
+  type FunctionalBlueprint,
+  type StructuralMetrics,
+  type SolvedBlueprint,
 } from "../../src/features/generator/v2/index.ts";
 
 import { validatePuzzle } from "../../src/core/puzzle.ts";
@@ -261,9 +262,9 @@ describe("true funnel refactor", () => {
       boxCount: 3,
       mode: "plain",
       difficulty: "intermediate",
-      blueprint: {} as any,
+      blueprint: {} as unknown as FunctionalBlueprint,
       grid: [],
-      structuralMetrics: {} as any,
+      structuralMetrics: {} as unknown as StructuralMetrics,
     };
     assert.equal(bc.seed, 1);
     assert.equal(bc.family, "linear");
@@ -306,7 +307,7 @@ describe("true funnel refactor", () => {
       boxCount: 3,
       mode: "plain",
       difficulty: "intermediate",
-      blueprint: {} as any,
+      blueprint: {} as unknown as FunctionalBlueprint,
       grid: [],
       structuralMetrics: {
         boardWidth: 12,
@@ -371,12 +372,12 @@ describe("true funnel refactor", () => {
 
     const withoutSolved: BlueprintCandidate = {
       seed: 42, family: "hub", boxCount: 3, mode: "plain", difficulty: "intermediate",
-      blueprint: {} as any, grid: [], structuralMetrics: baseMetrics,
+      blueprint: {} as unknown as FunctionalBlueprint, grid: [], structuralMetrics: baseMetrics,
     };
 
     const withSolved: BlueprintCandidate = {
       ...withoutSolved,
-      solvedBlueprint: {} as any,
+      solvedBlueprint: {} as unknown as SolvedBlueprint,
     };
 
     const scoreWithout = blueprintStructuralScore(withoutSolved);

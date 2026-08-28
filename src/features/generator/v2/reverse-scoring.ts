@@ -1,4 +1,4 @@
-import type { FunctionalBlueprint, GoalCell, MechanismType, MechanismPlan } from "./blueprint-types.ts";
+import type { FunctionalBlueprint, GoalCell, MechanismPlan } from "./blueprint-types.ts";
 import type { GridPosition } from "../generator-types.ts";
 import { floodKeeperReachable } from "./reachable-pushes.ts";
 

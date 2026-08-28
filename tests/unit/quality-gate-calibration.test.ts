@@ -11,16 +11,12 @@ import {
   computeElegance,
   computeTedium,
   QUALITY_FLOORS,
-  type PuzzleQualityProfile,
-  type QualityFloor,
 } from "../../src/features/generator/v2/quality-gate.ts";
 
 import {
   buildCalibrationReport,
   formatCalibrationReport,
   computeV4Profile,
-  V4_TIER_THRESHOLDS,
-  type CalibrationReport,
 } from "../../src/features/generator/v2/difficulty-model.ts";
 
 import type { PuzzleEvaluationVector } from "../../src/features/generator/v2/puzzle-evaluator.ts";

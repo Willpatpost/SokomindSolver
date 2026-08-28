@@ -5,25 +5,15 @@ import {
   runForge,
   buildV4Fingerprint,
   DEFAULT_FORGE_CONFIG,
-  DEFAULT_FORGE_GATES,
+  computeV4Profile,
+  nonDominatedSort,
+  computeNoveltyScores,
   type ForgeConfig,
   type ForgeCandidate,
   type ForgeProvenance,
-  type FunnelBudgets,
-} from "../../src/features/generator/v2/index.ts";
-
-import {
-  computeV4Profile,
-  type V4DifficultyProfile,
-} from "../../src/features/generator/v2/index.ts";
-
-import {
-  nonDominatedSort,
-  computeNoveltyScores,
-  selectWithDiversityQuotas,
-  type CuratedCandidate,
   type CurationObjectives,
-  type DiversityQuotas,
+  type PuzzleEvaluationVector,
+  type FinalistEvaluationV4,
 } from "../../src/features/generator/v2/index.ts";
 
 import { validatePuzzle } from "../../src/core/puzzle.ts";
@@ -170,13 +160,13 @@ describe("V4 forge integration", () => {
 
       // Part 0: topology family
       assert.ok(
-        V4_FUNNEL_CONFIG.families.includes(parts[0] as any),
+        (V4_FUNNEL_CONFIG.families as readonly string[]).includes(parts[0]),
         `topology "${parts[0]}" should be from config families`,
       );
 
       // Part 1: mode
       assert.ok(
-        V4_FUNNEL_CONFIG.modes.includes(parts[1] as any),
+        (V4_FUNNEL_CONFIG.modes as readonly string[]).includes(parts[1]),
         `mode "${parts[1]}" should be from config modes`,
       );
 
@@ -221,7 +211,7 @@ describe("V4 forge integration", () => {
       emptyWalkRatio: 0.3, unusedFloorRatio: 0.4,
       deadlockDensity: 0.1, solverExpandedStates: 100,
       movesPerPush: 2, solved: true,
-    } as any;
+    } as unknown as PuzzleEvaluationVector;
 
     const c1: ForgeCandidate = {
       puzzle: { id: "a", title: "Test A", rows: [], boxes: 3, difficulty: "intermediate" },
@@ -439,8 +429,7 @@ describe("V4 forge integration", () => {
     for (const c of result.candidates) {
       if (!c.finalistEvaluation) continue;
 
-      const fe = c.finalistEvaluation as any;
-      // V4 evaluator adds roleResults, witnessValid, proofSkipped
+      const fe = c.finalistEvaluation as FinalistEvaluationV4;
       if ("roleResults" in fe) {
         assert.equal(typeof fe.witnessValid, "boolean");
         assert.equal(typeof fe.proofSkipped, "boolean");
@@ -511,7 +500,7 @@ describe("V4 forge integration", () => {
       chokepoints: 2,
       articulationPoints: 2,
       tunnelCells: 3,
-    } as any;
+    } as unknown as PuzzleEvaluationVector;
 
     const profile = computeV4Profile(ev);
 

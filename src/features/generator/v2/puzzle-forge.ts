@@ -38,7 +38,7 @@ import type { ArchiveCandidate } from "./reverse-beam-search.ts";
 import { buildScoringContext, buildMechanismReverseContext } from "./reverse-scoring.ts";
 import type { MechanismReverseContext } from "./reverse-scoring.ts";
 import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
-import { evaluateFinalist, evaluateFinalistV4, computeCurationObjectives } from "./finalist-evaluator.ts";
+import { evaluateFinalistV4, computeCurationObjectives } from "./finalist-evaluator.ts";
 import type { FinalistEvaluation, FinalistEvaluationV4, CurationObjectives } from "./finalist-evaluator.ts";
 import type { V4EvaluatorPolicy } from "./solver-bottleneck.ts";
 import { DEFAULT_V4_POLICY } from "./solver-bottleneck.ts";
@@ -48,7 +48,6 @@ import {
   nonDominatedSort,
   computeNoveltyScores,
   selectWithDiversityQuotas,
-  buildNormalizationContext,
 } from "./curation.ts";
 import type { DiversityQuotas, CuratedCandidate } from "./curation.ts";
 import {
@@ -521,9 +520,8 @@ async function generateRawCandidate(
     let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
 
     if (config.reverseSearchProfile) {
-      let mechCtx: MechanismReverseContext | undefined;
       const scoringCtx = buildScoringContext(placement.solved.blueprint, placement.solved.grid, placement.solved.goals);
-      mechCtx = buildMechanismReverseContext(plan, scoringCtx);
+      const mechCtx = buildMechanismReverseContext(plan, scoringCtx);
       const v4Result = reverseBeamSearchV4(placement.solved, seed, config.reverseSearchProfile, mechCtx);
       if (v4Result.best.depth === 0) {
         return { ok: false, reason: "beam-search-empty" };
