@@ -35,7 +35,19 @@ import {
   DEFAULT_BEAM_PARAMS,
 } from "./reverse-beam-search.ts";
 import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
-import { evaluateFinalist, computeCurationObjectives } from "./finalist-evaluator.ts";
+import { evaluateFinalist, evaluateFinalistV4, computeCurationObjectives } from "./finalist-evaluator.ts";
+import type { FinalistEvaluation, FinalistEvaluationV4, CurationObjectives } from "./finalist-evaluator.ts";
+import type { V4EvaluatorPolicy } from "./solver-bottleneck.ts";
+import { DEFAULT_V4_POLICY } from "./solver-bottleneck.ts";
+import { computeV4Profile } from "./difficulty-model.ts";
+import type { V4DifficultyProfile } from "./difficulty-model.ts";
+import {
+  nonDominatedSort,
+  computeNoveltyScores,
+  selectWithDiversityQuotas,
+  buildNormalizationContext,
+} from "./curation.ts";
+import type { DiversityQuotas, CuratedCandidate } from "./curation.ts";
 import {
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,
@@ -133,6 +145,9 @@ export interface ForgeConfig {
   readonly reverseSearchProfile?: ReverseSearchProfile;
   readonly mechanismTier?: string;
   readonly funnelBudgets?: FunnelBudgets;
+  readonly v4EvaluatorPolicy?: V4EvaluatorPolicy;
+  readonly v4DifficultyValidation?: boolean;
+  readonly diversityQuotas?: DiversityQuotas;
 }
 
 export interface ForgeAcceptanceGates {
@@ -214,6 +229,8 @@ export interface ForgeProvenance {
   readonly mechanismEvidenceMissing?: readonly string[];
   readonly counterfactualEdges?: number;
   readonly counterfactualTotal?: number;
+  readonly v4DifficultyProfile?: V4DifficultyProfile;
+  readonly v4Classification?: Difficulty;
 }
 
 export interface ForgeCandidate {
@@ -223,6 +240,8 @@ export interface ForgeCandidate {
   readonly tighteningResult?: TighteningResult;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
+  readonly finalistEvaluation?: FinalistEvaluation | FinalistEvaluationV4;
+  readonly curationObjectives?: CurationObjectives;
 }
 
 export type ForgeRejectionReason =
@@ -1242,7 +1261,57 @@ export function validateFinalGeometry(
 }
 
 // ---------------------------------------------------------------------------
-// Diversity: structural fingerprint + distance
+// V4 structural fingerprint for curation diversity
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a rich structural fingerprint for V4 curation diversity.
+ * Encodes topology, mode, mechanism/motif, box count bucket, region bucket,
+ * and dependency pattern — not just solution length buckets.
+ *
+ * Format: topology|mode|mechanism-or-motif|boxBucket|regionBucket|depPattern
+ */
+export function buildV4Fingerprint(c: ForgeCandidate): string {
+  const p = c.provenance;
+  const ev = c.evaluation;
+
+  const topology = p.family;
+  const mode = p.mode;
+
+  // Mechanism or motif identification
+  let mechOrMotif = "none";
+  if (p.mechanismTypes && p.mechanismTypes.length > 0) {
+    mechOrMotif = [...p.mechanismTypes].sort().join("+");
+  } else if (p.motifType) {
+    mechOrMotif = p.motifType;
+  } else if (p.compositionType) {
+    mechOrMotif = p.compositionType;
+  }
+
+  // Box count bucket (1-2, 3-4, 5-6, 7+)
+  const boxBucket = p.boxCount <= 2 ? "b1-2"
+    : p.boxCount <= 4 ? "b3-4"
+    : p.boxCount <= 6 ? "b5-6"
+    : "b7+";
+
+  // Region bucket from evaluation
+  const regionBucket = ev.regionCount <= 2 ? "r1-2"
+    : ev.regionCount <= 4 ? "r3-4"
+    : "r5+";
+
+  // Dependency pattern
+  let depPattern = "none";
+  if (p.dependencyRealizationRate !== undefined && p.dependencyRealizationRate > 0) {
+    depPattern = p.dependencyRealizationRate >= 0.7 ? "dep-high"
+      : p.dependencyRealizationRate >= 0.3 ? "dep-med"
+      : "dep-low";
+  }
+
+  return `${topology}|${mode}|${mechOrMotif}|${boxBucket}|${regionBucket}|${depPattern}`;
+}
+
+// ---------------------------------------------------------------------------
+// Diversity: structural fingerprint + distance (legacy, used by flat path)
 // ---------------------------------------------------------------------------
 
 function candidateFingerprint(c: ForgeCandidate): string {
@@ -1966,10 +2035,11 @@ async function runForgeFunnel(
     collector.recordFinalistPassed();
   }
 
-  // ---- Stage E: Deep finalist evaluation ----
+  // ---- Stage E: Deep finalist evaluation (V4 multi-role evaluator) ----
+  const v4Policy = config.v4EvaluatorPolicy ?? DEFAULT_V4_POLICY;
   const deepScored: Array<{ c: ForgeCandidate; deepScore: number }> = [];
   for (const c of stageC_survivors) {
-    const finalist = await evaluateFinalist(c.puzzle);
+    const finalist = await evaluateFinalistV4(c.puzzle, v4Policy);
     const objectives = computeCurationObjectives(
       c.evaluation,
       finalist,
@@ -1978,7 +2048,45 @@ async function runForgeFunnel(
     const deepScore = objectives.interaction + objectives.dependency +
       objectives.decisionQuality + objectives.structuralRichness +
       objectives.solverChallenge - objectives.tedium * 3;
-    deepScored.push({ c, deepScore });
+
+    // Compute V4 difficulty profile
+    const v4Profile = computeV4Profile(c.evaluation);
+
+    // Optionally reject if V4 classification disagrees with requested difficulty
+    if (config.v4DifficultyValidation) {
+      const tierOrder: readonly Difficulty[] = [
+        "tutorial", "beginner", "intermediate", "advanced", "expert", "master",
+      ];
+      const requestedIdx = tierOrder.indexOf(c.provenance.difficulty);
+      const v4Idx = tierOrder.indexOf(v4Profile.classification);
+      // Reject if V4 classifies more than one tier away from requested
+      if (Math.abs(requestedIdx - v4Idx) > 1) {
+        rejections.push({ seed: c.provenance.seed, reason: "difficulty-mismatch" });
+        collector.recordRejection({
+          reason: "difficulty-mismatch",
+          tier: c.provenance.difficulty,
+          family: c.provenance.family,
+          mode: c.provenance.mode,
+          requestedBoxCount: c.provenance.boxCount,
+        });
+        continue;
+      }
+    }
+
+    collector.recordDifficultyPassed();
+
+    // Enrich candidate with V4 data
+    const enriched: ForgeCandidate = {
+      ...c,
+      provenance: {
+        ...c.provenance,
+        v4DifficultyProfile: v4Profile,
+        v4Classification: v4Profile.classification,
+      },
+      finalistEvaluation: finalist,
+      curationObjectives: objectives,
+    };
+    deepScored.push({ c: enriched, deepScore });
   }
   deepScored.sort((a, b) => b.deepScore - a.deepScore);
   const stageD_survivors = deepScored.slice(0, budgets.deepRetain).map((s) => s.c);
@@ -1987,12 +2095,40 @@ async function runForgeFunnel(
     collector.recordQualityPassed();
   }
 
-  // ---- Stage F: Diversity curation ----
-  const finalCandidates = selectDiverse(
-    [...stageD_survivors],
-    budgets.catalogQuota,
-    config.diversityMinDistance,
-  );
+  // ---- Stage F: V4 diversity curation (Pareto + novelty + diversity quotas) ----
+  let finalCandidates: ForgeCandidate[];
+
+  if (stageD_survivors.length > 0) {
+    // Build curation entries with objectives and structural fingerprints
+    const curationEntries = stageD_survivors.map((c) => ({
+      item: c,
+      objectives: c.curationObjectives ?? computeCurationObjectives(
+        c.evaluation,
+        { avgExpandedStates: c.evaluation.solverExpandedStates } as FinalistEvaluation,
+        c.provenance.dependencyRealizationRate,
+      ),
+      structuralFingerprint: buildV4Fingerprint(c),
+    }));
+
+    // Non-dominated sort
+    const sorted = nonDominatedSort(curationEntries);
+
+    // Compute novelty scores with normalization
+    const withNovelty = computeNoveltyScores(sorted);
+
+    // Select with diversity quotas
+    // Type assertion needed: selectWithDiversityQuotas has an overly strict
+    // generic constraint on T, but only accesses CuratedCandidate.structuralFingerprint.
+    const quotas = config.diversityQuotas;
+    type FpItem = ForgeCandidate & { structuralFingerprint?: string };
+    finalCandidates = selectWithDiversityQuotas(
+      withNovelty as CuratedCandidate<FpItem>[],
+      budgets.catalogQuota,
+      quotas,
+    ).map((cc) => cc.item);
+  } else {
+    finalCandidates = [];
+  }
 
   for (let ci = 0; ci < finalCandidates.length; ci++) {
     collector.recordCurated();

@@ -222,6 +222,7 @@ export {
   countBoxesAndGoals,
   forgeRunReport,
   blueprintStructuralScore,
+  buildV4Fingerprint,
   validateBlueprintGeometry,
   validateFinalGeometry,
   DEFAULT_FORGE_CONFIG,
