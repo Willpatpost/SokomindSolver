@@ -44,7 +44,10 @@ import {
   buildReviewCatalog,
   formatReviewSummary,
   validateForAcceptance,
+  checkReleaseGate,
+  formatReleaseVerdict,
   type ReviewCandidatePack,
+  type ReviewCatalog,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -790,6 +793,25 @@ async function runAcceptance(sourcePath: string): Promise<void> {
   }
 
   console.log(`  Validation passed (${result.puzzleCount} puzzles).`);
+
+  const reviewCatalogFile = join(sourcePath, "review-catalog.json");
+  if (existsSync(reviewCatalogFile)) {
+    console.log("Running release gate...");
+    const reviewCatalog: ReviewCatalog = JSON.parse(readFileSync(reviewCatalogFile, "utf-8"));
+    const releaseVerdict = checkReleaseGate(reviewCatalog);
+    if (!releaseVerdict.passed) {
+      console.error("\nRELEASE GATE FAILED:");
+      console.error(formatReleaseVerdict(releaseVerdict));
+      if (!process.argv.includes("--force")) {
+        console.error("\nUse --force to bypass the release gate.");
+        process.exit(1);
+      }
+      console.warn("\n--force: bypassing release gate failure.");
+    } else {
+      console.log("  Release gate: PASSED");
+    }
+  }
+
   console.log("\nCopying to production...");
 
   copyFileSync(catalogFile, CATALOG_PATH);
@@ -1217,22 +1239,36 @@ async function main(): Promise<void> {
       tierFilter: tierFilter,
     });
     const reviewSummary = formatReviewSummary(reviewCatalog);
+    const releaseVerdict = checkReleaseGate(reviewCatalog);
 
     if (dryRun) {
       console.log(`\n[DRY RUN] Would write review catalog to ${REVIEW_DIR}/`);
       console.log(`[DRY RUN] ${catalogEntries.length} puzzles, ${manifest.puzzles.length} manifest entries`);
+      console.log(`[DRY RUN] Release gate: ${releaseVerdict.passed ? "PASSED" : "FAILED"}`);
+      if (!releaseVerdict.passed) {
+        console.log(formatReleaseVerdict(releaseVerdict));
+      }
     } else {
       mkdirSync(REVIEW_DIR, { recursive: true });
       writeFileSync(join(REVIEW_DIR, "review-catalog.json"), JSON.stringify(reviewCatalog, null, 2) + "\n");
       writeFileSync(join(REVIEW_DIR, "generated-puzzles.json"), catalogJson);
       writeFileSync(join(REVIEW_DIR, "generated-puzzles.manifest.json"), manifestJson);
       writeFileSync(join(REVIEW_DIR, "review-summary.txt"), reviewSummary + "\n");
+      writeFileSync(join(REVIEW_DIR, "release-gate-verdict.txt"), formatReleaseVerdict(releaseVerdict) + "\n");
 
       console.log(`\nWrote review catalog to ${REVIEW_DIR}/`);
       console.log(`  review-catalog.json        — full candidate packs with V4 profiles`);
       console.log(`  generated-puzzles.json     — catalog entries (production format)`);
       console.log(`  generated-puzzles.manifest.json — manifest (production format)`);
       console.log(`  review-summary.txt         — human-readable summary with ASCII boards`);
+      console.log(`  release-gate-verdict.txt   — release gate verdict`);
+      console.log("");
+      if (releaseVerdict.passed) {
+        console.log("Release gate: PASSED");
+      } else {
+        console.log("Release gate: FAILED");
+        console.log(formatReleaseVerdict(releaseVerdict));
+      }
       console.log("");
       console.log("=".repeat(60));
       console.log("REVIEW BEFORE ACCEPTING");
@@ -1250,9 +1286,11 @@ async function main(): Promise<void> {
       console.warn(`[DRY RUN] ${w}`);
     }
   } else {
+    console.warn("\nWARNING: Direct production write bypasses the release gate.");
+    console.warn("Use --review mode for release-gate-enforced catalog generation.\n");
     writeFileSync(CATALOG_PATH, catalogJson);
     writeFileSync(MANIFEST_PATH, manifestJson);
-    console.log(`\nWrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
+    console.log(`Wrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
     console.log(`Wrote manifest to ${MANIFEST_PATH}`);
     console.log("Next steps:");
     console.log("  1. npm run prepare:catalog");
