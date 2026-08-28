@@ -71,26 +71,50 @@ describe("true funnel refactor", () => {
 
     // stageA >= stageB (structural pre-screen filters)
     assert.ok(
-      stats.stageA_rawGenerated >= stats.stageB_structuralSurvivors,
-      `stageA (${stats.stageA_rawGenerated}) >= stageB (${stats.stageB_structuralSurvivors})`,
+      stats.stageA_blueprintGenerated >= stats.stageB_structuralSurvivors,
+      `stageA (${stats.stageA_blueprintGenerated}) >= stageB (${stats.stageB_structuralSurvivors})`,
     );
 
-    // stageB >= stageC (cheap eval filters or equal if few candidates)
+    // stageC can exceed stageB: ranked candidates amplify completions per blueprint
     assert.ok(
-      stats.stageB_structuralSurvivors >= stats.stageC_cheapEvalSurvivors,
-      `stageB (${stats.stageB_structuralSurvivors}) >= stageC (${stats.stageC_cheapEvalSurvivors})`,
+      stats.stageC_reverseSurvivors >= 0,
+      `stageC (${stats.stageC_reverseSurvivors}) should be non-negative`,
     );
 
-    // stageC >= stageD
+    // stageC >= stageD (dedup filters)
     assert.ok(
-      stats.stageC_cheapEvalSurvivors >= stats.stageD_deepEvalSurvivors,
-      `stageC (${stats.stageC_cheapEvalSurvivors}) >= stageD (${stats.stageD_deepEvalSurvivors})`,
+      stats.stageC_reverseSurvivors >= stats.stageD_dedupSurvivors,
+      `stageC (${stats.stageC_reverseSurvivors}) >= stageD (${stats.stageD_dedupSurvivors})`,
     );
 
-    // stageD >= stageE
+    // stageD >= stageE (cheap eval filters)
     assert.ok(
-      stats.stageD_deepEvalSurvivors >= stats.stageE_curatedFinal,
-      `stageD (${stats.stageD_deepEvalSurvivors}) >= stageE (${stats.stageE_curatedFinal})`,
+      stats.stageD_dedupSurvivors >= stats.stageE_cheapEvalSurvivors,
+      `stageD (${stats.stageD_dedupSurvivors}) >= stageE (${stats.stageE_cheapEvalSurvivors})`,
+    );
+
+    // stageE >= stageF (finalist evaluation)
+    assert.ok(
+      stats.stageE_cheapEvalSurvivors >= stats.stageF_finalistEvaluated,
+      `stageE (${stats.stageE_cheapEvalSurvivors}) >= stageF (${stats.stageF_finalistEvaluated})`,
+    );
+
+    // stageF >= stageG (quality gate)
+    assert.ok(
+      stats.stageF_finalistEvaluated >= stats.stageG_qualityGatePassed,
+      `stageF (${stats.stageF_finalistEvaluated}) >= stageG (${stats.stageG_qualityGatePassed})`,
+    );
+
+    // stageG >= stageH (difficulty gate)
+    assert.ok(
+      stats.stageG_qualityGatePassed >= stats.stageH_difficultyPassed,
+      `stageG (${stats.stageG_qualityGatePassed}) >= stageH (${stats.stageH_difficultyPassed})`,
+    );
+
+    // stageH >= stageI (final curation)
+    assert.ok(
+      stats.stageH_difficultyPassed >= stats.stageI_curatedFinal,
+      `stageH (${stats.stageH_difficultyPassed}) >= stageI (${stats.stageI_curatedFinal})`,
     );
   });
 
@@ -179,8 +203,8 @@ describe("true funnel refactor", () => {
     // Funnel stats must match
     if (run1.funnelStats && run2.funnelStats) {
       assert.equal(
-        run1.funnelStats.stageA_rawGenerated,
-        run2.funnelStats.stageA_rawGenerated,
+        run1.funnelStats.stageA_blueprintGenerated,
+        run2.funnelStats.stageA_blueprintGenerated,
       );
       assert.equal(
         run1.funnelStats.stageB_structuralSurvivors,
@@ -216,7 +240,7 @@ describe("true funnel refactor", () => {
     const stats = result.funnelStats!;
 
     // If we generated more blueprints than preScreenRetain, structural filter should cap
-    if (stats.stageA_rawGenerated > config.funnelBudgets!.preScreenRetain) {
+    if (stats.stageA_blueprintGenerated > config.funnelBudgets!.preScreenRetain) {
       assert.ok(
         stats.stageB_structuralSurvivors <= config.funnelBudgets!.preScreenRetain,
         `structural survivors (${stats.stageB_structuralSurvivors}) ` +
@@ -414,7 +438,7 @@ describe("true funnel refactor", () => {
     assert.equal(result.totalRetained, 0);
     assert.equal(result.candidates.length, 0);
     assert.ok(result.funnelStats, "should have funnel stats even when empty");
-    assert.equal(result.funnelStats!.stageA_rawGenerated, 0);
+    assert.equal(result.funnelStats!.stageA_blueprintGenerated, 0);
   });
 
   // ---------------------------------------------------------------------------
@@ -503,11 +527,15 @@ describe("true funnel refactor", () => {
 
   it("FunnelStageStats supports optional solverCallReduction", () => {
     const stats: FunnelStageStats = {
-      stageA_rawGenerated: 80,
+      stageA_blueprintGenerated: 80,
       stageB_structuralSurvivors: 50,
-      stageC_cheapEvalSurvivors: 20,
-      stageD_deepEvalSurvivors: 10,
-      stageE_curatedFinal: 5,
+      stageC_reverseSurvivors: 45,
+      stageD_dedupSurvivors: 40,
+      stageE_cheapEvalSurvivors: 20,
+      stageF_finalistEvaluated: 18,
+      stageG_qualityGatePassed: 15,
+      stageH_difficultyPassed: 10,
+      stageI_curatedFinal: 5,
       solverCallReduction: {
         totalAttempts: 100,
         blueprintSurvivors: 80,

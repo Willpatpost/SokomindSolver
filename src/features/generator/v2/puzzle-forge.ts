@@ -289,11 +289,15 @@ export interface ForgeRejection {
 }
 
 export interface FunnelStageStats {
-  readonly stageA_rawGenerated: number;
+  readonly stageA_blueprintGenerated: number;
   readonly stageB_structuralSurvivors: number;
-  readonly stageC_cheapEvalSurvivors: number;
-  readonly stageD_deepEvalSurvivors: number;
-  readonly stageE_curatedFinal: number;
+  readonly stageC_reverseSurvivors: number;
+  readonly stageD_dedupSurvivors: number;
+  readonly stageE_cheapEvalSurvivors: number;
+  readonly stageF_finalistEvaluated: number;
+  readonly stageG_qualityGatePassed: number;
+  readonly stageH_difficultyPassed: number;
+  readonly stageI_curatedFinal: number;
   readonly solverCallReduction?: SolverCallReduction;
 }
 
@@ -2100,19 +2104,20 @@ async function runForgeFunnel(
     }
   }
 
-  // ---- Stage D: Cheap forward eval ranking ----
+  // ---- Stage E: Cheap forward eval ranking ----
   const cheapScored = dedupedCandidates.map((c) => ({ c, score: cheapEvalScore(c) }));
   cheapScored.sort((a, b) => b.score - a.score);
-  const stageC_survivors = cheapScored.slice(0, budgets.finalistRetain).map((s) => s.c);
+  const stageE_survivors = cheapScored.slice(0, budgets.finalistRetain).map((s) => s.c);
 
-  for (let ci = 0; ci < stageC_survivors.length; ci++) {
+  for (let ci = 0; ci < stageE_survivors.length; ci++) {
     collector.recordFinalistPassed();
   }
 
-  // ---- Stage E: Deep finalist evaluation (V4 multi-role evaluator) ----
+  // ---- Stage F: V4 finalist evaluation ----
   const v4Policy = config.v4EvaluatorPolicy ?? DEFAULT_V4_POLICY;
-  const deepScored: Array<{ c: ForgeCandidate; deepScore: number }> = [];
-  for (const c of stageC_survivors) {
+  type ScoredEntry = { c: ForgeCandidate; deepScore: number; finalist: FinalistEvaluationV4; objectives: CurationObjectives };
+  const finalistEvaluated: ScoredEntry[] = [];
+  for (const c of stageE_survivors) {
     const finalist = await evaluateFinalistV4(c.puzzle, v4Policy);
     const objectives = computeCurationObjectives(
       c.evaluation,
@@ -2123,40 +2128,47 @@ async function runForgeFunnel(
       objectives.decisionQuality + objectives.structuralRichness +
       objectives.solverChallenge - objectives.tedium * 3;
 
-    // Quality gate: assess quality BEFORE difficulty classification
-    const qualityProfile = assessQuality(c.evaluation, c.provenance.difficulty);
+    finalistEvaluated.push({ c, deepScore, finalist, objectives });
+  }
+
+  // ---- Stage G: Hard quality qualification ----
+  const qualityPassed: ScoredEntry[] = [];
+  for (const entry of finalistEvaluated) {
+    const qualityProfile = assessQuality(entry.c.evaluation, entry.c.provenance.difficulty);
     if (!qualityProfile.passed) {
-      rejections.push({ seed: c.provenance.seed, reason: "quality-gate-failed" });
+      rejections.push({ seed: entry.c.provenance.seed, reason: "quality-gate-failed" });
       collector.recordRejection({
         reason: "quality-gate-failed",
-        tier: c.provenance.difficulty,
-        family: c.provenance.family,
-        mode: c.provenance.mode,
-        requestedBoxCount: c.provenance.boxCount,
+        tier: entry.c.provenance.difficulty,
+        family: entry.c.provenance.family,
+        mode: entry.c.provenance.mode,
+        requestedBoxCount: entry.c.provenance.boxCount,
       });
       continue;
     }
     collector.recordQualityPassed();
+    qualityPassed.push({ ...entry, c: { ...entry.c, qualityProfile } });
+  }
 
-    // Compute V4 difficulty profile (after quality gate)
-    const v4Profile = computeV4Profile(c.evaluation);
+  // ---- Stage H: Difficulty qualification ----
+  const difficultyPassed: ScoredEntry[] = [];
+  for (const entry of qualityPassed) {
+    const v4Profile = computeV4Profile(entry.c.evaluation);
 
-    // Optionally reject if V4 classification disagrees with requested difficulty
     if (config.v4DifficultyValidation) {
       const tierOrder: readonly Difficulty[] = [
         "tutorial", "beginner", "intermediate", "advanced", "expert", "master",
       ];
-      const requestedIdx = tierOrder.indexOf(c.provenance.difficulty);
+      const requestedIdx = tierOrder.indexOf(entry.c.provenance.difficulty);
       const v4Idx = tierOrder.indexOf(v4Profile.classification);
-      // Reject if V4 classifies more than one tier away from requested
       if (Math.abs(requestedIdx - v4Idx) > 1) {
-        rejections.push({ seed: c.provenance.seed, reason: "difficulty-mismatch" });
+        rejections.push({ seed: entry.c.provenance.seed, reason: "difficulty-mismatch" });
         collector.recordRejection({
           reason: "difficulty-mismatch",
-          tier: c.provenance.difficulty,
-          family: c.provenance.family,
-          mode: c.provenance.mode,
-          requestedBoxCount: c.provenance.boxCount,
+          tier: entry.c.provenance.difficulty,
+          family: entry.c.provenance.family,
+          mode: entry.c.provenance.mode,
+          requestedBoxCount: entry.c.provenance.boxCount,
         });
         continue;
       }
@@ -2164,29 +2176,27 @@ async function runForgeFunnel(
 
     collector.recordDifficultyPassed();
 
-    // Enrich candidate with V4 data
     const enriched: ForgeCandidate = {
-      ...c,
+      ...entry.c,
       provenance: {
-        ...c.provenance,
+        ...entry.c.provenance,
         v4DifficultyProfile: v4Profile,
         v4Classification: v4Profile.classification,
       },
-      finalistEvaluation: finalist,
-      curationObjectives: objectives,
-      qualityProfile,
+      finalistEvaluation: entry.finalist,
+      curationObjectives: entry.objectives,
     };
-    deepScored.push({ c: enriched, deepScore });
+    difficultyPassed.push({ ...entry, c: enriched });
   }
-  deepScored.sort((a, b) => b.deepScore - a.deepScore);
-  const stageD_survivors = deepScored.slice(0, budgets.deepRetain).map((s) => s.c);
+  difficultyPassed.sort((a, b) => b.deepScore - a.deepScore);
+  const stageH_survivors = difficultyPassed.slice(0, budgets.deepRetain).map((s) => s.c);
 
-  // ---- Stage F: V4 diversity curation (Pareto + novelty + diversity quotas) ----
+  // ---- Stage I: V4 diversity curation (Pareto + novelty + diversity quotas) ----
   let finalCandidates: ForgeCandidate[];
 
-  if (stageD_survivors.length > 0) {
+  if (stageH_survivors.length > 0) {
     // Build curation entries with objectives and structural fingerprints
-    const curationEntries = stageD_survivors.map((c) => ({
+    const curationEntries = stageH_survivors.map((c) => ({
       item: c,
       objectives: c.curationObjectives ?? computeCurationObjectives(
         c.evaluation,
@@ -2248,11 +2258,15 @@ async function runForgeFunnel(
     exactDuplicatesRejected,
     diagnostics: collector.build(),
     funnelStats: {
-      stageA_rawGenerated: stageA_count,
+      stageA_blueprintGenerated: stageA_count,
       stageB_structuralSurvivors: stageB_count,
-      stageC_cheapEvalSurvivors: stageC_survivors.length,
-      stageD_deepEvalSurvivors: stageD_survivors.length,
-      stageE_curatedFinal: finalCandidates.length,
+      stageC_reverseSurvivors: completedCandidates.length,
+      stageD_dedupSurvivors: dedupedCandidates.length,
+      stageE_cheapEvalSurvivors: stageE_survivors.length,
+      stageF_finalistEvaluated: finalistEvaluated.length,
+      stageG_qualityGatePassed: qualityPassed.length,
+      stageH_difficultyPassed: difficultyPassed.length,
+      stageI_curatedFinal: finalCandidates.length,
       solverCallReduction,
     },
   };

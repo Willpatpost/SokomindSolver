@@ -80,17 +80,25 @@ describe("candidate-funnel", () => {
   describe("FunnelStageStats type", () => {
     it("has all stage count fields", () => {
       const stats: FunnelStageStats = {
-        stageA_rawGenerated: 80,
+        stageA_blueprintGenerated: 80,
         stageB_structuralSurvivors: 50,
-        stageC_cheapEvalSurvivors: 20,
-        stageD_deepEvalSurvivors: 10,
-        stageE_curatedFinal: 5,
+        stageC_reverseSurvivors: 45,
+        stageD_dedupSurvivors: 40,
+        stageE_cheapEvalSurvivors: 20,
+        stageF_finalistEvaluated: 18,
+        stageG_qualityGatePassed: 15,
+        stageH_difficultyPassed: 10,
+        stageI_curatedFinal: 5,
       };
-      assert.equal(stats.stageA_rawGenerated, 80);
+      assert.equal(stats.stageA_blueprintGenerated, 80);
       assert.equal(stats.stageB_structuralSurvivors, 50);
-      assert.equal(stats.stageC_cheapEvalSurvivors, 20);
-      assert.equal(stats.stageD_deepEvalSurvivors, 10);
-      assert.equal(stats.stageE_curatedFinal, 5);
+      assert.equal(stats.stageC_reverseSurvivors, 45);
+      assert.equal(stats.stageD_dedupSurvivors, 40);
+      assert.equal(stats.stageE_cheapEvalSurvivors, 20);
+      assert.equal(stats.stageF_finalistEvaluated, 18);
+      assert.equal(stats.stageG_qualityGatePassed, 15);
+      assert.equal(stats.stageH_difficultyPassed, 10);
+      assert.equal(stats.stageI_curatedFinal, 5);
     });
   });
 });

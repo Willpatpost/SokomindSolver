@@ -254,20 +254,36 @@ describe("V4 forge integration", () => {
     const stats = result.funnelStats!;
 
     assert.ok(
-      stats.stageA_rawGenerated >= stats.stageB_structuralSurvivors,
+      stats.stageA_blueprintGenerated >= stats.stageB_structuralSurvivors,
       `stageA >= stageB`,
     );
     assert.ok(
-      stats.stageB_structuralSurvivors >= stats.stageC_cheapEvalSurvivors,
-      `stageB >= stageC`,
+      stats.stageC_reverseSurvivors >= 0,
+      `stageC should be non-negative`,
     );
     assert.ok(
-      stats.stageC_cheapEvalSurvivors >= stats.stageD_deepEvalSurvivors,
+      stats.stageC_reverseSurvivors >= stats.stageD_dedupSurvivors,
       `stageC >= stageD`,
     );
     assert.ok(
-      stats.stageD_deepEvalSurvivors >= stats.stageE_curatedFinal,
+      stats.stageD_dedupSurvivors >= stats.stageE_cheapEvalSurvivors,
       `stageD >= stageE`,
+    );
+    assert.ok(
+      stats.stageE_cheapEvalSurvivors >= stats.stageF_finalistEvaluated,
+      `stageE >= stageF`,
+    );
+    assert.ok(
+      stats.stageF_finalistEvaluated >= stats.stageG_qualityGatePassed,
+      `stageF >= stageG`,
+    );
+    assert.ok(
+      stats.stageG_qualityGatePassed >= stats.stageH_difficultyPassed,
+      `stageG >= stageH`,
+    );
+    assert.ok(
+      stats.stageH_difficultyPassed >= stats.stageI_curatedFinal,
+      `stageH >= stageI`,
     );
   });
 

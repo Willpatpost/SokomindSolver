@@ -860,8 +860,9 @@ async function main(): Promise<void> {
     if (result.funnelStats) {
       const fs = result.funnelStats;
       console.log(
-        `    Funnel: A=${fs.stageA_rawGenerated} → B=${fs.stageB_structuralSurvivors} → ` +
-        `C=${fs.stageC_cheapEvalSurvivors} → D=${fs.stageD_deepEvalSurvivors} → E=${fs.stageE_curatedFinal}`,
+        `    Funnel: A=${fs.stageA_blueprintGenerated} → B=${fs.stageB_structuralSurvivors} → ` +
+        `C=${fs.stageC_reverseSurvivors} → D=${fs.stageD_dedupSurvivors} → E=${fs.stageE_cheapEvalSurvivors} → ` +
+        `F=${fs.stageF_finalistEvaluated} → G=${fs.stageG_qualityGatePassed} → H=${fs.stageH_difficultyPassed} → I=${fs.stageI_curatedFinal}`,
       );
     }
 
