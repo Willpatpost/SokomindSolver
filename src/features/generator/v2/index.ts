@@ -22,6 +22,7 @@ export type {
   MechanismEdgeType,
   MechanismEvidenceKind,
   MechanismEvidenceRequirement,
+  MechanismGeometryRequirement,
   MechanismPlan,
   MechanismSpec,
   MechanismType,
@@ -178,6 +179,9 @@ export {
   placeGoalsFromPlan,
   mechanismCompatibility,
   verifyMechanismEvidence,
+  deriveGeometryRequirements,
+  selectTargetMechanisms,
+  constrainBlueprintParams,
   MECHANISM_CATALOG,
 } from "./mechanism-plan.ts";
 

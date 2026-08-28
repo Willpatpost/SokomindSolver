@@ -48,7 +48,14 @@ import {
   DEFAULT_TIER_TIGHTENING_POLICIES,
 } from "./geometry-tightening.ts";
 import { verifyDependenciesWithEvidence, verifyDependenciesCounterfactual } from "./dependency-verification.ts";
-import { createMechanismPlan, placeGoalsFromPlan, verifyMechanismEvidence } from "./mechanism-plan.ts";
+import {
+  createMechanismPlan,
+  placeGoalsFromPlan,
+  verifyMechanismEvidence,
+  selectTargetMechanisms,
+  deriveGeometryRequirements,
+  constrainBlueprintParams,
+} from "./mechanism-plan.ts";
 import type { MechanismPlan, MechanismType } from "./blueprint-types.ts";
 
 import type { GridPosition } from "../generator-types.ts";
@@ -418,10 +425,34 @@ async function generateRawCandidate(
 
   if (mode === "mechanism") {
     const tier = config.mechanismTier ?? difficulty;
-    const plan = createMechanismPlan(fb, tier, boxCount, seed);
+    const isHardTier = tier === "advanced" || tier === "expert" || tier === "master";
+
+    let activeBp = fb;
+    let preSelected: MechanismType[] | undefined;
+
+    if (isHardTier) {
+      preSelected = selectTargetMechanisms(tier, boxCount, seed);
+      if (preSelected.length > 0) {
+        const geoReqs = deriveGeometryRequirements(preSelected);
+        const baseParams = {
+          ...DEFAULT_BLUEPRINT_PARAMS,
+          seed,
+          family,
+          boardWidth: config.boardWidth,
+          boardHeight: config.boardHeight,
+        };
+        const constrained = constrainBlueprintParams(baseParams, geoReqs, seed);
+        const constrainedBp = generateBlueprintWithRetry(constrained, config.blueprintRetries);
+        if (constrainedBp) {
+          activeBp = assignRoomRoles(constrainedBp, seed, boxCount);
+        }
+      }
+    }
+
+    const plan = createMechanismPlan(activeBp, tier, boxCount, seed, preSelected);
     if (!plan) return { ok: false, reason: "composition-failed" };
 
-    const placement = placeGoalsFromPlan(fb, plan);
+    const placement = placeGoalsFromPlan(activeBp, plan);
     if (!placement) return { ok: false, reason: "goal-placement-failed" };
 
     const template = toSolvedTemplate(placement.solved);

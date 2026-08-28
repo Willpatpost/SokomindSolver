@@ -27,6 +27,7 @@ function makeGatekeeperPuzzle(): PuzzleDefinition {
       "O......O",
       "OOOOOOOO",
     ],
+    title: "cf-gatekeeper",
     boxes: 2,
   };
 }
@@ -36,6 +37,7 @@ function makeLinearChainPuzzle(): PuzzleDefinition {
   // Robot at left, goals at right side of corridor
   return {
     id: "cf-chain",
+    title: "cf-chain",
     difficulty: "intermediate",
     rows: [
       "OOOOOOOO",
@@ -51,6 +53,7 @@ function makeOpenRoomPuzzle(): PuzzleDefinition {
   // Open room with boxes and goals — no blocking structure
   return {
     id: "cf-open",
+    title: "cf-open",
     difficulty: "beginner",
     rows: [
       "OOOOOOOO",
@@ -143,7 +146,7 @@ function makePushStep(direction: "up" | "down" | "left" | "right"): SolutionStep
 }
 
 function makeMoveStep(direction: "up" | "down" | "left" | "right"): SolutionStep {
-  return { kind: "move", direction };
+  return { kind: "walk", direction };
 }
 
 // ---------------------------------------------------------------------------

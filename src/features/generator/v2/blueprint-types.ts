@@ -219,6 +219,15 @@ export interface MechanismVerificationResult {
   readonly missingEvidence: readonly MechanismEvidenceKind[];
 }
 
+export interface MechanismGeometryRequirement {
+  readonly requiredRooms: number;
+  readonly requiredNarrowPassages: number;
+  readonly terminalRoomRequired: boolean;
+  readonly largeRoomRequired: boolean;
+  readonly minRoomArea: number;
+  readonly preferredFamilies: readonly TopologyFamily[];
+}
+
 export interface MechanismPlan {
   readonly mechanisms: readonly MechanismSpec[];
   readonly intendedDependencies: readonly MechanismDependencyEdge[];

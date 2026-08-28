@@ -1,6 +1,7 @@
 import { createRng } from "../board-template.ts";
 import { rasterizeBlueprint } from "./blueprint-graph.ts";
 import type {
+  BlueprintParams,
   FunctionalBlueprint,
   FunctionalRoom,
   GoalCell,
@@ -9,12 +10,14 @@ import type {
   MechanismEdgeType,
   MechanismEvidenceKind,
   MechanismEvidenceRequirement,
+  MechanismGeometryRequirement,
   MechanismPlan,
   MechanismSpec,
   MechanismType,
   MechanismVerificationResult,
   PassageEdge,
   SolvedBlueprint,
+  TopologyFamily,
 } from "./blueprint-types.ts";
 import type { DependencyVerificationResult } from "./dependency-verification.ts";
 import {
@@ -247,6 +250,142 @@ function largeRooms(blueprint: FunctionalBlueprint): readonly FunctionalRoom[] {
 }
 
 // ---------------------------------------------------------------------------
+// Mechanism-first geometry derivation
+// ---------------------------------------------------------------------------
+
+export function deriveGeometryRequirements(
+  mechanismTypes: readonly MechanismType[],
+): MechanismGeometryRequirement {
+  let requiredRooms = 1;
+  let requiredNarrowPassages = 0;
+  let terminalRoomRequired = false;
+  let largeRoomRequired = false;
+  let minRoomArea = 6;
+
+  for (const type of mechanismTypes) {
+    const entry = MECHANISM_CATALOG[type];
+    requiredRooms = Math.max(requiredRooms, entry.minRooms);
+    if (entry.needsNarrowPassage) requiredNarrowPassages = Math.max(requiredNarrowPassages, 1);
+    if (entry.needsTerminalRoom) terminalRoomRequired = true;
+    if (entry.needsLargeRoom) {
+      largeRoomRequired = true;
+      minRoomArea = Math.max(minRoomArea, 9);
+    }
+  }
+
+  const preferredFamilies: TopologyFamily[] = [];
+  if (terminalRoomRequired && requiredNarrowPassages > 0) {
+    preferredFamilies.push("linear", "branch");
+  } else if (requiredNarrowPassages > 0) {
+    preferredFamilies.push("linear", "branch", "hub");
+  } else if (terminalRoomRequired) {
+    preferredFamilies.push("linear", "branch", "nested");
+  } else {
+    preferredFamilies.push("linear", "hub", "branch", "loop", "nested");
+  }
+
+  return {
+    requiredRooms,
+    requiredNarrowPassages,
+    terminalRoomRequired,
+    largeRoomRequired,
+    minRoomArea,
+    preferredFamilies,
+  };
+}
+
+export function selectTargetMechanisms(
+  tier: string,
+  boxCount: number,
+  seed: number,
+): MechanismType[] {
+  const rng = createRng(seed);
+
+  const available = Object.values(MECHANISM_CATALOG)
+    .filter((e) => boxCount >= e.minBoxes)
+    .map((e) => e.type);
+
+  if (available.length === 0) return [];
+
+  let targetCount: number;
+  switch (tier) {
+    case "advanced":
+      targetCount = 1 + Math.floor(rng() * 2);
+      break;
+    case "expert":
+      targetCount = 2 + Math.floor(rng() * 2);
+      break;
+    case "master":
+      targetCount = 2 + Math.floor(rng() * 3);
+      break;
+    default:
+      return [];
+  }
+
+  targetCount = Math.min(targetCount, available.length);
+  const selected: MechanismType[] = [];
+  const remaining = [...available];
+
+  for (let i = 0; i < targetCount && remaining.length > 0; i++) {
+    let bestIdx = Math.floor(rng() * remaining.length);
+
+    if (selected.length > 0) {
+      let bestCompat = -1;
+      for (let j = 0; j < remaining.length; j++) {
+        const minCompat = Math.min(
+          ...selected.map((s) => mechanismCompatibility(s, remaining[j])),
+        );
+        if (minCompat > bestCompat) {
+          bestCompat = minCompat;
+          bestIdx = j;
+        }
+      }
+    }
+
+    selected.push(remaining[bestIdx]);
+    remaining.splice(bestIdx, 1);
+  }
+
+  return selected;
+}
+
+export function constrainBlueprintParams(
+  baseParams: BlueprintParams,
+  requirements: MechanismGeometryRequirement,
+  seed: number,
+): BlueprintParams {
+  const rng = createRng(seed + 7777);
+
+  const family: TopologyFamily = requirements.preferredFamilies.length > 0
+    ? requirements.preferredFamilies[Math.floor(rng() * requirements.preferredFamilies.length)]
+    : baseParams.family === "random" ? "linear" : baseParams.family;
+
+  const minRooms = Math.max(baseParams.minRooms, requirements.requiredRooms);
+  const maxRooms = Math.max(baseParams.maxRooms, minRooms);
+
+  const minRoomSize = requirements.largeRoomRequired
+    ? Math.max(baseParams.minRoomSize, 3)
+    : baseParams.minRoomSize;
+
+  const maxRoomSize = Math.max(baseParams.maxRoomSize, minRoomSize);
+
+  const passageWidths: readonly (1 | 2)[] = requirements.requiredNarrowPassages > 0
+    ? [1]
+    : baseParams.passageWidths ?? [1, 2];
+
+  return {
+    ...baseParams,
+    seed,
+    family,
+    minRooms,
+    maxRooms,
+    minRoomSize,
+    maxRoomSize,
+    passageWidths,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 1. Feasibility Check
 // ---------------------------------------------------------------------------
 
@@ -335,16 +474,24 @@ export function createMechanismPlan(
   tier: string,
   boxCount: number,
   seed: number,
+  targetMechanisms?: readonly MechanismType[],
 ): MechanismPlan | null {
   const rng = createRng(seed);
   const feasible = feasibleMechanisms(blueprint, boxCount);
   if (feasible.length === 0) return null;
 
-  const targetCount = mechanismCountForTier(tier, feasible.length, rng);
-  if (targetCount === 0) return null;
+  let selected: MechanismType[];
 
-  const selected = selectMechanisms(feasible, targetCount, blueprint, rng);
-  if (selected.length === 0) return null;
+  if (targetMechanisms && targetMechanisms.length > 0) {
+    const feasibleSet = new Set(feasible);
+    selected = targetMechanisms.filter((m) => feasibleSet.has(m));
+    if (selected.length === 0) return null;
+  } else {
+    const targetCount = mechanismCountForTier(tier, feasible.length, rng);
+    if (targetCount === 0) return null;
+    selected = selectMechanisms(feasible, targetCount, blueprint, rng);
+    if (selected.length === 0) return null;
+  }
 
   const specs = buildMechanismSpecs(selected, blueprint, boxCount, rng);
   if (!specs) return null;
