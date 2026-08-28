@@ -5,6 +5,7 @@ import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
+import { isBoxChar, isGoalChar, isRobotChar, isWallChar, WALL_CHAR } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,10 +240,10 @@ export async function tightenPuzzle(
     if (accepted >= effectiveParams.maxAccepted) break;
 
     const { row, col } = cell;
-    if (grid[row][col] === "O") continue;
+    if (isWallChar(grid[row][col])) continue;
 
     const original = grid[row][col];
-    grid[row][col] = "O";
+    grid[row][col] = WALL_CHAR;
     tried++;
 
     if (!isConnected(grid, entities)) {
@@ -381,13 +382,13 @@ function findEntities(grid: string[][]): EntitySet {
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") {
+      if (isRobotChar(ch)) {
         robot = { row: r, col: c };
         allKeys.add(`${r},${c}`);
-      } else if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S" && ch !== "X")) {
+      } else if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
         allKeys.add(`${r},${c}`);
-      } else if (ch === "S" || (ch >= "a" && ch <= "z")) {
+      } else if (isGoalChar(ch)) {
         goals.push({ row: r, col: c });
         allKeys.add(`${r},${c}`);
       }
@@ -416,8 +417,8 @@ function trackSolutionCells(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, col: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, col: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
       }
     }
@@ -471,7 +472,7 @@ function rankCandidates(
 
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
-      if (grid[r][c] === "O") continue;
+      if (isWallChar(grid[r][c])) continue;
       if (r === 0 || r === h - 1 || c === 0 || c === w - 1) continue;
 
       const key = `${r},${c}`;
@@ -525,7 +526,7 @@ function isConnected(grid: string[][], entities: EntitySet): boolean {
 
   const startR = entities.robot.row;
   const startC = entities.robot.col;
-  if (grid[startR][startC] === "O") return false;
+  if (isWallChar(grid[startR][startC])) return false;
 
   const visited = new Set<string>();
   const queue: Array<[number, number]> = [[startR, startC]];
@@ -537,7 +538,7 @@ function isConnected(grid: string[][], entities: EntitySet): boolean {
       const nr = r + DR[d];
       const nc = c + DC[d];
       if (nr < 0 || nr >= h || nc < 0 || nc >= w) continue;
-      if (grid[nr][nc] === "O") continue;
+      if (isWallChar(grid[nr][nc])) continue;
       const key = `${nr},${nc}`;
       if (visited.has(key)) continue;
       visited.add(key);
@@ -564,7 +565,7 @@ function floorNeighborCount(grid: string[][], r: number, c: number): number {
   for (let d = 0; d < 4; d++) {
     const nr = r + DR[d];
     const nc = c + DC[d];
-    if (nr >= 0 && nr < grid.length && nc >= 0 && nc < grid[0].length && grid[nr][nc] !== "O") {
+    if (nr >= 0 && nr < grid.length && nc >= 0 && nc < grid[0].length && !isWallChar(grid[nr][nc])) {
       count++;
     }
   }
@@ -639,8 +640,8 @@ function computeTighteningMetrics(
   let usedCells = 0;
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
-      if (grid[r][c] !== "O") totalFloor++;
-      if (grid[r][c] !== "O" && grid[r][c] !== " ") usedCells++;
+      if (!isWallChar(grid[r][c])) totalFloor++;
+      if (!isWallChar(grid[r][c]) && grid[r][c] !== " ") usedCells++;
     }
   }
   const unusedFloor = totalFloor - usedCells;
@@ -712,8 +713,8 @@ function computeBoxIndependence(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, col: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, col: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, col: c });
       }
     }
@@ -834,7 +835,7 @@ export function buildPreservationContext(
     for (let d = 0; d < 4; d++) {
       const nr = r + DR[d];
       const nc = c + DC[d];
-      if (nr >= 0 && nr < height && nc >= 0 && nc < width && grid[nr][nc] !== "O") {
+      if (nr >= 0 && nr < height && nc >= 0 && nc < width && !isWallChar(grid[nr][nc])) {
         protectedChokepointNeighborhoods.add(`${nr},${nc}`);
       }
     }

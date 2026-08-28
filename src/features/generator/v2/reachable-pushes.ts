@@ -1,6 +1,7 @@
 import type { Direction } from "../../../core/model.ts";
 import { DIRECTIONS } from "../../../core/model.ts";
 import { directionDelta } from "../../../core/position.ts";
+import { isWallChar } from "./tile-semantics.ts";
 
 export interface ReachablePush {
   readonly boxIndex: number;
@@ -8,8 +9,6 @@ export interface ReachablePush {
   readonly support: { readonly row: number; readonly column: number };
   readonly destination: { readonly row: number; readonly column: number };
 }
-
-const WALL = "O";
 
 export function floodKeeperReachable(
   grid: readonly (readonly string[])[],
@@ -24,7 +23,7 @@ export function floodKeeperReachable(
   if (
     robot.row < 0 || robot.row >= h ||
     robot.column < 0 || robot.column >= w ||
-    grid[robot.row][robot.column] === WALL
+    isWallChar(grid[robot.row][robot.column])
   ) {
     return visited;
   }
@@ -41,7 +40,7 @@ export function floodKeeperReachable(
       if (nr < 0 || nr >= h || nc < 0 || nc >= w) continue;
       const key = `${nr},${nc}`;
       if (visited.has(key)) continue;
-      if (grid[nr][nc] === WALL) continue;
+      if (isWallChar(grid[nr][nc])) continue;
       if (boxPositions.has(key)) continue;
       visited.add(key);
       queue.push({ row: nr, column: nc });
@@ -77,7 +76,7 @@ export function enumerateReachablePushes(
       if (destR < 0 || destR >= h || destC < 0 || destC >= w) continue;
       if (supportR < 0 || supportR >= h || supportC < 0 || supportC >= w) continue;
 
-      if (grid[destR][destC] === WALL) continue;
+      if (isWallChar(grid[destR][destC])) continue;
       if (boxSet.has(`${destR},${destC}`)) continue;
 
       const supportKey = `${supportR},${supportC}`;

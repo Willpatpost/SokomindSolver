@@ -41,7 +41,7 @@ function roomCountForFamily(
     case "branch":
       return Math.max(3, randomInt(rng, Math.max(minRooms, 3), maxRooms));
     case "nested":
-      return Math.max(2, randomInt(rng, minRooms, Math.min(maxRooms, 3)));
+      return Math.max(2, randomInt(rng, minRooms, maxRooms));
   }
 }
 

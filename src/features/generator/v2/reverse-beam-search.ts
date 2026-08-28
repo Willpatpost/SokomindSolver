@@ -8,10 +8,14 @@ import {
   stateFingerprint,
   reverseStateKey,
   historyComplexityBonus,
+  computeObjectiveVector,
+  objectiveVectorComposite,
   DEFAULT_WEIGHTS,
   type ReverseStateScore,
   type ScoringWeights,
   type PullHistoryEntry,
+  type ReverseObjectiveVector,
+  type MechanismReverseContext,
 } from "./reverse-scoring.ts";
 import { toSolvedTemplate } from "./goal-placement.ts";
 import { createRng } from "../board-template.ts";
@@ -301,6 +305,7 @@ export function candidateToAscii(
 export interface BeamSearchResultV4 {
   readonly best: BeamCandidate;
   readonly archive: readonly BeamCandidate[];
+  readonly rankedCandidates: readonly ArchiveCandidate[];
   readonly totalExpanded: number;
   readonly maxDepthReached: number;
   readonly elapsedMs: number;
@@ -315,6 +320,12 @@ export interface RestartStats {
   readonly expanded: number;
   readonly maxDepth: number;
   readonly bestComposite: number;
+  readonly uniqueStates?: number;
+  readonly archiveOffers?: number;
+  readonly archiveContributions?: number;
+  readonly transpositionHits?: number;
+  readonly firstLayerGenerated?: number;
+  readonly firstLayerRejected?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -358,8 +369,13 @@ export class TranspositionTable {
 // Diverse Archive
 // ---------------------------------------------------------------------------
 
+interface ArchiveEntry {
+  key: string;
+  candidate: BeamCandidate;
+}
+
 export class DiverseArchive {
-  private entries: BeamCandidate[] = [];
+  private entries: ArchiveEntry[] = [];
   private readonly keys = new Set<string>();
   private readonly capacity: number;
   private readonly diversityRadius: number;
@@ -374,45 +390,113 @@ export class DiverseArchive {
   }
 
   getAll(): readonly BeamCandidate[] {
-    return [...this.entries].sort((a, b) => b.score.composite - a.score.composite);
+    return [...this.entries]
+      .sort((a, b) => b.candidate.score.composite - a.candidate.score.composite)
+      .map((e) => e.candidate);
   }
 
   getBest(): BeamCandidate | undefined {
-    let best: BeamCandidate | undefined;
+    let best: ArchiveEntry | undefined;
     for (const e of this.entries) {
-      if (!best || e.score.composite > best.score.composite) best = e;
+      if (!best || e.candidate.score.composite > best.candidate.score.composite) best = e;
     }
-    return best;
+    return best?.candidate;
   }
 
   offer(candidate: BeamCandidate, stateKey: string): boolean {
     if (this.keys.has(stateKey)) return false;
 
     if (this.entries.length < this.capacity) {
-      this.entries.push(candidate);
+      this.entries.push({ key: stateKey, candidate });
       this.keys.add(stateKey);
       return true;
     }
 
     let worstIdx = 0;
-    let worstScore = this.entries[0].score.composite;
+    let worstScore = this.entries[0].candidate.score.composite;
     for (let i = 1; i < this.entries.length; i++) {
-      if (this.entries[i].score.composite < worstScore) {
-        worstScore = this.entries[i].score.composite;
+      if (this.entries[i].candidate.score.composite < worstScore) {
+        worstScore = this.entries[i].candidate.score.composite;
         worstIdx = i;
       }
     }
 
     if (candidate.score.composite <= worstScore) return false;
 
-    if (this.diversityRadius > 0 && isTooSimilar(candidate, this.entries, this.diversityRadius)) {
+    if (
+      this.diversityRadius > 0 &&
+      isTooSimilar(candidate, this.entries.map((e) => e.candidate), this.diversityRadius)
+    ) {
       return false;
     }
 
-    this.entries[worstIdx] = candidate;
+    this.keys.delete(this.entries[worstIdx].key);
+    this.entries[worstIdx] = { key: stateKey, candidate };
     this.keys.add(stateKey);
     return true;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Archive candidate extraction (Phase 8)
+// ---------------------------------------------------------------------------
+
+export interface ArchiveCandidate {
+  readonly candidate: BeamCandidate;
+  readonly objectiveVector: ReverseObjectiveVector;
+  readonly objectiveComposite: number;
+}
+
+export function extractArchiveCandidates(
+  archive: DiverseArchive,
+  ctx: ReturnType<typeof buildScoringContext>,
+  count: number,
+  mechCtx?: MechanismReverseContext,
+): readonly ArchiveCandidate[] {
+  const all = archive.getAll();
+  if (all.length === 0) return [];
+
+  const scored: ArchiveCandidate[] = all.map((candidate) => {
+    const historyEntries: PullHistoryEntry[] = candidate.pullHistory.map((h) => ({
+      boxIndex: h.boxIndex,
+      fromRoom: ctx.roomLookup.get(`${h.from.row},${h.from.column}`),
+      toRoom: ctx.roomLookup.get(`${h.to.row},${h.to.column}`),
+    }));
+    const objectiveVector = computeObjectiveVector(
+      ctx,
+      candidate.boxPositions,
+      historyEntries,
+      mechCtx,
+    );
+    const objectiveComposite = objectiveVectorComposite(objectiveVector);
+    return { candidate, objectiveVector, objectiveComposite };
+  });
+
+  // Sort by objective composite descending
+  scored.sort((a, b) => b.objectiveComposite - a.objectiveComposite);
+
+  // Select diverse top candidates
+  const selected: ArchiveCandidate[] = [];
+  const usedFingerprints = new Set<string>();
+
+  for (const entry of scored) {
+    if (selected.length >= count) break;
+    const fp = stateFingerprint(entry.candidate.boxPositions);
+    if (usedFingerprints.has(fp)) continue;
+    usedFingerprints.add(fp);
+    selected.push(entry);
+  }
+
+  // Fill remaining slots if diversity filter was too strict
+  if (selected.length < count) {
+    for (const entry of scored) {
+      if (selected.length >= count) break;
+      if (selected.includes(entry)) continue;
+      selected.push(entry);
+    }
+  }
+
+  return selected;
 }
 
 // ---------------------------------------------------------------------------
@@ -436,11 +520,13 @@ function singleRestartBeamSearch(
   ctx: ReturnType<typeof buildScoringContext>,
   profile: ReverseSearchProfile,
   seed: number,
+  restartIndex: number,
   transposition: TranspositionTable,
   archive: DiverseArchive,
   globalStartTime: number,
 ): RestartStats {
   const rng = createRng(seed);
+  const jitterScale = profile.restartJitterScale ?? 0;
   const initialBoxes: GridPosition[] = template.goalPositions.map((g) => ({
     row: g.row,
     column: g.column,
@@ -460,10 +546,15 @@ function singleRestartBeamSearch(
   let expanded = 0;
   let maxDepth = 0;
   let bestComposite = initialScore.composite;
+  let archiveOffers = 0;
+  let archiveContributions = 0;
+  let firstLayerGenerated = 0;
+  let firstLayerRejected = 0;
 
   const initialKey = reverseStateKey(template.grid, initialBoxes, template.robotPosition);
   transposition.record(initialKey, initialScore.composite, 0);
-  archive.offer(beam[0], initialKey);
+  archiveOffers++;
+  if (archive.offer(beam[0], initialKey)) archiveContributions++;
 
   for (let depth = 0; depth < profile.maxDepth; depth++) {
     if (profile.maxExpandedStates !== undefined && expanded >= profile.maxExpandedStates) break;
@@ -516,7 +607,10 @@ function singleRestartBeamSearch(
 
         const compositeWithBonus = baseScore.composite + histBonus;
 
+        if (depth === 0) firstLayerGenerated++;
+
         if (!transposition.shouldExpand(stateKey, compositeWithBonus, depth + 1)) {
+          if (depth === 0) firstLayerRejected++;
           continue;
         }
         transposition.record(stateKey, compositeWithBonus, depth + 1);
@@ -535,7 +629,8 @@ function singleRestartBeamSearch(
         };
 
         nextCandidates.push(newCandidate);
-        archive.offer(newCandidate, stateKey);
+        archiveOffers++;
+        if (archive.offer(newCandidate, stateKey)) archiveContributions++;
 
         if (compositeWithBonus > bestComposite) {
           bestComposite = compositeWithBonus;
@@ -550,6 +645,7 @@ function singleRestartBeamSearch(
       profile.beamWidth,
       profile.diversityRadius,
       profile.stochasticTieBreaking ? rng : undefined,
+      jitterScale,
     );
 
     for (const c of beam) {
@@ -557,7 +653,19 @@ function singleRestartBeamSearch(
     }
   }
 
-  return { restartIndex: 0, seed, expanded, maxDepth, bestComposite };
+  return {
+    restartIndex,
+    seed,
+    expanded,
+    maxDepth,
+    bestComposite,
+    uniqueStates: transposition.size,
+    archiveOffers,
+    archiveContributions,
+    transpositionHits: transposition.hits,
+    firstLayerGenerated,
+    firstLayerRejected,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -569,8 +677,16 @@ function selectDiverseBeamV4(
   beamWidth: number,
   diversityRadius: number,
   rng?: () => number,
+  jitterScale: number = 0,
 ): BeamCandidate[] {
-  if (rng) {
+  if (jitterScale > 0 && rng) {
+    const scored = candidates.map((c) => ({
+      c,
+      s: c.score.composite * (1 + (rng() - 0.5) * 2 * jitterScale),
+    }));
+    scored.sort((a, b) => b.s - a.s);
+    candidates = scored.map((x) => x.c);
+  } else if (rng) {
     candidates.sort((a, b) => {
       const diff = b.score.composite - a.score.composite;
       if (Math.abs(diff) < 1e-9) {
@@ -620,34 +736,38 @@ export function reverseBeamSearchV4(
   solved: SolvedBlueprint,
   seed: number,
   profile: ReverseSearchProfile = DEFAULT_SEARCH_PROFILE,
+  mechCtx?: MechanismReverseContext,
 ): BeamSearchResultV4 {
   const globalStart = performance.now();
   const template = toSolvedTemplate(solved);
   const ctx = buildScoringContext(solved.blueprint, solved.grid, solved.goals);
 
-  const transposition = new TranspositionTable();
   const archive = new DiverseArchive(profile.diverseArchiveSize, profile.diversityRadius);
 
   const perRestartStats: RestartStats[] = [];
   let totalExpanded = 0;
   let maxDepthReached = 0;
+  let totalTranspositionHits = 0;
 
   for (let r = 0; r < profile.restartCount; r++) {
     if (profile.maxElapsedMs !== undefined && performance.now() - globalStart >= profile.maxElapsedMs) break;
 
+    const transposition = new TranspositionTable();
     const restartSeed = seed + r;
     const stats = singleRestartBeamSearch(
       template,
       ctx,
       profile,
       restartSeed,
+      r,
       transposition,
       archive,
       globalStart,
     );
 
-    perRestartStats.push({ ...stats, restartIndex: r });
+    perRestartStats.push(stats);
     totalExpanded += stats.expanded;
+    totalTranspositionHits += transposition.hits;
     if (stats.maxDepth > maxDepthReached) maxDepthReached = stats.maxDepth;
   }
 
@@ -665,14 +785,18 @@ export function reverseBeamSearchV4(
     pullHistory: [],
   };
 
+  const candidateCount = profile.reverseCandidatesPerBlueprint ?? archiveCandidates.length;
+  const rankedCandidates = extractArchiveCandidates(archive, ctx, candidateCount, mechCtx);
+
   return {
     best,
     archive: archiveCandidates,
+    rankedCandidates,
     totalExpanded,
     maxDepthReached,
     elapsedMs: performance.now() - globalStart,
     restartCount: perRestartStats.length,
-    transpositionHits: transposition.hits,
+    transpositionHits: totalTranspositionHits,
     perRestartStats,
   };
 }

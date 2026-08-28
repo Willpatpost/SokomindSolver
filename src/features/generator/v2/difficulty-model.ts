@@ -250,3 +250,187 @@ export function summarizeBenchmark(
     worstUnderclassified: worstUnder,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Handcrafted calibration report (Phase 11 — Sprint 11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-puzzle calibration entry with full V4 profile detail.
+ */
+export interface CalibrationEntry {
+  readonly puzzleId: string;
+  readonly expectedTier: Difficulty;
+  readonly predictedTier: Difficulty;
+  readonly structuralScore: number;
+  readonly solutionDepthScore: number;
+  readonly reasoningScore: number;
+  readonly tedium: number;
+  readonly composite: number;
+  readonly tierMatch: boolean;
+  readonly tierDelta: number;
+  readonly withinOne: boolean;
+}
+
+/**
+ * Confusion matrix cell: rows = expected, columns = predicted.
+ */
+export type ConfusionMatrix = Readonly<Record<Difficulty, Readonly<Record<Difficulty, number>>>>;
+
+/**
+ * Full calibration report produced from a handcrafted reference set.
+ */
+export interface CalibrationReport {
+  readonly entries: readonly CalibrationEntry[];
+  readonly confusionMatrix: ConfusionMatrix;
+  readonly exactMatchAccuracy: number;
+  readonly withinOneTierAccuracy: number;
+  readonly worstOverclassification: CalibrationEntry | null;
+  readonly worstUnderclassification: CalibrationEntry | null;
+  readonly totalPuzzles: number;
+  readonly perTierAccuracy: Readonly<Record<Difficulty, { total: number; matches: number; accuracy: number }>>;
+}
+
+/**
+ * Build a calibration report from a set of puzzle evaluation vectors with
+ * expected tier labels.
+ *
+ * This is the handcrafted calibration required by Phase 12 of the V4.1 plan,
+ * integrated into Sprint 11 for delivery.
+ */
+export function buildCalibrationReport(
+  data: readonly { puzzleId: string; expectedTier: Difficulty; vector: PuzzleEvaluationVector }[],
+): CalibrationReport {
+  // Build per-puzzle entries
+  const entries: CalibrationEntry[] = data.map((d) => {
+    const profile = computeV4Profile(d.vector);
+    const expectedIdx = TIER_ORDER.indexOf(d.expectedTier);
+    const predictedIdx = TIER_ORDER.indexOf(profile.classification);
+    const delta = predictedIdx - expectedIdx;
+    return {
+      puzzleId: d.puzzleId,
+      expectedTier: d.expectedTier,
+      predictedTier: profile.classification,
+      structuralScore: profile.structuralScale,
+      solutionDepthScore: profile.solutionDepth,
+      reasoningScore: profile.humanReasoningComplexity,
+      tedium: profile.tediumPenalty,
+      composite: profile.composite,
+      tierMatch: delta === 0,
+      tierDelta: delta,
+      withinOne: Math.abs(delta) <= 1,
+    };
+  });
+
+  // Confusion matrix
+  const matrix: Record<Difficulty, Record<Difficulty, number>> = {} as Record<Difficulty, Record<Difficulty, number>>;
+  for (const tier of TIER_ORDER) {
+    matrix[tier] = {} as Record<Difficulty, number>;
+    for (const t2 of TIER_ORDER) {
+      matrix[tier][t2] = 0;
+    }
+  }
+  for (const e of entries) {
+    matrix[e.expectedTier][e.predictedTier]++;
+  }
+
+  // Accuracy metrics
+  const totalMatches = entries.filter((e) => e.tierMatch).length;
+  const totalWithinOne = entries.filter((e) => e.withinOne).length;
+  const total = entries.length;
+
+  // Worst misclassifications
+  let worstOver: CalibrationEntry | null = null;
+  let worstUnder: CalibrationEntry | null = null;
+  for (const e of entries) {
+    if (e.tierDelta > 0 && (worstOver === null || e.tierDelta > worstOver.tierDelta)) {
+      worstOver = e;
+    }
+    if (e.tierDelta < 0 && (worstUnder === null || e.tierDelta < worstUnder.tierDelta)) {
+      worstUnder = e;
+    }
+  }
+
+  // Per-tier accuracy
+  const perTierAccuracy: Record<Difficulty, { total: number; matches: number; accuracy: number }> = {} as Record<Difficulty, { total: number; matches: number; accuracy: number }>;
+  for (const tier of TIER_ORDER) {
+    const tierEntries = entries.filter((e) => e.expectedTier === tier);
+    const tierMatches = tierEntries.filter((e) => e.tierMatch).length;
+    perTierAccuracy[tier] = {
+      total: tierEntries.length,
+      matches: tierMatches,
+      accuracy: tierEntries.length > 0 ? tierMatches / tierEntries.length : 0,
+    };
+  }
+
+  return {
+    entries,
+    confusionMatrix: matrix as ConfusionMatrix,
+    exactMatchAccuracy: total > 0 ? totalMatches / total : 0,
+    withinOneTierAccuracy: total > 0 ? totalWithinOne / total : 0,
+    worstOverclassification: worstOver,
+    worstUnderclassification: worstUnder,
+    totalPuzzles: total,
+    perTierAccuracy,
+  };
+}
+
+/**
+ * Format a calibration report as a human-readable text report.
+ */
+export function formatCalibrationReport(report: CalibrationReport): string {
+  const lines: string[] = [];
+  lines.push("=== V4 Handcrafted Calibration Report ===");
+  lines.push("");
+  lines.push(`Total puzzles: ${report.totalPuzzles}`);
+  lines.push(`Exact-match accuracy: ${(report.exactMatchAccuracy * 100).toFixed(1)}%`);
+  lines.push(`Within-one-tier accuracy: ${(report.withinOneTierAccuracy * 100).toFixed(1)}%`);
+  lines.push("");
+
+  // Per-tier accuracy
+  lines.push("Per-tier accuracy:");
+  for (const tier of TIER_ORDER) {
+    const ta = report.perTierAccuracy[tier];
+    if (ta.total > 0) {
+      lines.push(`  ${tier}: ${ta.matches}/${ta.total} (${(ta.accuracy * 100).toFixed(1)}%)`);
+    }
+  }
+  lines.push("");
+
+  // Confusion matrix
+  lines.push("Confusion matrix (rows = expected, columns = predicted):");
+  const header = "             " + TIER_ORDER.map((t) => t.slice(0, 5).padStart(6)).join("");
+  lines.push(header);
+  for (const expected of TIER_ORDER) {
+    const cells = TIER_ORDER.map((predicted) =>
+      String(report.confusionMatrix[expected][predicted]).padStart(6),
+    ).join("");
+    lines.push(`  ${expected.padEnd(13)}${cells}`);
+  }
+  lines.push("");
+
+  // Worst misclassifications
+  if (report.worstOverclassification) {
+    const w = report.worstOverclassification;
+    lines.push(`Worst overclassification: ${w.puzzleId} (expected ${w.expectedTier}, predicted ${w.predictedTier}, delta +${w.tierDelta})`);
+  }
+  if (report.worstUnderclassification) {
+    const w = report.worstUnderclassification;
+    lines.push(`Worst underclassification: ${w.puzzleId} (expected ${w.expectedTier}, predicted ${w.predictedTier}, delta ${w.tierDelta})`);
+  }
+  lines.push("");
+
+  // Per-puzzle detail
+  lines.push("Per-puzzle detail:");
+  lines.push("  id | expected | predicted | structural | depth | reasoning | tedium | composite");
+  for (const e of report.entries) {
+    const match = e.tierMatch ? " " : e.tierDelta > 0 ? "+" : "-";
+    lines.push(
+      `  ${match} ${e.puzzleId.padEnd(25)} ${e.expectedTier.padEnd(13)} ${e.predictedTier.padEnd(13)} ` +
+      `${e.structuralScore.toFixed(2).padStart(10)} ${e.solutionDepthScore.toFixed(2).padStart(6)} ` +
+      `${e.reasoningScore.toFixed(2).padStart(10)} ${e.tedium.toFixed(3).padStart(7)} ${e.composite.toFixed(2).padStart(10)}`,
+    );
+  }
+
+  return lines.join("\n");
+}

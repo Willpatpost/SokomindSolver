@@ -1,6 +1,7 @@
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import { directionDelta } from "../../../core/position.ts";
 import { enumerateReachablePushes } from "./reachable-pushes.ts";
+import { isBoxChar, isRobotChar } from "./tile-semantics.ts";
 
 export interface InteractionMetrics {
   readonly sharedRouteCells: number;
@@ -25,8 +26,8 @@ export function analyzeInteraction(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z" && ch !== "O" && ch !== "R" && ch !== "S")) {
+      if (isRobotChar(ch)) robot = { row: r, column: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, column: c });
       }
     }

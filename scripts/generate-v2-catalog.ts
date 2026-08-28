@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import type { Difficulty, PuzzleDefinition } from "../src/core/model.ts";
 import { DIFFICULTIES } from "../src/core/model.ts";
 import { validatePuzzle } from "../src/core/puzzle.ts";
-import { classifyFromMetrics } from "../src/features/generator/difficulty-classifier.ts";
 import {
   runForge,
   summarizeForgeRun,
@@ -17,14 +16,16 @@ import {
   framePuzzleRows,
   boardHash,
   symmetryHash,
-  evaluateFinalist,
+  evaluateFinalistV4,
   computeCurationObjectives,
   nonDominatedSort,
   computeNoveltyScores,
-  selectByParetoNovelty,
+  selectWithDiversityQuotas,
+  buildV4Fingerprint,
   diagnosePopulation,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
+  DEFAULT_V4_POLICY,
   QUALITY_PRESETS,
   type ForgeConfig,
   type ForgeCandidate,
@@ -38,13 +39,18 @@ import {
   type GeometryProfile,
   type ReverseSearchProfile,
   type FinalistEvaluation,
+  type FinalistEvaluationV4,
   type CurationObjectives,
+  type CuratedCandidate,
   computeV4Profile,
   buildReviewPack,
   buildReviewCatalog,
   formatReviewSummary,
   validateForAcceptance,
+  checkReleaseGate,
+  formatReleaseVerdict,
   type ReviewCandidatePack,
+  type ReviewCatalog,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -397,11 +403,7 @@ const TIER_RANK = new Map<Difficulty, number>(
 function classifyCandidate(
   ev: PuzzleEvaluationVector,
 ): Difficulty {
-  return classifyFromMetrics(
-    ev.solutionMoves,
-    ev.solutionPushes,
-    ev.boxCount,
-  );
+  return computeV4Profile(ev).classification;
 }
 
 function difficultyGap(intended: Difficulty, classified: Difficulty): number {
@@ -416,8 +418,9 @@ interface CatalogCandidate {
   assignedDifficulty: Difficulty;
   rejected: boolean;
   rejectionReason?: ForgeRejectionReason;
-  finalistEval?: FinalistEvaluation;
+  finalistEval?: FinalistEvaluation | FinalistEvaluationV4;
   curationObjectives?: CurationObjectives;
+  structuralFingerprint?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -790,6 +793,25 @@ async function runAcceptance(sourcePath: string): Promise<void> {
   }
 
   console.log(`  Validation passed (${result.puzzleCount} puzzles).`);
+
+  const reviewCatalogFile = join(sourcePath, "review-catalog.json");
+  if (existsSync(reviewCatalogFile)) {
+    console.log("Running release gate...");
+    const reviewCatalog: ReviewCatalog = JSON.parse(readFileSync(reviewCatalogFile, "utf-8"));
+    const releaseVerdict = checkReleaseGate(reviewCatalog);
+    if (!releaseVerdict.passed) {
+      console.error("\nRELEASE GATE FAILED:");
+      console.error(formatReleaseVerdict(releaseVerdict));
+      if (!process.argv.includes("--force")) {
+        console.error("\nUse --force to bypass the release gate.");
+        process.exit(1);
+      }
+      console.warn("\n--force: bypassing release gate failure.");
+    } else {
+      console.log("  Release gate: PASSED");
+    }
+  }
+
   console.log("\nCopying to production...");
 
   copyFileSync(catalogFile, CATALOG_PATH);
@@ -860,8 +882,9 @@ async function main(): Promise<void> {
     if (result.funnelStats) {
       const fs = result.funnelStats;
       console.log(
-        `    Funnel: A=${fs.stageA_rawGenerated} → B=${fs.stageB_structuralSurvivors} → ` +
-        `C=${fs.stageC_cheapEvalSurvivors} → D=${fs.stageD_deepEvalSurvivors} → E=${fs.stageE_curatedFinal}`,
+        `    Funnel: A=${fs.stageA_blueprintGenerated} → B=${fs.stageB_structuralSurvivors} → ` +
+        `C=${fs.stageC_reverseSurvivors} → D=${fs.stageD_dedupSurvivors} → E=${fs.stageE_cheapEvalSurvivors} → ` +
+        `F=${fs.stageF_finalistEvaluated} → G=${fs.stageG_qualityGatePassed} → H=${fs.stageH_difficultyPassed} → I=${fs.stageI_curatedFinal}`,
       );
     }
 
@@ -973,12 +996,13 @@ async function main(): Promise<void> {
 
     console.log(`    [finalist] ${difficulty}: evaluating ${candidates.length} candidates...`);
     for (const cc of candidates) {
-      cc.finalistEval = await evaluateFinalist(cc.candidate.puzzle);
+      cc.finalistEval = await evaluateFinalistV4(cc.candidate.puzzle, DEFAULT_V4_POLICY);
       cc.curationObjectives = computeCurationObjectives(
         cc.candidate.evaluation,
         cc.finalistEval,
         cc.candidate.provenance.dependencyRealizationRate,
       );
+      cc.structuralFingerprint = buildV4Fingerprint(cc.candidate);
     }
 
     const target = tierTargets.get(difficulty) ?? 0;
@@ -987,10 +1011,14 @@ async function main(): Promise<void> {
         candidates.map((cc) => ({
           item: cc,
           objectives: cc.curationObjectives!,
+          structuralFingerprint: cc.structuralFingerprint,
         })),
       );
       const scored = computeNoveltyScores(sorted);
-      const selected = selectByParetoNovelty(scored, target);
+      const selected = selectWithDiversityQuotas(
+        scored as CuratedCandidate<CatalogCandidate & { structuralFingerprint?: string }>[],
+        target,
+      );
       const selectedSet = new Set(selected.map((s) => s.item));
 
       let culled = 0;
@@ -1216,22 +1244,36 @@ async function main(): Promise<void> {
       tierFilter: tierFilter,
     });
     const reviewSummary = formatReviewSummary(reviewCatalog);
+    const releaseVerdict = checkReleaseGate(reviewCatalog);
 
     if (dryRun) {
       console.log(`\n[DRY RUN] Would write review catalog to ${REVIEW_DIR}/`);
       console.log(`[DRY RUN] ${catalogEntries.length} puzzles, ${manifest.puzzles.length} manifest entries`);
+      console.log(`[DRY RUN] Release gate: ${releaseVerdict.passed ? "PASSED" : "FAILED"}`);
+      if (!releaseVerdict.passed) {
+        console.log(formatReleaseVerdict(releaseVerdict));
+      }
     } else {
       mkdirSync(REVIEW_DIR, { recursive: true });
       writeFileSync(join(REVIEW_DIR, "review-catalog.json"), JSON.stringify(reviewCatalog, null, 2) + "\n");
       writeFileSync(join(REVIEW_DIR, "generated-puzzles.json"), catalogJson);
       writeFileSync(join(REVIEW_DIR, "generated-puzzles.manifest.json"), manifestJson);
       writeFileSync(join(REVIEW_DIR, "review-summary.txt"), reviewSummary + "\n");
+      writeFileSync(join(REVIEW_DIR, "release-gate-verdict.txt"), formatReleaseVerdict(releaseVerdict) + "\n");
 
       console.log(`\nWrote review catalog to ${REVIEW_DIR}/`);
       console.log(`  review-catalog.json        — full candidate packs with V4 profiles`);
       console.log(`  generated-puzzles.json     — catalog entries (production format)`);
       console.log(`  generated-puzzles.manifest.json — manifest (production format)`);
       console.log(`  review-summary.txt         — human-readable summary with ASCII boards`);
+      console.log(`  release-gate-verdict.txt   — release gate verdict`);
+      console.log("");
+      if (releaseVerdict.passed) {
+        console.log("Release gate: PASSED");
+      } else {
+        console.log("Release gate: FAILED");
+        console.log(formatReleaseVerdict(releaseVerdict));
+      }
       console.log("");
       console.log("=".repeat(60));
       console.log("REVIEW BEFORE ACCEPTING");
@@ -1249,9 +1291,11 @@ async function main(): Promise<void> {
       console.warn(`[DRY RUN] ${w}`);
     }
   } else {
+    console.warn("\nWARNING: Direct production write bypasses the release gate.");
+    console.warn("Use --review mode for release-gate-enforced catalog generation.\n");
     writeFileSync(CATALOG_PATH, catalogJson);
     writeFileSync(MANIFEST_PATH, manifestJson);
-    console.log(`\nWrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
+    console.log(`Wrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
     console.log(`Wrote manifest to ${MANIFEST_PATH}`);
     console.log("Next steps:");
     console.log("  1. npm run prepare:catalog");

@@ -8,6 +8,7 @@ import { enumerateReachablePushes } from "./reachable-pushes.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeInteraction } from "./interaction-analysis.ts";
 import { analyzeSolutionDepth } from "./solution-depth-analysis.ts";
+import { isBoxChar, isGoalChar, isRobotChar, isWallChar } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
 // Evaluation vector — all raw metrics, no premature aggregation
@@ -417,9 +418,9 @@ function analyzeBranching(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") { robot = { row: r, column: c }; grid[r][c] = " "; }
-      if (ch === "X" || (ch >= "A" && ch <= "Z")) { boxes.push({ row: r, column: c }); grid[r][c] = " "; }
-      if (ch === "S" || (ch >= "a" && ch <= "z")) { goalSet.add(`${r},${c}`); }
+      if (isRobotChar(ch)) { robot = { row: r, column: c }; grid[r][c] = " "; }
+      if (isBoxChar(ch)) { boxes.push({ row: r, column: c }); grid[r][c] = " "; }
+      if (isGoalChar(ch)) { goalSet.add(`${r},${c}`); }
     }
   }
 
@@ -500,7 +501,7 @@ function countLegalPushes(
     const destR = adjR + DR[d];
     const destC = adjC + DC[d];
     if (destR < 0 || destR >= h || destC < 0 || destC >= w) continue;
-    if (grid[destR][destC] === "O") continue;
+    if (isWallChar(grid[destR][destC])) continue;
     if (boxSet.has(`${destR},${destC}`)) continue;
     count++;
   }
@@ -535,8 +536,8 @@ function analyzeBoxInteraction(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z")) boxes.push({ row: r, column: c });
+      if (isRobotChar(ch)) robot = { row: r, column: c };
+      if (isBoxChar(ch)) boxes.push({ row: r, column: c });
     }
   }
 
@@ -605,8 +606,8 @@ function analyzeRoomTraffic(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch === "R") robot = { row: r, column: c };
-      if (ch === "X" || (ch >= "A" && ch <= "Z")) {
+      if (isRobotChar(ch)) robot = { row: r, column: c };
+      if (isBoxChar(ch)) {
         boxes.push({ row: r, column: c });
         boxSet.add(`${r},${c}`);
       }
@@ -685,7 +686,7 @@ function computeUnusedFloorRatio(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch !== "O" && ch !== " ") usedCells++;
+      if (!isWallChar(ch) && ch !== " ") usedCells++;
     }
   }
 

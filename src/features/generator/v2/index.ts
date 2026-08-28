@@ -22,9 +22,13 @@ export type {
   MechanismEdgeType,
   MechanismEvidenceKind,
   MechanismEvidenceRequirement,
+  MechanismGeometryRequirement,
+  RelativeCellConstraint,
+  GateMobilityConstraint,
   MechanismPlan,
   MechanismSpec,
   MechanismType,
+  MechanismVerificationResult,
   PassageCell,
   PassageEdge,
   ReverseSearchProfile,
@@ -79,6 +83,7 @@ export {
   candidateToAscii,
   TranspositionTable,
   DiverseArchive,
+  extractArchiveCandidates,
 } from "./reverse-beam-search.ts";
 
 export type {
@@ -88,6 +93,7 @@ export type {
   BeamSearchResultV4,
   RestartStats,
   PullRecord,
+  ArchiveCandidate,
 } from "./reverse-beam-search.ts";
 
 export { DEFAULT_BEAM_PARAMS } from "./reverse-beam-search.ts";
@@ -98,6 +104,9 @@ export {
   stateFingerprint,
   reverseStateKey,
   historyComplexityBonus,
+  computeObjectiveVector,
+  objectiveVectorComposite,
+  buildMechanismReverseContext,
   DEFAULT_WEIGHTS,
 } from "./reverse-scoring.ts";
 
@@ -106,6 +115,8 @@ export type {
   ScoringContext,
   ScoringWeights,
   PullHistoryEntry,
+  ReverseObjectiveVector,
+  MechanismReverseContext,
 } from "./reverse-scoring.ts";
 
 export {
@@ -162,6 +173,7 @@ export type {
 
 export {
   verifyDependenciesWithEvidence,
+  verifyDependenciesCounterfactual,
   collectPassageCells,
 } from "./dependency-verification.ts";
 
@@ -175,6 +187,10 @@ export {
   createMechanismPlan,
   placeGoalsFromPlan,
   mechanismCompatibility,
+  verifyMechanismEvidence,
+  deriveGeometryRequirements,
+  selectTargetMechanisms,
+  constrainBlueprintParams,
   MECHANISM_CATALOG,
 } from "./mechanism-plan.ts";
 
@@ -205,7 +221,12 @@ export {
   runForge,
   summarizeForgeRun,
   forgeCandidateToAscii,
+  countBoxesAndGoals,
   forgeRunReport,
+  blueprintStructuralScore,
+  buildV4Fingerprint,
+  validateBlueprintGeometry,
+  validateFinalGeometry,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   QUALITY_PRESETS,
@@ -217,6 +238,8 @@ export type {
   FunnelBudgets,
   FunnelStageStats,
   QualityPreset,
+  SolverCallReduction,
+  BlueprintCandidate,
   ForgeConfig,
   ForgeAcceptanceGates,
   ForgeGenerationMode,
@@ -227,6 +250,19 @@ export type {
   ForgeRunResult,
   ForgeSummary,
 } from "./puzzle-forge.ts";
+
+export {
+  DiagnosticCollector,
+  formatDiagnosticReport,
+} from "./generator-diagnostics.ts";
+
+export type {
+  GeneratorDiagnostics,
+  BoxScaleDiagnostics,
+  RestartDiagnostics,
+  RejectionBreakdown,
+  ForgeDiagnosticReport,
+} from "./generator-diagnostics.ts";
 
 export {
   canonicalizeRows,
@@ -247,6 +283,7 @@ export type {
 export {
   buildReviewPack,
   buildReviewCatalog,
+  buildFinalReviewCatalog,
   formatReviewSummary,
   validateForAcceptance,
 } from "./review-catalog.ts";
@@ -254,7 +291,20 @@ export {
 export type {
   ReviewCatalogOptions,
   AcceptanceResult,
+  FinalReviewTierTarget,
 } from "./review-catalog.ts";
+
+export {
+  checkReleaseGate,
+  formatReleaseVerdict,
+  DEFAULT_RELEASE_GATE_CONFIG,
+} from "./release-gate.ts";
+
+export type {
+  ReleaseGateTierQuota,
+  ReleaseGateConfig,
+  ReleaseGateVerdict,
+} from "./release-gate.ts";
 
 export {
   enumerateForgeCombinations,
@@ -295,6 +345,8 @@ export {
   computeTediumPenalty,
   benchmarkAgainstExpected,
   summarizeBenchmark,
+  buildCalibrationReport,
+  formatCalibrationReport,
   V4_TIER_THRESHOLDS,
 } from "./difficulty-model.ts";
 
@@ -302,6 +354,9 @@ export type {
   V4DifficultyProfile,
   V4DifficultyThresholds,
   V4BenchmarkEntry,
+  CalibrationEntry,
+  CalibrationReport,
+  ConfusionMatrix,
 } from "./difficulty-model.ts";
 
 export type {
@@ -351,6 +406,23 @@ export type {
 } from "./solver-bottleneck.ts";
 
 export {
+  assessQuality,
+  computePurposefulGeometry,
+  computeInteractionQuality,
+  computeCausalDepth,
+  computeDecisionQuality,
+  computeMechanismIntegrity,
+  computeElegance,
+  computeTedium,
+  QUALITY_FLOORS,
+} from "./quality-gate.ts";
+
+export type {
+  PuzzleQualityProfile,
+  QualityFloor,
+} from "./quality-gate.ts";
+
+export {
   nonDominatedSort,
   computeNoveltyScores,
   selectByParetoNovelty,
@@ -365,3 +437,5 @@ export type {
   NormalizationContext,
   PopulationDiagnostics,
 } from "./curation.ts";
+
+export { WALL_CHAR } from "./tile-semantics.ts";

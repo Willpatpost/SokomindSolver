@@ -146,6 +146,8 @@ export interface ReverseSearchProfile {
   readonly diversityRadius: number;
   readonly stochasticTieBreaking: boolean;
   readonly antiImmediateUndo: boolean;
+  readonly restartJitterScale?: number;
+  readonly reverseCandidatesPerBlueprint?: number;
 }
 
 export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {
@@ -187,6 +189,7 @@ export interface MechanismSpec {
   readonly type: MechanismType;
   readonly primaryRoomIds: readonly number[];
   readonly minGoals: number;
+  readonly allocatedGoals: number;
   readonly weight: number;
 }
 
@@ -196,17 +199,48 @@ export type MechanismEvidenceKind =
   | "staging-displacement"
   | "shared-route"
   | "shared-passage"
-  | "gate-displacement"
-  | "gate-return"
-  | "temporary-park"
-  | "chain-ordering"
-  | "cross-exchange";
+  | "reopen-gate"
+  | "park-and-resume"
+  | "strict-chain-order"
+  | "exchange-passage";
 
 export interface MechanismEvidenceRequirement {
   readonly mechanismType: MechanismType;
   readonly requiredKinds: readonly MechanismEvidenceKind[];
   readonly minEvidenceCount: number;
   readonly description: string;
+}
+
+export interface MechanismVerificationResult {
+  readonly mechanismIndex: number;
+  readonly type: MechanismType;
+  readonly passed: boolean;
+  readonly requiredEvidence: readonly MechanismEvidenceKind[];
+  readonly observedEvidence: readonly MechanismEvidenceKind[];
+  readonly missingEvidence: readonly MechanismEvidenceKind[];
+}
+
+export interface RelativeCellConstraint {
+  readonly dr: number;
+  readonly dc: number;
+  readonly role: string;
+}
+
+export interface GateMobilityConstraint {
+  readonly minClearance: number;
+  readonly direction?: "horizontal" | "vertical" | "any";
+}
+
+export interface MechanismGeometryRequirement {
+  readonly requiredRooms: number;
+  readonly requiredNarrowPassages: number;
+  readonly terminalRoomRequired: boolean;
+  readonly largeRoomRequired: boolean;
+  readonly minRoomArea: number;
+  readonly preferredFamilies: readonly TopologyFamily[];
+  readonly requiredSupportCells?: readonly RelativeCellConstraint[];
+  readonly parkingPocketRequired?: boolean;
+  readonly gateMobilityPattern?: GateMobilityConstraint;
 }
 
 export interface MechanismPlan {
