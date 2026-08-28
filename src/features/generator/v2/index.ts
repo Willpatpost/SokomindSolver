@@ -281,6 +281,7 @@ export type {
 export {
   buildReviewPack,
   buildReviewCatalog,
+  buildFinalReviewCatalog,
   formatReviewSummary,
   validateForAcceptance,
 } from "./review-catalog.ts";
@@ -288,7 +289,20 @@ export {
 export type {
   ReviewCatalogOptions,
   AcceptanceResult,
+  FinalReviewTierTarget,
 } from "./review-catalog.ts";
+
+export {
+  checkReleaseGate,
+  formatReleaseVerdict,
+  DEFAULT_RELEASE_GATE_CONFIG,
+} from "./release-gate.ts";
+
+export type {
+  ReleaseGateTierQuota,
+  ReleaseGateConfig,
+  ReleaseGateVerdict,
+} from "./release-gate.ts";
 
 export {
   enumerateForgeCombinations,

@@ -7,10 +7,11 @@
  */
 
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
+import { DIFFICULTIES } from "../../../core/model.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import type { ForgeCandidate } from "./puzzle-forge.ts";
 import { forgeCandidateToAscii, countBoxesAndGoals } from "./puzzle-forge.ts";
-import type { FinalistEvaluation } from "./finalist-evaluator.ts";
+import type { FinalistEvaluation, FinalistEvaluationV4 } from "./finalist-evaluator.ts";
 import type { V4DifficultyProfile } from "./difficulty-model.ts";
 import { computeV4Profile } from "./difficulty-model.ts";
 import { boardHash, symmetryHash } from "./puzzle-identity.ts";
@@ -126,6 +127,101 @@ export function buildReviewCatalog(
     qualityPreset: options.qualityPreset,
     tierFilter: options.tierFilter,
     tierSummaries,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// buildFinalReviewCatalog
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-tier target specification for buildFinalReviewCatalog.
+ */
+export interface FinalReviewTierTarget {
+  readonly difficulty: Difficulty;
+  readonly target: number;
+}
+
+/**
+ * Build a final review catalog directly from ForgeCandidate arrays, one per
+ * tier.  This is the high-level entry point for producing a review catalog
+ * from forge output suitable for human review and release-gate validation.
+ *
+ * For each tier, it:
+ *   1. Classifies the candidate's V4 difficulty (if not already present).
+ *   2. Computes the difficulty gap.
+ *   3. Builds a ReviewCandidatePack with full provenance.
+ *
+ * @param tiers         Per-tier candidates and targets.
+ * @param options       Generator version, quality preset, etc.
+ * @returns             A complete ReviewCatalog ready for review and gate.
+ */
+export function buildFinalReviewCatalog(
+  tiers: readonly FinalReviewTierTarget[],
+  candidatesByTier: ReadonlyMap<Difficulty, readonly ForgeCandidate[]>,
+  options: ReviewCatalogOptions = {},
+): ReviewCatalog {
+  const tierOrder: readonly Difficulty[] = [...DIFFICULTIES];
+  const tierIndex = (d: Difficulty): number => tierOrder.indexOf(d);
+
+  const tierPacks = new Map<Difficulty, {
+    target: number;
+    packs: ReviewCandidatePack[];
+  }>();
+
+  for (const spec of tiers) {
+    const candidates = candidatesByTier.get(spec.difficulty) ?? [];
+    const packs: ReviewCandidatePack[] = [];
+
+    for (const candidate of candidates) {
+      const intendedDifficulty = spec.difficulty;
+      const v4Profile = candidate.provenance.v4DifficultyProfile
+        ?? computeV4Profile(candidate.evaluation);
+      const classifiedDifficulty = candidate.provenance.v4Classification
+        ?? v4Profile.classification;
+      const gap = tierIndex(classifiedDifficulty) - tierIndex(intendedDifficulty);
+
+      // Extract finalist evaluation, handling V4 shape
+      const finalistEval = candidate.finalistEvaluation
+        ? extractFinalistBase(candidate.finalistEvaluation)
+        : undefined;
+
+      packs.push(
+        buildReviewPack(
+          candidate,
+          intendedDifficulty,
+          classifiedDifficulty,
+          gap,
+          finalistEval,
+          v4Profile,
+        ),
+      );
+    }
+
+    tierPacks.set(spec.difficulty, { target: spec.target, packs });
+  }
+
+  return buildReviewCatalog(tierPacks, options);
+}
+
+/**
+ * Extract base FinalistEvaluation fields from either FinalistEvaluation or
+ * FinalistEvaluationV4, since buildReviewPack expects the base type.
+ */
+function extractFinalistBase(
+  eval_: FinalistEvaluation | FinalistEvaluationV4,
+): FinalistEvaluation {
+  return {
+    solverEvidence: eval_.solverEvidence,
+    solverAgreement: eval_.solverAgreement,
+    minMoves: eval_.minMoves,
+    maxMoves: eval_.maxMoves,
+    minPushes: eval_.minPushes,
+    maxPushes: eval_.maxPushes,
+    avgExpandedStates: eval_.avgExpandedStates,
+    maxExpandedStates: eval_.maxExpandedStates,
+    solversSucceeded: eval_.solversSucceeded,
+    solversAttempted: eval_.solversAttempted,
   };
 }
 
