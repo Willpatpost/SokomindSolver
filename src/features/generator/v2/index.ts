@@ -25,6 +25,7 @@ export type {
   MechanismPlan,
   MechanismSpec,
   MechanismType,
+  MechanismVerificationResult,
   PassageCell,
   PassageEdge,
   ReverseSearchProfile,
@@ -175,6 +176,7 @@ export {
   createMechanismPlan,
   placeGoalsFromPlan,
   mechanismCompatibility,
+  verifyMechanismEvidence,
   MECHANISM_CATALOG,
 } from "./mechanism-plan.ts";
 

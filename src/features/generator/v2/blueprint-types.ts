@@ -198,17 +198,25 @@ export type MechanismEvidenceKind =
   | "staging-displacement"
   | "shared-route"
   | "shared-passage"
-  | "gate-displacement"
-  | "gate-return"
-  | "temporary-park"
-  | "chain-ordering"
-  | "cross-exchange";
+  | "reopen-gate"
+  | "park-and-resume"
+  | "strict-chain-order"
+  | "exchange-passage";
 
 export interface MechanismEvidenceRequirement {
   readonly mechanismType: MechanismType;
   readonly requiredKinds: readonly MechanismEvidenceKind[];
   readonly minEvidenceCount: number;
   readonly description: string;
+}
+
+export interface MechanismVerificationResult {
+  readonly mechanismIndex: number;
+  readonly type: MechanismType;
+  readonly passed: boolean;
+  readonly requiredEvidence: readonly MechanismEvidenceKind[];
+  readonly observedEvidence: readonly MechanismEvidenceKind[];
+  readonly missingEvidence: readonly MechanismEvidenceKind[];
 }
 
 export interface MechanismPlan {

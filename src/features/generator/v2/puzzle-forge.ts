@@ -48,8 +48,8 @@ import {
   DEFAULT_TIER_TIGHTENING_POLICIES,
 } from "./geometry-tightening.ts";
 import { verifyDependenciesWithEvidence } from "./dependency-verification.ts";
-import { createMechanismPlan, placeGoalsFromPlan } from "./mechanism-plan.ts";
-import type { MechanismType } from "./blueprint-types.ts";
+import { createMechanismPlan, placeGoalsFromPlan, verifyMechanismEvidence } from "./mechanism-plan.ts";
+import type { MechanismPlan, MechanismType } from "./blueprint-types.ts";
 
 import type { GridPosition } from "../generator-types.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
@@ -194,6 +194,8 @@ export interface ForgeProvenance {
   readonly postTighteningFloor?: number;
   readonly mechanismTypes?: readonly MechanismType[];
   readonly mechanismCount?: number;
+  readonly mechanismEvidencePassed?: boolean;
+  readonly mechanismEvidenceMissing?: readonly string[];
 }
 
 export interface ForgeCandidate {
@@ -234,7 +236,8 @@ export type ForgeRejectionReason =
   | "duplicate-exact"
   | "difficulty-mismatch"
   | "duplicate-cross-tier"
-  | "duplicate-symmetry";
+  | "duplicate-symmetry"
+  | "mechanism-evidence-missing";
 
 export interface ForgeRejection {
   readonly seed: number;
@@ -291,6 +294,7 @@ interface RawGenResult {
   readonly compositionType?: string;
   readonly dependencyRealizationRate?: number;
   readonly mechanismTypes?: readonly MechanismType[];
+  readonly mechanismPlan?: MechanismPlan;
 }
 
 function sampleDimension(
@@ -460,6 +464,7 @@ async function generateRawCandidate(
         dag: placement.dag,
         compositionType: placement.dag.compositionId,
         mechanismTypes: plan.mechanisms.map((m) => m.type),
+        mechanismPlan: plan,
       },
     };
   }
@@ -788,6 +793,7 @@ function inferStagesFromRejection(reason: ForgeRejectionReason): {
     case "beam-search-empty":
       return { blueprint: true, mechanism: true, goalPlacement: true, reverse: false, validation: false };
     case "validation-failed":
+    case "mechanism-evidence-missing":
       return { blueprint: true, mechanism: true, goalPlacement: true, reverse: true, validation: false };
     default:
       return { blueprint: true, mechanism: true, goalPlacement: true, reverse: true, validation: true };
@@ -995,6 +1001,9 @@ async function runForgeFlat(
     let depEdges = raw.result.composedResult?.realization.totalEdges;
     let depRealized = raw.result.composedResult?.realization.realizedEdges;
 
+    let mechanismEvidencePassed: boolean | undefined;
+    let mechanismEvidenceMissing: string[] | undefined;
+
     if (raw.result.dag && evalResult.steps) {
       const reVerification = verifyDependenciesWithEvidence(
         raw.result.dag,
@@ -1004,6 +1013,24 @@ async function runForgeFlat(
       depRate = reVerification.realizationRate;
       depEdges = reVerification.totalEdges;
       depRealized = reVerification.realizedEdges;
+
+      if (raw.result.mechanismPlan) {
+        const mechResults = verifyMechanismEvidence(raw.result.mechanismPlan, reVerification);
+        mechanismEvidencePassed = mechResults.every((r) => r.passed);
+        mechanismEvidenceMissing = mechResults
+          .filter((r) => !r.passed)
+          .flatMap((r) => r.missingEvidence);
+
+        const requireEvidence = difficulty !== "tutorial" && difficulty !== "beginner";
+        if (requireEvidence && !mechanismEvidencePassed) {
+          rejections.push({ seed, reason: "mechanism-evidence-missing" });
+          collector.recordRejection({
+            reason: "mechanism-evidence-missing", tier: difficulty, family, mode,
+            requestedBoxCount: boxCount,
+          });
+          continue;
+        }
+      }
     }
 
     // Step 8: Apply gates using final evaluation
@@ -1089,6 +1116,8 @@ async function runForgeFlat(
       postTighteningFloor,
       mechanismTypes: raw.result.mechanismTypes,
       mechanismCount: raw.result.mechanismTypes?.length,
+      mechanismEvidencePassed,
+      mechanismEvidenceMissing,
     };
 
     validCandidates.push({
@@ -1361,11 +1390,32 @@ async function runForgeFunnel(
     let depEdges = raw.result.composedResult?.realization.totalEdges;
     let depRealized = raw.result.composedResult?.realization.realizedEdges;
 
+    let mechanismEvidencePassed: boolean | undefined;
+    let mechanismEvidenceMissing: string[] | undefined;
+
     if (raw.result.dag && evalResult.steps) {
       const reVerification = verifyDependenciesWithEvidence(raw.result.dag, puzzle, evalResult.steps);
       depRate = reVerification.realizationRate;
       depEdges = reVerification.totalEdges;
       depRealized = reVerification.realizedEdges;
+
+      if (raw.result.mechanismPlan) {
+        const mechResults = verifyMechanismEvidence(raw.result.mechanismPlan, reVerification);
+        mechanismEvidencePassed = mechResults.every((r) => r.passed);
+        mechanismEvidenceMissing = mechResults
+          .filter((r) => !r.passed)
+          .flatMap((r) => r.missingEvidence);
+
+        const requireEvidence = difficulty !== "tutorial" && difficulty !== "beginner";
+        if (requireEvidence && !mechanismEvidencePassed) {
+          rejections.push({ seed, reason: "mechanism-evidence-missing" });
+          collector.recordRejection({
+            reason: "mechanism-evidence-missing", tier: difficulty, family, mode,
+            requestedBoxCount: boxCount,
+          });
+          continue;
+        }
+      }
     }
 
     const gateResult = applyGates(ev, config.gates, depRate);
@@ -1440,6 +1490,8 @@ async function runForgeFunnel(
         tighteningProtectedCells, preTighteningFloor, postTighteningFloor,
         mechanismTypes: raw.result.mechanismTypes,
         mechanismCount: raw.result.mechanismTypes?.length,
+        mechanismEvidencePassed,
+        mechanismEvidenceMissing,
       },
       evaluation: ev,
       tighteningResult,
@@ -1651,6 +1703,13 @@ export function forgeCandidateToAscii(c: ForgeCandidate): string {
     lines.push(
       `Dependency: ${p.dependencyRealized}/${p.dependencyEdges} edges (${(p.dependencyRealizationRate * 100).toFixed(0)}%)`,
     );
+  }
+  if (p.mechanismEvidencePassed !== undefined) {
+    const evidenceStatus = p.mechanismEvidencePassed ? "PASS" : "FAIL";
+    const missing = p.mechanismEvidenceMissing?.length
+      ? ` (missing: ${p.mechanismEvidenceMissing.join(", ")})`
+      : "";
+    lines.push(`Mechanism Evidence: ${evidenceStatus}${missing}`);
   }
   lines.push("");
 

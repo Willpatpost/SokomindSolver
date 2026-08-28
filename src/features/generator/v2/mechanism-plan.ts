@@ -7,13 +7,16 @@ import type {
   GoalStyle,
   MechanismDependencyEdge,
   MechanismEdgeType,
+  MechanismEvidenceKind,
   MechanismEvidenceRequirement,
   MechanismPlan,
   MechanismSpec,
   MechanismType,
+  MechanismVerificationResult,
   PassageEdge,
   SolvedBlueprint,
 } from "./blueprint-types.ts";
+import type { DependencyVerificationResult } from "./dependency-verification.ts";
 import {
   collectRoomFloorCells,
   chooseRobotPosition,
@@ -96,8 +99,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
     needsLargeRoom: false,
     evidenceRequirements: {
       mechanismType: "gate-reopening",
-      requiredKinds: ["gate-displacement", "gate-return"],
-      minEvidenceCount: 2,
+      requiredKinds: ["reopen-gate"],
+      minEvidenceCount: 1,
       description:
         "The gate box must be displaced to open the passage, then returned " +
         "to its goal after inner boxes have transited",
@@ -155,7 +158,7 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
     needsLargeRoom: true,
     evidenceRequirements: {
       mechanismType: "temporary-parking",
-      requiredKinds: ["temporary-park"],
+      requiredKinds: ["park-and-resume"],
       minEvidenceCount: 1,
       description: "A box must be parked in a temporary location to clear a path",
     },
@@ -174,8 +177,8 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
     needsLargeRoom: false,
     evidenceRequirements: {
       mechanismType: "dependency-chain",
-      requiredKinds: ["chain-ordering"],
-      minEvidenceCount: 2,
+      requiredKinds: ["strict-chain-order"],
+      minEvidenceCount: 1,
       description:
         "Three or more goals at varying depths create a sequential ordering " +
         "chain where each must be filled before the next becomes accessible",
@@ -195,7 +198,7 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
     needsLargeRoom: false,
     evidenceRequirements: {
       mechanismType: "cross-room-exchange",
-      requiredKinds: ["cross-exchange"],
+      requiredKinds: ["exchange-passage"],
       minEvidenceCount: 1,
       description: "Boxes must cross between rooms through a narrow passage in opposing directions",
     },
@@ -1178,7 +1181,7 @@ function placeGateReopening(
       edges.push({
         from: startNodeId,
         to: startNodeId + i,
-        type: "blocks-access",
+        type: "must-reopen",
         description:
           `Gate-reopen goal at (${gateGoal.row},${gateGoal.column}) must be displaced ` +
           `then returned after inner goal at (${goals[i].row},${goals[i].column}) passes`,
@@ -1412,7 +1415,7 @@ function placeTemporaryParking(
     edges.push({
       from: startNodeId,
       to: startNodeId + 1,
-      type: "must-stage",
+      type: "must-park",
       description:
         `Goal at (${goals[0].row},${goals[0].column}) requires temporary parking ` +
         `of box at (${goals[1].row},${goals[1].column}) for access`,
@@ -1478,7 +1481,7 @@ function placeDependencyChain(
     edges.push({
       from: sorted[i].nodeId,
       to: sorted[i + 1].nodeId,
-      type: "must-precede",
+      type: "chain-link",
       description:
         `Chain: depth=${sorted[i].g.depthFromDoorway} must be filled before ` +
         `depth=${sorted[i + 1].g.depthFromDoorway}`,
@@ -1556,7 +1559,7 @@ function placeCrossRoomExchange(
         edges.push({
           from: startNodeId + ai,
           to: startNodeId + bi,
-          type: "shares-passage",
+          type: "exchange-cross",
           description:
             `Exchange goals in rooms ${roomA.id} and ${roomB.id} require ` +
             `cross-passage movement through width-1 passage`,
@@ -1617,4 +1620,79 @@ function isOnApproachPath(
     }
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Mechanism-level evidence verification
+// ---------------------------------------------------------------------------
+
+const MECHANISM_EVIDENCE_KINDS: ReadonlySet<string> = new Set<MechanismEvidenceKind>([
+  "completion-order",
+  "access-blocked",
+  "staging-displacement",
+  "shared-route",
+  "shared-passage",
+  "reopen-gate",
+  "park-and-resume",
+  "strict-chain-order",
+  "exchange-passage",
+]);
+
+const MECHANISM_DEFINING_EDGE: Record<MechanismType, string> = {
+  "packing-chain": "must-precede",
+  "gatekeeper": "blocks-access",
+  "gate-reopening": "must-reopen",
+  "staging-dependency": "must-stage",
+  "corridor-traffic": "shares-passage",
+  "temporary-parking": "must-park",
+  "dependency-chain": "chain-link",
+  "cross-room-exchange": "exchange-cross",
+};
+
+export function verifyMechanismEvidence(
+  plan: MechanismPlan,
+  depResult: DependencyVerificationResult,
+): readonly MechanismVerificationResult[] {
+  return plan.mechanisms.map((spec, mechanismIndex) => {
+    const requirement = plan.evidenceRequirements[mechanismIndex];
+    if (!requirement) {
+      return {
+        mechanismIndex,
+        type: spec.type,
+        passed: false,
+        requiredEvidence: [],
+        observedEvidence: [],
+        missingEvidence: [],
+      };
+    }
+
+    const definingEdgeType = MECHANISM_DEFINING_EDGE[spec.type];
+
+    const observedKinds = new Set<MechanismEvidenceKind>();
+    for (const detail of depResult.edgeDetails) {
+      if (detail.edge.type !== definingEdgeType) continue;
+      if (!detail.realized) continue;
+      for (const ev of detail.evidence) {
+        if (MECHANISM_EVIDENCE_KINDS.has(ev.kind)) {
+          observedKinds.add(ev.kind as MechanismEvidenceKind);
+        }
+      }
+    }
+
+    const requiredEvidence = requirement.requiredKinds;
+    const observedEvidence = [...observedKinds];
+    const missingEvidence = requiredEvidence.filter((k) => !observedKinds.has(k));
+
+    const meetsMinCount = observedEvidence.length >= requirement.minEvidenceCount;
+    const passed = missingEvidence.length === 0 && meetsMinCount;
+
+    return {
+      mechanismIndex,
+      type: spec.type,
+      passed,
+      requiredEvidence,
+      observedEvidence,
+      missingEvidence,
+    };
+  });
 }
