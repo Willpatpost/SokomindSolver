@@ -8,10 +8,14 @@ import {
   stateFingerprint,
   reverseStateKey,
   historyComplexityBonus,
+  computeObjectiveVector,
+  objectiveVectorComposite,
   DEFAULT_WEIGHTS,
   type ReverseStateScore,
   type ScoringWeights,
   type PullHistoryEntry,
+  type ReverseObjectiveVector,
+  type MechanismReverseContext,
 } from "./reverse-scoring.ts";
 import { toSolvedTemplate } from "./goal-placement.ts";
 import { createRng } from "../board-template.ts";
@@ -301,6 +305,7 @@ export function candidateToAscii(
 export interface BeamSearchResultV4 {
   readonly best: BeamCandidate;
   readonly archive: readonly BeamCandidate[];
+  readonly rankedCandidates: readonly ArchiveCandidate[];
   readonly totalExpanded: number;
   readonly maxDepthReached: number;
   readonly elapsedMs: number;
@@ -430,6 +435,68 @@ export class DiverseArchive {
     this.keys.add(stateKey);
     return true;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Archive candidate extraction (Phase 8)
+// ---------------------------------------------------------------------------
+
+export interface ArchiveCandidate {
+  readonly candidate: BeamCandidate;
+  readonly objectiveVector: ReverseObjectiveVector;
+  readonly objectiveComposite: number;
+}
+
+export function extractArchiveCandidates(
+  archive: DiverseArchive,
+  ctx: ReturnType<typeof buildScoringContext>,
+  count: number,
+  mechCtx?: MechanismReverseContext,
+): readonly ArchiveCandidate[] {
+  const all = archive.getAll();
+  if (all.length === 0) return [];
+
+  const scored: ArchiveCandidate[] = all.map((candidate) => {
+    const historyEntries: PullHistoryEntry[] = candidate.pullHistory.map((h) => ({
+      boxIndex: h.boxIndex,
+      fromRoom: ctx.roomLookup.get(`${h.from.row},${h.from.column}`),
+      toRoom: ctx.roomLookup.get(`${h.to.row},${h.to.column}`),
+    }));
+    const objectiveVector = computeObjectiveVector(
+      ctx,
+      candidate.boxPositions,
+      historyEntries,
+      mechCtx,
+    );
+    const objectiveComposite = objectiveVectorComposite(objectiveVector);
+    return { candidate, objectiveVector, objectiveComposite };
+  });
+
+  // Sort by objective composite descending
+  scored.sort((a, b) => b.objectiveComposite - a.objectiveComposite);
+
+  // Select diverse top candidates
+  const selected: ArchiveCandidate[] = [];
+  const usedFingerprints = new Set<string>();
+
+  for (const entry of scored) {
+    if (selected.length >= count) break;
+    const fp = stateFingerprint(entry.candidate.boxPositions);
+    if (usedFingerprints.has(fp)) continue;
+    usedFingerprints.add(fp);
+    selected.push(entry);
+  }
+
+  // Fill remaining slots if diversity filter was too strict
+  if (selected.length < count) {
+    for (const entry of scored) {
+      if (selected.length >= count) break;
+      if (selected.includes(entry)) continue;
+      selected.push(entry);
+    }
+  }
+
+  return selected;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +736,7 @@ export function reverseBeamSearchV4(
   solved: SolvedBlueprint,
   seed: number,
   profile: ReverseSearchProfile = DEFAULT_SEARCH_PROFILE,
+  mechCtx?: MechanismReverseContext,
 ): BeamSearchResultV4 {
   const globalStart = performance.now();
   const template = toSolvedTemplate(solved);
@@ -717,9 +785,13 @@ export function reverseBeamSearchV4(
     pullHistory: [],
   };
 
+  const candidateCount = profile.reverseCandidatesPerBlueprint ?? archiveCandidates.length;
+  const rankedCandidates = extractArchiveCandidates(archive, ctx, candidateCount, mechCtx);
+
   return {
     best,
     archive: archiveCandidates,
+    rankedCandidates,
     totalExpanded,
     maxDepthReached,
     elapsedMs: performance.now() - globalStart,

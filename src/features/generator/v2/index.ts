@@ -81,6 +81,7 @@ export {
   candidateToAscii,
   TranspositionTable,
   DiverseArchive,
+  extractArchiveCandidates,
 } from "./reverse-beam-search.ts";
 
 export type {
@@ -90,6 +91,7 @@ export type {
   BeamSearchResultV4,
   RestartStats,
   PullRecord,
+  ArchiveCandidate,
 } from "./reverse-beam-search.ts";
 
 export { DEFAULT_BEAM_PARAMS } from "./reverse-beam-search.ts";
@@ -100,6 +102,9 @@ export {
   stateFingerprint,
   reverseStateKey,
   historyComplexityBonus,
+  computeObjectiveVector,
+  objectiveVectorComposite,
+  buildMechanismReverseContext,
   DEFAULT_WEIGHTS,
 } from "./reverse-scoring.ts";
 
@@ -108,6 +113,8 @@ export type {
   ScoringContext,
   ScoringWeights,
   PullHistoryEntry,
+  ReverseObjectiveVector,
+  MechanismReverseContext,
 } from "./reverse-scoring.ts";
 
 export {

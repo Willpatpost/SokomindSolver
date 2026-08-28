@@ -147,6 +147,7 @@ export interface ReverseSearchProfile {
   readonly stochasticTieBreaking: boolean;
   readonly antiImmediateUndo: boolean;
   readonly restartJitterScale?: number;
+  readonly reverseCandidatesPerBlueprint?: number;
 }
 
 export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {

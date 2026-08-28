@@ -1,4 +1,4 @@
-import type { FunctionalBlueprint, GoalCell } from "./blueprint-types.ts";
+import type { FunctionalBlueprint, GoalCell, MechanismType, MechanismPlan } from "./blueprint-types.ts";
 import type { GridPosition } from "../generator-types.ts";
 import { floodKeeperReachable } from "./reachable-pushes.ts";
 
@@ -45,6 +45,271 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   distanceFromSolved: 1.0,
   supportConstraints: 3.0,
 };
+
+// ---------------------------------------------------------------------------
+// Reverse Objective Vector (Phase 8)
+// ---------------------------------------------------------------------------
+
+export interface ReverseObjectiveVector {
+  readonly scrambleDepth: number;
+  readonly boxDiversity: number;
+  readonly roomTraffic: number;
+  readonly supportCompetition: number;
+  readonly mechanismProgress: number;
+  readonly dependencyPotential: number;
+  readonly structuralRisk: number;
+  readonly repetitionPenalty: number;
+}
+
+export interface MechanismReverseContext {
+  readonly plan: MechanismPlan;
+  readonly gateRoomIds: ReadonlySet<number>;
+  readonly packingRoomIds: ReadonlySet<number>;
+  readonly exchangeRoomIds: ReadonlySet<number>;
+  readonly passageCells: ReadonlySet<string>;
+}
+
+export function buildMechanismReverseContext(
+  plan: MechanismPlan,
+  ctx: ScoringContext,
+): MechanismReverseContext {
+  const gateRoomIds = new Set<number>();
+  const packingRoomIds = new Set<number>();
+  const exchangeRoomIds = new Set<number>();
+
+  for (const mech of plan.mechanisms) {
+    for (const roomId of mech.primaryRoomIds) {
+      if (mech.type === "gatekeeper" || mech.type === "gate-reopening") {
+        gateRoomIds.add(roomId);
+      }
+      if (mech.type === "packing-chain" || mech.type === "dependency-chain") {
+        packingRoomIds.add(roomId);
+      }
+      if (mech.type === "cross-room-exchange") {
+        exchangeRoomIds.add(roomId);
+      }
+    }
+  }
+
+  const passageCells = new Set<string>();
+  for (const passage of ctx.blueprint.passages) {
+    for (const cell of passage.cells) {
+      passageCells.add(`${cell.row},${cell.column}`);
+    }
+  }
+
+  return { plan, gateRoomIds, packingRoomIds, exchangeRoomIds, passageCells };
+}
+
+export function computeObjectiveVector(
+  ctx: ScoringContext,
+  boxPositions: readonly GridPosition[],
+  history: readonly PullHistoryEntry[],
+  mechCtx?: MechanismReverseContext,
+): ReverseObjectiveVector {
+  const scrambleDepth = history.length;
+
+  // Box diversity: how many distinct boxes have been moved
+  const distinctBoxes = new Set<number>();
+  for (const entry of history) {
+    distinctBoxes.add(entry.boxIndex);
+  }
+  const boxDiversity = history.length > 0
+    ? distinctBoxes.size / Math.max(boxPositions.length, 1)
+    : 0;
+
+  // Room traffic: how many room crossings occurred
+  let roomCrossings = 0;
+  for (const entry of history) {
+    if (entry.fromRoom !== undefined && entry.toRoom !== undefined && entry.fromRoom !== entry.toRoom) {
+      roomCrossings++;
+    }
+  }
+  const roomTraffic = history.length > 0
+    ? roomCrossings / history.length
+    : 0;
+
+  // Support competition: how many boxes are adjacent to other boxes
+  const boxSet = new Set(boxPositions.map((b) => `${b.row},${b.column}`));
+  const DR = [-1, 1, 0, 0];
+  const DC = [0, 0, -1, 1];
+  let supportPairs = 0;
+  for (const box of boxPositions) {
+    for (let d = 0; d < 4; d++) {
+      if (boxSet.has(`${box.row + DR[d]},${box.column + DC[d]}`)) {
+        supportPairs++;
+      }
+    }
+  }
+  const supportCompetition = supportPairs / Math.max(boxPositions.length, 1);
+
+  // Mechanism progress: reward states aligned with the mechanism plan
+  let mechanismProgress = 0;
+  if (mechCtx) {
+    mechanismProgress = computeMechanismProgress(ctx, boxPositions, history, mechCtx);
+  }
+
+  // Dependency potential: boxes in different rooms from their goals
+  const goalSet = new Map<number, number>();
+  for (let i = 0; i < ctx.goals.length; i++) {
+    const goalRoom = ctx.roomLookup.get(`${ctx.goals[i].row},${ctx.goals[i].column}`);
+    if (goalRoom !== undefined) goalSet.set(i, goalRoom);
+  }
+  let crossRoomBoxes = 0;
+  for (let i = 0; i < boxPositions.length && i < ctx.goals.length; i++) {
+    const boxRoom = ctx.roomLookup.get(`${boxPositions[i].row},${boxPositions[i].column}`);
+    const goalRoom = goalSet.get(i);
+    if (boxRoom !== undefined && goalRoom !== undefined && boxRoom !== goalRoom) {
+      crossRoomBoxes++;
+    }
+  }
+  const dependencyPotential = crossRoomBoxes / Math.max(boxPositions.length, 1);
+
+  // Structural risk: boxes on chokepoints or tunnels (creates interesting constraints)
+  let riskCells = 0;
+  for (const box of boxPositions) {
+    const key = `${box.row},${box.column}`;
+    if (ctx.chokepointSet.has(key) || ctx.tunnelSet.has(key)) {
+      riskCells++;
+    }
+  }
+  const structuralRisk = riskCells / Math.max(boxPositions.length, 1);
+
+  // Repetition penalty: how many consecutive pulls were on the same box
+  let repetitions = 0;
+  for (let i = 1; i < history.length; i++) {
+    if (history[i].boxIndex === history[i - 1].boxIndex) {
+      repetitions++;
+    }
+  }
+  const repetitionPenalty = history.length > 1
+    ? repetitions / (history.length - 1)
+    : 0;
+
+  return {
+    scrambleDepth,
+    boxDiversity,
+    roomTraffic,
+    supportCompetition,
+    mechanismProgress,
+    dependencyPotential,
+    structuralRisk,
+    repetitionPenalty,
+  };
+}
+
+function computeMechanismProgress(
+  ctx: ScoringContext,
+  boxPositions: readonly GridPosition[],
+  _history: readonly PullHistoryEntry[],
+  mechCtx: MechanismReverseContext,
+): number {
+  let progress = 0;
+  const mechanisms = mechCtx.plan.mechanisms;
+  const MP_DR = [-1, 1, 0, 0];
+  const MP_DC = [0, 0, -1, 1];
+
+  for (const mech of mechanisms) {
+    switch (mech.type) {
+      case "gate-reopening":
+      case "gatekeeper": {
+        // Reward: gate-related boxes displaced from their goal positions near passages
+        let gateDisplacement = 0;
+        for (let i = 0; i < boxPositions.length && i < ctx.goals.length; i++) {
+          const goalRoom = ctx.roomLookup.get(`${ctx.goals[i].row},${ctx.goals[i].column}`);
+          if (goalRoom !== undefined && mechCtx.gateRoomIds.has(goalRoom)) {
+            const dist =
+              Math.abs(boxPositions[i].row - ctx.goals[i].row) +
+              Math.abs(boxPositions[i].column - ctx.goals[i].column);
+            if (dist > 0) gateDisplacement += dist;
+          }
+        }
+        progress += Math.min(gateDisplacement * 0.5, 3.0);
+        break;
+      }
+      case "packing-chain":
+      case "dependency-chain": {
+        // Reward: boxes in packing rooms are in reverse order from their goals
+        let orderReversals = 0;
+        const packingBoxes: Array<{ boxIdx: number; goalDepth: number; boxPos: GridPosition }> = [];
+        for (let i = 0; i < boxPositions.length && i < ctx.goals.length; i++) {
+          const goalRoom = ctx.roomLookup.get(`${ctx.goals[i].row},${ctx.goals[i].column}`);
+          if (goalRoom !== undefined && mechCtx.packingRoomIds.has(goalRoom)) {
+            packingBoxes.push({
+              boxIdx: i,
+              goalDepth: ctx.goals[i].depthFromDoorway,
+              boxPos: boxPositions[i],
+            });
+          }
+        }
+        for (let a = 0; a < packingBoxes.length; a++) {
+          for (let b = a + 1; b < packingBoxes.length; b++) {
+            if (packingBoxes[a].goalDepth > packingBoxes[b].goalDepth) {
+              // Deeper goal should have its box farther from door in starting state
+              const distA = Math.abs(packingBoxes[a].boxPos.row - ctx.goals[packingBoxes[a].boxIdx].row) +
+                Math.abs(packingBoxes[a].boxPos.column - ctx.goals[packingBoxes[a].boxIdx].column);
+              const distB = Math.abs(packingBoxes[b].boxPos.row - ctx.goals[packingBoxes[b].boxIdx].row) +
+                Math.abs(packingBoxes[b].boxPos.column - ctx.goals[packingBoxes[b].boxIdx].column);
+              if (distA > distB) orderReversals++;
+            }
+          }
+        }
+        progress += Math.min(orderReversals * 0.5, 2.0);
+        break;
+      }
+      case "cross-room-exchange": {
+        // Reward: boxes beginning in opposite logical regions from their goal regions
+        let crossRoom = 0;
+        for (let i = 0; i < boxPositions.length && i < ctx.goals.length; i++) {
+          const boxRoom = ctx.roomLookup.get(`${boxPositions[i].row},${boxPositions[i].column}`);
+          const goalRoom = ctx.roomLookup.get(`${ctx.goals[i].row},${ctx.goals[i].column}`);
+          if (boxRoom !== undefined && goalRoom !== undefined &&
+              mechCtx.exchangeRoomIds.has(goalRoom) && boxRoom !== goalRoom) {
+            crossRoom++;
+          }
+        }
+        progress += Math.min(crossRoom * 1.0, 3.0);
+        break;
+      }
+      case "corridor-traffic": {
+        // Reward: boxes near or on passage cells (creating traffic contention)
+        let passageAdjacent = 0;
+        for (const box of boxPositions) {
+          const key = `${box.row},${box.column}`;
+          if (mechCtx.passageCells.has(key)) {
+            passageAdjacent += 2;
+          } else {
+            for (let d = 0; d < 4; d++) {
+              if (mechCtx.passageCells.has(`${box.row + MP_DR[d]},${box.column + MP_DC[d]}`)) {
+                passageAdjacent++;
+                break;
+              }
+            }
+          }
+        }
+        progress += Math.min(passageAdjacent * 0.5, 3.0);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  return progress;
+}
+
+export function objectiveVectorComposite(vec: ReverseObjectiveVector): number {
+  return (
+    vec.scrambleDepth * 0.3 +
+    vec.boxDiversity * 5.0 +
+    vec.roomTraffic * 4.0 +
+    vec.supportCompetition * 3.0 +
+    vec.mechanismProgress * 4.0 +
+    vec.dependencyPotential * 5.0 +
+    vec.structuralRisk * 2.0 -
+    vec.repetitionPenalty * 3.0
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Scoring context construction
