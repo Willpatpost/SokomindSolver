@@ -220,6 +220,17 @@ export interface MechanismVerificationResult {
   readonly missingEvidence: readonly MechanismEvidenceKind[];
 }
 
+export interface RelativeCellConstraint {
+  readonly dr: number;
+  readonly dc: number;
+  readonly role: string;
+}
+
+export interface GateMobilityConstraint {
+  readonly minClearance: number;
+  readonly direction?: "horizontal" | "vertical" | "any";
+}
+
 export interface MechanismGeometryRequirement {
   readonly requiredRooms: number;
   readonly requiredNarrowPassages: number;
@@ -227,6 +238,9 @@ export interface MechanismGeometryRequirement {
   readonly largeRoomRequired: boolean;
   readonly minRoomArea: number;
   readonly preferredFamilies: readonly TopologyFamily[];
+  readonly requiredSupportCells?: readonly RelativeCellConstraint[];
+  readonly parkingPocketRequired?: boolean;
+  readonly gateMobilityPattern?: GateMobilityConstraint;
 }
 
 export interface MechanismPlan {

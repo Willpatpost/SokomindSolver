@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import type { Difficulty, PuzzleDefinition } from "../src/core/model.ts";
 import { DIFFICULTIES } from "../src/core/model.ts";
 import { validatePuzzle } from "../src/core/puzzle.ts";
-import { classifyFromMetrics } from "../src/features/generator/difficulty-classifier.ts";
 import {
   runForge,
   summarizeForgeRun,
@@ -17,14 +16,16 @@ import {
   framePuzzleRows,
   boardHash,
   symmetryHash,
-  evaluateFinalist,
+  evaluateFinalistV4,
   computeCurationObjectives,
   nonDominatedSort,
   computeNoveltyScores,
-  selectByParetoNovelty,
+  selectWithDiversityQuotas,
+  buildV4Fingerprint,
   diagnosePopulation,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
+  DEFAULT_V4_POLICY,
   QUALITY_PRESETS,
   type ForgeConfig,
   type ForgeCandidate,
@@ -38,7 +39,9 @@ import {
   type GeometryProfile,
   type ReverseSearchProfile,
   type FinalistEvaluation,
+  type FinalistEvaluationV4,
   type CurationObjectives,
+  type CuratedCandidate,
   computeV4Profile,
   buildReviewPack,
   buildReviewCatalog,
@@ -400,11 +403,7 @@ const TIER_RANK = new Map<Difficulty, number>(
 function classifyCandidate(
   ev: PuzzleEvaluationVector,
 ): Difficulty {
-  return classifyFromMetrics(
-    ev.solutionMoves,
-    ev.solutionPushes,
-    ev.boxCount,
-  );
+  return computeV4Profile(ev).classification;
 }
 
 function difficultyGap(intended: Difficulty, classified: Difficulty): number {
@@ -419,8 +418,9 @@ interface CatalogCandidate {
   assignedDifficulty: Difficulty;
   rejected: boolean;
   rejectionReason?: ForgeRejectionReason;
-  finalistEval?: FinalistEvaluation;
+  finalistEval?: FinalistEvaluation | FinalistEvaluationV4;
   curationObjectives?: CurationObjectives;
+  structuralFingerprint?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -996,12 +996,13 @@ async function main(): Promise<void> {
 
     console.log(`    [finalist] ${difficulty}: evaluating ${candidates.length} candidates...`);
     for (const cc of candidates) {
-      cc.finalistEval = await evaluateFinalist(cc.candidate.puzzle);
+      cc.finalistEval = await evaluateFinalistV4(cc.candidate.puzzle, DEFAULT_V4_POLICY);
       cc.curationObjectives = computeCurationObjectives(
         cc.candidate.evaluation,
         cc.finalistEval,
         cc.candidate.provenance.dependencyRealizationRate,
       );
+      cc.structuralFingerprint = buildV4Fingerprint(cc.candidate);
     }
 
     const target = tierTargets.get(difficulty) ?? 0;
@@ -1010,10 +1011,14 @@ async function main(): Promise<void> {
         candidates.map((cc) => ({
           item: cc,
           objectives: cc.curationObjectives!,
+          structuralFingerprint: cc.structuralFingerprint,
         })),
       );
       const scored = computeNoveltyScores(sorted);
-      const selected = selectByParetoNovelty(scored, target);
+      const selected = selectWithDiversityQuotas(
+        scored as CuratedCandidate<CatalogCandidate & { structuralFingerprint?: string }>[],
+        target,
+      );
       const selectedSet = new Set(selected.map((s) => s.item));
 
       let culled = 0;

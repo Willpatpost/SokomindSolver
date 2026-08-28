@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  WALL_CHAR,
   isWallChar,
   isRobotChar,
   isGenericBoxChar,
@@ -31,6 +32,10 @@ import {
 // ---------------------------------------------------------------------------
 // Tile semantics unit tests
 // ---------------------------------------------------------------------------
+
+test("WALL_CHAR is O", () => {
+  assert.equal(WALL_CHAR, "O");
+});
 
 test("isWallChar identifies only O", () => {
   assert.ok(isWallChar("O"));

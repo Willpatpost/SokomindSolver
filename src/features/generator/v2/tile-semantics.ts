@@ -1,10 +1,10 @@
-const WALL = "O";
+export const WALL_CHAR = "O";
 const ROBOT = "R";
 const GENERIC_BOX = "X";
 const GENERIC_GOAL = "S";
 
 export function isWallChar(ch: string): boolean {
-  return ch === WALL;
+  return ch === WALL_CHAR;
 }
 
 export function isRobotChar(ch: string): boolean {
@@ -16,7 +16,7 @@ export function isGenericBoxChar(ch: string): boolean {
 }
 
 export function isTypedBoxChar(ch: string): boolean {
-  return ch >= "A" && ch <= "Z" && ch !== WALL && ch !== ROBOT && ch !== GENERIC_GOAL && ch !== GENERIC_BOX;
+  return ch >= "A" && ch <= "Z" && ch !== WALL_CHAR && ch !== ROBOT && ch !== GENERIC_GOAL && ch !== GENERIC_BOX;
 }
 
 export function isBoxChar(ch: string): boolean {
@@ -40,5 +40,5 @@ export function isFloorChar(ch: string): boolean {
 }
 
 export function isWalkableChar(ch: string): boolean {
-  return ch !== WALL;
+  return ch !== WALL_CHAR;
 }

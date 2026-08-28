@@ -8,7 +8,7 @@ import { enumerateReachablePushes } from "./reachable-pushes.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeInteraction } from "./interaction-analysis.ts";
 import { analyzeSolutionDepth } from "./solution-depth-analysis.ts";
-import { isBoxChar, isGoalChar, isRobotChar } from "./tile-semantics.ts";
+import { isBoxChar, isGoalChar, isRobotChar, isWallChar } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
 // Evaluation vector — all raw metrics, no premature aggregation
@@ -501,7 +501,7 @@ function countLegalPushes(
     const destR = adjR + DR[d];
     const destC = adjC + DC[d];
     if (destR < 0 || destR >= h || destC < 0 || destC >= w) continue;
-    if (grid[destR][destC] === "O") continue;
+    if (isWallChar(grid[destR][destC])) continue;
     if (boxSet.has(`${destR},${destC}`)) continue;
     count++;
   }
@@ -686,7 +686,7 @@ function computeUnusedFloorRatio(
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = grid[r][c];
-      if (ch !== "O" && ch !== " ") usedCells++;
+      if (!isWallChar(ch) && ch !== " ") usedCells++;
     }
   }
 

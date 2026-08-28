@@ -23,6 +23,8 @@ export type {
   MechanismEvidenceKind,
   MechanismEvidenceRequirement,
   MechanismGeometryRequirement,
+  RelativeCellConstraint,
+  GateMobilityConstraint,
   MechanismPlan,
   MechanismSpec,
   MechanismType,
@@ -435,3 +437,5 @@ export type {
   NormalizationContext,
   PopulationDiagnostics,
 } from "./curation.ts";
+
+export { WALL_CHAR } from "./tile-semantics.ts";
