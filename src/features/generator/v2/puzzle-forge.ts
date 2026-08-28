@@ -13,6 +13,7 @@ import type { TighteningParams, TighteningResult, TierTighteningPolicy } from ".
 
 import {
   generateBlueprintWithRetry,
+  rasterizeBlueprint,
 } from "./blueprint-graph.ts";
 import { analyzeGrid, parseRowsToGrid } from "./structural-metrics.ts";
 import { createRng } from "../board-template.ts";
@@ -221,6 +222,12 @@ export type ForgeRejectionReason =
   | "gate-moves-per-push"
   | "gate-solver-effort"
   | "gate-geometry"
+  | "geometry-floor-min"
+  | "geometry-floor-max"
+  | "geometry-coverage"
+  | "geometry-regions"
+  | "geometry-chokepoints"
+  | "geometry-room-count"
   | "motif-failed"
   | "composition-failed"
   | "replay-validation-failed"
@@ -342,6 +349,12 @@ async function generateRawCandidate(
     config.blueprintRetries,
   );
   if (!bp) return { ok: false, reason: "blueprint-failed" };
+
+  if (gp) {
+    const bpGrid = rasterizeBlueprint(bp);
+    const geoRejection = validateBlueprintGeometry(bp, bpGrid, gp);
+    if (geoRejection) return { ok: false, reason: geoRejection };
+  }
 
   const fb = assignRoomRoles(bp, seed, boxCount);
 
@@ -553,25 +566,87 @@ function applyStructuralGates(
     gates.minPlayableFloor !== undefined &&
     metrics.totalFloor < gates.minPlayableFloor
   ) {
-    return "gate-geometry";
+    return "geometry-floor-min";
   }
   if (
     gates.minFloorCoverage !== undefined &&
     metrics.floorUtilization < gates.minFloorCoverage
   ) {
-    return "gate-geometry";
+    return "geometry-coverage";
   }
   if (
     gates.minRegionCount !== undefined &&
     metrics.regionCount < gates.minRegionCount
   ) {
-    return "gate-geometry";
+    return "geometry-regions";
   }
   if (
     gates.minChokepointCount !== undefined &&
     metrics.chokepointCount < gates.minChokepointCount
   ) {
-    return "gate-geometry";
+    return "geometry-chokepoints";
+  }
+
+  return null;
+}
+
+export function validateBlueprintGeometry(
+  blueprint: { readonly rooms: readonly { readonly id: number }[]; readonly boardWidth: number; readonly boardHeight: number },
+  grid: readonly (readonly string[])[],
+  gp: GeometryProfile,
+): ForgeRejectionReason | null {
+  if (blueprint.boardWidth < gp.boardWidthRange[0] || blueprint.boardWidth > gp.boardWidthRange[1]) {
+    return "geometry-room-count";
+  }
+  if (blueprint.boardHeight < gp.boardHeightRange[0] || blueprint.boardHeight > gp.boardHeightRange[1]) {
+    return "geometry-room-count";
+  }
+  if (blueprint.rooms.length < gp.minRooms || blueprint.rooms.length > gp.maxRooms) {
+    return "geometry-room-count";
+  }
+
+  const metrics = analyzeGrid(grid);
+
+  if (metrics.totalFloor < gp.minPlayableFloor) {
+    return "geometry-floor-min";
+  }
+  if (gp.maxPlayableFloor !== undefined && metrics.totalFloor > gp.maxPlayableFloor) {
+    return "geometry-floor-max";
+  }
+  if (metrics.floorUtilization < gp.minFloorCoverage) {
+    return "geometry-coverage";
+  }
+  if (metrics.regionCount < gp.minRegions) {
+    return "geometry-regions";
+  }
+  if (metrics.chokepointCount < gp.minChokepoints) {
+    return "geometry-chokepoints";
+  }
+
+  return null;
+}
+
+export function validateFinalGeometry(
+  rows: readonly string[],
+  gp: GeometryProfile,
+): ForgeRejectionReason | null {
+  const grid = parseRowsToGrid(rows);
+  const metrics = analyzeGrid(grid);
+
+  if (metrics.totalFloor < gp.minPlayableFloor) {
+    return "geometry-floor-min";
+  }
+  if (gp.maxPlayableFloor !== undefined && metrics.totalFloor > gp.maxPlayableFloor) {
+    return "geometry-floor-max";
+  }
+  if (metrics.floorUtilization < gp.minFloorCoverage) {
+    return "geometry-coverage";
+  }
+  if (metrics.regionCount < gp.minRegions) {
+    return "geometry-regions";
+  }
+  if (metrics.chokepointCount < gp.minChokepoints) {
+    return "geometry-chokepoints";
   }
 
   return null;
@@ -698,6 +773,12 @@ function inferStagesFromRejection(reason: ForgeRejectionReason): {
 } {
   switch (reason) {
     case "blueprint-failed":
+    case "geometry-floor-min":
+    case "geometry-floor-max":
+    case "geometry-coverage":
+    case "geometry-regions":
+    case "geometry-chokepoints":
+    case "geometry-room-count":
       return { blueprint: false, mechanism: false, goalPlacement: false, reverse: false, validation: false };
     case "composition-failed":
     case "motif-failed":
@@ -791,6 +872,18 @@ async function runForgeFlat(
         postTighteningFloor = tResult.metrics.after.totalFloor;
       } else {
         postTighteningFloor = preTighteningFloor;
+      }
+    }
+
+    if (config.geometryProfile) {
+      const geoResult = validateFinalGeometry(puzzle.rows, config.geometryProfile);
+      if (geoResult) {
+        rejections.push({ seed, reason: geoResult });
+        collector.recordRejection({
+          reason: geoResult, tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
+        continue;
       }
     }
 
@@ -1163,6 +1256,18 @@ async function runForgeFunnel(
         postTighteningFloor = tResult.metrics.after.totalFloor;
       } else {
         postTighteningFloor = preTighteningFloor;
+      }
+    }
+
+    if (config.geometryProfile) {
+      const geoResult = validateFinalGeometry(puzzle.rows, config.geometryProfile);
+      if (geoResult) {
+        rejections.push({ seed, reason: geoResult });
+        collector.recordRejection({
+          reason: geoResult, tier: difficulty, family, mode,
+          requestedBoxCount: boxCount,
+        });
+        continue;
       }
     }
 
