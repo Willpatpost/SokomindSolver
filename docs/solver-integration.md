@@ -87,11 +87,13 @@ failure returns the already verified incumbent. Bounded improvement reports
 `optimality: "unknown"`; only the separate proof phase may certify optimality.
 
 The reviewed Grand Hall guardrail uses production fast mode's zero-comparison
-structural setting. Base, mirrored, and rotated discovery cases replay with
-identical `1,066 moves / 322 pushes`, `1,616 visited`, and `9,329 generated`
-results. The optional base rewrite is locked at `918 moves / 310 pushes`,
-stopping adaptively after 29,000 visited states. A separate production Chrome
-test covers the nested-worker and UI path. Run the guardrail explicitly with:
+structural setting. Base, mirrored, and rotated discovery cases must replay
+with identical counters, and the optional base rewrite must match its reviewed
+counter set. Those figures are generated from the executable guardrail into
+the [living project reference](PROJECT-REFERENCE.md#frozen-solver-evidence), so
+the test and current documentation cannot drift independently. A separate
+production Chrome test covers the nested-worker and UI path. Run the guardrail
+explicitly with:
 
 ```powershell
 npm.cmd run test:solver:huge

@@ -6,7 +6,7 @@ hosting layer with a portable Vite build.
 
 ## Highlights
 
-- 150 validated puzzles, all with typed-box rooms
+- A validated, source-checked puzzle catalog with typed-box rooms
 - Responsive keyboard, touch, and mouse controls
 - Animated crates, matching goal sockets, and a characterful keeper
 - Optional procedural sound effects and ambient music with no downloaded audio
@@ -147,6 +147,10 @@ history, so long routes do not copy every earlier snapshot per move.
 - [Puzzle format](docs/puzzle-format.md)
 - [Testing strategy](docs/testing.md)
 - [Persistence and sharing](docs/persistence-and-sharing.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [MIT license](LICENSE)
 
 ## Puzzle data note
 
@@ -162,10 +166,10 @@ This repository is the static user application and extension architecture.
 legacy typed-box kernel into an isolated nested worker and combines a
 deterministic structural plan lane with guided and bidirectional discovery.
 Every candidate is replayed through the immutable Sokomind core before the UI
-can expose it. Fast mode's deterministic Grand Hall first solution is 1,066
-moves / 322 pushes and returns without comparison, harvesting, or rewriting.
-The optional quality-mode rewrite reduces that route to 918 moves / 310 pushes
-in the Node benchmark. Neither bounded result is a claim of optimality.
+can expose it. Fast mode returns Grand Hall without comparison, harvesting, or
+rewriting; quality mode may improve that verified route. The reviewed counters
+for both paths are generated from the executable performance guardrail into the
+living project reference. Neither bounded result is a claim of optimality.
 
 The classic family remains available for comparison and exact-search research.
 Its A* and IDA* results are accepted as move-optimal proof only after exact

@@ -145,7 +145,8 @@ The user's favorite 17-box hand-designed puzzle is the same puzzle as Grand Hall
 ]
 ```
 
-Known deterministic Grand Hall regression result:
+Former deterministic Grand Hall regression result (retained as historical
+context; see `PROJECT-REFERENCE.md` for the current guardrail):
 
 - Moves: `1066`
 - Pushes: `322`

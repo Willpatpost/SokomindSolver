@@ -164,6 +164,7 @@ fails when the generated facts below differ from source.
 ### Runtime and catalog
 
 - Package version: `0.1.0`
+- License: `MIT`
 - Supported Node.js: `^22.13.0 || >=24.0.0`
 - Catalog schema: `1`
 - Puzzles: **122** across **2** collections and **3** shards
@@ -247,12 +248,15 @@ fails when the generated facts below differ from source.
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default
 - `tunnelMacros`: enabled by default
+- Maximum PDB table: **268,435,456 entries** (**512 MiB**)
 
 ### Frozen solver evidence
 
 - Immutable benchmark fixtures: **43**
 - Classic-eligible fixtures: **37**
 - Frozen exact optima: **33**
+- Grand Hall discovery (base, mirrored, rotated): **893 moves / 278 pushes**, **1,329 visited / 8,425 generated**
+- Grand Hall quality rewrite: **789 moves / 270 pushes**, **29,000 visited**
 - Current performance artifact schema: **3**; schema-2 `baseline-v0.json` is historical only.
 
 ### Delivery ceilings

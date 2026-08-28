@@ -309,7 +309,7 @@ are not suitable for fast mode.
 
 The default reserve predicate is based only on topology and branch pressure:
 the board has at least one detected room and more than `planBoxBranches + 2`
-boxes. It activates on 23 of 150 catalog puzzles, not on an ID, dimensions,
+boxes. Its activation is based on structure across the catalog, not on an ID, dimensions,
 labels, or fixed doorway counts. Representative non-Grand-Hall improvements
 include:
 

@@ -41,10 +41,14 @@ const { DEFAULT_SOKOMIND_REQUEST_OPTIONS } =
   await import("../src/solver/implementations/sokomind-options.ts");
 const { EXACT_SEARCH_FEATURE_KEYS, DEFAULT_EXACT_SEARCH_FEATURES } =
   await import("../src/solver/search/exact-search-features.ts");
+const { MAX_PDB_TABLE_ENTRIES } =
+  await import("../src/solver/search/pattern-database.ts");
 const { BENCHMARK_CORPUS, isClassicEligible } =
   await import("../tests/fixtures/solver-v2/benchmark-corpus.ts");
 const { KNOWN_OPTIMA_BY_FIXTURE_ID } =
   await import("../tests/fixtures/solver-v2/known-optima.ts");
+const { HUGE_DISCOVERY_GUARDRAIL, HUGE_REWRITE_GUARDRAIL } =
+  await import("../tests/fixtures/solver-v2/huge-guardrail.ts");
 
 function metadataVersion(source, id) {
   const start = source.indexOf(`id: "${id}"`);
@@ -98,6 +102,7 @@ const lines = [
   "### Runtime and catalog",
   "",
   `- Package version: \`${packageJson.version}\``,
+  `- License: \`${packageJson.license}\``,
   `- Supported Node.js: \`${packageJson.engines.node}\``,
   `- Catalog schema: \`${metadata.version}\``,
   `- Puzzles: **${metadata.puzzles.length.toLocaleString("en-US")}** across **${collections.size}** collections and **${shards.size}** shards`,
@@ -155,12 +160,15 @@ const lines = [
   "",
   ...EXACT_SEARCH_FEATURE_KEYS.map((key) =>
     `- \`${key}\`: ${DEFAULT_EXACT_SEARCH_FEATURES[key] ? "enabled" : "disabled"} by default`),
+  `- Maximum PDB table: **${MAX_PDB_TABLE_ENTRIES.toLocaleString("en-US")} entries** (**${(MAX_PDB_TABLE_ENTRIES * Uint16Array.BYTES_PER_ELEMENT / 1024 / 1024).toLocaleString("en-US")} MiB**)`,
   "",
   "### Frozen solver evidence",
   "",
   `- Immutable benchmark fixtures: **${BENCHMARK_CORPUS.length}**`,
   `- Classic-eligible fixtures: **${BENCHMARK_CORPUS.filter(isClassicEligible).length}**`,
   `- Frozen exact optima: **${Object.keys(KNOWN_OPTIMA_BY_FIXTURE_ID).length}**`,
+  `- Grand Hall discovery (base, mirrored, rotated): **${HUGE_DISCOVERY_GUARDRAIL.moves} moves / ${HUGE_DISCOVERY_GUARDRAIL.pushes} pushes**, **${HUGE_DISCOVERY_GUARDRAIL.visited.toLocaleString("en-US")} visited / ${HUGE_DISCOVERY_GUARDRAIL.generated.toLocaleString("en-US")} generated**`,
+  `- Grand Hall quality rewrite: **${HUGE_REWRITE_GUARDRAIL.moves} moves / ${HUGE_REWRITE_GUARDRAIL.pushes} pushes**, **${HUGE_REWRITE_GUARDRAIL.visited.toLocaleString("en-US")} visited**`,
   "- Current performance artifact schema: **3**; schema-2 `baseline-v0.json` is historical only.",
   "",
   "### Delivery ceilings",

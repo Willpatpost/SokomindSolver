@@ -18,6 +18,10 @@ import {
   relayPerformanceJson,
   runPerformanceTestModule,
 } from "../support/child-process-gate.ts";
+import {
+  HUGE_DISCOVERY_GUARDRAIL,
+  HUGE_REWRITE_GUARDRAIL,
+} from "../fixtures/solver-v2/huge-guardrail.ts";
 
 // Wall-clock timing gates are sanity checks, not correctness proofs.
 // State-count and deterministic-result assertions are the real gates.
@@ -36,22 +40,8 @@ const MAXIMUMS = Object.freeze({
   peakFrontier: 400,
 });
 
-const REVIEWED_DETERMINISTIC_RESULT = Object.freeze({
-  moves: 893,
-  pushes: 278,
-  visited: 1_329,
-  generated: 8_425,
-  retained: 2_538,
-  peakFrontier: 291,
-});
-
-const REVIEWED_REWRITE_RESULT = Object.freeze({
-  moves: 789,
-  pushes: 270,
-  visited: 29_000,
-  moveVisited: 4_000,
-  moveWindowAdaptiveStop: true,
-});
+const REVIEWED_DETERMINISTIC_RESULT = HUGE_DISCOVERY_GUARDRAIL;
+const REVIEWED_REWRITE_RESULT = HUGE_REWRITE_GUARDRAIL;
 
 const HARD_PROCESS_TIMEOUT_MS = MAXIMUMS.totalElapsedMs + 30_000 * TIMING_SCALE;
 

@@ -23,6 +23,10 @@ export interface PatternDatabase {
 
 const UNSOLVED = 0xffff;
 const MAX_K = 6;
+const MAX_PDB_TABLE_BYTES = 512 * 1024 * 1024;
+const MAX_PDB_TABLE_ENTRIES = Math.floor(
+  MAX_PDB_TABLE_BYTES / Uint16Array.BYTES_PER_ELEMENT,
+);
 
 function estimatePdbRetainedBytes(
   boardCellCount: number,
@@ -32,7 +36,7 @@ function estimatePdbRetainedBytes(
 ): number {
   return 256 +
     boardCellCount * Int32Array.BYTES_PER_ELEMENT +
-    (regionCount + 1) * (k + 1) * Uint32Array.BYTES_PER_ELEMENT +
+    (regionCount + 1) * (k + 1) * Float64Array.BYTES_PER_ELEMENT +
     tableSize * Uint16Array.BYTES_PER_ELEMENT +
     regionCount * 8 +
     k * 8;
@@ -43,13 +47,16 @@ function estimatePdbRetainedBytes(
 // index in [0, C(n,k)).
 // ---------------------------------------------------------------------------
 
-function buildBinomials(maxN: number, maxK: number): Uint32Array[] {
-  const table: Uint32Array[] = new Array(maxN + 1);
+function buildBinomials(maxN: number, maxK: number): Float64Array[] {
+  const table: Float64Array[] = new Array(maxN + 1);
   for (let n = 0; n <= maxN; n++) {
-    table[n] = new Uint32Array(maxK + 1);
+    table[n] = new Float64Array(maxK + 1);
     table[n][0] = 1;
     for (let k = 1; k <= Math.min(n, maxK); k++) {
-      table[n][k] = table[n - 1][k - 1] + table[n - 1][k];
+      const value = table[n - 1][k - 1] + table[n - 1][k];
+      table[n][k] = Number.isSafeInteger(value)
+        ? value
+        : Number.MAX_SAFE_INTEGER;
     }
   }
   return table;
@@ -57,7 +64,7 @@ function buildBinomials(maxN: number, maxK: number): Uint32Array[] {
 
 function combinadicEncode(
   positions: readonly number[],
-  binom: Uint32Array[],
+  binom: Float64Array[],
 ): number {
   let index = 0;
   for (let i = 0; i < positions.length; i++) {
@@ -70,7 +77,7 @@ function combinadicDecode(
   index: number,
   k: number,
   n: number,
-  binom: Uint32Array[],
+  binom: Float64Array[],
 ): number[] {
   const result = new Array<number>(k);
   let remaining = index;
@@ -85,6 +92,27 @@ function combinadicDecode(
     ceiling = v;
   }
   return result;
+}
+
+function disabledPatternDatabase(
+  k: number,
+  goalCells: readonly number[],
+  regionCells: readonly number[],
+): PatternDatabase {
+  return {
+    k,
+    tableSize: 0,
+    goalCells: [...goalCells],
+    regionCells: [...regionCells],
+    estimatedRetainedBytes: 0,
+    lookup: () => UNSOLVED,
+  };
+}
+
+function canAllocatePatternDatabase(tableSize: number): boolean {
+  return Number.isSafeInteger(tableSize) &&
+    tableSize > 0 &&
+    tableSize <= MAX_PDB_TABLE_ENTRIES;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +144,8 @@ export function buildPatternDatabase(
   const binom = buildBinomials(regionCount, k);
   const tableSize = binom[regionCount][k];
 
-  if (tableSize === 0) {
-    return { k, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => UNSOLVED };
+  if (!canAllocatePatternDatabase(tableSize)) {
+    return disabledPatternDatabase(k, goalCells, regionCells);
   }
 
   const table = new Uint16Array(tableSize);
@@ -245,14 +273,13 @@ export async function buildPatternDatabaseAsync(
 
   const binom = buildBinomials(regionCount, k);
   const tableSize = binom[regionCount][k];
+  if (!canAllocatePatternDatabase(tableSize)) {
+    return disabledPatternDatabase(k, goalCells, regionCells);
+  }
   const retainedBytes = estimatePdbRetainedBytes(
     board.cellCount, regionCount, k, tableSize,
   );
   checkExactPreprocessingBudget(budget, retainedBytes);
-
-  if (tableSize === 0) {
-    return { k, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => UNSOLVED };
-  }
 
   const table = new Uint16Array(tableSize);
   table.fill(UNSOLVED);
@@ -394,4 +421,11 @@ export function buildGoalRegion(
   return [...region].sort((a, b) => a - b);
 }
 
-export { combinadicEncode, combinadicDecode, buildBinomials, UNSOLVED, PDB_BFS_YIELD_INTERVAL };
+export {
+  combinadicEncode,
+  combinadicDecode,
+  buildBinomials,
+  UNSOLVED,
+  PDB_BFS_YIELD_INTERVAL,
+  MAX_PDB_TABLE_ENTRIES,
+};

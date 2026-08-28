@@ -6,10 +6,12 @@ import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
 import {
   buildPatternDatabase,
+  buildPatternDatabaseAsync,
   buildGoalRegion,
   buildBinomials,
   combinadicEncode,
   combinadicDecode,
+  MAX_PDB_TABLE_ENTRIES,
   UNSOLVED,
 } from "../../src/solver/search/pattern-database.ts";
 
@@ -66,6 +68,16 @@ describe("combinadic encoding", () => {
       assert.ok(indices.has(i), `missing index ${i}`);
     }
   });
+
+  it("preserves exact combination counts beyond 32-bit integer range", () => {
+    const binom = buildBinomials(255, 5);
+    assert.equal(binom[255][5], 8_637_487_551);
+
+    const positions = [250, 251, 252, 253, 254];
+    const encoded = combinadicEncode(positions, binom);
+    assert.ok(encoded < binom[255][5]);
+    assert.deepEqual(combinadicDecode(encoded, 5, 255, binom), positions);
+  });
 });
 
 describe("buildGoalRegion", () => {
@@ -118,6 +130,46 @@ describe("buildGoalRegion", () => {
 });
 
 describe("buildPatternDatabase", () => {
+  function largeCustomBoard(): ReturnType<typeof compileSearchBoard> {
+    const rows: string[][] = Array.from({ length: 20 }, (_, row) =>
+      Array.from({ length: 20 }, (_, column) =>
+        row === 0 || row === 19 || column === 0 || column === 19 ? "O" : " "));
+    rows[1][1] = "R";
+    for (const [row, column] of [[11, 10], [15, 12], [1, 4], [3, 6], [15, 10]]) {
+      rows[row][column] = "S";
+    }
+    for (const [row, column] of [[2, 2], [2, 17], [10, 2], [10, 17], [17, 17]]) {
+      rows[row][column] = "X";
+    }
+    return compileSearchBoard(parsePuzzleRows(rows.map((row) => row.join(""))));
+  }
+
+  it("disables an oversized custom-board PDB instead of wrapping its size", async () => {
+    const board = largeCustomBoard();
+    const goalCells = [...(board.goalCellsByLabel.get("X") ?? [])];
+    const regionCells = buildGoalRegion(board, goalCells, 8);
+    const binom = buildBinomials(regionCells.length, goalCells.length);
+    const exactTableSize = binom[regionCells.length][goalCells.length];
+
+    assert.equal(regionCells.length, 255);
+    assert.equal(exactTableSize, 8_637_487_551);
+    assert.ok(exactTableSize > MAX_PDB_TABLE_ENTRIES);
+
+    const config = { goalCells, labelIds: goalCells.map(() => "X"), regionCells };
+    const syncPdb = buildPatternDatabase(board, config);
+    const asyncPdb = await buildPatternDatabaseAsync(
+      board,
+      config,
+      new AbortController().signal,
+    );
+
+    for (const pdb of [syncPdb, asyncPdb]) {
+      assert.equal(pdb.tableSize, 0);
+      assert.equal(pdb.estimatedRetainedBytes, 0);
+      assert.equal(pdb.lookup(goalCells), UNSOLVED);
+    }
+  });
+
   it("returns 0 pushes at the goal for a 1-box PDB", () => {
     const board = compileSearchBoard(parsePuzzleRows([
       "OOOOOOO",
