@@ -359,6 +359,7 @@ test("counterfactual: covers all key edge types", () => {
     "chain-link",
     "must-park",
     "must-stage",
+    "exchange-cross",
   ];
 
   const puzzle = makeGatekeeperPuzzle();
@@ -382,4 +383,37 @@ test("counterfactual: covers all key edge types", () => {
       `${edgeType}: should process exactly 1 edge`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// Test K: exchange-cross counterfactual can upgrade confidence
+// ---------------------------------------------------------------------------
+
+test("counterfactual: exchange-cross edge is processed with counterfactual logic", () => {
+  const puzzle = makeGatekeeperPuzzle();
+  const dag: TestDepDAG = {
+    nodes: [
+      { id: 0, goalIndex: 0, roomId: 0, role: "exchange" },
+      { id: 1, goalIndex: 1, roomId: 1, role: "exchange" },
+    ],
+    edges: [{
+      from: 0, to: 1, type: "exchange-cross",
+      description: "Cross-room exchange dependency",
+    }],
+  };
+  const steps: SolutionStep[] = [
+    makeMoveStep("right"),
+    makePushStep("right"),
+  ];
+
+  const base = verifyDependenciesWithEvidence(dag as any, puzzle, steps);
+  const cf = verifyDependenciesCounterfactual(dag as any, puzzle, steps);
+
+  assert.equal(cf.totalEdges, 1);
+  assert.equal(cf.edgeDetails.length, base.edgeDetails.length);
+  // Counterfactual evidence should be >= base evidence
+  assert.ok(
+    cf.edgeDetails[0].evidence.length >= base.edgeDetails[0].evidence.length,
+    "exchange-cross should not lose base evidence",
+  );
 });

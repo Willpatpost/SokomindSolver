@@ -34,6 +34,9 @@ import {
   reverseBeamSearchV4,
   DEFAULT_BEAM_PARAMS,
 } from "./reverse-beam-search.ts";
+import type { ArchiveCandidate } from "./reverse-beam-search.ts";
+import { buildScoringContext, buildMechanismReverseContext } from "./reverse-scoring.ts";
+import type { MechanismReverseContext } from "./reverse-scoring.ts";
 import { evaluatePuzzleWithSteps } from "./puzzle-evaluator.ts";
 import { evaluateFinalist, evaluateFinalistV4, computeCurationObjectives } from "./finalist-evaluator.ts";
 import type { FinalistEvaluation, FinalistEvaluationV4, CurationObjectives } from "./finalist-evaluator.ts";
@@ -277,6 +280,7 @@ export type ForgeRejectionReason =
   | "duplicate-cross-tier"
   | "duplicate-symmetry"
   | "mechanism-evidence-missing"
+  | "mechanism-counterfactual-failed"
   | "quality-gate-failed";
 
 export interface ForgeRejection {
@@ -513,7 +517,10 @@ async function generateRawCandidate(
     let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
 
     if (config.reverseSearchProfile) {
-      const v4Result = reverseBeamSearchV4(placement.solved, seed, config.reverseSearchProfile);
+      let mechCtx: MechanismReverseContext | undefined;
+      const scoringCtx = buildScoringContext(placement.solved.blueprint, placement.solved.grid, placement.solved.goals);
+      mechCtx = buildMechanismReverseContext(plan, scoringCtx);
+      const v4Result = reverseBeamSearchV4(placement.solved, seed, config.reverseSearchProfile, mechCtx);
       if (v4Result.best.depth === 0) {
         return { ok: false, reason: "beam-search-empty" };
       }
@@ -785,8 +792,9 @@ export function blueprintStructuralScore(bc: BlueprintCandidate): number {
 async function completeCandidateFromBlueprint(
   bc: BlueprintCandidate,
   config: ForgeConfig,
+  forcedReverseState?: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number },
 ): Promise<
-  | { ok: true; candidate: ForgeCandidate; solverCalls: number }
+  | { ok: true; candidate: ForgeCandidate; solverCalls: number; rankedCandidates?: readonly ArchiveCandidate[] }
   | { ok: false; reason: ForgeRejectionReason; solverCalls: number }
 > {
   const { seed, family, boxCount, mode, difficulty } = bc;
@@ -794,6 +802,7 @@ async function completeCandidateFromBlueprint(
 
   // --- Stage C: Reverse generation / expensive generation ---
   let rawResult: RawGenResult;
+  let v4RankedCandidatesOut: readonly ArchiveCandidate[] | undefined;
 
   if (mode === "composed") {
     const result = await generateComposedPuzzle(bc.blueprint, {
@@ -836,12 +845,21 @@ async function completeCandidateFromBlueprint(
     const template = toSolvedTemplate(bc.solvedBlueprint);
 
     let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-    if (config.reverseSearchProfile) {
-      const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, config.reverseSearchProfile);
+    let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
+    if (forcedReverseState) {
+      bestCandidate = forcedReverseState;
+    } else if (config.reverseSearchProfile) {
+      let mechCtx: MechanismReverseContext | undefined;
+      if (bc.mechanismPlan) {
+        const scoringCtx = buildScoringContext(bc.solvedBlueprint.blueprint, bc.solvedBlueprint.grid, bc.solvedBlueprint.goals);
+        mechCtx = buildMechanismReverseContext(bc.mechanismPlan, scoringCtx);
+      }
+      const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, config.reverseSearchProfile, mechCtx);
       if (v4Result.best.depth === 0) {
         return { ok: false, reason: "beam-search-empty", solverCalls };
       }
       bestCandidate = v4Result.best;
+      v4RankedCandidates = v4Result.rankedCandidates;
     } else {
       const beamParams: BeamSearchParams = {
         ...DEFAULT_BEAM_PARAMS,
@@ -874,17 +892,22 @@ async function completeCandidateFromBlueprint(
       mechanismTypes: bc.mechanismTypes,
       mechanismPlan: bc.mechanismPlan,
     };
+    v4RankedCandidatesOut = v4RankedCandidates;
   } else if (bc.solvedBlueprint) {
     // plain mode
     const template = toSolvedTemplate(bc.solvedBlueprint);
 
     let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-    if (config.reverseSearchProfile) {
+    let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
+    if (forcedReverseState) {
+      bestCandidate = forcedReverseState;
+    } else if (config.reverseSearchProfile) {
       const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, config.reverseSearchProfile);
       if (v4Result.best.depth === 0) {
         return { ok: false, reason: "beam-search-empty", solverCalls };
       }
       bestCandidate = v4Result.best;
+      v4RankedCandidates = v4Result.rankedCandidates;
     } else {
       const beamParams: BeamSearchParams = {
         ...DEFAULT_BEAM_PARAMS,
@@ -913,6 +936,7 @@ async function completeCandidateFromBlueprint(
     rawResult = {
       puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
     };
+    v4RankedCandidatesOut = v4RankedCandidates;
   } else {
     // Should not happen — composed/motif modes handled above
     return { ok: false, reason: "blueprint-failed", solverCalls };
@@ -1064,6 +1088,15 @@ async function completeCandidateFromBlueprint(
         depRate = cfResult.realizationRate;
         depEdges = cfResult.totalEdges;
         depRealized = cfResult.realizedEdges;
+
+        // Invariant F: Expert/Master mechanisms must have at least one edge
+        // above "observed" confidence
+        const edgesAboveObserved = cfResult.edgeDetails.filter(
+          (d) => d.realized && (d.confidence === "structural" || d.confidence === "counterfactual" || d.confidence === "proven"),
+        ).length;
+        if (cfResult.totalEdges > 0 && edgesAboveObserved === 0) {
+          return { ok: false, reason: "mechanism-counterfactual-failed", solverCalls };
+        }
       }
     }
   }
@@ -1125,6 +1158,7 @@ async function completeCandidateFromBlueprint(
       hints: rawResult.hints,
     },
     solverCalls,
+    rankedCandidates: v4RankedCandidatesOut,
   };
 }
 
@@ -1704,6 +1738,20 @@ async function runForgeFlat(
           depRate = cfResult.realizationRate;
           depEdges = cfResult.totalEdges;
           depRealized = cfResult.realizedEdges;
+
+          // Invariant F: Expert/Master mechanisms must have at least one edge
+          // above "observed" confidence
+          const edgesAboveObserved = cfResult.edgeDetails.filter(
+            (d) => d.realized && (d.confidence === "structural" || d.confidence === "counterfactual" || d.confidence === "proven"),
+          ).length;
+          if (cfResult.totalEdges > 0 && edgesAboveObserved === 0) {
+            rejections.push({ seed, reason: "mechanism-counterfactual-failed" });
+            collector.recordRejection({
+              reason: "mechanism-counterfactual-failed", tier: difficulty, family, mode,
+              requestedBoxCount: boxCount,
+            });
+            continue;
+          }
         }
       }
     }
@@ -2003,6 +2051,29 @@ async function runForgeFunnel(
     });
 
     completedCandidates.push(completion.candidate);
+
+    // Try additional ranked candidates from the same blueprint's reverse search
+    if (completion.rankedCandidates && completion.rankedCandidates.length > 0) {
+      const bestBpKey = JSON.stringify(completion.rankedCandidates[0]?.candidate.boxPositions);
+      const bestFp = completion.candidate.puzzle.rows.join("");
+      const maxExtra = Math.min(completion.rankedCandidates.length, 4);
+      for (let ri = 0; ri < maxExtra; ri++) {
+        const rc = completion.rankedCandidates[ri];
+        if (JSON.stringify(rc.candidate.boxPositions) === bestBpKey) continue;
+        const extra = await completeCandidateFromBlueprint(bc, config, {
+          boxPositions: rc.candidate.boxPositions,
+          robotPosition: rc.candidate.robotPosition,
+          depth: rc.candidate.depth,
+        });
+        totalSolverCalls += extra.solverCalls;
+        if (extra.ok) {
+          const extraFp = extra.candidate.puzzle.rows.join("");
+          if (extraFp !== bestFp) {
+            completedCandidates.push(extra.candidate);
+          }
+        }
+      }
+    }
   }
 
   // Dedup

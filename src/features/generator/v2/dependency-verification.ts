@@ -862,6 +862,37 @@ function counterfactualMustStage(
   return null;
 }
 
+function counterfactualExchangeCross(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  const state = initReplayState(puzzle);
+  const grid = buildFloorGrid(puzzle);
+
+  const fromBox = state.boxes[fromNode.goalIndex];
+  const toGoal = state.goalPositions[toNode.goalIndex];
+  if (!fromBox || !toGoal) return null;
+
+  const boxSet = new Set(state.boxes.map((b) => `${b.row},${b.column}`));
+  boxSet.add(`${fromBox.row},${fromBox.column}`);
+
+  const reachable = floodKeeperReachable(grid, state.robot, boxSet);
+  const goalKey = `${toGoal.row},${toGoal.column}`;
+
+  if (!reachable.has(goalKey)) {
+    return {
+      kind: "counterfactual-exchange",
+      description:
+        `With exchange box frozen at (${fromBox.row},${fromBox.column}), ` +
+        `opposite goal (${toGoal.row},${toGoal.column}) is unreachable — ` +
+        `cross-room exchange is causally required`,
+    };
+  }
+
+  return null;
+}
+
 function applyCounterfactual(
   edge: DepEdge,
   fromNode: DepNode,
@@ -881,6 +912,8 @@ function applyCounterfactual(
       return counterfactualMustPark(fromNode, toNode, puzzle);
     case "must-stage":
       return counterfactualMustStage(fromNode, toNode, puzzle);
+    case "exchange-cross":
+      return counterfactualExchangeCross(fromNode, toNode, puzzle);
     default:
       return null;
   }
