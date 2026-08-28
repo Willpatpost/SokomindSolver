@@ -20,6 +20,8 @@ import { extractTrailPositions } from "./trail-positions";
 interface BoardProps {
   session: GameSession;
   reduceMotion?: boolean;
+  immersive?: boolean;
+  constrainToViewport?: boolean;
   deadlockedBoxIds?: ReadonlySet<string>;
   experienceEvent?: PresentedGameExperienceEvent | null;
 }
@@ -27,6 +29,9 @@ interface BoardProps {
 type BoardStyle = CSSProperties & {
   "--columns": number;
   "--rows": number;
+  "--board-catalog-limit": string;
+  "--board-standard-height-limit": string;
+  "--board-immersive-height-limit": string;
 };
 
 type PieceStyle = CSSProperties & {
@@ -349,6 +354,8 @@ const EMPTY_SET = new Set<string>();
 export const Board = memo(function Board({
   session,
   reduceMotion = false,
+  immersive = false,
+  constrainToViewport = false,
   deadlockedBoxIds = EMPTY_SET,
   experienceEvent = null,
 }: BoardProps) {
@@ -396,7 +403,9 @@ export const Board = memo(function Board({
   const style: BoardStyle = {
     "--columns": board.width,
     "--rows": board.height,
-    maxWidth: `${board.width * 44}px`,
+    "--board-catalog-limit": `${board.width * 44}px`,
+    "--board-standard-height-limit": `${((board.width / board.height) * 58).toFixed(2)}dvh`,
+    "--board-immersive-height-limit": `${((board.width / board.height) * 66).toFixed(2)}dvh`,
   };
 
   return (
@@ -408,6 +417,11 @@ export const Board = memo(function Board({
       data-solved={snapshot.solved || undefined}
       data-feedback={experienceEvent?.kind}
       data-feedback-sequence={experienceEvent?.sequence}
+      data-fit-viewport={constrainToViewport || undefined}
+      data-board-size={
+        board.width >= 14 || board.height >= 14 ? "large" : "standard"
+      }
+      data-immersive={immersive || undefined}
       data-testid="game-board"
     >
       {cellDescriptors.map((desc) => (

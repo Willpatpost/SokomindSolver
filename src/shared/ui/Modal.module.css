@@ -9,7 +9,7 @@
 }
 
 .dialog::backdrop {
-  background: rgb(23 25 22 / 0.62);
+  background: var(--modal-backdrop);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   animation: modal-fade-in 180ms ease both;
@@ -41,7 +41,7 @@
 }
 
 :global(html[data-theme="dark"]) .dialog::backdrop {
-  background: rgb(0 0 0 / 0.7);
+  background: var(--modal-backdrop);
 }
 
 @media (forced-colors: active) {

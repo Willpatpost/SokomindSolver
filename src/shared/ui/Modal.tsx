@@ -73,7 +73,9 @@ export function Modal({
     document.documentElement.dataset.modalOpen = "";
 
     const frame = window.requestAnimationFrame(() => {
-      const initialFocus = dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      const initialFocus =
+        dialog.querySelector<HTMLElement>("[data-autofocus]") ??
+        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       initialFocus?.focus();
     });
 

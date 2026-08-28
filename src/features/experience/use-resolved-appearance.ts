@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 import {
-  resolveTheme,
-  type ThemePreference,
-  type ResolvedTheme,
+  resolveAppearance,
+  type AppearancePreference,
+  type ResolvedAppearance,
 } from "./experience-preferences";
 
 const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
@@ -32,12 +32,14 @@ function serverPreference(): boolean {
   return false;
 }
 
-export function useResolvedTheme(preference: ThemePreference): ResolvedTheme {
+export function useResolvedAppearance(
+  preference: AppearancePreference,
+): ResolvedAppearance {
   const systemPrefersDark = useSyncExternalStore(
     subscribeToSystemPreference,
     readSystemPreference,
     serverPreference,
   );
 
-  return resolveTheme(preference, systemPrefersDark);
+  return resolveAppearance(preference, systemPrefersDark);
 }

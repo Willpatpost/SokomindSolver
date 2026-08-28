@@ -24,6 +24,8 @@ const SHORTCUTS = [
       { label: "Restart puzzle", keys: ["R"] },
       { label: "Pause / resume", keys: ["P"] },
       { label: "Toggle favorite", keys: ["F"] },
+      { label: "Toggle Zen mode", keys: ["Z"] },
+      { label: "Mute / restore audio", keys: ["M"] },
     ],
   },
   {

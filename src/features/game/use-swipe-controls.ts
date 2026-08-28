@@ -12,7 +12,7 @@ export function useSwipeControls(
   ref: RefObject<HTMLElement | null>,
   options: UseSwipeControlsOptions,
 ): void {
-  const { enabled, onSwipe, threshold = 30 } = options;
+  const { enabled, onSwipe, threshold = 36 } = options;
 
   useEffect(() => {
     const element = ref.current;
@@ -23,7 +23,12 @@ export function useSwipeControls(
     let tracking = false;
 
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) {
+      const target = event.target;
+      if (
+        event.touches.length !== 1 ||
+        (target instanceof Element &&
+          target.closest("button, a, input, select, textarea, [role='button']"))
+      ) {
         tracking = false;
         return;
       }

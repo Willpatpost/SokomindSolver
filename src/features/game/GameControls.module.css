@@ -1,8 +1,8 @@
 .controls {
-  --controls-border-color: rgb(23 25 22 / 0.08);
-  --controls-bg: rgb(251 250 245 / 0.86);
-  --dpad-border-color: #d8d1c2;
-  --dpad-bg: linear-gradient(145deg, #fffef9, #e9e4d8);
+  --controls-border-color: var(--border-soft);
+  --controls-bg: var(--surface-glass);
+  --dpad-border-color: var(--paper-300);
+  --dpad-bg: linear-gradient(145deg, var(--paper-50), var(--paper-200));
 
   padding: 24px;
   border: 1px solid var(--controls-border-color);
@@ -160,6 +160,42 @@
   font-size: 0.7rem;
 }
 
+.controls[data-variant="compact"] {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1fr);
+  align-items: center;
+  width: min(100%, 620px);
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+}
+
+.controls[data-variant="compact"] .dpad {
+  grid-template: repeat(3, 42px) / repeat(3, 42px);
+  margin: 0;
+}
+
+.controls[data-variant="compact"] .actions {
+  grid-template-columns: repeat(3, minmax(76px, 1fr));
+  max-width: none;
+}
+
+.controls[data-variant="compact"] .actions button {
+  min-height: 48px;
+}
+
+@media (pointer: fine) {
+  .controls[data-variant="compact"] {
+    grid-template-columns: minmax(260px, 1fr);
+    width: min(100%, 420px);
+  }
+
+  .controls[data-variant="compact"] .dpad {
+    display: none;
+  }
+}
+
 @media (max-width: 1050px) {
   .controls {
     display: grid;
@@ -213,6 +249,32 @@
   .actions button {
     min-height: 46px;
   }
+
+  .controls[data-variant="compact"] {
+    grid-template-columns: 1fr;
+    width: 100%;
+    padding: 10px;
+  }
+
+  .controls[data-variant="compact"] .dpad {
+    grid-template: repeat(3, 52px) / repeat(3, 52px);
+    margin-inline: auto;
+  }
+
+  .controls[data-variant="compact"] .actions button {
+    min-height: 48px;
+    padding-inline: 10px;
+  }
+}
+
+@media (pointer: coarse) {
+  .dpad {
+    gap: 2px;
+  }
+
+  .actions {
+    gap: 10px;
+  }
 }
 
 .thinking {
@@ -235,15 +297,15 @@
 }
 
 :global(html[data-theme="dark"]) .controls {
-  --controls-border-color: rgb(255 255 255 / 0.06);
-  --controls-bg: rgb(34 36 32 / 0.86);
-  --dpad-border-color: #4a4e48;
-  --dpad-bg: linear-gradient(145deg, #3a3d38, #2e312c);
+  --controls-border-color: var(--border-soft);
+  --controls-bg: var(--surface-glass);
+  --dpad-border-color: var(--paper-300);
+  --dpad-bg: linear-gradient(145deg, var(--paper-200), var(--paper-100));
 }
 
 :global(html[data-theme="dark"]) .actions button {
-  border-color: rgb(255 255 255 / 0.1);
-  background: rgb(40 42 38 / 0.5);
+  border-color: var(--border-medium);
+  background: color-mix(in srgb, var(--paper-200), transparent 50%);
 }
 
 :global(html[data-theme="dark"]) .actions button:hover:not(:disabled) {

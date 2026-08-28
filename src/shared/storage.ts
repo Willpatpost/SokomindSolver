@@ -7,9 +7,10 @@
  */
 export const STORAGE_KEYS = Object.freeze({
   progress: "sokomind.progress.v1",
-  experience: "sokomind.experience.v1",
+  experience: "sokomind.experience.v2",
   session: "sokomind.session.v1",
   optimal: "sokomind.optimal.v4",
+  personalBestRoutes: "sokomind.personal-best-routes.v1",
   reset: "sokomind.reset.v1",
   ratings: "sokomind.ratings.v1",
   favorites: "sokomind.favorites.v1",

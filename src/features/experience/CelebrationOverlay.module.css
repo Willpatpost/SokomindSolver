@@ -153,6 +153,18 @@
   background: radial-gradient(circle at center, rgb(255 215 0 / 0.4), transparent 47%);
 }
 
+.personalBest .wash {
+  background: radial-gradient(circle at center, rgb(204 229 191 / 0.38), transparent 47%);
+}
+
+.personalBest .ring {
+  border-color: rgb(86 136 89 / 0.72);
+}
+
+.personalBest .flare {
+  background: radial-gradient(circle, rgb(218 244 199 / 0.94), rgb(112 153 92 / 0.5) 38%, transparent 72%);
+}
+
 .optimal .ring {
   border-color: rgb(229 166 75 / 0.72);
 }

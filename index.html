@@ -64,7 +64,8 @@
 (function() {
   try {
     var root = document.documentElement;
-    var raw = localStorage.getItem("sokomind.experience.v1");
+    var raw = localStorage.getItem("sokomind.experience.v2") ||
+      localStorage.getItem("sokomind.experience.v1");
     var prefs = raw ? JSON.parse(raw) : {};
     var motion = prefs.motion;
     if (motion === "full" || motion === "reduced") {
@@ -74,27 +75,26 @@
         ? "reduced"
         : "full";
     }
-    var resolvedTheme = null;
-    if (raw) {
-      var theme = prefs.theme;
-      if (theme === "dark" || theme === "light") {
-        root.dataset.theme = theme;
-        resolvedTheme = theme;
-      } else if (theme === "system" || !theme) {
-        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          root.dataset.theme = "dark";
-          resolvedTheme = "dark";
-        }
-      }
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      root.dataset.theme = "dark";
-      resolvedTheme = "dark";
-    }
-    if (resolvedTheme) {
-      var tcs = document.querySelectorAll('meta[name="theme-color"]');
-      var val = resolvedTheme === "dark" ? "#171916" : "#f3f0e7";
-      tcs.forEach(function(tc) { tc.setAttribute("content", val); });
-    }
+    var families = ["cozy-study", "midnight-neon", "minimal-ink"];
+    var family = prefs.version === 2 && families.indexOf(prefs.themeFamily) >= 0
+      ? prefs.themeFamily
+      : "cozy-study";
+    var appearance = prefs.version === 2 ? prefs.appearance : prefs.theme;
+    var resolvedTheme = appearance === "dark" || appearance === "light"
+      ? appearance
+      : window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    root.dataset.themeFamily = family;
+    root.dataset.theme = resolvedTheme;
+    var themeColors = {
+      "cozy-study": { light: "#f3f0e7", dark: "#171916" },
+      "midnight-neon": { light: "#eef2ff", dark: "#080b18" },
+      "minimal-ink": { light: "#f6f6f3", dark: "#111212" }
+    };
+    var tcs = document.querySelectorAll('meta[name="theme-color"]');
+    var val = themeColors[family][resolvedTheme];
+    tcs.forEach(function(tc) { tc.setAttribute("content", val); });
   } catch(e) {}
 })();
 </script>

@@ -28,6 +28,7 @@ interface GameKeyboardOptions {
   readonly onShowShortcuts?: () => void;
   readonly onPause?: () => void;
   readonly onToggleFavorite?: () => void;
+  readonly onToggleZen?: () => void;
 }
 
 export function useGameKeyboard({
@@ -42,6 +43,7 @@ export function useGameKeyboard({
   onShowShortcuts,
   onPause,
   onToggleFavorite,
+  onToggleZen,
 }: GameKeyboardOptions) {
   useEffect(() => {
     if (!enabled) return;
@@ -94,10 +96,13 @@ export function useGameKeyboard({
       } else if ((event.key === "f" || event.key === "F") && !event.shiftKey && onToggleFavorite) {
         event.preventDefault();
         onToggleFavorite();
+      } else if ((event.key === "z" || event.key === "Z") && !event.shiftKey && onToggleZen) {
+        event.preventDefault();
+        onToggleZen();
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onUndo]);
+  }, [enabled, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
 }

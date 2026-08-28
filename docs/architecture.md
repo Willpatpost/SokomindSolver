@@ -93,6 +93,12 @@ Storage access is centralized, namespaced, versioned, and exception-safe. The
 current keys and payload schemas are generated into the project reference.
 Session coordinates are never deserialized directly; saved actions replay
 through the core. Puzzle progress never depends on sound or motion preferences.
+Small personal-best summaries remain synchronously available while larger
+action logs live in a fenced asynchronous repository. A candidate route must
+replay to the solved state with exact move and push counters before promotion;
+board-revision fingerprints prevent a route from silently crossing puzzle
+changes. Retention limits apply independently of summary progress, so pruning
+history cannot erase completion records.
 The editor key contains a bounded named-document store and migrates the legacy
 single draft without silently overwriting it. See
 [`persistence-and-sharing.md`](persistence-and-sharing.md).

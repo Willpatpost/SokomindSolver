@@ -216,13 +216,15 @@ function createMockAudioContext(): MockAudioContext {
 
 function defaultPreferences(overrides?: Partial<ExperiencePreferences>): ExperiencePreferences {
   return {
-    version: 1,
+    version: 2,
     soundEnabled: true,
     musicEnabled: false,
     effectsVolume: 0.72,
     musicVolume: 0.28,
     motion: "system",
-    theme: "system",
+    themeFamily: "cozy-study",
+    appearance: "system",
+    zenMode: false,
     ...overrides,
   };
 }
@@ -467,6 +469,17 @@ describe("ProceduralAudioController", () => {
       const controller = new mod.ProceduralAudioController(prefs);
       const result = await controller.playCue("step");
       assert.equal(result, false);
+      assert.equal(mockCtx._tracker.calls.length, 0, "muted cues should not allocate audio");
+      controller.dispose();
+    });
+
+    it("returns false without allocating audio when effects volume is zero", async () => {
+      const controller = new mod.ProceduralAudioController(
+        defaultPreferences({ effectsVolume: 0 }),
+      );
+      const result = await controller.playCue("step");
+      assert.equal(result, false);
+      assert.equal(mockCtx._tracker.calls.length, 0);
       controller.dispose();
     });
 
@@ -542,6 +555,73 @@ describe("ProceduralAudioController", () => {
       await controller.playCue("solve");
       const newOscs = mockCtx._createdOscillators.slice(oscsBefore);
       assert.equal(newOscs.length, 4);
+      controller.dispose();
+    });
+
+    it("uses longer solve signatures for personal-best and optimal milestones", async () => {
+      const controller = new mod.ProceduralAudioController(defaultPreferences());
+      await controller.unlock();
+      const beforeBest = mockCtx._createdOscillators.length;
+      await controller.playCue("solve", { variant: "personal-best" });
+      assert.equal(mockCtx._createdOscillators.length - beforeBest, 5);
+
+      const beforeOptimal = mockCtx._createdOscillators.length;
+      await controller.playCue("solve", { variant: "optimal" });
+      assert.equal(mockCtx._createdOscillators.length - beforeOptimal, 6);
+      controller.dispose();
+    });
+
+    it("adds a restrained second tone for warnings and deadlocks", async () => {
+      const controller = new mod.ProceduralAudioController(defaultPreferences());
+      await controller.unlock();
+      const beforeWarning = mockCtx._createdOscillators.length;
+      await controller.playCue("blocked", { variant: "warning" });
+      assert.equal(mockCtx._createdOscillators.length - beforeWarning, 2);
+
+      mockCtx.currentTime += 0.1;
+      const beforeDeadlock = mockCtx._createdOscillators.length;
+      await controller.playCue("blocked", { variant: "deadlock" });
+      assert.equal(mockCtx._createdOscillators.length - beforeDeadlock, 2);
+      controller.dispose();
+    });
+
+    it("rate limits noisy repeated cues while allowing deliberate previews", async () => {
+      const controller = new mod.ProceduralAudioController(defaultPreferences());
+      await controller.unlock();
+      assert.equal(await controller.playCue("step"), true);
+      assert.equal(await controller.playCue("step"), false);
+      assert.equal(
+        await controller.playCue("step", { bypassRateLimit: true }),
+        true,
+      );
+
+      mockCtx.currentTime += 0.03;
+      assert.equal(await controller.playCue("step"), true);
+      controller.dispose();
+    });
+
+    it("transposes a cue without changing its presentation shape", async () => {
+      const controller = new mod.ProceduralAudioController(defaultPreferences());
+      await controller.unlock();
+      await controller.playCue("step", { pitchOffset: 2 });
+      const osc = mockCtx._createdOscillators.at(-1)!;
+      const calls = (osc.frequency as unknown as {
+        _tracker: ReturnType<typeof createCallTracker>;
+      })._tracker.calls;
+      const startFrequency = calls.find(
+        (call: CallRecord) => call.method === "setValueAtTime",
+      )?.args[0] as number;
+      assert.ok(Math.abs(startFrequency - 145 * 2 ** (2 / 12)) < 0.001);
+      controller.dispose();
+    });
+
+    it("contains Web Audio node failures instead of rejecting game input", async () => {
+      const controller = new mod.ProceduralAudioController(defaultPreferences());
+      await controller.unlock();
+      mockCtx.createOscillator = () => {
+        throw new Error("audio device unavailable");
+      };
+      assert.equal(await controller.playCue("step"), false);
       controller.dispose();
     });
 
@@ -638,6 +718,30 @@ describe("ProceduralAudioController", () => {
   // -----------------------------------------------------------------------
 
   describe("music generator", () => {
+    it("does not start music work when music volume is zero", async () => {
+      const prefs = defaultPreferences({
+        soundEnabled: true,
+        musicEnabled: true,
+        musicVolume: 0,
+      });
+      const controller = new mod.ProceduralAudioController(prefs);
+      await controller.unlock();
+      assert.equal(mockCtx._createdOscillators.length, 0);
+      assert.equal(windowMock.timers.size, 0);
+      controller.dispose();
+    });
+
+    it("offers explicit effect and music previews", async () => {
+      const prefs = defaultPreferences({ soundEnabled: true, musicEnabled: true });
+      const controller = new mod.ProceduralAudioController(prefs);
+      assert.equal(await controller.previewEffects(), true);
+      const beforeMusicPreview = mockCtx._createdOscillators.length;
+      assert.equal(await controller.previewMusic(), true);
+      assert.ok(mockCtx._createdOscillators.length - beforeMusicPreview >= 3);
+      assert.equal(await controller.previewMusic(), false, "preview should be rate limited");
+      controller.dispose();
+    });
+
     it("enabling music starts the scheduler (creates music oscillators)", async () => {
       const prefs = defaultPreferences({ soundEnabled: true, musicEnabled: true });
       const controller = new mod.ProceduralAudioController(prefs);

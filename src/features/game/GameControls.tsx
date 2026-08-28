@@ -25,6 +25,7 @@ interface GameControlsProps {
   onUndoN?: (count: number) => void;
   onHint?: () => void;
   onReset: () => void;
+  variant?: "full" | "compact";
 }
 
 const MOVE_BUTTONS: ReadonlyArray<{
@@ -49,16 +50,23 @@ export function GameControls({
   onUndoN,
   onHint,
   onReset,
+  variant = "full",
 }: GameControlsProps) {
   return (
-    <section className={styles.controls} aria-label="Game controls">
-      <div className={styles.controlHeading}>
-        <div>
-          <p>Movement</p>
-          <h2>Plan each push</h2>
+    <section
+      className={styles.controls}
+      aria-label="Game controls"
+      data-variant={variant}
+    >
+      {variant === "full" ? (
+        <div className={styles.controlHeading}>
+          <div>
+            <p>Movement</p>
+            <h2>Plan each push</h2>
+          </div>
+          <span>Arrows / WASD</span>
         </div>
-        <span>Arrows / WASD</span>
-      </div>
+      ) : null}
 
       <div className={styles.dpad}>
         {MOVE_BUTTONS.map(({ direction, label, glyph }) => (
@@ -81,12 +89,12 @@ export function GameControls({
           <span>Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}</span>
           <kbd>U</kbd>
         </button>
-        {onUndoN && undoDepth >= 5 && (
+        {variant === "full" && onUndoN && undoDepth >= 5 && (
           <button type="button" onClick={() => onUndoN(5)} disabled={disabled}>
             <span>Undo 5</span>
           </button>
         )}
-        {onUndoN && undoDepth >= 10 && (
+        {variant === "full" && onUndoN && undoDepth >= 10 && (
           <button type="button" onClick={() => onUndoN(Infinity)} disabled={disabled}>
             <span>Undo all</span>
           </button>

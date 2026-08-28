@@ -76,8 +76,8 @@
 }
 
 :global(html[data-theme="dark"]) .actions button {
-  border-color: rgb(255 255 255 / 0.1);
-  background: rgb(34 36 32 / 0.6);
+  border-color: var(--border-medium);
+  background: color-mix(in srgb, var(--surface-glass), transparent 24%);
 }
 
 :global(html[data-theme="dark"]) .actions button:last-child {

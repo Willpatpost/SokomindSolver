@@ -13,6 +13,29 @@ export const AUDIO_CUES = [
 
 export type AudioCue = (typeof AUDIO_CUES)[number];
 
+export const AUDIO_CUE_VARIANTS = [
+  "default",
+  "progress",
+  "multi",
+  "warning",
+  "deadlock",
+  "first-clear",
+  "personal-best",
+  "optimal",
+  "preview",
+] as const;
+
+export type AudioCueVariant = (typeof AUDIO_CUE_VARIANTS)[number];
+
+export interface AudioCueOptions {
+  /** Small transposition used to distinguish direction and goal progress. */
+  readonly pitchOffset?: number;
+  /** Semantic variation interpreted by the selected cue. */
+  readonly variant?: AudioCueVariant;
+  /** Reserved for intentional settings previews. */
+  readonly bypassRateLimit?: boolean;
+}
+
 type AudioContextConstructor = new () => AudioContext;
 
 interface ToneOptions {
@@ -38,6 +61,42 @@ const MUSIC_NOTES = [
 
 const MUSIC_STEP_SECONDS = 1.35;
 const MUSIC_LOOKAHEAD_SECONDS = 0.35;
+
+const CUE_COOLDOWNS: Readonly<Partial<Record<AudioCue, number>>> = {
+  step: 0.028,
+  push: 0.045,
+  "goal-enter": 0.055,
+  "goal-leave": 0.055,
+  blocked: 0.09,
+  undo: 0.055,
+};
+
+const MUSIC_PREVIEW_COOLDOWN_SECONDS = 0.4;
+
+function clampPitchOffset(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(-5, Math.min(5, value ?? 0));
+}
+
+function pitchMultiplier(offset: number): number {
+  return 2 ** (offset / 12);
+}
+
+function variantVolumeMultiplier(variant: AudioCueVariant): number {
+  switch (variant) {
+    case "multi":
+      return 0.94;
+    case "warning":
+      return 1.12;
+    case "deadlock":
+      return 1.2;
+    case "personal-best":
+    case "optimal":
+      return 1.08;
+    default:
+      return 1;
+  }
+}
 
 function audioContextConstructor(): AudioContextConstructor | undefined {
   if (typeof window === "undefined") return undefined;
@@ -70,6 +129,8 @@ export class ProceduralAudioController {
   private musicTimer: number | null = null;
   private musicStep = 0;
   private nextMusicTime = 0;
+  private lastMusicPreviewTime = Number.NEGATIVE_INFINITY;
+  private readonly lastCueTimes = new Map<AudioCue, number>();
   private readonly musicSources = new Set<OscillatorNode>();
 
   constructor(preferences: ExperiencePreferences) {
@@ -116,19 +177,42 @@ export class ProceduralAudioController {
     return this.unlockPromise;
   }
 
-  async playCue(cue: AudioCue): Promise<boolean> {
-    if (this.disposed || !this.preferences.soundEnabled || !this.visible) {
+  async playCue(
+    cue: AudioCue,
+    options: AudioCueOptions = {},
+  ): Promise<boolean> {
+    if (
+      this.disposed ||
+      !this.preferences.soundEnabled ||
+      this.preferences.effectsVolume <= 0 ||
+      !this.visible
+    ) {
       return false;
     }
     if (!(await this.unlock())) return false;
 
     const context = this.context;
     if (!context || context.state !== "running") return false;
-    const now = context.currentTime + 0.006;
+    if (!this.canPresentCue(cue, context.currentTime, options)) return false;
 
-    switch (cue) {
+    const now = context.currentTime + 0.006;
+    const variant = options.variant ?? "default";
+    const pitch = pitchMultiplier(clampPitchOffset(options.pitchOffset));
+    const volume = variantVolumeMultiplier(variant);
+
+    const tone = (toneOptions: ToneOptions) => this.tone({
+      ...toneOptions,
+      frequency: toneOptions.frequency * pitch,
+      ...(toneOptions.endFrequency === undefined
+        ? {}
+        : { endFrequency: toneOptions.endFrequency * pitch }),
+      volume: toneOptions.volume * volume,
+    });
+
+    try {
+      switch (cue) {
       case "step":
-        this.tone({
+        tone({
           frequency: 145,
           endFrequency: 112,
           start: now,
@@ -138,7 +222,7 @@ export class ProceduralAudioController {
         });
         break;
       case "push":
-        this.tone({
+        tone({
           frequency: 112,
           endFrequency: 66,
           start: now,
@@ -146,7 +230,7 @@ export class ProceduralAudioController {
           volume: 0.14,
           type: "sine",
         });
-        this.tone({
+        tone({
           frequency: 218,
           endFrequency: 154,
           start: now,
@@ -156,14 +240,14 @@ export class ProceduralAudioController {
         });
         break;
       case "goal-enter":
-        this.tone({
+        tone({
           frequency: 392,
           start: now,
           duration: 0.16,
           volume: 0.075,
           type: "sine",
         });
-        this.tone({
+        tone({
           frequency: 587.33,
           start: now + 0.075,
           duration: 0.22,
@@ -172,7 +256,7 @@ export class ProceduralAudioController {
         });
         break;
       case "goal-leave":
-        this.tone({
+        tone({
           frequency: 392,
           endFrequency: 293.66,
           start: now,
@@ -182,7 +266,7 @@ export class ProceduralAudioController {
         });
         break;
       case "blocked":
-        this.tone({
+        tone({
           frequency: 92,
           endFrequency: 74,
           start: now,
@@ -190,9 +274,19 @@ export class ProceduralAudioController {
           volume: 0.045,
           type: "square",
         });
+        if (variant === "warning" || variant === "deadlock") {
+          tone({
+            frequency: variant === "deadlock" ? 61.74 : 123.47,
+            endFrequency: variant === "deadlock" ? 49 : 98,
+            start: now + 0.052,
+            duration: variant === "deadlock" ? 0.14 : 0.09,
+            volume: variant === "deadlock" ? 0.045 : 0.028,
+            type: "triangle",
+          });
+        }
         break;
       case "undo":
-        this.tone({
+        tone({
           frequency: 329.63,
           endFrequency: 246.94,
           start: now,
@@ -202,7 +296,7 @@ export class ProceduralAudioController {
         });
         break;
       case "reset":
-        this.tone({
+        tone({
           frequency: 196,
           endFrequency: 110,
           start: now,
@@ -212,18 +306,73 @@ export class ProceduralAudioController {
         });
         break;
       case "solve":
-        [261.63, 329.63, 392, 523.25].forEach((frequency, index) => {
-          this.tone({
+        (variant === "optimal"
+          ? [261.63, 329.63, 392, 523.25, 659.25, 783.99]
+          : variant === "personal-best"
+            ? [293.66, 369.99, 440, 587.33, 659.25]
+            : variant === "first-clear"
+              ? [261.63, 329.63, 392, 523.25, 659.25]
+              : [261.63, 329.63, 392, 523.25]
+        ).forEach((frequency, index, notes) => {
+          tone({
             frequency,
             start: now + index * 0.085,
             duration: 0.42,
-            volume: index === 3 ? 0.07 : 0.052,
+            volume: index === notes.length - 1 ? 0.07 : 0.052,
             type: index % 2 === 0 ? "sine" : "triangle",
           });
         });
         break;
+      }
+    } catch {
+      return false;
     }
 
+    this.lastCueTimes.set(cue, context.currentTime);
+    return true;
+  }
+
+  async previewEffects(): Promise<boolean> {
+    return this.playCue("goal-enter", {
+      variant: "preview",
+      bypassRateLimit: true,
+    });
+  }
+
+  async previewMusic(): Promise<boolean> {
+    if (
+      this.disposed ||
+      !this.visible ||
+      !this.preferences.soundEnabled ||
+      !this.preferences.musicEnabled ||
+      this.preferences.musicVolume <= 0
+    ) return false;
+    if (!(await this.unlock())) return false;
+
+    const context = this.context;
+    if (!context || context.state !== "running") return false;
+    if (
+      context.currentTime - this.lastMusicPreviewTime <
+      MUSIC_PREVIEW_COOLDOWN_SECONDS
+    ) return false;
+
+    const now = context.currentTime + 0.006;
+    try {
+      [261.63, 329.63, 392].forEach((frequency, index) => {
+        this.tone({
+          frequency,
+          start: now + index * 0.11,
+          duration: 0.48,
+          volume: index === 2 ? 0.065 : 0.05,
+          type: index % 2 === 0 ? "sine" : "triangle",
+          music: true,
+        });
+      });
+    } catch {
+      return false;
+    }
+
+    this.lastMusicPreviewTime = context.currentTime;
     return true;
   }
 
@@ -270,6 +419,18 @@ export class ProceduralAudioController {
     const ready = this.context.state === "running";
     if (ready) this.syncMusic();
     return ready;
+  }
+
+  private canPresentCue(
+    cue: AudioCue,
+    now: number,
+    options: AudioCueOptions,
+  ): boolean {
+    if (options.bypassRateLimit) return true;
+    const cooldown = CUE_COOLDOWNS[cue];
+    if (cooldown === undefined) return true;
+    const previous = this.lastCueTimes.get(cue);
+    return previous === undefined || now - previous >= cooldown;
   }
 
   private applyMix(immediate = false): void {
@@ -362,6 +523,7 @@ export class ProceduralAudioController {
       this.visible &&
       this.preferences.soundEnabled &&
       this.preferences.musicEnabled &&
+      this.preferences.musicVolume > 0 &&
       this.context?.state === "running";
 
     if (shouldPlay) {

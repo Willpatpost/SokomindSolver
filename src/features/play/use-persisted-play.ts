@@ -19,6 +19,10 @@ import {
   type PuzzleRecord,
 } from "@/src/shared/progress";
 import {
+  promoteVerifiedPersonalBestRoute,
+  verifyPersonalBestRoute,
+} from "@/src/shared/personal-best-routes";
+import {
   createProgressWriterId,
   loadProgressSyncSnapshot,
   parseProgressSyncSnapshot,
@@ -43,7 +47,6 @@ import {
 
 export interface CompletionRecordUpdate {
   readonly previousBest?: PuzzleRecord;
-  readonly newBest: boolean;
   readonly previousProgress: ProgressData;
   readonly progress: ProgressData;
 }
@@ -263,17 +266,26 @@ export function usePersistedPlay(
       daily?: DailySolveContext,
     ): CompletionRecordUpdate => {
       const current = progressSyncRef.current ?? loadProgressSyncSnapshot();
+      const completedAt = daily?.completedAt ?? new Date();
+      const verifiedRoute = verifyPersonalBestRoute(solved.puzzle, {
+        actionLog: solved.actionLog,
+        moves: solved.moves,
+        pushes: solved.pushes,
+        elapsedMs,
+        completedAt: completedAt.toISOString(),
+      });
       const update = persistProgressUpdate(
         current,
         writerId,
         (stored) => {
+          if (!verifiedRoute) return stored;
           const completed = recordCompletion(
             stored,
             solved.puzzle.id,
             solved.moves,
             solved.pushes,
             elapsedMs,
-            daily?.completedAt,
+            completedAt,
           );
           return daily
             ? recordDailyCompletion(
@@ -287,9 +299,16 @@ export function usePersistedPlay(
       );
       commitProgressSnapshot(update.snapshot);
       const previousBest = update.previous.completed[solved.puzzle.id];
+      if (
+        verifiedRoute &&
+        (!previousBest || verifiedRoute.moves < previousBest.moves)
+      ) {
+        // Route storage is intentionally asynchronous. Summary progress and
+        // play remain available even when IndexedDB is missing or quota-bound.
+        void promoteVerifiedPersonalBestRoute(solved.puzzle, verifiedRoute);
+      }
       return Object.freeze({
         previousBest,
-        newBest: update.snapshot.progress.completed[solved.puzzle.id] !== previousBest,
         previousProgress: update.previous,
         progress: update.snapshot.progress,
       });

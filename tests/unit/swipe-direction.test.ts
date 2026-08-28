@@ -36,9 +36,11 @@ test("dominant axis wins on diagonal swipes", () => {
   assert.equal(resolveSwipeDirection(40, -60, 30), "up");
 });
 
-test("exact 45-degree defaults to horizontal", () => {
-  assert.equal(resolveSwipeDirection(50, 50, 30), "right");
-  assert.equal(resolveSwipeDirection(-50, -50, 30), "left");
+test("ambiguous diagonal swipes are ignored to prevent accidental moves", () => {
+  assert.equal(resolveSwipeDirection(50, 50, 30), null);
+  assert.equal(resolveSwipeDirection(-50, -50, 30), null);
+  assert.equal(resolveSwipeDirection(50, 44, 30), null);
+  assert.equal(resolveSwipeDirection(44, -50, 30), null);
 });
 
 test("custom threshold works", () => {

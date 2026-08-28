@@ -1,10 +1,15 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   summarizeProgressMerge,
   type ProgressData,
 } from "@/src/shared/progress";
 import { readProgressImportFile } from "@/src/shared/progress-import";
 import type { PersistedProgressUpdate } from "@/src/shared/progress-sync";
+import {
+  clearPersonalBestRoutes,
+  loadPersonalBestRouteStorageStats,
+  type PersonalBestRouteStorageStats,
+} from "@/src/shared/personal-best-routes";
 import { Modal } from "@/src/shared/ui/Modal";
 import { computeStats, type StatsPuzzle } from "./compute-stats";
 import styles from "./ProgressDialog.module.css";
@@ -44,6 +49,12 @@ function downloadProgress(progress: ProgressData) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function formatStorageSize(bytes: number): string {
+  if (bytes < 1_000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
 export function ProgressDialog({
   open,
   progress,
@@ -55,12 +66,26 @@ export function ProgressDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmRouteClear, setConfirmRouteClear] = useState(false);
   const [mutationPending, setMutationPending] = useState(false);
+  const [routeStorage, setRouteStorage] =
+    useState<PersonalBestRouteStorageStats | null>(null);
   const stats = useMemo(() => computeStats(progress, puzzles), [progress, puzzles]);
   const knownPuzzleIds = useMemo(
     () => puzzles.map((puzzle) => puzzle.id),
     [puzzles],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    void loadPersonalBestRouteStorageStats().then((stats) => {
+      if (active) setRouteStorage(stats);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -103,10 +128,47 @@ export function ProgressDialog({
         setMessage(persistenceFailureMessage("reset", outcome.result));
         return;
       }
+      const routesCleared = await clearPersonalBestRoutes();
       setConfirmReset(false);
-      setMessage("Saved progress was reset.");
+      setConfirmRouteClear(false);
+      if (routesCleared) {
+        setRouteStorage({
+          status: "missing",
+          puzzleCount: 0,
+          routeCount: 0,
+          actionCount: 0,
+          approximateBytes: 0,
+          discardedRecords: 0,
+        });
+        setMessage("Saved progress and replay history were reset.");
+      } else {
+        setMessage("Progress was reset, but replay storage could not be accessed.");
+      }
     } catch {
       setMessage("Progress was not reset because the save failed.");
+    } finally {
+      setMutationPending(false);
+    }
+  }
+
+  async function clearSavedRoutes() {
+    setMutationPending(true);
+    try {
+      const cleared = await clearPersonalBestRoutes();
+      if (!cleared) {
+        setMessage("Replay history could not be cleared because storage is unavailable.");
+        return;
+      }
+      setConfirmRouteClear(false);
+      setRouteStorage({
+        status: "missing",
+        puzzleCount: 0,
+        routeCount: 0,
+        actionCount: 0,
+        approximateBytes: 0,
+        discardedRecords: 0,
+      });
+      setMessage("Saved replay history was cleared. Personal-best summaries remain.");
     } finally {
       setMutationPending(false);
     }
@@ -172,6 +234,58 @@ export function ProgressDialog({
           />
         </div>
 
+        <section className={styles.routeStorage} aria-labelledby="saved-replays-title">
+          <div>
+            <h3 id="saved-replays-title">Saved replays</h3>
+            <p aria-live="polite">
+              {routeStorage === null
+                ? "Checking replay storage…"
+                : routeStorage.status === "unavailable"
+                  ? "Replay storage is unavailable. Puzzle play and summary records still work."
+                  : routeStorage.status === "corrupt"
+                    ? "Invalid replay data was ignored. You can clear it safely."
+                    : routeStorage.routeCount === 0
+                      ? "No replay routes saved yet. Existing personal-best summaries are unchanged."
+                      : `${routeStorage.routeCount} ${routeStorage.routeCount === 1 ? "route" : "routes"} across ${routeStorage.puzzleCount} ${routeStorage.puzzleCount === 1 ? "puzzle" : "puzzles"} · ${formatStorageSize(routeStorage.approximateBytes)}`}
+            </p>
+            {routeStorage && routeStorage.discardedRecords > 0 ? (
+              <small>
+                {routeStorage.discardedRecords} invalid saved {routeStorage.discardedRecords === 1
+                  ? "entry was"
+                  : "entries were"} ignored.
+              </small>
+            ) : null}
+          </div>
+          {confirmRouteClear ? (
+            <div className={styles.routeClearConfirm} role="alert">
+              <span>Clear saved routes but keep personal-best summaries?</span>
+              <button
+                type="button"
+                disabled={mutationPending}
+                onClick={() => void clearSavedRoutes()}
+              >
+                Clear routes
+              </button>
+              <button type="button" onClick={() => setConfirmRouteClear(false)}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                mutationPending ||
+                routeStorage === null ||
+                routeStorage.status === "unavailable" ||
+                (routeStorage.status !== "corrupt" && routeStorage.routeCount === 0)
+              }
+              onClick={() => setConfirmRouteClear(true)}
+            >
+              Clear replay history
+            </button>
+          )}
+        </section>
+
         {stats.totalSolved > 0 ? (
           <section className={styles.statsSection}>
             <h3 className={styles.statsSectionTitle}>Statistics</h3>
@@ -235,7 +349,7 @@ export function ProgressDialog({
         <div className={styles.danger}>
           {confirmReset ? (
             <div role="alert">
-              <span>Remove every personal best from this device?</span>
+              <span>Remove every personal best and saved replay from this device?</span>
               <button
                 type="button"
                 disabled={mutationPending}

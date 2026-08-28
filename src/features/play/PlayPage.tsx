@@ -15,9 +15,15 @@ import { DeadlockDialog } from "@/src/shared/ui/DeadlockDialog";
 import { isOptimal, getOptimalRecord } from "@/src/shared/optimal-cache";
 import { useFavorites } from "@/src/shared/use-favorites";
 import { HowToPlay } from "@/src/features/help/HowToPlay";
-import { CelebrationOverlay, ExperienceControls } from "@/src/features/experience";
+import {
+  CelebrationOverlay,
+  ExperienceControls,
+  useExperience,
+} from "@/src/features/experience";
 import { Board } from "@/src/features/game/Board";
 import { CompletionDialog } from "@/src/features/game/CompletionDialog";
+import { createCompletionPresentation } from "@/src/features/game/completion-presentation";
+import { GameControls } from "@/src/features/game/GameControls";
 import { GameSidebar } from "@/src/features/game/GameSidebar";
 import { KeyboardShortcuts } from "@/src/features/game/KeyboardShortcuts";
 import { MoveNotation } from "@/src/features/game/MoveNotation";
@@ -181,12 +187,20 @@ function ValidatedPlayPage({
 }) {
   const { puzzlesReturnHash } = useRouter();
   const { isFavorite, toggle: toggleFav } = useFavorites();
+  const { preferences, setZenMode } = useExperience();
+  const zenMode = preferences.zenMode;
   const handleToggleFavorite = useCallback(
     () => toggleFav(definition.id),
     [toggleFav, definition.id],
   );
+  const handleToggleZen = useCallback(() => {
+    const enabled = !preferences.zenMode;
+    setZenMode(enabled);
+    return enabled;
+  }, [preferences.zenMode, setZenMode]);
   const game = usePlayController(definition, actionLog, freshAttempt, {
     onToggleFavorite: handleToggleFavorite,
+    onToggleZen: handleToggleZen,
   });
   const { session, progress } = game;
   const boardWrapRef = useRef<HTMLDivElement>(null);
@@ -211,7 +225,7 @@ function ValidatedPlayPage({
   }, [game.manualPaused]);
 
   useSwipeControls(boardWrapRef, {
-    enabled: !game.playback.active,
+    enabled: game.inputEnabled,
     onSwipe: game.attemptMove,
   });
 
@@ -230,87 +244,197 @@ function ValidatedPlayPage({
       (p) => p.difficulty === puzzle.difficulty && (p.collection ?? SOKOMIND_ORIGINALS) === col,
     );
     const solved = inCollection.filter((p) => progress.completed[p.id]).length;
-    return { solved, total: inCollection.length };
-  }, [puzzle.difficulty, puzzle.collection, progress.completed]);
+    const solvedBeforeClear = inCollection.filter(
+      (p) => game.completionResult.previousProgress.completed[p.id],
+    ).length;
+    const solvedByClear = inCollection.filter(
+      (p) => game.completionResult.progress.completed[p.id],
+    ).length;
+    return {
+      name: col,
+      solved,
+      total: inCollection.length,
+      completedByThisClear:
+        solvedByClear === inCollection.length &&
+        solvedBeforeClear < inCollection.length,
+    };
+  }, [
+    game.completionResult.previousProgress.completed,
+    game.completionResult.progress.completed,
+    progress.completed,
+    puzzle.collection,
+    puzzle.difficulty,
+  ]);
 
   const currentIsOptimal = best
     ? isOptimal(game.optimalCache, puzzle.id, best.moves)
     : false;
+  const completionIsOptimal = isOptimal(
+    game.optimalCache,
+    puzzle.id,
+    session.moves,
+  );
+  const completionPresentation = useMemo(
+    () => createCompletionPresentation({
+      moves: session.moves,
+      pushes: session.pushes,
+      previousBest: game.completionResult.previousBest,
+      isOptimal: completionIsOptimal,
+      completedCollection: collectionProgress.completedByThisClear
+        ? collectionProgress.name
+        : undefined,
+    }),
+    [
+      collectionProgress.completedByThisClear,
+      collectionProgress.name,
+      completionIsOptimal,
+      game.completionResult.previousBest,
+      session.moves,
+      session.pushes,
+    ],
+  );
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-zen={zenMode || undefined}>
       <a href="#game-stage" className={styles.skipLink}>Skip to puzzle</a>
-      <header className={styles.header}>
+      <header className={`${styles.header} ${zenMode ? styles.zenHeader : ""}`}>
         <div className={styles.headerLeft}>
           <Link href={puzzlesReturnHash} className={styles.backButton} aria-label="Back to puzzles">
             <span aria-hidden="true">&larr;</span>
           </Link>
-          <Link href={homeHash()} className={styles.brandSmall} aria-label="Sokomind home">
-            <span className={styles.brandMark} aria-hidden="true">
-              <span /><span /><span /><span />
-            </span>
-            <strong>Sokomind</strong>
-          </Link>
+          {zenMode ? (
+            <div className={styles.zenIdentity}>
+              <span>Zen mode</span>
+              <h1 id="puzzle-title">{puzzle.title}</h1>
+            </div>
+          ) : (
+            <Link href={homeHash()} className={styles.brandSmall} aria-label="Sokomind home">
+              <span className={styles.brandMark} aria-hidden="true">
+                <span /><span /><span /><span />
+              </span>
+              <strong>Sokomind</strong>
+            </Link>
+          )}
         </div>
 
-        <div className={styles.headerStats} role="status" aria-label={`${session.moves} moves, ${session.pushes} pushes`}>
-          <span aria-hidden="true">{session.moves}m</span>
-          <span aria-hidden="true">{session.pushes}p</span>
-        </div>
+        {zenMode ? (
+          <div
+            className={styles.zenStats}
+            role="status"
+            aria-label={`${session.moves} moves, ${session.pushes} pushes`}
+          >
+            <span><strong data-testid="moves-count">{session.moves}</strong> moves</span>
+            <span><strong data-testid="pushes-count">{session.pushes}</strong> pushes</span>
+          </div>
+        ) : (
+          <div className={styles.headerStats} role="status" aria-label={`${session.moves} moves, ${session.pushes} pushes`}>
+            <span aria-hidden="true">{session.moves}m</span>
+            <span aria-hidden="true">{session.pushes}p</span>
+          </div>
+        )}
 
         <div className={styles.headerActions}>
-          <ExperienceControls />
-          <button
-            aria-label={puzzleFavorited ? "Remove from favorites" : "Add to favorites"}
-            aria-pressed={puzzleFavorited}
-            className={styles.utilityButton}
-            data-active={puzzleFavorited || undefined}
-            type="button"
-            onClick={handleToggleFavorite}
-          >
-            <span aria-hidden="true">{puzzleFavorited ? "♥" : "♡"}</span>
-            <span className={styles.buttonLabel}>Fav</span>
-          </button>
-          <button
-            aria-label="Open progress"
-            className={styles.utilityButton}
-            type="button"
-            onClick={game.openProgress}
-          >
-            <span aria-hidden="true">%</span>
-            <span className={styles.buttonLabel}>Progress</span>
-          </button>
-          <button
-            aria-label="Open solver laboratory"
-            className={styles.utilityButton}
-            type="button"
-            onClick={game.openSolver}
-          >
-            <span aria-hidden="true">S</span>
-            <span className={styles.buttonLabel}>Solve</span>
-          </button>
-          <button
-            aria-label="Share this puzzle and route"
-            className={styles.utilityButton}
-            type="button"
-            onClick={() => void game.handleShare()}
-          >
-            <span aria-hidden="true">{"\u2197"}</span>
-            <span className={styles.buttonLabel}>Share</span>
-          </button>
-          <button
-            aria-label="How to play"
-            className={styles.utilityButton}
-            type="button"
-            onClick={game.openHelp}
-          >
-            <span aria-hidden="true">?</span>
-            <span className={styles.buttonLabel}>Help</span>
-          </button>
+          {zenMode ? (
+            <>
+              <button
+                aria-label="Undo last move"
+                className={styles.utilityButton}
+                disabled={!game.inputEnabled || session.history.length === 0}
+                type="button"
+                onClick={game.handleUndo}
+              >
+                <span aria-hidden="true">↶</span>
+                <span className={styles.buttonLabel}>Undo</span>
+              </button>
+              <button
+                aria-label="Restart room"
+                className={styles.utilityButton}
+                disabled={!game.inputEnabled}
+                type="button"
+                onClick={game.requestReset}
+              >
+                <span aria-hidden="true">↺</span>
+                <span className={styles.buttonLabel}>Restart</span>
+              </button>
+              <ExperienceControls />
+              <button
+                aria-label="Exit Zen mode"
+                aria-pressed={true}
+                className={`${styles.utilityButton} ${styles.zenExitButton}`}
+                type="button"
+                onClick={handleToggleZen}
+              >
+                <span aria-hidden="true">×</span>
+                <span className={styles.buttonLabel}>Exit Zen</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                aria-label="Enter Zen mode"
+                aria-keyshortcuts="Z"
+                aria-pressed={false}
+                className={styles.utilityButton}
+                type="button"
+                onClick={handleToggleZen}
+              >
+                <span aria-hidden="true">◎</span>
+                <span className={styles.buttonLabel}>Zen</span>
+              </button>
+              <ExperienceControls />
+              <button
+                aria-label={puzzleFavorited ? "Remove from favorites" : "Add to favorites"}
+                aria-pressed={puzzleFavorited}
+                className={styles.utilityButton}
+                data-active={puzzleFavorited || undefined}
+                type="button"
+                onClick={handleToggleFavorite}
+              >
+                <span aria-hidden="true">{puzzleFavorited ? "♥" : "♡"}</span>
+                <span className={styles.buttonLabel}>Fav</span>
+              </button>
+              <button
+                aria-label="Open progress"
+                className={styles.utilityButton}
+                type="button"
+                onClick={game.openProgress}
+              >
+                <span aria-hidden="true">%</span>
+                <span className={styles.buttonLabel}>Progress</span>
+              </button>
+              <button
+                aria-label="Open solver laboratory"
+                className={styles.utilityButton}
+                type="button"
+                onClick={game.openSolver}
+              >
+                <span aria-hidden="true">S</span>
+                <span className={styles.buttonLabel}>Solve</span>
+              </button>
+              <button
+                aria-label="Share this puzzle and route"
+                className={styles.utilityButton}
+                type="button"
+                onClick={() => void game.handleShare()}
+              >
+                <span aria-hidden="true">{"\u2197"}</span>
+                <span className={styles.buttonLabel}>Share</span>
+              </button>
+              <button
+                aria-label="How to play"
+                className={styles.utilityButton}
+                type="button"
+                onClick={game.openHelp}
+              >
+                <span aria-hidden="true">?</span>
+                <span className={styles.buttonLabel}>Help</span>
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      <nav className={styles.breadcrumb}>
+      {!zenMode ? <nav className={styles.breadcrumb}>
         <Link href={puzzlesHash()}>Puzzles</Link>
         <span aria-hidden="true">&rsaquo;</span>
         <Link href={puzzleDifficultyHash(puzzle.difficulty)}>
@@ -322,9 +446,9 @@ function ValidatedPlayPage({
         </Link>
         <span aria-hidden="true">&rsaquo;</span>
         <span className={styles.breadcrumbCurrent} aria-current="page">{puzzle.title}</span>
-      </nav>
+      </nav> : null}
 
-      {collectionProgress.total > 1 && (
+      {!zenMode && collectionProgress.total > 1 && (
         <div
           className={styles.collectionProgress}
           role="progressbar"
@@ -338,14 +462,14 @@ function ValidatedPlayPage({
         </div>
       )}
 
-      <div className={styles.workspace}>
+      <div className={`${styles.workspace} ${zenMode ? styles.zenWorkspace : ""}`}>
         <section
-          className={styles.stage}
+          className={`${styles.stage} ${zenMode ? styles.zenStage : ""}`}
           id="game-stage"
           aria-labelledby="puzzle-title"
           tabIndex={-1}
         >
-          <div className={styles.stageHeader}>
+          {!zenMode ? <div className={styles.stageHeader}>
             <div>
               <p className={styles.stageEyebrow}>
                 {difficultyLabel(puzzle.difficulty)} room
@@ -376,7 +500,7 @@ function ValidatedPlayPage({
                 </button>
               </div>
             </div>
-          </div>
+          </div> : null}
 
           <div className={styles.boardWrap} ref={boardWrapRef}>
             {game.manualPaused && (
@@ -394,19 +518,41 @@ function ValidatedPlayPage({
             <Board
               session={session}
               reduceMotion={game.reducedMotion}
+              immersive={zenMode}
+              constrainToViewport
               deadlockedBoxIds={game.deadlockedBoxIds}
               experienceEvent={game.experienceEvent}
             />
           </div>
 
           <p className={styles.mobileMoveCue}>
-            Swipe the board to move, or use the controls below.
+            <span className={styles.swipeGlyphs} aria-hidden="true">← ↑ ↓ →</span>
+            <span>Swipe the board to move, or use the controls below.</span>
           </p>
 
-          <MoveNotation actionLog={session.actionLog} moves={session.moves} />
-          <MoveTimeline actionLog={session.actionLog} moves={session.moves} pushes={session.pushes} />
+          {zenMode ? (
+            <div className={styles.zenControlDock}>
+              <GameControls
+                canUndo={session.history.length > 0}
+                undoDepth={session.history.length}
+                canHint={game.hint.canHint}
+                hintThinking={game.hint.phase === "thinking"}
+                disabled={!game.inputEnabled}
+                onMove={game.attemptMove}
+                onUndo={game.handleUndo}
+                onHint={game.hint.requestHint}
+                onReset={game.requestReset}
+                variant="compact"
+              />
+            </div>
+          ) : (
+            <>
+              <MoveNotation actionLog={session.actionLog} moves={session.moves} />
+              <MoveTimeline actionLog={session.actionLog} moves={session.moves} pushes={session.pushes} />
+            </>
+          )}
 
-          {puzzle.hint ? (
+          {!zenMode && puzzle.hint ? (
             <div className={styles.hint}>
               <strong>Room note</strong>
               <span>{puzzle.hint}</span>
@@ -414,9 +560,9 @@ function ValidatedPlayPage({
           ) : null}
         </section>
 
-        <GameSidebar
+        {!zenMode ? <GameSidebar
           best={best}
-          controlsDisabled={game.playback.active}
+          controlsDisabled={!game.inputEnabled}
           elapsed={game.elapsed}
           isOptimal={currentIsOptimal}
           optimalMoves={getOptimalRecord(game.optimalCache, puzzle.id)?.moves}
@@ -428,7 +574,7 @@ function ValidatedPlayPage({
           onReset={game.requestReset}
           onUndo={game.handleUndo}
           onUndoN={game.handleUndoN}
-        />
+        /> : null}
       </div>
 
       <KeyboardShortcuts open={game.shortcutsOpen} onClose={game.closeShortcuts} />
@@ -479,16 +625,14 @@ function ValidatedPlayPage({
 
       <CelebrationOverlay
         active={game.completionOpen}
-        message={game.completionAnnouncement}
-        variant={isOptimal(game.optimalCache, puzzle.id, session.moves) ? "optimal" : "default"}
+        message={`${game.completionAnnouncement} ${completionPresentation.eyebrow}.`}
+        variant={completionPresentation.celebration}
       />
 
       <CompletionDialog
         boxes={puzzle.boxes}
         elapsedTime={game.elapsed}
-        isOptimalSolution={isOptimal(game.optimalCache, puzzle.id, session.moves)}
         moves={session.moves}
-        newBest={game.completionResult.newBest}
         nextLabel={game.nextPuzzle ? "Next room" : "Browse puzzles"}
         onClose={game.closeCompletion}
         onReplay={game.replaySolution}
@@ -504,7 +648,7 @@ function ValidatedPlayPage({
             : undefined
         }
         open={game.completionOpen}
-        previousBest={game.completionResult.previousBest}
+        presentation={completionPresentation}
         puzzleId={puzzle.id}
         pushes={session.pushes}
         title={puzzle.title}

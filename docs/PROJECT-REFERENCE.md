@@ -33,7 +33,7 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | Hash routing | `src/router/` | `parseHash`, `navigate`, `Link`, canonical hash builders |
 | Puzzle rules | `src/core/` | `parsePuzzleRows`, `createSession`, `stepSnapshot`, `move`, `undo`, `reset`, `replayActionLog` |
 | Catalog | `src/catalog/` | `PUZZLE_METADATA`, `loadPuzzle`, catalog validators and shards |
-| Progress and sessions | `src/shared/progress-sync.ts`, `src/shared/session-persistence.ts` | fenced merge/reset, replay-based recovery |
+| Progress, routes, and sessions | `src/shared/progress-sync.ts`, `src/shared/personal-best-routes.ts`, `src/shared/session-persistence.ts` | synchronous summaries, replay-verified route history, fenced recovery |
 | Storage boundary | `src/shared/storage.ts`, `src/shared/idb-storage.ts` | owned keys, classified failures, reset generations |
 | Solver contract | `src/solver/contracts.ts`, `src/solver/validation.ts` | requests, progress, results, proof and limit invariants |
 | Solver trust boundary | `src/solver/verification.ts` | canonical replay before display or persistence |
@@ -52,6 +52,7 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | `PuzzleDefinition` / `ParsedBoard` | authored input and validated immutable geometry | `src/core/model.ts`, `src/core/puzzle.ts` |
 | `GameSnapshot` / `GameSession` | dynamic keeper/box state and persistent undo history | `src/core/model.ts`, `src/core/game-session.ts` |
 | `ProgressData` | best records, daily participation, and bounded completion activity | `src/shared/progress.ts`, `src/shared/progress-sync.ts` |
+| `PersonalBestRouteRepository` | bounded, fingerprinted, replay-verified personal-best action logs | `src/shared/personal-best-routes.ts` |
 | `SavedSession` | puzzle ID plus replayable action log; never trusted coordinates | `src/shared/session-persistence.ts` |
 | `EditorDraftStore` | bounded named documents with one active draft and migration from the legacy payload | `src/features/editor/editor-draft.ts` |
 | `SolverRequest` / `SolverResult` | validated worker-neutral request, terminal result, metrics, and proof | `src/solver/contracts.ts`, `src/solver/validation.ts` |
@@ -68,6 +69,7 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | `parseHash` and hash builders | parse and produce the canonical application route vocabulary |
 | `loadPuzzleById` | loads one validated catalog shard and may be retried after an offline or transport failure |
 | `persistProgressUpdate` / `persistProgressImport` / `resetStoredProgress` | merge or reset progress under cross-tab/reset fencing and return the durable outcome |
+| `verifyPersonalBestRoute` / `promoteVerifiedPersonalBestRoute` | replay a candidate from the canonical puzzle, verify exact counters, then atomically retain bounded best-route history |
 | `saveSession` / `hydrateSessionFromIDB` | mirror replayable sessions and reconcile the newest valid storage tier |
 | `parseEditorDraftStore` / `serializeEditorDraftStore` | deeply validate, migrate, and serialize the named-draft document store |
 | `assertValidSolverRequest` / `assertValidSolverResult` | reject malformed, non-finite, inconsistent, or out-of-contract protocol values |
@@ -187,9 +189,10 @@ fails when the generated facts below differ from source.
 | Owner | Key |
 |---|---|
 | progress | `sokomind.progress.v1` |
-| experience | `sokomind.experience.v1` |
+| experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
 | optimal | `sokomind.optimal.v4` |
+| personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | reset | `sokomind.reset.v1` |
 | ratings | `sokomind.ratings.v1` |
 | favorites | `sokomind.favorites.v1` |
@@ -215,7 +218,7 @@ fails when the generated facts below differ from source.
 - Music: **on**
 - Effects volume: **50%**
 - Music volume: **50%**
-- Theme: `system`; motion: `system`; preference schema: `1`
+- Theme: `undefined`; motion: `system`; preference schema: `2`
 
 ### Solver identities
 

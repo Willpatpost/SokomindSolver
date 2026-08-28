@@ -34,6 +34,7 @@ test("all play actions and mobile movement guidance remain reachable", async ({
   for (const name of [
     /all audio/,
     "Sound and motion settings",
+    "Enter Zen mode",
     "Add to favorites",
     "Open progress",
     "Open solver laboratory",
@@ -49,6 +50,60 @@ test("all play actions and mobile movement guidance remain reachable", async ({
   await page.getByRole("button", { name: "How to play" }).click();
   await expect(page.getByRole("dialog", { name: "How to play" })).toBeVisible();
 
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  )).toBe(true);
+});
+
+test("Zen mode keeps critical actions and touch controls reachable at 320 pixels", async ({
+  page,
+}) => {
+  await page.goto("./#/play/beginner-typed-line");
+  await page.getByRole("button", { name: "Enter Zen mode" }).click();
+
+  for (const name of [
+    "Undo last move",
+    "Restart room",
+    "Sound and motion settings",
+    "Exit Zen mode",
+  ]) {
+    await expectInsideViewport(page, page.getByRole("button", { name }));
+  }
+
+  const moveUp = page.getByRole("button", { name: "Move up" });
+  await moveUp.scrollIntoViewIfNeeded();
+  const bounds = await moveUp.boundingBox();
+  expect(bounds?.width).toBeGreaterThanOrEqual(48);
+  expect(bounds?.height).toBeGreaterThanOrEqual(48);
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  )).toBe(true);
+});
+
+test("completion hierarchy remains contained and operable at 320 pixels", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await page.getByTestId("game-board").click();
+  await page.keyboard.press("ArrowDown");
+
+  const dialog = page.getByRole("dialog", { name: "First Steps" });
+  await expect(dialog).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  const viewport = page.viewportSize();
+  expect(bounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  if (bounds && viewport) {
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height + 1);
+  }
+
+  const next = dialog.getByRole("button", { name: "Next room" });
+  await expect(next).toBeFocused();
+  await next.scrollIntoViewIfNeeded();
+  await expectInsideViewport(page, next);
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth
   )).toBe(true);

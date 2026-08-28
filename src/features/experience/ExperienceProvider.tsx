@@ -10,18 +10,21 @@ import { ExperienceContext } from "./experience-context";
 import {
   loadExperiencePreferences,
   saveExperiencePreferences,
+  themeColor,
   updateExperiencePreferences,
+  type AppearancePreference,
   type ExperiencePreferencePatch,
   type MotionPreference,
-  type ThemePreference,
+  type ThemeFamily,
 } from "./experience-preferences";
 import {
   ProceduralAudioController,
   supportsProceduralAudio,
   type AudioCue,
+  type AudioCueOptions,
 } from "./procedural-audio";
 import { useResolvedMotion } from "./use-resolved-motion";
-import { useResolvedTheme } from "./use-resolved-theme";
+import { useResolvedAppearance } from "./use-resolved-appearance";
 
 export interface ExperienceProviderProps {
   readonly children: ReactNode;
@@ -30,7 +33,8 @@ export interface ExperienceProviderProps {
 export function ExperienceProvider({ children }: ExperienceProviderProps) {
   const [preferences, setPreferences] = useState(loadExperiencePreferences);
   const reducedMotion = useResolvedMotion(preferences.motion);
-  const resolvedTheme = useResolvedTheme(preferences.theme);
+  const resolvedAppearance = useResolvedAppearance(preferences.appearance);
+  const [audioAnnouncement, setAudioAnnouncement] = useState("");
   const audioRef = useRef<ProceduralAudioController | null>(null);
   const latestPreferences = useRef(preferences);
 
@@ -77,21 +81,28 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    const previousTheme = root.dataset.theme;
-    root.dataset.theme = resolvedTheme;
+    const previousAppearance = root.dataset.theme;
+    const previousFamily = root.dataset.themeFamily;
+    root.dataset.theme = resolvedAppearance;
+    root.dataset.themeFamily = preferences.themeFamily;
 
-    const color = resolvedTheme === "dark" ? "#171916" : "#f3f0e7";
+    const color = themeColor(preferences.themeFamily, resolvedAppearance);
     const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
     metas.forEach((meta) => meta.setAttribute("content", color));
 
     return () => {
-      if (previousTheme === undefined) {
+      if (previousAppearance === undefined) {
         delete root.dataset.theme;
       } else {
-        root.dataset.theme = previousTheme;
+        root.dataset.theme = previousAppearance;
+      }
+      if (previousFamily === undefined) {
+        delete root.dataset.themeFamily;
+      } else {
+        root.dataset.themeFamily = previousFamily;
       }
     };
-  }, [resolvedTheme]);
+  }, [preferences.themeFamily, resolvedAppearance]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -107,9 +118,11 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
 
   const updatePreferences = useCallback(
     (patch: ExperiencePreferencePatch) => {
-      setPreferences((current) =>
-        updateExperiencePreferences(current, patch),
-      );
+      setPreferences((current) => {
+        const next = updateExperiencePreferences(current, patch);
+        latestPreferences.current = next;
+        return next;
+      });
     },
     [],
   );
@@ -120,13 +133,25 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
   );
 
   const playCue = useCallback(
-    (cue: AudioCue) => ensureAudio().playCue(cue),
+    (cue: AudioCue, options?: AudioCueOptions) =>
+      ensureAudio().playCue(cue, options),
+    [ensureAudio],
+  );
+
+  const previewEffects = useCallback(
+    () => ensureAudio().previewEffects(),
+    [ensureAudio],
+  );
+
+  const previewMusic = useCallback(
+    () => ensureAudio().previewMusic(),
     [ensureAudio],
   );
 
   const setSoundEnabled = useCallback(
     (enabled: boolean) => {
       updatePreferences({ soundEnabled: enabled });
+      setAudioAnnouncement(enabled ? "Audio on." : "Audio muted.");
       if (enabled) void unlockAudio();
     },
     [unlockAudio, updatePreferences],
@@ -158,8 +183,18 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
     [updatePreferences],
   );
 
-  const setThemePreference = useCallback(
-    (theme: ThemePreference) => updatePreferences({ theme }),
+  const setThemeFamily = useCallback(
+    (themeFamily: ThemeFamily) => updatePreferences({ themeFamily }),
+    [updatePreferences],
+  );
+
+  const setAppearancePreference = useCallback(
+    (appearance: AppearancePreference) => updatePreferences({ appearance }),
+    [updatePreferences],
+  );
+
+  const setZenMode = useCallback(
+    (zenMode: boolean) => updatePreferences({ zenMode }),
     [updatePreferences],
   );
 
@@ -167,30 +202,38 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
     function onKeyDown(event: KeyboardEvent) {
       if (
         event.defaultPrevented ||
+        event.repeat ||
         event.altKey ||
         event.ctrlKey ||
-        event.metaKey ||
-        !event.shiftKey ||
-        event.key !== "T"
+        event.metaKey
       ) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (document.querySelector("dialog[open], [role='dialog']")) return;
-      event.preventDefault();
-      setPreferences((current) => {
-        const nextTheme: ThemePreference = current.theme === "dark" ? "light" : "dark";
-        return updateExperiencePreferences(current, { theme: nextTheme });
-      });
+
+      if (!event.shiftKey && event.key.toLowerCase() === "m") {
+        if (!supportsProceduralAudio()) return;
+        event.preventDefault();
+        setSoundEnabled(!latestPreferences.current.soundEnabled);
+        return;
+      }
+
+      if (event.shiftKey && event.key === "T") {
+        event.preventDefault();
+        const nextAppearance: AppearancePreference =
+          latestPreferences.current.appearance === "dark" ? "light" : "dark";
+        updatePreferences({ appearance: nextAppearance });
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [setSoundEnabled, updatePreferences]);
 
   const value = useMemo(
     () => ({
       preferences,
       reducedMotion,
-      resolvedTheme,
+      resolvedAppearance,
       audioSupported: supportsProceduralAudio(),
       updatePreferences,
       setSoundEnabled,
@@ -198,21 +241,29 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
       setEffectsVolume,
       setMusicVolume,
       setMotionPreference,
-      setThemePreference,
+      setThemeFamily,
+      setAppearancePreference,
+      setZenMode,
       unlockAudio,
       playCue,
+      previewEffects,
+      previewMusic,
     }),
     [
       playCue,
       preferences,
+      previewEffects,
+      previewMusic,
       reducedMotion,
-      resolvedTheme,
+      resolvedAppearance,
       setEffectsVolume,
       setMotionPreference,
       setMusicEnabled,
       setMusicVolume,
       setSoundEnabled,
-      setThemePreference,
+      setAppearancePreference,
+      setThemeFamily,
+      setZenMode,
       unlockAudio,
       updatePreferences,
     ],
@@ -221,6 +272,14 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
   return (
     <ExperienceContext.Provider value={value}>
       {children}
+      <span
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="audio-status"
+      >
+        {audioAnnouncement}
+      </span>
     </ExperienceContext.Provider>
   );
 }

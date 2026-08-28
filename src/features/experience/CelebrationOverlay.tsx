@@ -5,7 +5,7 @@ export interface CelebrationOverlayProps {
   readonly active: boolean;
   readonly message?: string;
   readonly className?: string;
-  readonly variant?: "default" | "optimal";
+  readonly variant?: "default" | "personal-best" | "optimal";
 }
 
 type ParticleStyle = CSSProperties & {
@@ -50,20 +50,30 @@ export function CelebrationOverlay({
 
   const overlayClassName = [
     styles.overlay,
+    variant === "personal-best" ? styles.personalBest : "",
     variant === "optimal" ? styles.optimal : "",
     className,
   ]
     .filter(Boolean)
     .join(" ");
+  const particleCount = variant === "optimal"
+    ? PARTICLES.length
+    : variant === "personal-best"
+      ? 14
+      : 8;
 
   return (
     <>
-      <div className={overlayClassName} aria-hidden="true">
+      <div
+        className={overlayClassName}
+        aria-hidden="true"
+        data-celebration={variant}
+      >
         <span className={styles.wash} />
         <span className={styles.ring} />
         <span className={styles.flare} />
         <span className={styles.particles}>
-          {PARTICLES.map(
+          {PARTICLES.slice(0, particleCount).map(
             (
               [
                 travelX,

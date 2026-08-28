@@ -1,5 +1,10 @@
 .modal {
   width: min(470px, calc(100vw - 32px));
+  max-height: calc(100dvh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-xl);
 }
 
 .completion {
@@ -84,28 +89,85 @@
   font-weight: 700;
 }
 
-.optimalNote {
-  display: inline-block;
-  margin: 8px 0 0;
-  padding: 4px 12px;
-  border-radius: 999px;
+.milestones {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  margin: 18px 0 0;
+  list-style: none;
+}
+
+.milestones li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid rgb(86 110 89 / 0.18);
+  border-radius: 10px;
+  text-align: left;
+  background: rgb(86 110 89 / 0.07);
+}
+
+.milestones li[data-kind="optimal-clear"] {
+  border-color: rgb(190 130 40 / 0.34);
+  background: rgb(229 166 75 / 0.13);
+}
+
+.milestones li[data-kind="collection-complete"] {
+  border-color: rgb(55 108 131 / 0.26);
+  background: rgb(55 108 131 / 0.09);
+}
+
+.milestones li > span {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--paper-50);
+  background: var(--sage-700);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.milestones li[data-kind="optimal-clear"] > span {
   color: #3a2a10;
-  background: linear-gradient(135deg, var(--amber-400), #d4963c);
-  font-size: 0.68rem;
-  font-weight: 850;
-  letter-spacing: 0.06em;
+  background: var(--amber-400);
+}
+
+.milestones li[data-kind="collection-complete"] > span {
+  background: var(--blue-500);
+}
+
+.milestones li > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.milestones strong {
+  color: var(--ink-950);
+  font-size: 0.72rem;
+}
+
+.milestones small {
+  color: var(--ink-muted);
+  font-size: 0.64rem;
+  line-height: 1.35;
 }
 
 .stats {
-  display: flex;
-  justify-content: center;
-  gap: 34px;
-  margin: 25px 0 27px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 12px;
+  margin: 22px 0 24px;
 }
 
-.stats span {
+.stats > div {
   display: grid;
   gap: 3px;
+  align-content: start;
   color: var(--completion-stats-color);
   font-size: 0.72rem;
   font-weight: 750;
@@ -118,6 +180,20 @@
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.8rem;
   font-weight: 500;
+}
+
+.stats small {
+  min-height: 2.5em;
+  color: var(--ink-muted);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.stats small[data-improved] {
+  color: var(--sage-700);
 }
 
 .ratingRow {
@@ -350,8 +426,38 @@
 }
 
 @media (max-width: 560px) {
+  .modal {
+    width: min(470px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+  }
+
   .completion {
-    padding: 28px 22px;
+    padding: 24px 18px;
+  }
+
+  .completion h2 {
+    font-size: clamp(1.85rem, 10vw, 2.25rem);
+  }
+
+  .badgeRow {
+    margin-bottom: 15px;
+  }
+
+  .stats {
+    gap: 6px;
+  }
+
+  .stats strong {
+    font-size: 1.45rem;
+  }
+
+  .actions,
+  .actions[data-has-replay] {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .actions button:last-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -402,8 +508,19 @@
   color: var(--paper-50);
 }
 
-:global(html[data-theme="dark"]) .optimalNote {
-  color: #1a1206;
+:global(html[data-theme="dark"]) .milestones li {
+  border-color: rgb(139 167 140 / 0.2);
+  background: rgb(86 110 89 / 0.13);
+}
+
+:global(html[data-theme="dark"]) .milestones li[data-kind="optimal-clear"] {
+  border-color: rgb(229 166 75 / 0.3);
+  background: rgb(229 166 75 / 0.12);
+}
+
+:global(html[data-theme="dark"]) .milestones li[data-kind="collection-complete"] {
+  border-color: rgb(74 154 186 / 0.28);
+  background: rgb(55 108 131 / 0.14);
 }
 
 @media (prefers-contrast: more) {
@@ -433,9 +550,15 @@
     background: Highlight;
   }
 
-  .optimalNote {
+  .milestones li {
     forced-color-adjust: none;
     border: 2px solid Highlight;
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .milestones li > span {
+    border: 1px solid Highlight;
     color: HighlightText;
     background: Highlight;
   }

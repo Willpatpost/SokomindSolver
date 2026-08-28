@@ -1,5 +1,7 @@
 .modal {
   width: min(520px, calc(100vw - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .card {
@@ -118,6 +120,80 @@
   border-color: var(--ink-950);
   color: var(--paper-50);
   background: var(--ink-950);
+}
+
+.routeStorage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--paper-200);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper-100), transparent 36%);
+}
+
+.routeStorage h3 {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+}
+
+.routeStorage p,
+.routeStorage small {
+  display: block;
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.routeStorage small {
+  margin-top: 4px;
+  color: var(--coral-500);
+}
+
+.routeStorage > button,
+.routeClearConfirm button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--paper-300);
+  border-radius: 10px;
+  color: var(--ink-700);
+  background: var(--paper-50);
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.routeStorage button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.routeStorage button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+.routeClearConfirm {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.routeClearConfirm span {
+  flex: 1 0 100%;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+}
+
+.routeClearConfirm button:first-of-type {
+  border-color: var(--coral-500);
+  color: white;
+  background: var(--coral-500);
 }
 
 .danger {
@@ -284,6 +360,14 @@
     padding: 26px 20px calc(22px + env(safe-area-inset-bottom));
     border-radius: 26px 26px 0 0;
   }
+
+  .routeStorage {
+    grid-template-columns: 1fr;
+  }
+
+  .routeStorage > button {
+    width: 100%;
+  }
 }
 
 :global(html[data-theme="dark"]) .card {
@@ -299,6 +383,17 @@
 :global(html[data-theme="dark"]) .actions button:first-child {
   border-color: var(--sage-600);
   background: var(--sage-700);
+}
+
+:global(html[data-theme="dark"]) .routeStorage {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.03);
+}
+
+:global(html[data-theme="dark"]) .routeStorage > button,
+:global(html[data-theme="dark"]) .routeClearConfirm button {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(34 36 32 / 0.6);
 }
 
 :global(html[data-theme="dark"]) .danger {

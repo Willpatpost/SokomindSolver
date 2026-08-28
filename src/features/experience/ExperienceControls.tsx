@@ -1,6 +1,10 @@
 import { useId, useRef, useState } from "react";
 import { Modal } from "@/src/shared/ui/Modal";
-import type { MotionPreference, ThemePreference } from "./experience-preferences";
+import type {
+  AppearancePreference,
+  MotionPreference,
+  ThemeFamily,
+} from "./experience-preferences";
 import { useExperience } from "./use-experience";
 import styles from "./ExperienceControls.module.css";
 
@@ -36,6 +40,15 @@ function SlidersIcon() {
   );
 }
 
+const THEME_FAMILY_OPTIONS: readonly {
+  readonly value: ThemeFamily;
+  readonly label: string;
+}[] = [
+  { value: "cozy-study", label: "Cozy Study" },
+  { value: "midnight-neon", label: "Midnight Neon" },
+  { value: "minimal-ink", label: "Minimal Ink" },
+];
+
 export function ExperienceControls({
   className,
   placement = "end",
@@ -48,15 +61,19 @@ export function ExperienceControls({
     setEffectsVolume,
     setMusicVolume,
     setMotionPreference,
-    setThemePreference,
+    setThemeFamily,
+    setAppearancePreference,
+    previewEffects,
+    previewMusic,
   } = useExperience();
   const [open, setOpen] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("");
   const panelId = useId();
   const titleId = useId();
   const effectsVolumeId = useId();
   const musicVolumeId = useId();
   const motionId = useId();
-  const themeId = useId();
+  const appearanceId = useId();
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
 
   const rootClassName = className
@@ -75,6 +92,7 @@ export function ExperienceControls({
           preferences.soundEnabled ? "Mute all audio" : "Turn on all audio"
         }
         aria-pressed={preferences.soundEnabled}
+        aria-keyshortcuts="M"
         disabled={!audioSupported}
         onClick={() => setSoundEnabled(!preferences.soundEnabled)}
       >
@@ -163,9 +181,32 @@ export function ExperienceControls({
 
           <div className={styles.rangeSetting}>
             <label htmlFor={effectsVolumeId}>Effects volume</label>
-            <output htmlFor={effectsVolumeId}>
-              {Math.round(preferences.effectsVolume * 100)}%
-            </output>
+            <div className={styles.rangeActions}>
+              <output htmlFor={effectsVolumeId}>
+                {Math.round(preferences.effectsVolume * 100)}%
+              </output>
+              <button
+                className={styles.previewButton}
+                type="button"
+                aria-label="Preview effects at current volume"
+                disabled={
+                  !audioSupported ||
+                  !preferences.soundEnabled ||
+                  preferences.effectsVolume <= 0
+                }
+                onClick={() => {
+                  void previewEffects().then((played) => {
+                    setPreviewMessage(
+                      played
+                        ? "Effects preview played."
+                        : "Effects preview could not play.",
+                    );
+                  });
+                }}
+              >
+                Preview
+              </button>
+            </div>
             <input
               id={effectsVolumeId}
               type="range"
@@ -182,9 +223,33 @@ export function ExperienceControls({
 
           <div className={styles.rangeSetting}>
             <label htmlFor={musicVolumeId}>Music volume</label>
-            <output htmlFor={musicVolumeId}>
-              {Math.round(preferences.musicVolume * 100)}%
-            </output>
+            <div className={styles.rangeActions}>
+              <output htmlFor={musicVolumeId}>
+                {Math.round(preferences.musicVolume * 100)}%
+              </output>
+              <button
+                className={styles.previewButton}
+                type="button"
+                aria-label="Preview music at current volume"
+                disabled={
+                  !audioSupported ||
+                  !preferences.soundEnabled ||
+                  !preferences.musicEnabled ||
+                  preferences.musicVolume <= 0
+                }
+                onClick={() => {
+                  void previewMusic().then((played) => {
+                    setPreviewMessage(
+                      played
+                        ? "Music preview played."
+                        : "Music preview could not play.",
+                    );
+                  });
+                }}
+              >
+                Preview
+              </button>
+            </div>
             <input
               id={musicVolumeId}
               type="range"
@@ -198,6 +263,16 @@ export function ExperienceControls({
               }
             />
           </div>
+
+          <p
+            className={styles.previewStatus}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="audio-preview-status"
+          >
+            {previewMessage}
+          </p>
 
           <label className={styles.motionSetting} htmlFor={motionId}>
             <span>
@@ -217,16 +292,55 @@ export function ExperienceControls({
             </select>
           </label>
 
-          <label className={styles.motionSetting} htmlFor={themeId}>
+          <fieldset className={styles.themeFamilySetting}>
+            <legend>
+              <strong>Theme family</strong>
+              <small>Choose a visual identity with a live preview</small>
+            </legend>
+            <div className={styles.themeFamilyGrid}>
+              {THEME_FAMILY_OPTIONS.map((option) => (
+                <label
+                  className={styles.themeFamilyOption}
+                  data-selected={preferences.themeFamily === option.value || undefined}
+                  key={option.value}
+                >
+                  <input
+                    className={styles.themeFamilyInput}
+                    type="radio"
+                    name="theme-family"
+                    value={option.value}
+                    checked={preferences.themeFamily === option.value}
+                    onChange={(event) =>
+                      setThemeFamily(event.currentTarget.value as ThemeFamily)
+                    }
+                  />
+                  <span
+                    className={styles.themeSwatch}
+                    data-family={option.value}
+                    aria-hidden="true"
+                  >
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className={styles.motionSetting} htmlFor={appearanceId}>
             <span>
-              <strong>Theme</strong>
-              <small>Controls the visual color scheme</small>
+              <strong>Appearance</strong>
+              <small>Follow the system or choose light or dark</small>
             </span>
             <select
-              id={themeId}
-              value={preferences.theme}
+              id={appearanceId}
+              value={preferences.appearance}
               onChange={(event) =>
-                setThemePreference(event.currentTarget.value as ThemePreference)
+                setAppearancePreference(
+                  event.currentTarget.value as AppearancePreference,
+                )
               }
             >
               <option value="system">Use system setting</option>
@@ -237,6 +351,7 @@ export function ExperienceControls({
 
             <p className={styles.autoplayNote}>
               Browsers require a click or key press before sound can begin.
+              Press M outside a dialog to mute or restore audio.
             </p>
           </section>
         </Modal>

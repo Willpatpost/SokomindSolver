@@ -17,17 +17,14 @@ import {
   parseOptimalCache,
   saveOptimalCache,
   setOptimalRecord,
+  isOptimal,
   type OptimalRecord,
 } from "@/src/shared/optimal-cache";
 import { STORAGE_KEYS } from "@/src/shared/storage";
-import {
-  useExperience,
-  type AudioCue,
-} from "@/src/features/experience";
+import { useExperience } from "@/src/features/experience";
 import { detectDeadlock } from "@/src/solver/deadlock-bridge";
 import {
   describeMoveExperience,
-  type GameFeedback,
   type PresentedGameExperienceEvent,
 } from "@/src/features/game/game-feedback";
 import { useGameKeyboard } from "@/src/features/game/use-game-keyboard";
@@ -41,17 +38,12 @@ import { puzzlesHash, useRouter } from "@/src/router";
 import { useSharing } from "./use-sharing";
 import { useSolverPlayback } from "./use-solver-playback";
 import { usePuzzleNavigation } from "./use-puzzle-navigation";
+import {
+  createMovementAudioPresentation,
+  solveAudioVariant,
+} from "./audio-feedback";
 
 const EMPTY_BOX_SET: ReadonlySet<string> = new Set<string>();
-
-const FEEDBACK_CUES: Readonly<Record<GameFeedback, AudioCue>> = {
-  blocked: "blocked",
-  move: "step",
-  push: "push",
-  goal: "goal-enter",
-  "goal-leave": "goal-leave",
-  solved: "solve",
-};
 
 function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
@@ -59,6 +51,7 @@ function countLabel(count: number, singular: string): string {
 
 interface PlayControllerOptions {
   readonly onToggleFavorite?: () => boolean;
+  readonly onToggleZen?: () => boolean;
 }
 
 export function usePlayController(
@@ -99,7 +92,6 @@ export function usePlayController(
     useState<string | null>(null);
   const [completionResult, setCompletionResult] =
     useState<CompletionRecordUpdate>({
-      newBest: false,
       previousProgress: progress,
       progress,
     });
@@ -175,7 +167,10 @@ export function usePlayController(
       ...event,
       sequence: ++experienceSequenceRef.current,
     });
-    void playCue(FEEDBACK_CUES[event.kind]);
+    const audioPresentation = createMovementAudioPresentation(event);
+    if (event.kind !== "solved") {
+      void playCue(audioPresentation.cue, audioPresentation.options);
+    }
     if (event.kind === "blocked") {
       setToast("That route is blocked.");
       return false;
@@ -193,6 +188,14 @@ export function usePlayController(
           ? { dateKey: toLocalDateKey(completedAt), completedAt }
           : undefined,
       );
+      void playCue(audioPresentation.cue, {
+        ...audioPresentation.options,
+        variant: solveAudioVariant(
+          result.previousBest,
+          next.moves,
+          isOptimal(optimalCache, next.puzzle.id, next.moves),
+        ),
+      });
       const preSolveStats = computeStats(result.previousProgress, PUZZLE_METADATA);
       setCompletionResult(result);
       setCompletionPuzzleId(next.puzzle.id);
@@ -217,11 +220,11 @@ export function usePlayController(
       if (result.severity === "deadlock") {
         setDeadlockedBoxIds(new Set(result.deadlockedBoxIds));
         setDeadlockModalOpen(true);
-        void playCue("blocked");
+        void playCue("blocked", { variant: "deadlock" });
       } else if (result.severity === "warning") {
         setDeadlockedBoxIds(new Set(result.deadlockedBoxIds));
         setToast("That box looks stuck — you may need to undo.");
-        void playCue("blocked");
+        void playCue("blocked", { variant: "warning" });
       } else {
         setDeadlockedBoxIds(EMPTY_BOX_SET);
       }
@@ -229,7 +232,7 @@ export function usePlayController(
       setDeadlockedBoxIds(EMPTY_BOX_SET);
     }
     return true;
-  }, [commitSession, playCue, recordSolvedSession, sessionRef]);
+  }, [commitSession, optimalCache, playCue, recordSolvedSession, sessionRef]);
 
   // --- Solver playback (delegated) ---
 
@@ -309,10 +312,22 @@ export function usePlayController(
 
   // --- Move actions ---
 
+  const inputEnabled =
+    !playback.active &&
+    !manualPaused &&
+    !completionOpen &&
+    !resetConfirmOpen &&
+    !solverOpen &&
+    !helpOpen &&
+    !progressOpen &&
+    !deadlockModalOpen &&
+    !shortcutsOpen;
+
   const attemptMove = useCallback((direction: Direction) => {
+    if (!inputEnabled) return;
     stopSolutionPlayback();
     applyDirection(direction);
-  }, [applyDirection, stopSolutionPlayback]);
+  }, [applyDirection, inputEnabled, stopSolutionPlayback]);
 
   const handleUndo = useCallback(() => {
     stopSolutionPlayback();
@@ -327,7 +342,7 @@ export function usePlayController(
       return;
     }
     commitSession(previous);
-    void playCue("undo");
+    void playCue("undo", { variant: "default" });
   }, [commitSession, playCue, sessionRef, stopSolutionPlayback]);
 
   const handleUndoN = useCallback((count: number) => {
@@ -343,8 +358,12 @@ export function usePlayController(
       return;
     }
     commitSession(result);
-    void playCue("undo");
-    setToast(`Undid ${current.moves - result.moves} moves.`);
+    const undone = current.moves - result.moves;
+    void playCue("undo", {
+      variant: undone > 1 ? "multi" : "default",
+      pitchOffset: -Math.min(3, undone / 3),
+    });
+    setToast(`Undid ${undone} moves.`);
   }, [commitSession, playCue, sessionRef, stopSolutionPlayback]);
 
   const performReset = useCallback(() => {
@@ -353,10 +372,14 @@ export function usePlayController(
     setCompletionPuzzleId(null);
     setDeadlockedBoxIds(EMPTY_BOX_SET);
     setExperienceEvent(null);
-    commitSession(reset(sessionRef.current));
+    const current = sessionRef.current;
+    commitSession(reset(current));
     timerResetRef.current();
     setToast("Room restarted.");
-    void playCue("reset");
+    void playCue("reset", {
+      variant: current.moves > 0 ? "multi" : "default",
+      pitchOffset: -Math.min(3, current.moves / 10),
+    });
   }, [commitSession, playCue, sessionRef, stopSolutionPlayback]);
 
   const requestReset = useCallback(() => {
@@ -446,6 +469,12 @@ export function usePlayController(
           setToast(nowFavorited ? "Added to favorites." : "Removed from favorites.");
         }
       : undefined,
+    onToggleZen: options.onToggleZen
+      ? () => {
+          const enabled = options.onToggleZen!();
+          setToast(enabled ? "Zen mode on." : "Zen mode off.");
+        }
+      : undefined,
   });
 
   useEffect(() => () => clearTimeout(toastTimerRef.current), []);
@@ -478,6 +507,7 @@ export function usePlayController(
     completionOpen,
     completionResult,
     playback,
+    inputEnabled,
     attemptMove,
     handleUndo,
     handleUndoN,

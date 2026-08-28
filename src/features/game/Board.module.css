@@ -3,34 +3,24 @@
   --board-padding: clamp(7px, 1vw, 13px);
 
   /* -- themeable custom properties -- */
-  --board-border-color: rgb(23 25 22 / 0.16);
-  --board-bg: var(--ink-950);
-  --board-shadow:
-    0 18px 45px rgb(23 25 22 / 0.18),
-    inset 0 0 0 1px rgb(255 255 255 / 0.05);
-  --board-solved-shadow:
-    0 22px 60px rgb(86 110 89 / 0.32),
-    0 0 0 4px rgb(112 136 114 / 0.2);
-  --goal-ripple-color: rgb(111 148 87 / 0.78);
-
-  --floor-gradient-highlight: rgb(255 255 255 / 0.35);
-  --floor-grain: rgb(84 72 50 / 0.035);
-  --floor-base: #e8e0cf;
-  --floor-inset-shadow: inset 0 0 0 1px rgb(23 25 22 / 0.04);
-
-  --wall-highlight: rgb(255 255 255 / 0.065);
-  --wall-shadow-bottom: rgb(0 0 0 / 0.1);
-  --wall-base: #343832;
-  --wall-inset-border: rgb(255 255 255 / 0.045);
-  --wall-inset-ledge: rgb(0 0 0 / 0.13);
-
-  --robot-border: #294d5d;
-  --antenna-bg: #294d5d;
-  --robot-face-bg:
-    radial-gradient(circle at 32% 38%, var(--paper-50) 0 7%, transparent 8%),
-    radial-gradient(circle at 68% 38%, var(--paper-50) 0 7%, transparent 8%),
-    linear-gradient(rgb(23 25 22 / 0.42), rgb(23 25 22 / 0.42)) 50% 73% / 34% 8% no-repeat,
-    rgb(29 65 79 / 0.32);
+  --board-border-color: var(--game-board-border);
+  --board-bg: var(--game-board-bg);
+  --board-shadow: var(--game-board-shadow);
+  --board-solved-shadow: var(--game-board-solved-shadow);
+  --goal-ripple-color: var(--game-goal-ripple);
+  --floor-gradient-highlight: var(--game-floor-highlight);
+  --floor-grain: var(--game-floor-grain);
+  --floor-base: var(--game-floor-base);
+  --floor-inset-shadow: var(--game-floor-inset);
+  --wall-highlight: var(--game-wall-highlight);
+  --wall-shadow-bottom: var(--game-wall-shadow);
+  --wall-base: var(--game-wall-base);
+  --wall-inset-border: var(--game-wall-border);
+  --wall-inset-ledge: var(--game-wall-ledge);
+  --robot-border: var(--game-robot-border);
+  --antenna-bg: var(--game-robot-antenna);
+  --robot-face-bg: var(--game-robot-face);
+  --board-height-limit: var(--board-standard-height-limit);
 
   position: relative;
   display: grid;
@@ -38,6 +28,7 @@
   grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
   gap: var(--gap);
   width: 100%;
+  max-width: var(--board-catalog-limit);
   padding: var(--board-padding);
   aspect-ratio: var(--columns) / var(--rows);
   border: 1px solid var(--board-border-color);
@@ -47,6 +38,21 @@
   transition:
     box-shadow 250ms ease,
     transform 250ms ease;
+}
+
+.board[data-fit-viewport] {
+  max-width: min(var(--board-catalog-limit), var(--board-height-limit));
+}
+
+.board[data-immersive] {
+  --board-height-limit: var(--board-immersive-height-limit);
+}
+
+.board[data-board-size="large"] {
+  --gap: 1px;
+  --board-padding: clamp(4px, 0.65vw, 8px);
+
+  border-radius: clamp(9px, 1.4vw, 16px);
 }
 
 .board[data-solved] {
@@ -91,10 +97,15 @@
 
 .goal {
   --piece-hue: 95;
-  --goal-border: hsl(var(--piece-hue) 32% 40%);
+  --goal-border: hsl(var(--piece-hue) var(--game-goal-border-tone));
   --goal-bg:
-    radial-gradient(circle, transparent 32%, hsl(var(--piece-hue) 34% 66% / 0.42) 34% 42%, transparent 44%),
-    hsl(var(--piece-hue) 30% 82% / 0.5);
+    radial-gradient(
+      circle,
+      transparent 32%,
+      hsl(var(--piece-hue) var(--game-goal-ring-tone)) 34% 42%,
+      transparent 44%
+    ),
+    hsl(var(--piece-hue) var(--game-goal-fill-tone));
 
   position: absolute;
   z-index: 1;
@@ -103,7 +114,7 @@
   place-items: center;
   border: clamp(1px, 0.2vw, 2px) solid var(--goal-border);
   border-radius: 50%;
-  color: hsl(var(--piece-hue) 38% 29%);
+  color: hsl(var(--piece-hue) var(--game-goal-color-tone));
   background: var(--goal-bg);
   box-shadow:
     inset 0 0 0 2px rgb(255 255 255 / 0.2),
@@ -221,20 +232,20 @@
 
 .box {
   --piece-hue: 32;
-  --box-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
-  --box-border-color: hsl(var(--piece-hue) 48% 27%);
-  --box-cross-color: hsl(var(--piece-hue) 48% 29% / 0.32);
-  --crate-face-border: hsl(var(--piece-hue) 46% 22% / 0.4);
-  --crate-face-bg: hsl(var(--piece-hue) 50% 72% / 0.55);
-  --box-home-shadow:
-    inset 0 0 0 clamp(2px, 0.25vw, 3px) rgb(255 255 255 / 0.38),
-    0 0 0 clamp(1px, 0.2vw, 2px) hsl(var(--piece-hue) 44% 28%),
-    0 0 14px hsl(var(--piece-hue) 68% 68% / 0.48);
-  --box-dead-bg: linear-gradient(145deg, hsl(var(--piece-hue) 68% 69%), hsl(var(--piece-hue) 59% 48%));
-  --box-dead-border: hsl(12 65% 45%);
-  --box-dead-shadow:
-    0 0 10px rgb(200 102 77 / 0.35),
-    inset 0 0 0 clamp(1px, 0.18vw, 2px) rgb(200 102 77 / 0.25);
+  --box-bg: linear-gradient(
+    var(--game-crate-gradient-angle),
+    hsl(var(--piece-hue) var(--game-crate-start-tone)),
+    hsl(var(--piece-hue) var(--game-crate-end-tone))
+  );
+  --box-border-color: hsl(var(--piece-hue) var(--game-crate-border-tone));
+  --box-cross-color: hsl(var(--piece-hue) var(--game-crate-cross-tone));
+  --crate-face-border: hsl(var(--piece-hue) var(--game-crate-face-border-tone));
+  --crate-face-bg: hsl(var(--piece-hue) var(--game-crate-face-bg-tone));
+  --box-color: hsl(var(--piece-hue) var(--game-crate-color-tone));
+  --box-home-shadow: var(--game-crate-home-shadow);
+  --box-dead-bg: var(--game-crate-dead-bg);
+  --box-dead-border: var(--game-crate-dead-border);
+  --box-dead-shadow: var(--game-crate-dead-shadow);
 
   position: absolute;
   inset: 7%;
@@ -242,7 +253,7 @@
   place-items: center;
   border: clamp(1px, 0.2vw, 2px) solid var(--box-border-color);
   border-radius: clamp(3px, 0.55vw, 8px);
-  color: hsl(var(--piece-hue) 38% 18%);
+  color: var(--box-color);
   background: var(--box-bg);
   box-shadow:
     inset 0 0 0 clamp(1px, 0.18vw, 2px) hsl(var(--piece-hue) 78% 82% / 0.42),
@@ -325,10 +336,8 @@
   place-items: center;
   border: clamp(1px, 0.2vw, 2px) solid var(--robot-border);
   border-radius: 48% 48% 42% 42%;
-  background: linear-gradient(150deg, #75aec5, #376c83);
-  box-shadow:
-    inset 0 0 0 clamp(1px, 0.2vw, 2px) rgb(255 255 255 / 0.28),
-    0 2px 6px rgb(23 25 22 / 0.3);
+  background: var(--game-robot-bg);
+  box-shadow: var(--game-robot-shadow);
   animation: keeper-breathe 2.8s ease-in-out infinite;
 }
 
@@ -410,16 +419,26 @@
 }
 
 @media (max-width: 560px) {
-  .board {
+  .board,
+  .board[data-immersive] {
     --board-padding: 7px;
+    --board-height-limit: var(--board-catalog-limit);
 
     border-radius: 14px;
+  }
+
+  .board[data-board-size="large"] {
+    --board-padding: 4px;
   }
 }
 
 @media (min-width: 1051px) and (max-height: 820px) {
   .board {
-    width: min(100%, 50vh);
+    --board-height-limit: min(var(--board-standard-height-limit), 50vh);
+  }
+
+  .board[data-immersive] {
+    --board-height-limit: min(var(--board-immersive-height-limit), 60vh);
   }
 }
 
@@ -451,52 +470,6 @@
 
 :global(html[data-motion="reduced"]) .feedbackLayer {
   display: none;
-}
-
-:global(html[data-theme="dark"]) .board {
-  --board-border-color: rgb(255 255 255 / 0.1);
-  --board-bg: #1a1c18;
-  --board-shadow:
-    0 18px 45px rgb(0 0 0 / 0.4),
-    inset 0 0 0 1px rgb(255 255 255 / 0.05);
-  --board-solved-shadow:
-    0 22px 60px rgb(90 122 93 / 0.35),
-    0 0 0 4px rgb(90 122 93 / 0.25);
-  --goal-ripple-color: rgb(139 204 130 / 0.86);
-
-  --floor-gradient-highlight: rgb(255 255 255 / 0.06);
-  --floor-grain: rgb(200 180 140 / 0.04);
-  --floor-base: #3a3830;
-  --floor-inset-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.03);
-
-  --wall-highlight: rgb(255 255 255 / 0.06);
-  --wall-shadow-bottom: rgb(0 0 0 / 0.15);
-  --wall-base: #4a4e48;
-  --wall-inset-border: rgb(255 255 255 / 0.06);
-  --wall-inset-ledge: rgb(0 0 0 / 0.18);
-
-  --robot-border: #4a9aba;
-  --antenna-bg: #7ab8d4;
-  --robot-face-bg: rgba(255, 255, 255, 0.12);
-}
-
-:global(html[data-theme="dark"]) .box {
-  --box-bg: linear-gradient(135deg, #8b6914 0%, #a07d1c 50%, #8b6914 100%);
-  --box-border-color: #c4a235;
-  --box-cross-color: rgba(255, 255, 255, 0.15);
-  --crate-face-border: rgba(255, 255, 255, 0.2);
-  --crate-face-bg: rgba(255, 255, 255, 0.06);
-  --box-home-shadow: 0 0 8px 2px rgba(100, 255, 100, 0.3);
-  --box-dead-bg: linear-gradient(135deg, #b83030 0%, #cc4040 50%, #b83030 100%);
-  --box-dead-border: #ff6666;
-  --box-dead-shadow:
-    0 0 10px rgb(200 102 77 / 0.35),
-    inset 0 0 0 clamp(1px, 0.18vw, 2px) rgb(200 102 77 / 0.25);
-}
-
-:global(html[data-theme="dark"]) .goal {
-  --goal-border: rgba(255, 255, 255, 0.35);
-  --goal-bg: rgba(255, 255, 255, 0.08);
 }
 
 @media (forced-colors: active) {

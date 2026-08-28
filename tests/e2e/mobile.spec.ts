@@ -74,3 +74,39 @@ test("a real touch swipe crosses the board event boundary and moves the keeper",
 
   await expect(page.getByTestId("moves-count")).toHaveText("1");
 });
+
+test("ambiguous diagonal gestures do not cause accidental moves", async ({ page }) => {
+  await page.goto("./#/play/beginner-typed-line");
+  const board = page.getByTestId("game-board");
+  await expect(board).toBeVisible();
+
+  const swipe = async (deltaX: number, deltaY: number) => {
+    await board.evaluate((element, delta) => {
+      const bounds = element.getBoundingClientRect();
+      const start = {
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+      };
+      const end = {
+        clientX: start.clientX + delta.deltaX,
+        clientY: start.clientY + delta.deltaY,
+      };
+      const dispatch = (type: string, touches: typeof start[], changedTouches: typeof start[]) => {
+        const event = new TouchEvent(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          touches: { value: touches },
+          changedTouches: { value: changedTouches },
+        });
+        element.dispatchEvent(event);
+      };
+      dispatch("touchstart", [start], [start]);
+      dispatch("touchmove", [end], [end]);
+      dispatch("touchend", [], [end]);
+    }, { deltaX, deltaY });
+  };
+
+  await swipe(-70, 65);
+  await expect(page.getByTestId("moves-count")).toHaveText("0");
+  await swipe(-80, 8);
+  await expect(page.getByTestId("moves-count")).toHaveText("1");
+});

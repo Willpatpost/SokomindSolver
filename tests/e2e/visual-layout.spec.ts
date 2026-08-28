@@ -23,7 +23,7 @@ async function setExperience(
   page: Page,
   preferences: {
     readonly motion?: "full" | "reduced";
-    readonly theme?: "light";
+    readonly appearance?: "light";
   },
 ) {
   await page.getByRole("button", { name: "Sound and motion settings" }).click();
@@ -33,10 +33,10 @@ async function setExperience(
       .getByRole("combobox", { name: /motion/i })
       .selectOption(preferences.motion);
   }
-  if (preferences.theme) {
+  if (preferences.appearance) {
     await settings
-      .getByRole("combobox", { name: /theme/i })
-      .selectOption(preferences.theme);
+      .getByRole("combobox", { name: /appearance/i })
+      .selectOption(preferences.appearance);
   }
   await settings.getByRole("button", { name: "Close" }).click();
 }
@@ -54,7 +54,7 @@ test("critical Play surfaces retain visible geometry in light and dark themes", 
     getComputedStyle(element).backgroundImage);
   await page.getByRole("button", { name: "Sound and motion settings" }).click();
   const settings = page.getByRole("dialog", { name: "Sound & motion" });
-  await settings.getByRole("combobox", { name: /theme/i }).selectOption("dark");
+  await settings.getByRole("combobox", { name: /appearance/i }).selectOption("dark");
   await settings.getByRole("button", { name: "Close" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   const darkSurface = await page.locator("body").evaluate((element) =>
@@ -92,7 +92,7 @@ test("light mode preserves distinct typed box and storage colors", async ({
   page,
 }) => {
   await page.goto("./#/play/beginner-typed-line");
-  await setExperience(page, { theme: "light" });
+  await setExperience(page, { appearance: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   const pieceBackgrounds = await page.evaluate(() => {
@@ -303,4 +303,27 @@ test("reduced motion preserves feedback state without transient board effects", 
       (slot) => slot.getAnimations().length,
     ),
   ).toBe(0);
+});
+
+test("completion dialog reflows at 200 percent text size", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.goto("./#/play/ultra-tiny");
+  await page.locator("html").evaluate((element) => {
+    element.style.fontSize = "200%";
+  });
+  await page.getByTestId("game-board").click();
+  await page.keyboard.press("ArrowDown");
+
+  const dialog = page.getByRole("dialog", { name: "First Steps" });
+  const bounds = await visibleBounds(dialog);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The visual test requires a viewport.");
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.y).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height + 1);
+
+  const next = dialog.getByRole("button", { name: "Next room" });
+  await next.scrollIntoViewIfNeeded();
+  await expectInsideViewport(page, next);
 });

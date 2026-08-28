@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import type { PuzzleRecord } from "@/src/shared/progress";
 import {
   loadRatings,
   saveRating,
@@ -8,6 +7,7 @@ import {
 import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
 import { PuzzleMinimap } from "@/src/features/selector/PuzzleMinimap";
 import { Modal } from "@/src/shared/ui/Modal";
+import type { CompletionPresentation } from "./completion-presentation";
 import { formatTime } from "./timer-math";
 import styles from "./CompletionDialog.module.css";
 
@@ -19,28 +19,12 @@ interface CompletionDialogProps {
   readonly moves: number;
   readonly pushes: number;
   readonly elapsedTime?: number;
-  readonly previousBest?: PuzzleRecord;
-  readonly newBest: boolean;
-  readonly isOptimalSolution?: boolean;
+  readonly presentation: CompletionPresentation;
   readonly nextLabel: string;
   readonly onClose: () => void;
   readonly onReplay?: () => void;
   readonly onNext: () => void;
   readonly onNextUnsolved?: () => void;
-}
-
-function bestMessage(
-  previous: PuzzleRecord | undefined,
-  moves: number,
-  newBest: boolean,
-): string {
-  if (!newBest && previous) {
-    const diff = moves - previous.moves;
-    if (diff === 0) return "Matched your personal best exactly.";
-    return `Your best is ${previous.moves} moves — this attempt used ${diff} more.`;
-  }
-  if (!previous) return "First clear saved as your personal best.";
-  return `New personal best — ${previous.moves - moves} fewer moves.`;
 }
 
 function buildShareText(
@@ -57,6 +41,13 @@ function buildShareText(
   if (elapsedTime > 0) lines.push(formatTime(elapsedTime));
   if (isOptimal) lines.push("★ Optimal");
   return lines.join("\n");
+}
+
+function resultDelta(delta: number | undefined, comparison: string): string | null {
+  if (delta === undefined) return null;
+  if (delta === 0) return `Matched ${comparison}`;
+  if (delta < 0) return `${-delta} fewer than ${comparison}`;
+  return `+${delta} versus ${comparison}`;
 }
 
 interface EfficiencyGrade {
@@ -99,9 +90,7 @@ export function CompletionDialog({
   moves,
   pushes,
   elapsedTime = 0,
-  previousBest,
-  newBest,
-  isOptimalSolution = false,
+  presentation,
   nextLabel,
   onClose,
   onReplay,
@@ -136,7 +125,13 @@ export function CompletionDialog({
   }, [selectedRating, puzzleId]);
 
   const handleShareResult = useCallback(async () => {
-    const text = buildShareText(title, moves, pushes, elapsedTime, isOptimalSolution);
+    const text = buildShareText(
+      title,
+      moves,
+      pushes,
+      elapsedTime,
+      presentation.isOptimal,
+    );
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -144,7 +139,7 @@ export function CompletionDialog({
     } catch {
       // Clipboard API may not be available
     }
-  }, [title, moves, pushes, elapsedTime, isOptimalSolution]);
+  }, [title, moves, pushes, elapsedTime, presentation.isOptimal]);
 
   const grade = efficiencyGrade(moves, pushes, boxes);
   const puzzleMeta = useMemo(
@@ -154,6 +149,11 @@ export function CompletionDialog({
   const difficultyLabel = puzzleMeta
     ? puzzleMeta.difficulty.charAt(0).toUpperCase() + puzzleMeta.difficulty.slice(1)
     : undefined;
+  const movesDeltaLabel = resultDelta(presentation.movesDelta, "best");
+  const pushesDeltaLabel = resultDelta(
+    presentation.pushesDelta,
+    "saved route",
+  );
 
   return (
     <Modal
@@ -178,7 +178,7 @@ export function CompletionDialog({
           )}
         </div>
         <p className={styles.eyebrow}>
-          Room cleared
+          {presentation.eyebrow}
           {difficultyLabel && (
             <span
               className={styles.difficultyBadge}
@@ -190,21 +190,49 @@ export function CompletionDialog({
         </p>
         <h2 id="completion-title">{title}</h2>
         <p className={styles.bestMessage} id="completion-best">
-          {bestMessage(previousBest, moves, newBest)}
+          {presentation.summary}
         </p>
-        {isOptimalSolution ? (
-          <p className={styles.optimalNote}>★ Optimal solution</p>
+        {presentation.milestones.length > 0 ? (
+          <ul className={styles.milestones} aria-label="Completion milestones">
+            {presentation.milestones.map((milestone) => (
+              <li data-kind={milestone.kind} key={milestone.kind}>
+                <span aria-hidden="true">
+                  {milestone.kind === "optimal-clear" ? "★" : "✓"}
+                </span>
+                <div>
+                  <strong>{milestone.label}</strong>
+                  <small>{milestone.detail}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : null}
         <div className={styles.stats}>
-          <span><strong>{moves}</strong> {moves === 1 ? "Move" : "Moves"}</span>
-          <span><strong>{pushes}</strong> {pushes === 1 ? "Push" : "Pushes"}</span>
+          <div>
+            <strong>{moves}</strong>
+            <span>{` ${moves === 1 ? "Move" : "Moves"}`}</span>
+            {movesDeltaLabel ? (
+              <small data-improved={(presentation.movesDelta ?? 0) < 0 || undefined}>
+                {movesDeltaLabel}
+              </small>
+            ) : null}
+          </div>
+          <div>
+            <strong>{pushes}</strong>
+            <span>{` ${pushes === 1 ? "Push" : "Pushes"}`}</span>
+            {pushesDeltaLabel ? (
+              <small data-improved={(presentation.pushesDelta ?? 0) < 0 || undefined}>
+                {pushesDeltaLabel}
+              </small>
+            ) : null}
+          </div>
           {elapsedTime > 0 ? (
-            <span><strong>{formatTime(elapsedTime)}</strong> Time</span>
+            <div><strong>{formatTime(elapsedTime)}</strong><span>Time</span></div>
           ) : null}
         </div>
         <div className={styles.ratingRow}>
           <span className={styles.gradeLetter} style={{ color: grade.color }}>{grade.letter}</span>
-          <span className={styles.ratingValue}>{grade.label}</span>
+          <span className={styles.ratingValue}>Route style: {grade.label}</span>
         </div>
         <div className={styles.difficultyFeedback}>
           <span className={styles.feedbackLabel}>How was the difficulty?</span>
@@ -262,7 +290,7 @@ export function CompletionDialog({
           )}
         </div>
         <div className={styles.actions} data-has-replay={onReplay ? "" : undefined}>
-          <button type="button" data-autofocus onClick={onClose}>
+          <button type="button" onClick={onClose}>
             Study board
           </button>
           {onReplay ? (
@@ -270,7 +298,7 @@ export function CompletionDialog({
               Replay
             </button>
           ) : null}
-          <button type="button" onClick={onNext}>
+          <button type="button" data-autofocus onClick={onNext}>
             {nextLabel}
           </button>
         </div>

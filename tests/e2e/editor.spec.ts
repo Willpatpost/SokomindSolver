@@ -438,7 +438,7 @@ test("playtest is fully playable and returns to the unchanged draft", async ({
     .getByRole("button", { name: "Sound and motion settings" })
     .click();
   await page.getByRole("combobox", { name: /motion/i }).selectOption("reduced");
-  await page.getByRole("combobox", { name: /theme/i }).selectOption("dark");
+  await page.getByRole("combobox", { name: /appearance/i }).selectOption("dark");
   await page.getByRole("button", { name: "Close" }).click();
 
   const testButton = page.getByRole("button", { name: "Test puzzle" });

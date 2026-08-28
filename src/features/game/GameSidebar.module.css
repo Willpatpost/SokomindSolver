@@ -5,10 +5,10 @@
 }
 
 .scoreCard {
-  --scorecard-border-color: rgb(23 25 22 / 0.08);
-  --scorecard-bg: rgb(251 250 245 / 0.6);
-  --stat-border-color: rgb(23 25 22 / 0.06);
-  --stat-bg: rgb(255 255 255 / 0.5);
+  --scorecard-border-color: var(--border-soft);
+  --scorecard-bg: color-mix(in srgb, var(--surface-glass), transparent 18%);
+  --stat-border-color: var(--border-soft);
+  --stat-bg: color-mix(in srgb, var(--surface-raised), transparent 34%);
 
   display: grid;
   gap: 16px;
@@ -228,8 +228,8 @@
 }
 
 .legend {
-  --legend-border-color: rgb(23 25 22 / 0.06);
-  --legend-bg: rgb(251 250 245 / 0.4);
+  --legend-border-color: var(--border-soft);
+  --legend-bg: color-mix(in srgb, var(--surface-glass), transparent 34%);
 
   display: grid;
   gap: 12px;
@@ -262,7 +262,7 @@
 }
 
 .legendMark {
-  --legend-mark-border-color: rgb(23 25 22 / 0.08);
+  --legend-mark-border-color: var(--border-soft);
 
   display: inline-flex;
   align-items: center;
@@ -292,19 +292,19 @@
 }
 
 :global(html[data-theme="dark"]) .scoreCard {
-  --scorecard-border-color: rgb(255 255 255 / 0.06);
-  --scorecard-bg: rgb(34 36 32 / 0.6);
-  --stat-border-color: rgb(255 255 255 / 0.06);
-  --stat-bg: rgb(40 42 38 / 0.5);
+  --scorecard-border-color: var(--border-soft);
+  --scorecard-bg: color-mix(in srgb, var(--surface-glass), transparent 18%);
+  --stat-border-color: var(--border-soft);
+  --stat-bg: color-mix(in srgb, var(--paper-200), transparent 50%);
 }
 
 :global(html[data-theme="dark"]) .legend {
-  --legend-border-color: rgb(255 255 255 / 0.04);
-  --legend-bg: rgb(34 36 32 / 0.4);
+  --legend-border-color: var(--border-soft);
+  --legend-bg: color-mix(in srgb, var(--surface-glass), transparent 34%);
 }
 
 :global(html[data-theme="dark"]) .legendMark {
-  --legend-mark-border-color: rgb(255 255 255 / 0.08);
+  --legend-mark-border-color: var(--border-soft);
 }
 
 :global(html[data-theme="dark"]) .paceBadge {

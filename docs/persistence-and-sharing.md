@@ -1,8 +1,9 @@
 # Persistence and sharing
 
-Sokomind remains account-free and server-free. Attempts, personal bests, and
-experience preferences are stored only in the current browser unless the user
-chooses to export or share them.
+Sokomind remains account-free and server-free. Attempts, personal-best
+summaries, replay history, and experience preferences are stored in the current
+browser. Summary progress can be exported; replay history remains device-local
+until a future sync/export format explicitly includes it.
 
 ## Storage records
 
@@ -11,9 +12,10 @@ share a Web Storage origin:
 
 - `sokomind.session.v1` — current puzzle plus its canonical action log;
 - `sokomind.progress.v1` — a versioned synchronization envelope containing the
-  best completed route per puzzle plus a schema-v2 local-date daily
+  best completion summary per puzzle plus a schema-v2 local-date daily
   participation ledger and a bounded local-date completion-activity ledger;
-- `sokomind.experience.v1` — audio, volume, and motion preferences;
+- `sokomind.experience.v2` — audio, volume, motion, theme-family, appearance,
+  and Zen-layout preferences (`v1` remains readable for migration);
 - `sokomind.optimal.v4` — locally proven move records from the corrected
   minimum-move proof pipeline;
 - `sokomind.ratings.v1`, `sokomind.favorites.v1`, and
@@ -23,6 +25,12 @@ share a Web Storage origin:
   downloaded or deleted without clearing other data;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
   reset.
+
+IndexedDB owns `sokomind.personal-best-routes.v1`, the versioned asynchronous
+repository for replay-verified personal-best action logs. Each route includes
+its puzzle ID, deterministic board-revision fingerprint, canonical action log,
+move and push counts, elapsed time when available, completion timestamp, schema
+version, and the `replay-verified` validation marker.
 
 Per-puzzle elapsed time uses the tab-private
 `sokomind:timer:<puzzle-id>` session-storage namespace. The legacy exact key
@@ -34,7 +42,9 @@ cannot be persisted and clears after a later successful write. Earlier storage
 schemas remain readable for migration.
 
 Sessions and optimal records are also written to IndexedDB as a
-quota-resilient secondary copy. Access to those durable records is checked
+quota-resilient secondary copy. Personal-best routes use IndexedDB as their
+primary asynchronous store so summary reads remain small and synchronous.
+Access to those durable records is checked
 against the document's reset generation. Play waits for asynchronous
 session hydration before enabling autosave, and it will not apply a late
 hydrated record after the user has already moved. If the player navigates away
@@ -45,6 +55,22 @@ remains discoverable through Continue. Optimal-cache
 hydration merges both storage tiers by the lower proven move count. Optimal
 payload schemas 1 through 4 are intentionally discarded because they predate
 the current proof corrections and cannot be trusted as minimum-move proofs.
+
+Every personal-best candidate replays from the current catalog puzzle's
+canonical initial state before either its summary or route is promoted. Solved
+state, action count, move count, and push count must all agree. A changed board
+fingerprint makes older routes stale; malformed, stale, or unsupported route
+payloads are ignored without changing summary progress. Existing summaries are
+therefore valid after migration even when no historical action log exists.
+
+Route retention is explicit: at most 8 personal-best routes per puzzle, 512
+routes overall, 25,000 actions per route, and 2,000,000 actions across the
+repository. The current bests of the most recently improved puzzles are
+retained before older history. The Progress dialog reports route count and
+storage size, can clear replay history without removing summaries, and includes
+replay history when resetting saved progress. IndexedDB absence, corruption,
+reset-fence mismatch, transaction failure, or quota pressure never blocks play
+or synchronous summary progress.
 
 Progress writes re-read the latest stored snapshot before mutation. Tabs merge
 same-generation records deterministically by move count and stable tie-breakers;
@@ -112,6 +138,10 @@ the active catalog, and summarized as added, improved, unchanged, rejected, and
 invalid records. MIME type and extension remain picker hints, not trust
 boundaries. Imports merge rather than replace; the better record is the one
 with fewer moves, and its original completion timestamp is preserved.
+
+The current backup format intentionally contains summary progress only. It does
+not invent action logs for older records or import unverified replay data into
+the asynchronous route repository.
 
 Daily participation is keyed by local calendar date and the puzzle assigned on
 that date. The daily selection changes at local midnight; calculations use the

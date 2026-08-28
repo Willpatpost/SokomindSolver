@@ -3,8 +3,8 @@
 ## Status
 
 - **Plan revision:** 2026-08-28
-- **Current delivery point:** Sprint 1 — Tactile movement foundation completed
-- **Next sprint:** Sprint 2 — Completion and milestone presentation
+- **Current delivery point:** Sprint 5 — Zen play and input polish completed
+- **Next sprint:** Sprint 6 — Replay-valid personal bests
 - **Product shape:** game-first Sokoban experience with an optional learning path and a first-class Solver Lab
 - **Delivery model:** small, independently shippable sprints with accessibility, performance, and regression gates
 
@@ -207,10 +207,13 @@ A sprint is shippable only when all applicable gates pass:
 
 **Goal:** Turn puzzle completion into a concise, rewarding summary without slowing the next action.
 
+**Status:** Completed 2026-08-28
+
 **Scope**
 
 - Refine the completion hierarchy around result, improvement, optimality, and next action.
-- Add milestone treatments for first clear, new move best, new push best, optimal clear, and guided-path chapter completion.
+- Add milestone treatments for first clear, new move best, saved-route push improvement, verified optimal clear, and current collection completion.
+- Reuse the milestone contract for guided-path chapter completion when the journey model ships in Sprint 8.
 - Coordinate celebration intensity through the experience director.
 - Keep replay, share, retry, next, and next-unsolved actions keyboard reachable.
 
@@ -223,6 +226,8 @@ A sprint is shippable only when all applicable gates pass:
 ### Sprint 3 — Adaptive audio and feedback settings
 
 **Goal:** Give each event an intentional sound signature without producing fatigue.
+
+**Status:** Completed 2026-08-28
 
 **Scope**
 
@@ -240,6 +245,8 @@ A sprint is shippable only when all applicable gates pass:
 ### Sprint 4 — Theme-family foundation
 
 **Goal:** Support multiple visual identities without duplicating component CSS.
+
+**Status:** Completed 2026-08-28
 
 **Scope**
 
@@ -259,6 +266,8 @@ A sprint is shippable only when all applicable gates pass:
 ### Sprint 5 — Zen play and input polish
 
 **Goal:** Let players choose a more immersive board-first layout and improve control confidence.
+
+**Status:** Completed 2026-08-28
 
 **Scope**
 

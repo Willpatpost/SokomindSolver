@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { PUZZLE_METADATA } from "../../src/catalog/puzzle-metadata";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("./#/play/ultra-tiny");
@@ -27,6 +28,82 @@ test("solves a room and reports the new personal best", async ({ page }) => {
   await expect(dialog).toContainText("First clear saved as your personal best");
   await expect(dialog).toContainText("1 Move");
   await expect(dialog).toContainText("1 Push");
+  await expect(
+    dialog.getByRole("list", { name: "Completion milestones" }),
+  ).toContainText("First clear");
+  await expect(
+    dialog.getByRole("button", { name: "Next room" }),
+  ).toBeFocused();
+  await expect(page.locator('[data-celebration="personal-best"]')).toHaveCount(1);
+
+  const results = await new AxeBuilder({ page })
+    .include("dialog[open]")
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+});
+
+test("verified optimal clears receive the highest milestone treatment", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    localStorage.setItem("sokomind.optimal.v4", JSON.stringify({
+      version: 5,
+      records: { "ultra-tiny": { moves: 1, pushes: 1 } },
+    }));
+  });
+  await page.reload();
+  await page.getByTestId("game-board").click();
+  await page.keyboard.press("ArrowDown");
+
+  const dialog = page.getByRole("dialog", { name: "First Steps" });
+  await expect(dialog).toContainText("Optimal solution");
+  const milestones = dialog.getByRole("list", {
+    name: "Completion milestones",
+  });
+  await expect(milestones).toContainText("Verified optimum");
+  await expect(milestones).toContainText("First clear");
+  await expect(page.locator('[data-celebration="optimal"]')).toHaveCount(1);
+});
+
+test("the final room in an existing collection announces collection completion", async ({
+  page,
+}) => {
+  const target = PUZZLE_METADATA.find(({ id }) => id === "ultra-tiny");
+  if (!target) throw new Error("First Steps metadata is unavailable.");
+  const priorPuzzleIds = PUZZLE_METADATA
+    .filter((puzzle) =>
+      puzzle.id !== target.id &&
+      puzzle.difficulty === target.difficulty &&
+      puzzle.collection === target.collection)
+    .map(({ id }) => id);
+
+  await page.evaluate((puzzleIds) => {
+    const completed = Object.fromEntries(puzzleIds.map((puzzleId) => [
+      puzzleId,
+      {
+        moves: 20,
+        pushes: 5,
+        completedAt: "2026-08-28T12:00:00.000Z",
+      },
+    ]));
+    localStorage.setItem("sokomind.progress.v1", JSON.stringify({
+      version: 2,
+      generation: 0,
+      revision: 1,
+      writerId: "collection-milestone-test",
+      completed,
+      daily: {},
+      activity: {},
+    }));
+  }, priorPuzzleIds);
+  await page.reload();
+  await page.getByTestId("game-board").click();
+  await page.keyboard.press("ArrowDown");
+
+  const dialog = page.getByRole("dialog", { name: "First Steps" });
+  await expect(dialog).toContainText("Collection complete");
+  await expect(dialog).toContainText(target.collection);
 });
 
 test("difficulty feedback exposes its selected state", async ({ page }) => {
