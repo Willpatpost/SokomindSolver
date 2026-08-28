@@ -35,7 +35,7 @@ interface DepDAG {
 // Types
 // ---------------------------------------------------------------------------
 
-export type VerificationConfidence = "structural" | "observed" | "counterfactual";
+export type VerificationConfidence = "observed" | "structural" | "counterfactual" | "proven";
 
 export interface DependencyEvidence {
   readonly kind: string;
@@ -722,6 +722,205 @@ function verifyExchangeCross(
 // ---------------------------------------------------------------------------
 // Main verification entry point
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Counterfactual verification helpers
+// ---------------------------------------------------------------------------
+
+function buildFloorGrid(puzzle: PuzzleDefinition): string[][] {
+  return puzzle.rows.map((r) => [...r]);
+}
+
+function counterfactualBlocksAccess(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  const state = initReplayState(puzzle);
+  const grid = buildFloorGrid(puzzle);
+
+  const fromBox = state.boxes[fromNode.goalIndex];
+  const toGoal = state.goalPositions[toNode.goalIndex];
+  if (!fromBox || !toGoal) return null;
+
+  const boxSet = new Set(state.boxes.map((b) => `${b.row},${b.column}`));
+  boxSet.add(`${fromBox.row},${fromBox.column}`);
+
+  const reachable = floodKeeperReachable(grid, state.robot, boxSet);
+  const goalKey = `${toGoal.row},${toGoal.column}`;
+
+  if (!reachable.has(goalKey)) {
+    return {
+      kind: "counterfactual-blocked",
+      description:
+        `With gate box frozen at (${fromBox.row},${fromBox.column}), ` +
+        `goal (${toGoal.row},${toGoal.column}) is unreachable — gate is causally required`,
+    };
+  }
+
+  return null;
+}
+
+function counterfactualMustReopen(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  return counterfactualBlocksAccess(fromNode, toNode, puzzle);
+}
+
+function counterfactualMustPrecede(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  const state = initReplayState(puzzle);
+  const grid = buildFloorGrid(puzzle);
+
+  const fromBox = state.boxes[fromNode.goalIndex];
+  const toGoal = state.goalPositions[toNode.goalIndex];
+  if (!fromBox || !toGoal) return null;
+
+  const boxSet = new Set(state.boxes.map((b) => `${b.row},${b.column}`));
+
+  const reachable = floodKeeperReachable(grid, state.robot, boxSet);
+  const goalKey = `${toGoal.row},${toGoal.column}`;
+
+  if (!reachable.has(goalKey)) {
+    return {
+      kind: "counterfactual-order",
+      description:
+        `Goal (${toGoal.row},${toGoal.column}) is unreachable at start — ` +
+        `preceding box at (${fromBox.row},${fromBox.column}) must be moved first`,
+    };
+  }
+
+  return null;
+}
+
+function counterfactualChainLink(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  return counterfactualMustPrecede(fromNode, toNode, puzzle);
+}
+
+function counterfactualMustPark(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  const state = initReplayState(puzzle);
+  const grid = buildFloorGrid(puzzle);
+
+  const fromBox = state.boxes[fromNode.goalIndex];
+  const toGoal = state.goalPositions[toNode.goalIndex];
+  if (!fromBox || !toGoal) return null;
+
+  const boxSet = new Set(state.boxes.map((b) => `${b.row},${b.column}`));
+  const reachable = floodKeeperReachable(grid, state.robot, boxSet);
+  const goalKey = `${toGoal.row},${toGoal.column}`;
+
+  if (!reachable.has(goalKey)) {
+    return {
+      kind: "counterfactual-park",
+      description:
+        `Goal (${toGoal.row},${toGoal.column}) is unreachable at start — ` +
+        `box at (${fromBox.row},${fromBox.column}) blocks access, requiring temporary parking`,
+    };
+  }
+
+  return null;
+}
+
+function counterfactualMustStage(
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  const state = initReplayState(puzzle);
+  const grid = buildFloorGrid(puzzle);
+
+  const fromBox = state.boxes[fromNode.goalIndex];
+  const toGoal = state.goalPositions[toNode.goalIndex];
+  if (!fromBox || !toGoal) return null;
+
+  const boxSet = new Set(state.boxes.map((b) => `${b.row},${b.column}`));
+  const reachable = floodKeeperReachable(grid, state.robot, boxSet);
+  const goalKey = `${toGoal.row},${toGoal.column}`;
+
+  if (!reachable.has(goalKey)) {
+    return {
+      kind: "counterfactual-stage",
+      description:
+        `Goal (${toGoal.row},${toGoal.column}) is unreachable at start — ` +
+        `box at (${fromBox.row},${fromBox.column}) must be staged before target can complete`,
+    };
+  }
+
+  return null;
+}
+
+function applyCounterfactual(
+  edge: DepEdge,
+  fromNode: DepNode,
+  toNode: DepNode,
+  puzzle: PuzzleDefinition,
+): DependencyEvidence | null {
+  switch (edge.type) {
+    case "blocks-access":
+      return counterfactualBlocksAccess(fromNode, toNode, puzzle);
+    case "must-reopen":
+      return counterfactualMustReopen(fromNode, toNode, puzzle);
+    case "must-precede":
+      return counterfactualMustPrecede(fromNode, toNode, puzzle);
+    case "chain-link":
+      return counterfactualChainLink(fromNode, toNode, puzzle);
+    case "must-park":
+      return counterfactualMustPark(fromNode, toNode, puzzle);
+    case "must-stage":
+      return counterfactualMustStage(fromNode, toNode, puzzle);
+    default:
+      return null;
+  }
+}
+
+export function verifyDependenciesCounterfactual(
+  dag: DepDAG,
+  puzzle: PuzzleDefinition,
+  steps: readonly SolutionStep[],
+  passageCells?: ReadonlySet<string>,
+): DependencyVerificationResult {
+  const baseResult = verifyDependenciesWithEvidence(dag, puzzle, steps, passageCells);
+
+  const enhanced: DependencyEdgeVerification[] = baseResult.edgeDetails.map((detail) => {
+    if (!detail.realized) return detail;
+    if (detail.confidence === "counterfactual") return detail;
+
+    const fromNode = dag.nodes.find((n) => n.id === detail.edge.from);
+    const toNode = dag.nodes.find((n) => n.id === detail.edge.to);
+    if (!fromNode || !toNode) return detail;
+
+    const cf = applyCounterfactual(detail.edge, fromNode, toNode, puzzle);
+    if (!cf) return detail;
+
+    return {
+      ...detail,
+      confidence: "counterfactual" as VerificationConfidence,
+      evidence: [...detail.evidence, cf],
+    };
+  });
+
+  const realizedEdges = enhanced.filter((d) => d.realized).length;
+
+  return {
+    totalEdges: enhanced.length,
+    realizedEdges,
+    realizationRate: enhanced.length > 0 ? realizedEdges / enhanced.length : 1,
+    edgeDetails: enhanced,
+  };
+}
 
 export function verifyDependenciesWithEvidence(
   dag: DepDAG,

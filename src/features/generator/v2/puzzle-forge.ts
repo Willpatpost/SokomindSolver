@@ -47,7 +47,7 @@ import {
   DEFAULT_TIGHTENING_PARAMS,
   DEFAULT_TIER_TIGHTENING_POLICIES,
 } from "./geometry-tightening.ts";
-import { verifyDependenciesWithEvidence } from "./dependency-verification.ts";
+import { verifyDependenciesWithEvidence, verifyDependenciesCounterfactual } from "./dependency-verification.ts";
 import { createMechanismPlan, placeGoalsFromPlan, verifyMechanismEvidence } from "./mechanism-plan.ts";
 import type { MechanismPlan, MechanismType } from "./blueprint-types.ts";
 
@@ -196,6 +196,8 @@ export interface ForgeProvenance {
   readonly mechanismCount?: number;
   readonly mechanismEvidencePassed?: boolean;
   readonly mechanismEvidenceMissing?: readonly string[];
+  readonly counterfactualEdges?: number;
+  readonly counterfactualTotal?: number;
 }
 
 export interface ForgeCandidate {
@@ -745,6 +747,9 @@ function paretoScore(c: ForgeCandidate): number {
   if (c.provenance.dependencyRealizationRate !== undefined) {
     score += c.provenance.dependencyRealizationRate * 15;
   }
+  if (c.provenance.counterfactualTotal && c.provenance.counterfactualTotal > 0) {
+    score += (c.provenance.counterfactualEdges! / c.provenance.counterfactualTotal) * 10;
+  }
   return score;
 }
 
@@ -1003,6 +1008,8 @@ async function runForgeFlat(
 
     let mechanismEvidencePassed: boolean | undefined;
     let mechanismEvidenceMissing: string[] | undefined;
+    let counterfactualEdges: number | undefined;
+    let counterfactualTotal: number | undefined;
 
     if (raw.result.dag && evalResult.steps) {
       const reVerification = verifyDependenciesWithEvidence(
@@ -1029,6 +1036,20 @@ async function runForgeFlat(
             requestedBoxCount: boxCount,
           });
           continue;
+        }
+
+        const isHardTier = difficulty === "expert" || difficulty === "master";
+        if (isHardTier && mechanismEvidencePassed) {
+          const cfResult = verifyDependenciesCounterfactual(
+            raw.result.dag, puzzle, evalResult.steps,
+          );
+          counterfactualTotal = cfResult.totalEdges;
+          counterfactualEdges = cfResult.edgeDetails.filter(
+            (d) => d.confidence === "counterfactual" || d.confidence === "proven",
+          ).length;
+          depRate = cfResult.realizationRate;
+          depEdges = cfResult.totalEdges;
+          depRealized = cfResult.realizedEdges;
         }
       }
     }
@@ -1118,6 +1139,8 @@ async function runForgeFlat(
       mechanismCount: raw.result.mechanismTypes?.length,
       mechanismEvidencePassed,
       mechanismEvidenceMissing,
+      counterfactualEdges,
+      counterfactualTotal,
     };
 
     validCandidates.push({
@@ -1392,6 +1415,8 @@ async function runForgeFunnel(
 
     let mechanismEvidencePassed: boolean | undefined;
     let mechanismEvidenceMissing: string[] | undefined;
+    let counterfactualEdges: number | undefined;
+    let counterfactualTotal: number | undefined;
 
     if (raw.result.dag && evalResult.steps) {
       const reVerification = verifyDependenciesWithEvidence(raw.result.dag, puzzle, evalResult.steps);
@@ -1414,6 +1439,20 @@ async function runForgeFunnel(
             requestedBoxCount: boxCount,
           });
           continue;
+        }
+
+        const isHardTier = difficulty === "expert" || difficulty === "master";
+        if (isHardTier && mechanismEvidencePassed) {
+          const cfResult = verifyDependenciesCounterfactual(
+            raw.result.dag, puzzle, evalResult.steps,
+          );
+          counterfactualTotal = cfResult.totalEdges;
+          counterfactualEdges = cfResult.edgeDetails.filter(
+            (d) => d.confidence === "counterfactual" || d.confidence === "proven",
+          ).length;
+          depRate = cfResult.realizationRate;
+          depEdges = cfResult.totalEdges;
+          depRealized = cfResult.realizedEdges;
         }
       }
     }
@@ -1492,6 +1531,8 @@ async function runForgeFunnel(
         mechanismCount: raw.result.mechanismTypes?.length,
         mechanismEvidencePassed,
         mechanismEvidenceMissing,
+        counterfactualEdges,
+        counterfactualTotal,
       },
       evaluation: ev,
       tighteningResult,
@@ -1710,6 +1751,11 @@ export function forgeCandidateToAscii(c: ForgeCandidate): string {
       ? ` (missing: ${p.mechanismEvidenceMissing.join(", ")})`
       : "";
     lines.push(`Mechanism Evidence: ${evidenceStatus}${missing}`);
+  }
+  if (p.counterfactualTotal !== undefined && p.counterfactualTotal > 0) {
+    lines.push(
+      `Counterfactual: ${p.counterfactualEdges}/${p.counterfactualTotal} edges verified`,
+    );
   }
   lines.push("");
 

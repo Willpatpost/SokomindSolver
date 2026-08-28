@@ -98,7 +98,7 @@ export const DEFAULT_COMPOSITION_PARAMS: CompositionParams = {
   maxRetries: 5,
 };
 
-export type VerificationConfidence = "structural" | "observed" | "counterfactual";
+export type VerificationConfidence = "observed" | "structural" | "counterfactual" | "proven";
 
 export interface DependencyEvidence {
   readonly kind: string;

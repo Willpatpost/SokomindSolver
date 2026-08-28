@@ -163,6 +163,7 @@ export type {
 
 export {
   verifyDependenciesWithEvidence,
+  verifyDependenciesCounterfactual,
   collectPassageCells,
 } from "./dependency-verification.ts";
 
