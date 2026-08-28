@@ -8,10 +8,12 @@ import {
 } from "../../src/features/generator/v2/puzzle-forge.ts";
 import {
   generateBlueprintWithRetry,
+  tightenPuzzle,
   DEFAULT_BLUEPRINT_PARAMS,
   type BlueprintParams,
 } from "../../src/features/generator/v2/index.ts";
 import { rasterizeBlueprint } from "../../src/features/generator/v2/blueprint-graph.ts";
+import type { PuzzleDefinition } from "../../src/core/model.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -233,4 +235,54 @@ test("geometry contract: valid board passes all geometry checks", () => {
   });
   const result = validateFinalGeometry(makeSmallBoard(), profile);
   assert.equal(result, null);
+});
+
+// ---------------------------------------------------------------------------
+// Test L4: Post-tightening geometry profile re-check
+// ---------------------------------------------------------------------------
+
+test("geometry contract: tightened puzzle still passes geometry validation", async () => {
+  const p: PuzzleDefinition = {
+    id: "geo-recheck",
+    title: "Geometry re-check",
+    difficulty: "tutorial",
+    boxes: 1,
+    rows: [
+      "OOOOOO",
+      "O R  O",
+      "O X  O",
+      "O  S O",
+      "O    O",
+      "OOOOOO",
+    ],
+  };
+
+  // Generous profile: tightening should not violate any of these bounds
+  const profile = makeProfile({
+    minPlayableFloor: 4,
+    maxPlayableFloor: 50,
+    minFloorCoverage: 0.1,
+    minRegions: 0,
+    minChokepoints: 0,
+  });
+
+  // Step 1: original puzzle passes geometry validation
+  const beforeResult = validateFinalGeometry(p.rows, profile);
+  assert.equal(
+    beforeResult,
+    null,
+    `original puzzle should pass geometry validation, got: ${beforeResult}`,
+  );
+
+  // Step 2: tighten the puzzle
+  const tightened = await tightenPuzzle(p);
+  assert.ok(tightened, "tightenPuzzle should return a result (puzzle is solvable)");
+
+  // Step 3: tightened puzzle still passes the same geometry profile
+  const afterResult = validateFinalGeometry(tightened.tightened.rows, profile);
+  assert.equal(
+    afterResult,
+    null,
+    `tightened puzzle should still pass geometry validation, got: ${afterResult}`,
+  );
 });

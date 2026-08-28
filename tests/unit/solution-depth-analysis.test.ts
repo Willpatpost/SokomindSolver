@@ -221,4 +221,73 @@ describe("analyzeSolutionDepth", () => {
     assert.equal(result.nonMonotonicBoxMoves, 0);
     assert.equal(result.distinctBoxesMoved, 0);
   });
+
+  it("exact box-switch oracle: alternating pushes yield rate 1.0", () => {
+    // Layout (row x col):
+    //   0: O O O O O O O O O O
+    //   1: O R X . . . X . S O   R=(1,1) box0=(1,2) box1=(1,6) goal=(1,8)
+    //   2: O . . . . . . . S O   goal=(2,8)
+    //   3: O O O O O O O O O O
+    //
+    // Plan: push box0 right, walk around to box1, push box1 right,
+    //       walk around back to box0, push box0 right again.
+    // 3 pushes total, boxes alternate: 0 -> 1 -> 0 => 2 switches.
+    // boxSwitchRate = 2 / (3 - 1) = 1.0
+    const grid = [
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", " ", " ", "X", " ", "S", "O"],
+      ["O", " ", " ", " ", " ", " ", " ", " ", "S", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
+    ];
+    const steps: SolutionStep[] = [
+      // Push 1: push box0 right. Robot (1,1)->(1,2), box0 (1,2)->(1,3).
+      step("right", "push"),
+      // Walk around to get left of box1 at (1,6): go via row 2.
+      step("down", "walk"),    // robot (2,2)
+      step("right", "walk"),   // robot (2,3)
+      step("right", "walk"),   // robot (2,4)
+      step("right", "walk"),   // robot (2,5)
+      step("up", "walk"),      // robot (1,5)
+      // Push 2: push box1 right. Robot (1,5)->(1,6), box1 (1,6)->(1,7). Switch!
+      step("right", "push"),
+      // Walk around to get left of box0 at (1,3): go via row 2.
+      step("down", "walk"),    // robot (2,6)
+      step("left", "walk"),    // robot (2,5)
+      step("left", "walk"),    // robot (2,4)
+      step("left", "walk"),    // robot (2,3)
+      step("left", "walk"),    // robot (2,2)
+      step("up", "walk"),      // robot (1,2)
+      // Push 3: push box0 right. Robot (1,2)->(1,3), box0 (1,3)->(1,4). Switch!
+      step("right", "push"),
+    ];
+    const result = analyzeSolutionDepth(grid, steps);
+    assert.equal(result.boxSwitchRate, 1.0, "2 switches / 2 = 1.0");
+    assert.equal(result.distinctBoxesMoved, 2);
+  });
+
+  it("exact box-switch oracle: same-box pushes yield rate 0", () => {
+    // Layout:
+    //   0: O O O O O O O O
+    //   1: O R X . . . S O   R=(1,1) box0=(1,2) goal=(1,6)
+    //   2: O O O O O O O O
+    //
+    // Push box0 right three times. Same box every time => 0 switches.
+    // boxSwitchRate = 0 / (3 - 1) = 0
+    const grid = [
+      ["O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", " ", " ", "S", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O"],
+    ];
+    const steps: SolutionStep[] = [
+      // Push 1: robot (1,1)->(1,2), box0 (1,2)->(1,3).
+      step("right", "push"),
+      // Push 2: robot (1,2)->(1,3), box0 (1,3)->(1,4).
+      step("right", "push"),
+      // Push 3: robot (1,3)->(1,4), box0 (1,4)->(1,5).
+      step("right", "push"),
+    ];
+    const result = analyzeSolutionDepth(grid, steps);
+    assert.equal(result.boxSwitchRate, 0, "0 switches for same-box pushes");
+    assert.equal(result.distinctBoxesMoved, 1);
+  });
 });

@@ -8,11 +8,14 @@ import {
   placeGoalsFromPlan,
   MECHANISM_CATALOG,
   DEFAULT_BLUEPRINT_PARAMS,
+  countBoxesAndGoals,
   type BlueprintParams,
   type MechanismPlan,
   type MechanismSpec,
 } from "../../src/features/generator/v2/index.ts";
 import { validateForAcceptance } from "../../src/features/generator/v2/review-catalog.ts";
+import { assignLabels } from "../../src/features/generator/label-assignment.ts";
+import type { SolverSolution } from "../../src/solver/contracts.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -272,4 +275,147 @@ test("box budget: acceptance validator passes when box counts match", () => {
     (e) => e.includes("box count") || e.includes("Box count"),
   );
   assert.equal(boxErrors.length, 0, `unexpected box count errors: ${JSON.stringify(boxErrors)}`);
+});
+
+// ---------------------------------------------------------------------------
+// Test J: single-point 4-way box count assertion
+// ---------------------------------------------------------------------------
+
+test("box budget: countBoxesAndGoals 4-way equality (generic only)", () => {
+  const rows = [
+    "OOOOOOO",
+    "ORX.S.O",
+    "O.....O",
+    "O.X.S.O",
+    "O.....O",
+    "O.X.S.O",
+    "OOOOOOO",
+  ];
+
+  const c = countBoxesAndGoals(rows);
+
+  assert.equal(c.boxes, 3, `expected 3 boxes, got ${c.boxes}`);
+  assert.equal(c.goals, 3, `expected 3 goals, got ${c.goals}`);
+  assert.equal(c.boxes, c.goals, "boxes !== goals");
+  assert.equal(c.generic + c.typed, c.boxes, "generic + typed !== boxes");
+  assert.equal(c.generic, 3, `expected 3 generic, got ${c.generic}`);
+  assert.equal(c.typed, 0, `expected 0 typed, got ${c.typed}`);
+});
+
+test("box budget: countBoxesAndGoals 4-way equality (mixed generic + typed)", () => {
+  // 2 generic (X/S) + 1 typed (A/a) = 3 total
+  const rows = [
+    "OOOOOOO",
+    "ORX.S.O",
+    "O.....O",
+    "O.X.S.O",
+    "O.....O",
+    "O.A.a.O",
+    "OOOOOOO",
+  ];
+
+  const c = countBoxesAndGoals(rows);
+
+  assert.equal(c.boxes, 3, `expected 3 boxes, got ${c.boxes}`);
+  assert.equal(c.goals, 3, `expected 3 goals, got ${c.goals}`);
+  assert.equal(c.boxes, c.goals, "boxes !== goals");
+  assert.equal(c.generic + c.typed, c.boxes, "generic + typed !== boxes");
+  assert.equal(c.generic, 2, `expected 2 generic, got ${c.generic}`);
+  assert.equal(c.typed, 1, `expected 1 typed, got ${c.typed}`);
+});
+
+// ---------------------------------------------------------------------------
+// Test K: 20-box budget counting + typing preserves count
+// ---------------------------------------------------------------------------
+
+test("box budget: countBoxesAndGoals at 20-box scale", () => {
+  // 20 generic boxes and 20 generic goals on separate rows
+  const boxRow = "O" + "X".repeat(20) + "O";
+  const goalRow = "O" + "S".repeat(20) + "O";
+  const wallRow = "O".repeat(22);
+  const floorRow = "O" + ".".repeat(20) + "O";
+
+  const rows = [
+    wallRow,
+    "O" + "R" + ".".repeat(19) + "O",
+    boxRow,
+    floorRow,
+    goalRow,
+    wallRow,
+  ];
+
+  const c = countBoxesAndGoals(rows);
+
+  assert.equal(c.boxes, 20, `expected 20 boxes, got ${c.boxes}`);
+  assert.equal(c.goals, 20, `expected 20 goals, got ${c.goals}`);
+  assert.equal(c.boxes, c.goals, "boxes !== goals at 20-box scale");
+  assert.equal(c.generic, 20, `expected 20 generic, got ${c.generic}`);
+  assert.equal(c.typed, 0, `expected 0 typed, got ${c.typed}`);
+  assert.equal(c.generic + c.typed, c.boxes, "generic + typed !== boxes");
+});
+
+test("box budget: typing preserves total box count (assignLabels)", () => {
+  // Puzzle: 2 generic boxes, each pushed right 2 cells to reach its goal
+  // Floor is space, not dot -- parsePuzzle requires /^[A-Za-z ORSX]$/
+  const rows = [
+    "OOOOOOO",
+    "O     O",
+    "ORX S O",
+    "O     O",
+    "O X S O",
+    "OOOOOOO",
+  ];
+
+  const puzzle = {
+    id: "typing-preserves-count-test",
+    title: "Typing Test",
+    difficulty: "intermediate" as const,
+    boxes: 2,
+    rows,
+  };
+
+  const before = countBoxesAndGoals(puzzle.rows);
+  assert.equal(before.boxes, 2, "pre-check: 2 boxes");
+  assert.equal(before.goals, 2, "pre-check: 2 goals");
+  assert.equal(before.generic, 2, "pre-check: all generic");
+  assert.equal(before.typed, 0, "pre-check: no typed");
+
+  // Solution: push box1 right twice, walk around, push box2 right twice
+  const solution: SolverSolution = {
+    steps: [
+      { direction: "right", kind: "push" },
+      { direction: "right", kind: "push" },
+      { direction: "down", kind: "walk" },
+      { direction: "left", kind: "walk" },
+      { direction: "left", kind: "walk" },
+      { direction: "down", kind: "walk" },
+      { direction: "right", kind: "push" },
+      { direction: "right", kind: "push" },
+    ],
+    moves: 8,
+    pushes: 4,
+    objective: { kind: "moves" },
+    objectiveScore: 8,
+    optimality: "unknown",
+  };
+
+  // Deterministic RNG for reproducibility
+  let rngState = 42;
+  const rng = () => {
+    rngState = (rngState * 1103515245 + 12345) & 0x7fffffff;
+    return rngState / 0x7fffffff;
+  };
+
+  const typed = assignLabels(puzzle, solution, rng);
+  const after = countBoxesAndGoals(typed.rows);
+
+  // Total count must be preserved: same number of boxes and goals
+  assert.equal(after.boxes, before.boxes, `typing changed box count: ${before.boxes} -> ${after.boxes}`);
+  assert.equal(after.goals, before.goals, `typing changed goal count: ${before.goals} -> ${after.goals}`);
+  assert.equal(after.boxes, after.goals, "boxes !== goals after typing");
+  assert.equal(after.generic + after.typed, after.boxes, "generic + typed !== boxes after typing");
+
+  // assignLabels converts ALL generic to typed when boxCount >= 2
+  assert.equal(after.typed, 2, `expected 2 typed after full labelling, got ${after.typed}`);
+  assert.equal(after.generic, 0, `expected 0 generic after full labelling, got ${after.generic}`);
 });
