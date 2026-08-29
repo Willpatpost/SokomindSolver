@@ -41,6 +41,9 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | Solver portfolio | `src/solver/implementations/sokomind-solver.ts` | discovery, rewrite, proof coordination and run ledger |
 | Generated engine | `src/solver/implementations/sokomind-engine/source/` | edit source, then regenerate `engine.generated.js` |
 | Play UI | `src/features/play/`, `src/features/game/` | controller composition, input, timer, board, dialogs |
+| Replay study UI | `src/features/replay/`, `src/features/stats/PersonalBestReplayShelf.tsx` | canonical display frames, route comparison, read-only ghost, completion and statistics entry points |
+| Guided journey | `src/features/journey/`, `src/features/journey/GuidedJourneyCard.tsx` | advisory concept chapters, deterministic next-room explanation, pause/resume preference |
+| Daily challenge | `src/features/progress/daily-challenge.ts`, `src/features/home/DailyChallengeCard.tsx` | local-date assignment framing, seven-day participation history, recovery states |
 | Editor | `src/features/editor/` | reducer/history, draft persistence, validation, sharing |
 | Experience | `src/features/experience/` | theme, motion, sound, music and Web Audio lifecycle |
 | PWA | `public/sw.js`, `src/shared/sw-update-store.ts` | manifest-bound caches, update activation and offline shell |
@@ -53,6 +56,7 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | `GameSnapshot` / `GameSession` | dynamic keeper/box state and persistent undo history | `src/core/model.ts`, `src/core/game-session.ts` |
 | `ProgressData` | best records, daily participation, and bounded completion activity | `src/shared/progress.ts`, `src/shared/progress-sync.ts` |
 | `PersonalBestRouteRepository` | bounded, fingerprinted, replay-verified personal-best action logs | `src/shared/personal-best-routes.ts` |
+| `ReplayTrace` / `ReplayComparison` | canonical display frames plus textual and marked route divergences | `src/features/replay/replay-comparison.ts` |
 | `SavedSession` | puzzle ID plus replayable action log; never trusted coordinates | `src/shared/session-persistence.ts` |
 | `EditorDraftStore` | bounded named documents with one active draft and migration from the legacy payload | `src/features/editor/editor-draft.ts` |
 | `SolverRequest` / `SolverResult` | validated worker-neutral request, terminal result, metrics, and proof | `src/solver/contracts.ts`, `src/solver/validation.ts` |
@@ -70,6 +74,9 @@ behavior belongs in `docs/solver-v2-progress.md` and
 | `loadPuzzleById` | loads one validated catalog shard and may be retried after an offline or transport failure |
 | `persistProgressUpdate` / `persistProgressImport` / `resetStoredProgress` | merge or reset progress under cross-tab/reset fencing and return the durable outcome |
 | `verifyPersonalBestRoute` / `promoteVerifiedPersonalBestRoute` | replay a candidate from the canonical puzzle, verify exact counters, then atomically retain bounded best-route history |
+| `buildReplayTrace` / `compareReplayTraces` | rebuild read-only frames through canonical moves and describe route differences without relying on color |
+| `getJourneyChapterProgress` / `getJourneyRecommendation` | project solved puzzle IDs onto curated chapters and return the first explainable unsolved room without locking later content |
+| `buildDailyChallengeView` | derive today's assignment, streak framing, and bounded history from the canonical daily ledger |
 | `saveSession` / `hydrateSessionFromIDB` | mirror replayable sessions and reconcile the newest valid storage tier |
 | `parseEditorDraftStore` / `serializeEditorDraftStore` | deeply validate, migrate, and serialize the named-draft document store |
 | `assertValidSolverRequest` / `assertValidSolverResult` | reject malformed, non-finite, inconsistent, or out-of-contract protocol values |
@@ -196,6 +203,7 @@ fails when the generated facts below differ from source.
 | reset | `sokomind.reset.v1` |
 | ratings | `sokomind.ratings.v1` |
 | favorites | `sokomind.favorites.v1` |
+| guidedJourney | `sokomind.guided-journey.v1` |
 | editorDraft | `sokomind.editor-draft.v1` |
 | editorDraftRecovery | `sokomind.editor-draft-recovery.v1` |
 | session-only | `sokomind:timer` |
@@ -264,7 +272,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **380,000 gzip bytes**
+- All scripts and styles: **390,000 gzip bytes**
 - Largest asset: **80,000 gzip bytes**
 - Solver worker: **55,000 gzip bytes**
 - Nested engine worker: **65,000 gzip bytes**

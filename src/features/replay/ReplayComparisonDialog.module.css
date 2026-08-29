@@ -1,0 +1,386 @@
+.modal {
+  width: min(900px, calc(100vw - 28px));
+  max-height: calc(100dvh - 24px);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-xl);
+}
+
+.dialog {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 3vw, 30px);
+  background: var(--surface-dialog);
+}
+
+.header,
+.comparisonHeading,
+.timelineHeading,
+.controls,
+.routeSelectors {
+  display: flex;
+  align-items: center;
+}
+
+.header {
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.header h2,
+.comparisonHeading h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.header h2 {
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+}
+
+.header p:not(.eyebrow) {
+  max-width: 640px;
+  margin: 6px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--sage-700);
+  font-size: 0.65rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--paper-300);
+  border-radius: 12px;
+  color: var(--ink-700);
+  background: var(--paper-50);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.routeSelectors {
+  align-items: end;
+  gap: 12px;
+}
+
+.routeSelectors label {
+  display: grid;
+  flex: 1 1 0;
+  gap: 6px;
+  min-width: 0;
+}
+
+.routeSelectors label > span,
+.speed > span {
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.routeSelectors select,
+.speed select {
+  min-height: 40px;
+  border: 1px solid var(--paper-300);
+  border-radius: 10px;
+  color: var(--ink-900);
+  background: var(--paper-50);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.replayStage {
+  display: grid;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  place-items: center;
+}
+
+.timeline,
+.comparisonPanel,
+.state {
+  border: 1px solid color-mix(in srgb, var(--ink-950), transparent 88%);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--paper-50), transparent 8%);
+}
+
+.timeline,
+.comparisonPanel {
+  padding: 16px;
+}
+
+.timelineHeading {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-size: 0.74rem;
+}
+
+.timelineHeading span,
+.referenceMeta,
+.keyboardHelp {
+  color: var(--ink-muted);
+}
+
+.rangeWrap {
+  position: relative;
+  padding: 16px 4px 20px;
+}
+
+.rangeWrap input[type="range"] {
+  width: 100%;
+  accent-color: var(--sage-700);
+  cursor: pointer;
+}
+
+.marker {
+  position: absolute;
+  top: 34px;
+  left: clamp(10px, var(--marker-position), calc(100% - 10px));
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 2px solid var(--paper-50);
+  border-radius: 50%;
+  color: #fff;
+  background: var(--coral-500);
+  box-shadow: 0 1px 5px rgb(23 25 22 / 0.28);
+  font-size: 0.56rem;
+  font-weight: 950;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.marker[data-kind="push"] {
+  background: var(--blue-500);
+}
+
+.marker[data-kind="finish"] {
+  color: var(--ink-950);
+  background: var(--amber-300);
+}
+
+.controls {
+  justify-content: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.controls > button {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid var(--paper-300);
+  border-radius: 10px;
+  color: var(--ink-800);
+  background: var(--paper-50);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.controls .play {
+  min-width: 86px;
+  color: var(--paper-50);
+  background: var(--sage-700);
+}
+
+.speed {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 8px;
+}
+
+.speed select {
+  min-height: 40px;
+  padding: 0 8px;
+}
+
+.comparisonHeading {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.comparisonHeading h3 {
+  font-size: 1.15rem;
+}
+
+.ghostToggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.ghostToggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue-500);
+}
+
+.summary {
+  margin: 12px 0 4px;
+  color: var(--ink-800);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.referenceMeta,
+.motionNote,
+.stepDescription,
+.identical {
+  margin: 5px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.markerLegend {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+
+.markerLegend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-700);
+  font-size: 0.68rem;
+}
+
+.markerLegend li > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--coral-500);
+  font-size: 0.56rem;
+  font-weight: 950;
+}
+
+.markerLegend li > span[data-kind="push"] {
+  background: var(--blue-500);
+}
+
+.markerLegend li > span[data-kind="finish"] {
+  color: var(--ink-950);
+  background: var(--amber-300);
+}
+
+.motionNote {
+  padding: 8px 10px;
+  border-left: 3px solid var(--blue-500);
+  background: color-mix(in srgb, var(--blue-500), transparent 92%);
+}
+
+.stepDescription {
+  color: var(--ink-700);
+  font-weight: 650;
+}
+
+.keyboardHelp {
+  margin: -6px 0 0;
+  text-align: center;
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.state {
+  display: grid;
+  gap: 5px;
+  padding: 22px;
+  color: var(--ink-700);
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.close:hover,
+.controls > button:hover:not(:disabled) {
+  border-color: var(--sage-500);
+}
+
+.close:focus-visible,
+.controls > button:focus-visible,
+.marker:focus-visible,
+.routeSelectors select:focus-visible,
+.speed select:focus-visible,
+.ghostToggle input:focus-visible,
+.rangeWrap input:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+:global(html[data-theme="dark"]) .dialog {
+  background: var(--surface-dialog);
+}
+
+:global(html[data-theme="dark"]) .timeline,
+:global(html[data-theme="dark"]) .comparisonPanel,
+:global(html[data-theme="dark"]) .state {
+  border-color: rgb(255 255 255 / 0.12);
+  background: color-mix(in srgb, var(--paper-100), transparent 35%);
+}
+
+@media (max-width: 640px) {
+  .modal {
+    width: min(100%, calc(100vw - 12px));
+    max-height: calc(100dvh - 12px);
+  }
+
+  .dialog {
+    gap: 14px;
+    padding: 16px 12px 18px;
+  }
+
+  .routeSelectors {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timelineHeading,
+  .comparisonHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .speed {
+    width: 100%;
+    margin: 4px 0 0;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .marker,
+  :global(html:not([data-motion="full"])) .controls > button {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .marker,
+  .markerLegend li > span {
+    border: 2px solid ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+}

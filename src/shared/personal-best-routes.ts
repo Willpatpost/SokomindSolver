@@ -68,6 +68,12 @@ export type PersonalBestRouteRead = Readonly<{
   discardedRecords: number;
 }>;
 
+export type PersonalBestRouteIndex = Readonly<{
+  status: "ready" | "missing" | "corrupt" | "unavailable";
+  /** Structurally valid candidates, ordered by most recent improvement. */
+  puzzleIds: readonly string[];
+}>;
+
 interface NormalizedRepository {
   readonly repository: PersonalBestRouteRepository;
   readonly corrupt: boolean;
@@ -436,6 +442,36 @@ export async function loadPersonalBestRoutes(
     });
   } catch {
     return Object.freeze({ status: "unavailable", routes: [], discardedRecords: 0 });
+  }
+}
+
+/**
+ * Lists candidate puzzle IDs without loading catalog shards. Callers still use
+ * loadPersonalBestRoutes with the current puzzle before presenting a route.
+ */
+export async function loadPersonalBestRouteIndex(): Promise<PersonalBestRouteIndex> {
+  try {
+    const stored = await idbFencedGet<unknown>(
+      STORAGE_KEYS.personalBestRoutes,
+      DOCUMENT_APP_RESET_GENERATION,
+    );
+    if (stored === undefined) {
+      return Object.freeze({ status: "missing", puzzleIds: [] });
+    }
+    const normalized = normalizeRepositoryWithReport(stored);
+    if (normalized.corrupt) {
+      return Object.freeze({ status: "corrupt", puzzleIds: [] });
+    }
+    const puzzleIds = Object.values(normalized.repository.puzzles)
+      .sort((first, second) =>
+        second.routes[0]!.completedAt.localeCompare(first.routes[0]!.completedAt))
+      .map((history) => history.puzzleId);
+    return Object.freeze({
+      status: "ready",
+      puzzleIds: Object.freeze(puzzleIds),
+    });
+  } catch {
+    return Object.freeze({ status: "unavailable", puzzleIds: [] });
   }
 }
 

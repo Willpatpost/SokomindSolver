@@ -9,6 +9,7 @@ import {
 import type {
   Direction,
   GameSession,
+  GameSnapshot,
   Goal,
   Position,
 } from "@/src/core/model";
@@ -24,6 +25,9 @@ interface BoardProps {
   constrainToViewport?: boolean;
   deadlockedBoxIds?: ReadonlySet<string>;
   experienceEvent?: PresentedGameExperienceEvent | null;
+  /** Read-only comparison state. It is rendered only and never enters gameplay. */
+  ghostSnapshot?: GameSnapshot | null;
+  testId?: string;
 }
 
 type BoardStyle = CSSProperties & {
@@ -358,6 +362,8 @@ export const Board = memo(function Board({
   constrainToViewport = false,
   deadlockedBoxIds = EMPTY_SET,
   experienceEvent = null,
+  ghostSnapshot = null,
+  testId = "game-board",
 }: BoardProps) {
   const { board, snapshot, puzzle } = session;
 
@@ -422,7 +428,7 @@ export const Board = memo(function Board({
         board.width >= 14 || board.height >= 14 ? "large" : "standard"
       }
       data-immersive={immersive || undefined}
-      data-testid="game-board"
+      data-testid={testId}
     >
       {cellDescriptors.map((desc) => (
         <StaticCell
@@ -503,6 +509,33 @@ export const Board = memo(function Board({
           <KeeperPiece />
         </PieceSlot>
       </div>
+      {ghostSnapshot ? (
+        <div className={styles.ghostLayer} aria-hidden="true" data-testid="replay-ghost">
+          {ghostSnapshot.boxes.map((box) => (
+            <span
+              className={styles.ghostBox}
+              data-ghost-piece="box"
+              key={`ghost-${box.id}`}
+              style={{
+                gridColumn: box.position.column + 1,
+                gridRow: box.position.row + 1,
+              }}
+            >
+              {box.label === "X" ? "" : box.label}
+            </span>
+          ))}
+          <span
+            className={styles.ghostKeeper}
+            data-ghost-piece="keeper"
+            style={{
+              gridColumn: ghostSnapshot.robot.column + 1,
+              gridRow: ghostSnapshot.robot.row + 1,
+            }}
+          >
+            G
+          </span>
+        </div>
+      ) : null}
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {snapshot.moves > 0 ? boardSummary : ""}
       </span>

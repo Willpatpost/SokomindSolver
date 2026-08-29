@@ -5,6 +5,7 @@ import type { PuzzleDefinition } from "../../src/core/model.ts";
 import {
   MAX_PERSONAL_BEST_ROUTES_PER_PUZZLE,
   clearPersonalBestRoutes,
+  loadPersonalBestRouteIndex,
   loadPersonalBestRoutes,
   loadPersonalBestRouteStorageStats,
   normalizePersonalBestRouteRepository,
@@ -113,6 +114,10 @@ test("the asynchronous repository promotes only stronger replay-verified routes"
   assert.equal(stats.routeCount, 2);
   assert.equal(stats.actionCount, 8);
   assert.ok(stats.approximateBytes > 0);
+  assert.deepEqual(await loadPersonalBestRouteIndex(), {
+    status: "ready",
+    puzzleIds: [PUZZLE.id],
+  });
 });
 
 test("stale puzzle revisions are rejected without deleting summary progress", async () => {
@@ -227,6 +232,7 @@ test("missing IndexedDB and explicit clearing remain safe", async () => {
   assert.equal((await promoteVerifiedPersonalBestRoute(PUZZLE, route)).status, "unavailable");
   assert.equal((await loadPersonalBestRoutes(PUZZLE)).status, "unavailable");
   assert.equal((await loadPersonalBestRouteStorageStats()).status, "unavailable");
+  assert.equal((await loadPersonalBestRouteIndex()).status, "unavailable");
   assert.equal(await clearPersonalBestRoutes(), false);
 });
 
@@ -235,7 +241,7 @@ test("quota errors from IndexedDB are non-blocking repository outcomes", async (
     open() {
       throw new DOMException("Storage quota exceeded", "QuotaExceededError");
     },
-  } as IDBFactory);
+  } as unknown as IDBFactory);
   const route = verified("RRR", "2026-08-28T12:00:00.000Z");
   assert.equal(
     (await promoteVerifiedPersonalBestRoute(PUZZLE, route)).status,

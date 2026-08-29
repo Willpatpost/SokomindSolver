@@ -14,6 +14,7 @@ export const STORAGE_KEYS = Object.freeze({
   reset: "sokomind.reset.v1",
   ratings: "sokomind.ratings.v1",
   favorites: "sokomind.favorites.v1",
+  guidedJourney: "sokomind.guided-journey.v1",
   editorDraft: "sokomind.editor-draft.v1",
   editorDraftRecovery: "sokomind.editor-draft-recovery.v1",
 });

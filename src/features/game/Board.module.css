@@ -163,6 +163,42 @@
   pointer-events: none;
 }
 
+.ghostLayer {
+  position: absolute;
+  z-index: 5;
+  inset: var(--board-padding);
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+  gap: var(--gap);
+  pointer-events: none;
+}
+
+.ghostBox,
+.ghostKeeper {
+  position: relative;
+  display: grid;
+  margin: 14%;
+  place-items: center;
+  border: clamp(2px, 0.28vw, 3px) dashed var(--blue-500);
+  color: var(--ink-950);
+  background: color-mix(in srgb, var(--paper-50), transparent 40%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--paper-50), transparent 24%);
+  font-size: clamp(0.42rem, 0.9vw, 0.68rem);
+  font-weight: 950;
+  opacity: 0.82;
+}
+
+.ghostBox {
+  border-radius: 22%;
+}
+
+.ghostKeeper {
+  margin: 18%;
+  border-style: solid;
+  border-radius: 50%;
+}
+
 .pieceSlot {
   position: relative;
   display: grid;
@@ -519,6 +555,15 @@
     forced-color-adjust: none;
     border: 2px solid Highlight;
     background: Highlight;
+  }
+
+  .ghostBox,
+  .ghostKeeper {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
   }
 }
 

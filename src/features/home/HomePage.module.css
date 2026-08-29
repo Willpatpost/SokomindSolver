@@ -14,7 +14,7 @@
     radial-gradient(circle at 50% 20%, rgb(255 255 255 / 0.9), transparent 48%),
     rgb(251 250 245 / 0.72);
 
-  width: min(100%, 560px);
+  width: min(100%, 860px);
   padding: 48px 44px;
   border: 1px solid var(--card-border-color);
   border-radius: var(--radius-xl);
@@ -211,71 +211,6 @@
   font-size: 0.66rem;
   font-weight: 700;
   color: var(--ink-muted);
-}
-
-.dailyChallenge {
-  --daily-border-color: rgb(74 127 150 / 0.2);
-  --daily-bg: rgb(74 127 150 / 0.06);
-  --daily-hover-border: var(--blue-500);
-  --daily-hover-bg: rgb(74 127 150 / 0.1);
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin-bottom: 14px;
-  padding: 12px 16px;
-  border: 1px solid var(--daily-border-color);
-  border-radius: var(--radius-sm);
-  background: var(--daily-bg);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 150ms ease,
-    background 150ms ease;
-}
-
-.dailyChallenge:hover {
-  border-color: var(--daily-hover-border);
-  background: var(--daily-hover-bg);
-}
-
-.dailyChallenge:focus-visible {
-  outline: 2px solid var(--blue-500);
-  outline-offset: 2px;
-}
-
-.dailyLabel {
-  display: grid;
-  gap: 3px;
-}
-
-.dailyLabel span {
-  font-size: 0.66rem;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--blue-500);
-}
-
-.dailyLabel strong {
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--ink-700);
-}
-
-.dailyStatus {
-  font-size: 0.72rem;
-  font-weight: 800;
-  padding: 5px 12px;
-  border-radius: 7px;
-  background: var(--blue-500);
-  color: var(--paper-50);
-}
-
-.dailyStatus[data-done] {
-  background: var(--sage-600);
 }
 
 .recentSection {
@@ -477,13 +412,6 @@
   --secondary-bg: rgb(34 36 32 / 0.6);
   --secondary-hover-border: var(--sage-500);
   --secondary-hover-bg: var(--paper-200);
-}
-
-:global(html[data-theme="dark"]) .dailyChallenge {
-  --daily-border-color: rgb(90 154 176 / 0.2);
-  --daily-bg: rgb(90 154 176 / 0.08);
-  --daily-hover-border: var(--blue-500);
-  --daily-hover-bg: rgb(90 154 176 / 0.14);
 }
 
 :global(html[data-theme="dark"]) .tier:hover {

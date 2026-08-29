@@ -321,6 +321,37 @@
   gap: 8px;
 }
 
+.replayStudy {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  min-height: 50px;
+  margin: 0 0 9px;
+  padding: 8px 14px;
+  border: 1px solid var(--sage-500);
+  border-radius: 12px;
+  color: var(--sage-700);
+  background: color-mix(in srgb, var(--sage-400), transparent 88%);
+  font-size: 0.78rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.replayStudy span {
+  color: var(--ink-muted);
+  font-size: 0.6rem;
+  font-weight: 650;
+}
+
+.replayStudy:hover {
+  background: color-mix(in srgb, var(--sage-400), transparent 80%);
+}
+
+.replayStudy:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .actions[data-has-replay] {
   grid-template-columns: 1fr 1fr 1.4fr;
 }

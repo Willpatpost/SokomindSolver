@@ -21,6 +21,8 @@ share a Web Storage origin:
 - `sokomind.ratings.v1`, `sokomind.favorites.v1`, and
   `sokomind.editor-draft.v1` — device-local preferences and a schema-v2,
   bounded named-draft store;
+- `sokomind.guided-journey.v1` — the device-local pause/resume choice for the
+  optional guided path; chapter progress itself is derived from summary solves;
 - `sokomind.editor-draft-recovery.v1` — a quarantined invalid draft that can be
   downloaded or deleted without clearing other data;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
@@ -68,9 +70,17 @@ routes overall, 25,000 actions per route, and 2,000,000 actions across the
 repository. The current bests of the most recently improved puzzles are
 retained before older history. The Progress dialog reports route count and
 storage size, can clear replay history without removing summaries, and includes
-replay history when resetting saved progress. IndexedDB absence, corruption,
+replay history when resetting saved progress. The equivalent Statistics reset
+also clears replay history after its summary reset succeeds. IndexedDB absence, corruption,
 reset-fence mismatch, transaction failure, or quota pressure never blocks play
 or synchronous summary progress.
+
+Verified routes can be studied from the completion dialog and from the recent
+personal-best shelf on Statistics. The study surface loads routes through the
+same fingerprinted repository, rebuilds its display frames through canonical
+game transitions, and compares a current solve or saved best against an older
+best. Seeking, playback speed, divergence markers, and the optional visual
+ghost are presentation-only and never write or mutate stored progress.
 
 Progress writes re-read the latest stored snapshot before mutation. Tabs merge
 same-generation records deterministically by move count and stable tie-breakers;
@@ -147,7 +157,10 @@ Daily participation is keyed by local calendar date and the puzzle assigned on
 that date. The daily selection changes at local midnight; calculations use the
 local year/month/day tuple so daylight-saving transitions do not create a
 23-hour or 25-hour “day.” A lifetime best from another date never clears the
-current daily challenge.
+current daily challenge. Home derives a bounded seven-day history from this
+same ledger and explicitly distinguishes a completed day, a fresh start after a
+miss, and a temporarily unavailable daily assignment. Missing daily state never
+blocks the open catalog.
 
 Shared editor links open as read-only previews. They do not autosave or replace
 any device draft until the player explicitly chooses **Import into editor**

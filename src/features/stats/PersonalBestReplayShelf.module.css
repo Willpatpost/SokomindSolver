@@ -1,0 +1,122 @@
+.shelf {
+  display: grid;
+  gap: 16px;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.heading h2 {
+  margin: 2px 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.heading > span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--sage-700);
+  background: color-mix(in srgb, var(--sage-400), transparent 82%);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.label {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.state {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--ink-950), transparent 88%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper-100), transparent 28%);
+}
+
+.list li > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.list strong,
+.list span,
+.list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list strong {
+  color: var(--ink-900);
+  font-size: 0.76rem;
+}
+
+.list span,
+.list small {
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+}
+
+.list button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--sage-500);
+  border-radius: 9px;
+  color: var(--sage-700);
+  background: var(--paper-50);
+  font-size: 0.66rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.list button:hover {
+  background: color-mix(in srgb, var(--sage-400), transparent 86%);
+}
+
+.list button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .heading {
+    align-items: flex-start;
+  }
+
+  .list {
+    grid-template-columns: 1fr;
+  }
+}

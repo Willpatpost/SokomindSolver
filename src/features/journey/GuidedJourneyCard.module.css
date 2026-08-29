@@ -1,0 +1,281 @@
+.card,
+.resumeCard {
+  --journey-border: rgb(92 115 84 / 0.18);
+  --journey-bg: rgb(238 243 232 / 0.56);
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--journey-border);
+  border-radius: var(--radius-md);
+  background: var(--journey-bg);
+  text-align: left;
+}
+
+.header,
+.resumeCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--sage-700);
+  font-size: 0.65rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.header h2,
+.resumeCard h2 {
+  margin: 0;
+  color: var(--ink-900);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.header > div > p:last-child,
+.resumeCard div > p:last-child {
+  margin: 5px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.dismiss,
+.resumeCard button,
+.catalogLink {
+  border: 0;
+  background: transparent;
+  color: var(--sage-700);
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dismiss {
+  padding: 4px;
+}
+
+.resumeCard {
+  align-items: center;
+}
+
+.resumeCard button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--journey-border);
+  border-radius: 9px;
+  background: var(--paper-50);
+}
+
+.recommendation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 11px;
+  background: var(--sage-700);
+  color: var(--paper-50);
+}
+
+.recommendation > div {
+  display: grid;
+  gap: 3px;
+}
+
+.recommendation span {
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.recommendation strong {
+  font-size: 0.88rem;
+}
+
+.recommendation p {
+  max-width: 46ch;
+  margin: 1px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.recommendation button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--paper-50);
+  color: var(--sage-800);
+  font-size: 0.7rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.map {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chapter {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgb(23 25 22 / 0.08);
+  border-radius: 10px;
+  background: rgb(251 250 245 / 0.62);
+}
+
+.chapter[data-complete] {
+  border-color: rgb(92 115 84 / 0.32);
+}
+
+.chapterHeading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.chapterNumber {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper-200);
+  color: var(--ink-700);
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.chapterHeading h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-800);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapterHeading p,
+.chapterCount {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.57rem;
+  font-weight: 700;
+}
+
+.explanation,
+.prerequisite {
+  margin: 8px 0;
+  color: var(--ink-muted);
+  font-size: 0.61rem;
+  line-height: 1.4;
+}
+
+.prerequisite {
+  color: var(--amber-700);
+  font-weight: 750;
+}
+
+.nodes {
+  display: flex;
+  gap: 5px;
+}
+
+.node {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgb(23 25 22 / 0.15);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.node[data-complete] {
+  border-color: var(--sage-600);
+  background: var(--sage-600);
+  color: var(--paper-50);
+}
+
+.catalogLink {
+  display: block;
+  margin: 13px auto 0;
+}
+
+.dismiss:focus-visible,
+.resumeCard button:focus-visible,
+.recommendation button:focus-visible,
+.node:focus-visible,
+.catalogLink:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .map {
+    grid-template-columns: 1fr;
+  }
+
+  .chapterHeading h3 {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 520px) {
+  .header,
+  .resumeCard,
+  .recommendation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dismiss {
+    align-self: flex-start;
+  }
+
+  .recommendation button,
+  .resumeCard button {
+    width: 100%;
+  }
+}
+
+:global(html[data-theme="dark"]) .card,
+:global(html[data-theme="dark"]) .resumeCard {
+  --journey-border: rgb(143 169 133 / 0.2);
+  --journey-bg: rgb(58 68 52 / 0.32);
+}
+
+:global(html[data-theme="dark"]) .chapter {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(34 36 32 / 0.58);
+}
+
+@media (forced-colors: active) {
+  .card,
+  .resumeCard,
+  .chapter,
+  .node {
+    border: 1px solid ButtonText;
+  }
+}

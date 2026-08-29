@@ -3,8 +3,8 @@
 ## Status
 
 - **Plan revision:** 2026-08-28
-- **Current delivery point:** Sprint 5 — Zen play and input polish completed
-- **Next sprint:** Sprint 6 — Replay-valid personal bests
+- **Current delivery point:** Sprint 8 — Guided journey and Daily V2 completed
+- **Next sprint:** Sprint 9 — Achievements, collections, and cosmetics
 - **Product shape:** game-first Sokoban experience with an optional learning path and a first-class Solver Lab
 - **Delivery model:** small, independently shippable sprints with accessibility, performance, and regression gates
 
@@ -286,6 +286,8 @@ A sprint is shippable only when all applicable gates pass:
 
 **Goal:** Make improvement durable and replayable while preparing storage for future sync.
 
+**Status:** Completed 2026-08-28
+
 **Scope**
 
 - Introduce a versioned asynchronous route repository.
@@ -304,6 +306,8 @@ A sprint is shippable only when all applicable gates pass:
 
 **Goal:** Help players understand improvement rather than only showing lower numbers.
 
+**Status:** Completed 2026-08-28
+
 **Scope**
 
 - Add personal-best replay from completion and statistics surfaces.
@@ -320,6 +324,8 @@ A sprint is shippable only when all applicable gates pass:
 ### Sprint 8 — Guided journey and Daily V2
 
 **Goal:** Offer direction to new and returning players without closing the catalog.
+
+**Status:** Completed 2026-08-28
 
 **Scope**
 

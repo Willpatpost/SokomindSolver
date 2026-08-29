@@ -23,6 +23,7 @@ interface CompletionDialogProps {
   readonly nextLabel: string;
   readonly onClose: () => void;
   readonly onReplay?: () => void;
+  readonly onCompareReplay?: () => void;
   readonly onNext: () => void;
   readonly onNextUnsolved?: () => void;
 }
@@ -68,7 +69,7 @@ function efficiencyGrade(moves: number, pushes: number, boxes: number): Efficien
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {
-  tutorial: "var(--sage-500)",
+  tutorial: "var(--sage-600)",
   beginner: "var(--sage-600)",
   intermediate: "var(--blue-500)",
   advanced: "var(--amber-500)",
@@ -94,6 +95,7 @@ export function CompletionDialog({
   nextLabel,
   onClose,
   onReplay,
+  onCompareReplay,
   onNext,
   onNextUnsolved,
 }: CompletionDialogProps) {
@@ -289,6 +291,12 @@ export function CompletionDialog({
             </div>
           )}
         </div>
+        {onCompareReplay ? (
+          <button type="button" className={styles.replayStudy} onClick={onCompareReplay}>
+            Review and compare replay
+            <span>Timeline, divergence markers, and optional ghost</span>
+          </button>
+        ) : null}
         <div className={styles.actions} data-has-replay={onReplay ? "" : undefined}>
           <button type="button" onClick={onClose}>
             Study board

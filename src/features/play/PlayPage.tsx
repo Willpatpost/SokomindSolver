@@ -51,6 +51,11 @@ const ProgressDialog = lazy(() =>
     default: m.ProgressDialog,
   })),
 );
+const ReplayComparisonDialog = lazy(() =>
+  import("@/src/features/replay/ReplayComparisonDialog").then((m) => ({
+    default: m.ReplayComparisonDialog,
+  })),
+);
 
 function difficultyLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -206,6 +211,7 @@ function ValidatedPlayPage({
   const boardWrapRef = useRef<HTMLDivElement>(null);
   const stopButtonRef = useRef<HTMLButtonElement>(null);
   const pauseResumeRef = useRef<HTMLButtonElement>(null);
+  const [replayComparisonOpen, setReplayComparisonOpen] = useState(false);
   useEffect(() => {
     document.title = `${session.puzzle.title} · Sokomind`;
   }, [session.puzzle.title]);
@@ -635,6 +641,10 @@ function ValidatedPlayPage({
         moves={session.moves}
         nextLabel={game.nextPuzzle ? "Next room" : "Browse puzzles"}
         onClose={game.closeCompletion}
+        onCompareReplay={() => {
+          game.closeCompletion();
+          setReplayComparisonOpen(true);
+        }}
         onReplay={game.replaySolution}
         onNext={() =>
           game.nextPuzzle
@@ -653,6 +663,22 @@ function ValidatedPlayPage({
         pushes={session.pushes}
         title={puzzle.title}
       />
+
+      {replayComparisonOpen ? (
+        <Suspense fallback={null}>
+          <ReplayComparisonDialog
+            currentRoute={{
+              actionLog: session.actionLog,
+              moves: session.moves,
+              pushes: session.pushes,
+              ...(game.elapsed > 0 ? { elapsedMs: game.elapsed } : {}),
+            }}
+            onClose={() => setReplayComparisonOpen(false)}
+            open={replayComparisonOpen}
+            puzzle={puzzle}
+          />
+        </Suspense>
+      ) : null}
 
       {game.playback.active ? (
         <div

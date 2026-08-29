@@ -10,7 +10,9 @@ import {
   loadSessionPuzzleIdFromIDB,
 } from "@/src/shared/session-persistence";
 import { toLocalDateKey } from "@/src/shared/progress";
-import { computeStats, computeDailyStreak, getDailyPuzzleId } from "@/src/features/progress/compute-stats";
+import { computeStats } from "@/src/features/progress/compute-stats";
+import { buildDailyChallengeView } from "@/src/features/progress/daily-challenge";
+import { GuidedJourneyCard } from "@/src/features/journey/GuidedJourneyCard";
 import { ExperienceControls } from "@/src/features/experience";
 import { HowToPlay } from "@/src/features/help/HowToPlay";
 import {
@@ -22,6 +24,7 @@ import {
   statsHash,
 } from "@/src/router";
 import styles from "./HomePage.module.css";
+import { DailyChallengeCard } from "./DailyChallengeCard";
 
 function timeAgo(isoDate: string): string {
   const diff = Date.now() - new Date(isoDate).getTime();
@@ -119,19 +122,8 @@ export function HomePage() {
     return PUZZLE_METADATA.find((p) => !completed.has(p.id))?.id;
   }, [progress]);
 
-  const dailyPuzzleId = useMemo(
-    () => getDailyPuzzleId(PUZZLE_METADATA, dailyNow),
-    [dailyNow],
-  );
-  const dailyPuzzleMeta = dailyPuzzleId
-    ? getPuzzleMetadataById(dailyPuzzleId)
-    : undefined;
-  const dailyCompleted = dailyPuzzleId
-    ? progress.daily[toLocalDateKey(dailyNow)]?.puzzleId === dailyPuzzleId
-    : false;
-  const dailyBest = dailyPuzzleId ? progress.completed[dailyPuzzleId] : undefined;
-  const dailyStreak = useMemo(
-    () => computeDailyStreak(progress, PUZZLE_METADATA, dailyNow),
+  const dailyView = useMemo(
+    () => buildDailyChallengeView(PUZZLE_METADATA, progress, dailyNow),
     [dailyNow, progress],
   );
 
@@ -228,25 +220,17 @@ export function HomePage() {
           </div>
         )}
 
-        {dailyPuzzleId && dailyPuzzleMeta && (
-          <button
-            type="button"
-            className={styles.dailyChallenge}
-            onClick={() => navigate(playHash(dailyPuzzleId))}
-          >
-            <div className={styles.dailyLabel}>
-              <span>Daily challenge{dailyStreak >= 2 ? ` · ${dailyStreak}-day streak` : ""}</span>
-              <strong>{dailyPuzzleMeta.title}</strong>
-            </div>
-            <span className={styles.dailyStatus} data-done={dailyCompleted || undefined}>
-              {dailyCompleted
-                ? dailyBest
-                  ? `Cleared · ${dailyBest.moves}m`
-                  : "Cleared"
-                : "Play"}
-            </span>
-          </button>
-        )}
+        <DailyChallengeCard
+          view={dailyView}
+          onPlay={(puzzleId) => navigate(playHash(puzzleId))}
+          onBrowse={() => navigate(puzzlesHash())}
+        />
+
+        <GuidedJourneyCard
+          progress={progress}
+          onPlay={(puzzleId) => navigate(playHash(puzzleId))}
+          onBrowse={() => navigate(puzzlesHash())}
+        />
 
         {recentPuzzles.length > 0 && (
           <div className={styles.recentSection}>

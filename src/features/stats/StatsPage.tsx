@@ -11,6 +11,7 @@ import {
 } from "@/src/features/achievements/achievements";
 import { summarizeProgressMerge } from "@/src/shared/progress";
 import { readProgressImportFile } from "@/src/shared/progress-import";
+import { clearPersonalBestRoutes } from "@/src/shared/personal-best-routes";
 import {
   createProgressWriterId,
   loadProgressSyncSnapshot,
@@ -19,6 +20,7 @@ import {
 } from "@/src/shared/progress-sync";
 import { ExperienceControls } from "@/src/features/experience";
 import { Link, homeHash } from "@/src/router";
+import { PersonalBestReplayShelf } from "./PersonalBestReplayShelf";
 import styles from "./StatsPage.module.css";
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -73,7 +75,7 @@ export function StatsPage() {
   const [resetInput, setResetInput] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
 
-  const handleResetProgress = useCallback(() => {
+  const handleResetProgress = useCallback(async () => {
     const update = resetStoredProgress();
     if (!update.result.ok) {
       const cause = update.result.reason === "quota-exceeded"
@@ -85,6 +87,7 @@ export function StatsPage() {
       setResetStep("idle");
       return;
     }
+    await clearPersonalBestRoutes();
     window.location.hash = "";
     window.location.reload();
   }, []);
@@ -432,6 +435,11 @@ export function StatsPage() {
             </div>
           </div>
 
+          <PersonalBestReplayShelf
+            className={`${styles.card} ${styles.wideCard}`}
+            progress={progress}
+          />
+
           <div className={`${styles.card} ${styles.wideCard}`}>
             <p className={styles.cardLabel}>
               Achievements — {unlocked.length}/{ACHIEVEMENTS.length}
@@ -513,7 +521,7 @@ export function StatsPage() {
                   type="button"
                   className={styles.resetButton}
                   disabled={resetInput !== "RESET"}
-                  onClick={handleResetProgress}
+                  onClick={() => void handleResetProgress()}
                 >
                   Permanently reset progress
                 </button>

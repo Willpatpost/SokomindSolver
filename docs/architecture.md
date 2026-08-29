@@ -39,6 +39,12 @@ artifact can live below a GitHub repository path.
   resulting session.
 - `src/features/experience` owns presentation preferences, Web Audio, reduced
   motion, ambience, and celebration. None of those effects change game rules.
+- `src/features/journey` projects summary progress onto curated, concept-based
+  chapters. Its recommendation order is deterministic and advisory; it never
+  changes catalog availability or game rules.
+- `src/features/progress/daily-challenge.ts` derives current daily framing and
+  a bounded seven-day history from the existing local-date participation
+  ledger. It does not create a second progress record.
 - `src/router` owns hash parsing, route state, navigation, and route links.
 - `src/shared` contains the fail-safe storage boundary, exact session
   persistence, progress records, and reusable modal primitives.
@@ -99,6 +105,9 @@ replay to the solved state with exact move and push counters before promotion;
 board-revision fingerprints prevent a route from silently crossing puzzle
 changes. Retention limits apply independently of summary progress, so pruning
 history cannot erase completion records.
+The guided journey stores only whether its Home surface is paused. Chapter
+completion and the suggested next room are recomputed from catalog metadata and
+summary progress, so the preference cannot unlock, hide, or manufacture a solve.
 The editor key contains a bounded named-document store and migrates the legacy
 single draft without silently overwriting it. See
 [`persistence-and-sharing.md`](persistence-and-sharing.md).
@@ -230,6 +239,20 @@ The completion dialog includes a Replay button that resets the board and plays
 back the player's own solution through the existing `playSolverSolution`
 pipeline. `decodeActionLog` converts the saved action log into a step sequence
 that the replay system can animate.
+
+The separate replay-study dialog is available from both completion and
+Statistics. `buildReplayTrace` derives every displayed frame through the same
+canonical game transition, while `compareReplayTraces` identifies direction,
+push-count, and finish-point divergences. Its range timeline supports seeking;
+play/pause, single-step, start/end, and speed controls are native keyboard
+controls with explicit accessible names. Divergence markers carry letter
+symbols and full text so they do not rely on color.
+
+An optional comparison ghost is passed to `Board` as a read-only
+`GameSnapshot`. The board renders that snapshot in a pointer-free overlay; it
+never dispatches an action or enters the live session reducer. Reduced-motion
+mode disables piece interpolation and adds an explicit frame-by-frame textual
+position description.
 
 ## Static delivery
 
