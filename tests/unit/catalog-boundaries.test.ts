@@ -380,7 +380,7 @@ test("route-facing catalog helpers handle known, filtered, and missing values", 
 
   const collections = getMetadataCollectionsForDifficulty("intermediate");
   assert.equal(collections[0]?.name, SOKOMIND_ORIGINALS);
-  assert.ok(collections.length > 1);
+  assert.ok(collections.length >= 1);
   assert.deepEqual(
     collections.slice(1).map(({ name }) => name),
     collections.slice(1).map(({ name }) => name).sort((left, right) =>

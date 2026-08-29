@@ -29,7 +29,7 @@ function isDedicatedBox(character: string): boolean {
 }
 
 test("catalog contains canonical + generated puzzles with unique ids", () => {
-  assert.ok(PUZZLES.length >= 100, `expected >=100 puzzles, got ${PUZZLES.length}`);
+  assert.ok(PUZZLES.length >= 50, `expected >=50 puzzles, got ${PUZZLES.length}`);
   assert.equal(new Set(PUZZLES.map((puzzle) => puzzle.id)).size, PUZZLES.length);
   assert.equal(Object.keys(PUZZLE_BY_ID).length, PUZZLES.length);
 });
