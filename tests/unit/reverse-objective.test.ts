@@ -72,6 +72,7 @@ function makeScore(composite: number): ReverseStateScore {
     tunnelOccupancy: 0,
     distanceFromSolved: 0,
     supportConstraints: 0,
+    deadlockPressure: 0,
     composite,
   };
 }

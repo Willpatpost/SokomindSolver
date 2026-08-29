@@ -261,6 +261,8 @@ describe("extractCorrelationData", () => {
       maxBoxEpisodes: 3,
       estimatedDependencyDepth: 2,
       goalOrderConstraints: 1,
+      criticalMoveCount: 0,
+      criticalMoveRatio: 0,
       boardWidth: 7,
       boardHeight: 6,
       totalFloor: 20,

@@ -17,15 +17,17 @@ export interface V4DifficultyThresholds {
   readonly minDepth: number;
   readonly minReasoning: number;
   readonly maxTedium: number;
+  readonly minBoxes?: number;
+  readonly minPushes?: number;
 }
 
 export const V4_TIER_THRESHOLDS: Readonly<Record<Difficulty, V4DifficultyThresholds>> = {
   tutorial:      { minComposite: 0,    minStructural: 0,   minDepth: 0,   minReasoning: 0,    maxTedium: 1.0 },
-  beginner:      { minComposite: 4.0,  minStructural: 2.0, minDepth: 2.0, minReasoning: 2.0,  maxTedium: 0.8 },
-  intermediate:  { minComposite: 8.0,  minStructural: 3.5, minDepth: 3.5, minReasoning: 3.5,  maxTedium: 0.7 },
-  advanced:      { minComposite: 14.0, minStructural: 5.0, minDepth: 5.0, minReasoning: 5.5,  maxTedium: 0.6 },
-  expert:        { minComposite: 22.0, minStructural: 7.0, minDepth: 8.0, minReasoning: 8.0,  maxTedium: 0.5 },
-  master:        { minComposite: 32.0, minStructural: 9.0, minDepth: 12.0, minReasoning: 12.0, maxTedium: 0.45 },
+  beginner:      { minComposite: 4.0,  minStructural: 2.0, minDepth: 2.0, minReasoning: 2.0,  maxTedium: 0.8,  minBoxes: 2, minPushes: 4 },
+  intermediate:  { minComposite: 8.0,  minStructural: 3.5, minDepth: 3.5, minReasoning: 3.5,  maxTedium: 0.7,  minBoxes: 3, minPushes: 8 },
+  advanced:      { minComposite: 14.0, minStructural: 5.0, minDepth: 5.0, minReasoning: 5.5,  maxTedium: 0.6,  minBoxes: 4, minPushes: 12 },
+  expert:        { minComposite: 22.0, minStructural: 7.0, minDepth: 8.0, minReasoning: 8.0,  maxTedium: 0.55, minBoxes: 6, minPushes: 18 },
+  master:        { minComposite: 32.0, minStructural: 9.0, minDepth: 12.0, minReasoning: 12.0, maxTedium: 0.55, minBoxes: 8, minPushes: 30 },
 };
 
 const TIER_ORDER: readonly Difficulty[] = [
@@ -80,19 +82,27 @@ export function computeHumanReasoningComplexity(ev: PuzzleEvaluationVector): num
 
   const crossingScore = Math.log2(Math.max(ev.roomCrossingsInSolution, 0) + 1) * 0.6;
 
-  const deadlockPressure = Math.min(ev.deadlockDensity * 5.0, 3.0);
+  // Dampen ratio-based terms for small puzzles — ratios inflate on compact boards
+  const sizeDamping = Math.min(ev.totalFloor / 40, 1.0);
+
+  const deadlockPressure = Math.min(ev.deadlockDensity * 5.0, 3.0) * sizeDamping;
 
   const orderConstraints = Math.log2(Math.max(ev.goalOrderConstraints, 0) + 1) * 0.5;
   const depthBonus = ev.estimatedDependencyDepth * 0.4;
 
+  const criticalMoveBonus =
+    ev.criticalMoveCount * 0.5 +
+    ev.criticalMoveRatio * 3.0 * sizeDamping;
+
   return branchingScore + highBranchBonus + nonForcedBonus + interactionScore +
-    causalScore + crossingScore + deadlockPressure + orderConstraints + depthBonus;
+    causalScore + crossingScore + deadlockPressure + orderConstraints + depthBonus +
+    criticalMoveBonus;
 }
 
 export function computeTediumPenalty(ev: PuzzleEvaluationVector): number {
   const walkTedium = ev.emptyWalkRatio * 0.3;
   const repetitiveTedium = ev.repetitivePushRatio * 0.25;
-  const longWalkTedium = Math.min(ev.longestWalkStreak / 30, 1) * 0.2;
+  const longWalkTedium = Math.min(ev.longestWalkStreak / 50, 1) * 0.2;
   const movesPerPushTedium = Math.min(ev.movesPerPush / 15, 1) * 0.15;
   const unusedFloorTedium = ev.solutionUnusedFloorRatio * 0.1;
 
@@ -107,7 +117,7 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
   const tediumPenalty = computeTediumPenalty(ev);
 
   const composite = structuralScale + solutionDepth + humanReasoningComplexity -
-    tediumPenalty * 10;
+    tediumPenalty * 7;
 
   const classification = classifyFromProfile(
     composite,
@@ -115,6 +125,8 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
     solutionDepth,
     humanReasoningComplexity,
     tediumPenalty,
+    ev.boxCount,
+    ev.solutionPushes,
   );
 
   const confidenceNote = buildConfidenceNote(
@@ -142,6 +154,8 @@ function classifyFromProfile(
   depth: number,
   reasoning: number,
   tedium: number,
+  boxCount: number,
+  solutionPushes: number,
 ): Difficulty {
   for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
     const tier = TIER_ORDER[i];
@@ -152,7 +166,9 @@ function classifyFromProfile(
       structural >= t.minStructural &&
       depth >= t.minDepth &&
       reasoning >= t.minReasoning &&
-      tedium <= t.maxTedium
+      tedium <= t.maxTedium &&
+      boxCount >= (t.minBoxes ?? 0) &&
+      solutionPushes >= (t.minPushes ?? 0)
     ) {
       return tier;
     }

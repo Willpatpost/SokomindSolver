@@ -490,6 +490,8 @@ describe("V4 forge integration", () => {
       temporaryGoalVacancies: 0,
       estimatedDependencyDepth: 2,
       goalOrderConstraints: 1,
+      criticalMoveCount: 1,
+      criticalMoveRatio: 0.08,
       sharedRouteCells: 4,
       sharedSupportCells: 2,
       sharedChokepointUses: 1,

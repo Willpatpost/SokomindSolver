@@ -177,6 +177,7 @@ test("restart repair: evicted archive keys are reusable", () => {
       tunnelOccupancy: 0,
       distanceFromSolved: 0,
       supportConstraints: 0,
+      deadlockPressure: 0,
     },
     depth: 1,
     pullHistory: [],

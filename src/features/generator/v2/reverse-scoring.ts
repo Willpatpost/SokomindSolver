@@ -14,6 +14,7 @@ export interface ReverseStateScore {
   readonly tunnelOccupancy: number;
   readonly distanceFromSolved: number;
   readonly supportConstraints: number;
+  readonly deadlockPressure: number;
   readonly composite: number;
 }
 
@@ -34,6 +35,7 @@ export interface ScoringWeights {
   readonly tunnelOccupancy: number;
   readonly distanceFromSolved: number;
   readonly supportConstraints: number;
+  readonly deadlockPressure: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -44,6 +46,7 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   tunnelOccupancy: 1.5,
   distanceFromSolved: 1.0,
   supportConstraints: 3.0,
+  deadlockPressure: 2.0,
 };
 
 // ---------------------------------------------------------------------------
@@ -414,6 +417,7 @@ export function scoreState(
   const tunnelOccupancy = countTunnelOccupancy(boxPositions, ctx);
   const distanceFromSolved = computeDistanceFromSolved(boxPositions, ctx.goals);
   const supportConstraints = countSupportConstraints(boxPositions);
+  const deadlockPressure = computeDeadlockPressure(boxPositions, ctx.grid, goalSet);
 
   const composite =
     boxesOffGoals * weights.boxesOffGoals +
@@ -422,7 +426,8 @@ export function scoreState(
     chokepointInteractions * weights.chokepointInteractions +
     tunnelOccupancy * weights.tunnelOccupancy +
     distanceFromSolved * weights.distanceFromSolved +
-    supportConstraints * weights.supportConstraints;
+    supportConstraints * weights.supportConstraints +
+    deadlockPressure * weights.deadlockPressure;
 
   return {
     boxesOffGoals,
@@ -432,6 +437,7 @@ export function scoreState(
     tunnelOccupancy,
     distanceFromSolved,
     supportConstraints,
+    deadlockPressure,
     composite,
   };
 }
@@ -547,6 +553,54 @@ function countSupportConstraints(
     }
   }
   return count;
+}
+
+function computeDeadlockPressure(
+  boxPositions: readonly GridPosition[],
+  grid: readonly (readonly string[])[],
+  goalSet: ReadonlySet<string>,
+): number {
+  if (boxPositions.length === 0) return 0;
+  const h = grid.length;
+  const w = h > 0 ? grid[0].length : 0;
+  const boxSet = new Set(boxPositions.map((b) => `${b.row},${b.column}`));
+  const DR = [-1, 1, 0, 0];
+  const DC = [0, 0, -1, 1];
+
+  let deadlockAdjacentCount = 0;
+  for (const box of boxPositions) {
+    let hasAdjacentDead = false;
+    for (let d = 0; d < 4; d++) {
+      const nr = box.row + DR[d];
+      const nc = box.column + DC[d];
+      if (nr < 0 || nr >= h || nc < 0 || nc >= w) continue;
+      if (grid[nr][nc] === "O" || boxSet.has(`${nr},${nc}`)) continue;
+      if (isCornerDeadCell(nr, nc, grid, h, w, goalSet)) {
+        hasAdjacentDead = true;
+        break;
+      }
+    }
+    if (hasAdjacentDead) deadlockAdjacentCount++;
+  }
+  return deadlockAdjacentCount / boxPositions.length;
+}
+
+function isCornerDeadCell(
+  r: number, c: number,
+  grid: readonly (readonly string[])[],
+  h: number, w: number,
+  goalSet: ReadonlySet<string>,
+): boolean {
+  if (goalSet.has(`${r},${c}`)) return false;
+  if (grid[r][c] === "O") return false;
+
+  const wallUp = r <= 0 || grid[r - 1][c] === "O";
+  const wallDown = r >= h - 1 || grid[r + 1][c] === "O";
+  const wallLeft = c <= 0 || grid[r][c - 1] === "O";
+  const wallRight = c >= w - 1 || grid[r][c + 1] === "O";
+
+  return (wallUp && wallLeft) || (wallUp && wallRight) ||
+         (wallDown && wallLeft) || (wallDown && wallRight);
 }
 
 // ---------------------------------------------------------------------------

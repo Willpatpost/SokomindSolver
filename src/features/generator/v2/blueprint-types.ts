@@ -152,12 +152,34 @@ export interface ReverseSearchProfile {
 
 export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {
   beamWidth: 8,
-  maxDepth: 60,
-  restartCount: 1,
-  diverseArchiveSize: 16,
+  maxDepth: 80,
+  restartCount: 3,
+  diverseArchiveSize: 24,
   diversityRadius: 2,
   stochasticTieBreaking: true,
   antiImmediateUndo: true,
+};
+
+export const EXPERT_SEARCH_PROFILE: ReverseSearchProfile = {
+  beamWidth: 12,
+  maxDepth: 120,
+  restartCount: 5,
+  diverseArchiveSize: 32,
+  diversityRadius: 3,
+  stochasticTieBreaking: true,
+  antiImmediateUndo: true,
+  restartJitterScale: 0.15,
+};
+
+export const MASTER_SEARCH_PROFILE: ReverseSearchProfile = {
+  beamWidth: 16,
+  maxDepth: 160,
+  restartCount: 8,
+  diverseArchiveSize: 48,
+  diversityRadius: 4,
+  stochasticTieBreaking: true,
+  antiImmediateUndo: true,
+  restartJitterScale: 0.20,
 };
 
 // ---------------------------------------------------------------------------

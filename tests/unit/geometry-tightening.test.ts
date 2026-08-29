@@ -837,7 +837,7 @@ test("tightening: structural integrity preserved with context", async () => {
 // P3-1. Tightening disabled when enabled=false returns no-op result
 // ---------------------------------------------------------------------------
 
-test("tier policy: disabled policy returns no-op result with zero mutations", async () => {
+test("tier policy: master policy is enabled and tightens puzzles", async () => {
   const p = puzzle([
     "OOOOOOOOOO",
     "O        O",
@@ -851,14 +851,10 @@ test("tier policy: disabled policy returns no-op result with zero mutations", as
   ]);
 
   const masterPolicy = DEFAULT_TIER_TIGHTENING_POLICIES.master;
-  assert.equal(masterPolicy.enabled, false, "master policy should be disabled");
+  assert.equal(masterPolicy.enabled, true, "master policy should be enabled");
 
   const result = await tightenPuzzle(p, DEFAULT_TIGHTENING_PARAMS, undefined, masterPolicy);
-  assert.ok(result, "should return a result even when disabled");
-  assert.equal(result.mutationsTried, 0, "should try zero mutations");
-  assert.equal(result.mutationsAccepted, 0, "should accept zero mutations");
-  assert.equal(result.cellsRemoved, 0, "should remove zero cells");
-  assert.deepEqual(result.tightened.rows, p.rows, "puzzle should be unchanged");
+  assert.ok(result, "should return a result");
   assert.ok(result.tierPolicyUsed !== undefined, "should report tier policy used");
 });
 
@@ -1082,7 +1078,7 @@ test("tier policy: protectChokepointNeighborhoods adds chokepoint cells to prote
 // P3-7. Master tier returns no-op (enabled=false)
 // ---------------------------------------------------------------------------
 
-test("tier policy: master tier (enabled=false) does not modify puzzle", async () => {
+test("tier policy: master tier (enabled=true) tightens puzzle", async () => {
   const p = puzzle([
     "OOOOOOOOOO",
     "O        O",
@@ -1101,9 +1097,7 @@ test("tier policy: master tier (enabled=false) does not modify puzzle", async ()
     DEFAULT_TIER_TIGHTENING_POLICIES.master,
   );
   assert.ok(result, "should return a result");
-  assert.equal(result.cellsRemoved, 0);
-  assert.equal(result.mutationsTried, 0);
-  assert.deepEqual(result.tightened.rows, p.rows);
+  assert.ok(result.mutationsTried > 0, "master policy should attempt mutations");
 });
 
 // ---------------------------------------------------------------------------

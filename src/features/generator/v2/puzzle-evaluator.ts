@@ -1,7 +1,10 @@
 import type { PuzzleDefinition } from "../../../core/model.ts";
 import type { SolverResult, SolverRunMetrics, SolutionStep } from "../../../solver/contracts.ts";
 import { createSession } from "../../../core/game-session.ts";
-import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
+import {
+  classicGreedySolver,
+  classicAStarSolver,
+} from "../../../solver/implementations/classic-solvers.ts";
 import { directionDelta } from "../../../core/position.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { enumerateReachablePushes } from "./reachable-pushes.ts";
@@ -94,6 +97,10 @@ export interface PuzzleEvaluationVector {
   readonly estimatedDependencyDepth: number;
   readonly goalOrderConstraints: number;
 
+  // --- Critical moves ---
+  readonly criticalMoveCount: number;
+  readonly criticalMoveRatio: number;
+
   // --- Board properties ---
   readonly boardWidth: number;
   readonly boardHeight: number;
@@ -133,7 +140,11 @@ export async function evaluatePuzzleWithSteps(
     now: () => performance.now(),
   };
 
-  const result: SolverResult = await classicGreedySolver.solve(request, context);
+  let result: SolverResult = await classicGreedySolver.solve(request, context);
+
+  if (result.status !== "solved") {
+    result = await classicAStarSolver.solve(request, context);
+  }
 
   if (result.status !== "solved") {
     return {
@@ -216,6 +227,8 @@ export async function evaluatePuzzleWithSteps(
       maxBoxEpisodes: depthMetrics.maxBoxEpisodes,
       estimatedDependencyDepth: depthMetrics.estimatedDependencyDepth,
       goalOrderConstraints: depthMetrics.goalOrderConstraints,
+      criticalMoveCount: branchMetrics.criticalMoveCount,
+      criticalMoveRatio: branchMetrics.criticalMoveRatio,
       boardWidth: grid[0]?.length ?? 0,
       boardHeight: grid.length,
       totalFloor: structMetrics.totalFloor,
@@ -312,6 +325,9 @@ function buildUnsolvedVector(
     estimatedDependencyDepth: 0,
     goalOrderConstraints: 0,
 
+    criticalMoveCount: 0,
+    criticalMoveRatio: 0,
+
     boardWidth: grid[0]?.length ?? 0,
     boardHeight: grid.length,
     totalFloor: metrics.totalFloor,
@@ -391,6 +407,8 @@ interface BranchMetrics {
   reachableSingleChoiceRatio: number;
   reachableHighBranchCount: number;
   reachableForcedPushRatio: number;
+  criticalMoveCount: number;
+  criticalMoveRatio: number;
 }
 
 const DR = [-1, 1, 0, 0];
@@ -403,6 +421,7 @@ function analyzeBranching(
   const zeroBranch: BranchMetrics = {
     avgLegalPushes: 0, maxLegalPushes: 0, singleChoiceRatio: 0, highBranchCount: 0, forcedPushRatio: 0,
     avgReachablePushes: 0, maxReachablePushes: 0, reachableSingleChoiceRatio: 0, reachableHighBranchCount: 0, reachableForcedPushRatio: 0,
+    criticalMoveCount: 0, criticalMoveRatio: 0,
   };
 
   if (steps.length === 0) return zeroBranch;
@@ -428,6 +447,7 @@ function analyzeBranching(
   const reachablePushCounts: number[] = [];
   let forcedPushes = 0;
   let reachableForcedPushes = 0;
+  let criticalMoves = 0;
 
   const boxSet = new Set(boxes.map((b) => `${b.row},${b.column}`));
 
@@ -440,6 +460,18 @@ function analyzeBranching(
       const reachable = enumerateReachablePushes(grid, robot, boxes);
       reachablePushCounts.push(reachable.length);
       if (reachable.length <= 1) reachableForcedPushes++;
+
+      if (reachable.length >= 3) {
+        let deadPushes = 0;
+        for (const rp of reachable) {
+          if (isCornerDead(rp.destination.row, rp.destination.column, grid, h, w, goalSet)) {
+            deadPushes++;
+          }
+        }
+        if (deadPushes >= reachable.length - 1 && deadPushes > 0) {
+          criticalMoves++;
+        }
+      }
     }
 
     const dir = directionDelta(step.direction);
@@ -470,18 +502,36 @@ function analyzeBranching(
   const rSingles = reachablePushCounts.filter((c) => c <= 1).length;
   const rHighs = reachablePushCounts.filter((c) => c >= 4).length;
 
+  const totalPushes = pushCounts.length;
   return {
     avgLegalPushes: avg,
     maxLegalPushes: max,
-    singleChoiceRatio: singles / pushCounts.length,
+    singleChoiceRatio: singles / totalPushes,
     highBranchCount: highs,
-    forcedPushRatio: forcedPushes / pushCounts.length,
+    forcedPushRatio: forcedPushes / totalPushes,
     avgReachablePushes: rAvg,
     maxReachablePushes: rMax,
     reachableSingleChoiceRatio: rSingles / reachablePushCounts.length,
     reachableHighBranchCount: rHighs,
     reachableForcedPushRatio: reachableForcedPushes / reachablePushCounts.length,
+    criticalMoveCount: criticalMoves,
+    criticalMoveRatio: totalPushes > 0 ? criticalMoves / totalPushes : 0,
   };
+}
+
+function isCornerDead(
+  r: number, c: number,
+  grid: string[][], h: number, w: number,
+  goalSet: Set<string>,
+): boolean {
+  if (goalSet.has(`${r},${c}`)) return false;
+  const wallOrOOB = (rr: number, cc: number) =>
+    rr < 0 || rr >= h || cc < 0 || cc >= w || isWallChar(grid[rr][cc]);
+  const up = wallOrOOB(r - 1, c);
+  const down = wallOrOOB(r + 1, c);
+  const left = wallOrOOB(r, c - 1);
+  const right = wallOrOOB(r, c + 1);
+  return (up && left) || (up && right) || (down && left) || (down && right);
 }
 
 function countLegalPushes(
@@ -779,6 +829,8 @@ const NUMERIC_KEYS: readonly (keyof PuzzleEvaluationVector)[] = [
   "maxBoxEpisodes",
   "estimatedDependencyDepth",
   "goalOrderConstraints",
+  "criticalMoveCount",
+  "criticalMoveRatio",
   "boardWidth",
   "boardHeight",
   "totalFloor",

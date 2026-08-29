@@ -77,6 +77,8 @@ function makeEvaluation(
     maxBoxEpisodes: 3,
     estimatedDependencyDepth: 2,
     goalOrderConstraints: 1,
+    criticalMoveCount: 0,
+    criticalMoveRatio: 0,
     boardWidth: 10,
     boardHeight: 10,
     totalFloor: 30,

@@ -61,8 +61,8 @@ export const QUALITY_FLOORS: Readonly<Record<Difficulty, QualityFloor>> = {
   beginner:     { minPurposefulGeometry: 0,    minInteractionQuality: 0,    minCausalDepth: 0,    minDecisionQuality: 0,    minMechanismIntegrity: 0,    minElegance: 0,    maxTedium: 0.9  },
   intermediate: { minPurposefulGeometry: 0.15, minInteractionQuality: 0.05, minCausalDepth: 0,    minDecisionQuality: 0.1,  minMechanismIntegrity: 0,    minElegance: 0.05, maxTedium: 0.8  },
   advanced:     { minPurposefulGeometry: 0.25, minInteractionQuality: 0.15, minCausalDepth: 0.05, minDecisionQuality: 0.2,  minMechanismIntegrity: 0.1,  minElegance: 0.1,  maxTedium: 0.7  },
-  expert:       { minPurposefulGeometry: 0.35, minInteractionQuality: 0.3,  minCausalDepth: 0.15, minDecisionQuality: 0.3,  minMechanismIntegrity: 0.25, minElegance: 0.15, maxTedium: 0.6  },
-  master:       { minPurposefulGeometry: 0.45, minInteractionQuality: 0.45, minCausalDepth: 0.3,  minDecisionQuality: 0.4,  minMechanismIntegrity: 0.4,  minElegance: 0.2,  maxTedium: 0.5  },
+  expert:       { minPurposefulGeometry: 0.35, minInteractionQuality: 0.3,  minCausalDepth: 0.15, minDecisionQuality: 0.3,  minMechanismIntegrity: 0.25, minElegance: 0.15, maxTedium: 0.65 },
+  master:       { minPurposefulGeometry: 0.45, minInteractionQuality: 0.45, minCausalDepth: 0.3,  minDecisionQuality: 0.4,  minMechanismIntegrity: 0.4,  minElegance: 0.2,  maxTedium: 0.60 },
 };
 
 // ---------------------------------------------------------------------------
@@ -115,9 +115,9 @@ export function computeInteractionQuality(ev: PuzzleEvaluationVector): number {
  * Causal depth: enable/disable events and dependency depth.
  */
 export function computeCausalDepth(ev: PuzzleEvaluationVector): number {
-  const enableScore = clamp01(ev.causalEnableCount / 3);
-  const disableScore = clamp01(ev.causalDisableCount / 3);
-  const depthScore = clamp01(ev.estimatedDependencyDepth / 4);
+  const enableScore = clamp01(ev.causalEnableCount / 6);
+  const disableScore = clamp01(ev.causalDisableCount / 6);
+  const depthScore = clamp01(ev.estimatedDependencyDepth / 6);
   const orderScore = clamp01(ev.goalOrderConstraints / 3);
 
   return clamp01(
@@ -135,12 +135,14 @@ export function computeDecisionQuality(ev: PuzzleEvaluationVector): number {
   const highBranchScore = clamp01(ev.reachableHighBranchCount / 5);
   const nonForcedScore = 1 - ev.reachableForcedPushRatio;
   const nonSingleChoiceScore = 1 - ev.reachableSingleChoiceRatio;
+  const criticalScore = clamp01(ev.criticalMoveRatio * 3);
 
   return clamp01(
-    branchScore * 0.3 +
-    highBranchScore * 0.2 +
-    nonForcedScore * 0.3 +
-    nonSingleChoiceScore * 0.2,
+    branchScore * 0.25 +
+    highBranchScore * 0.15 +
+    nonForcedScore * 0.25 +
+    nonSingleChoiceScore * 0.2 +
+    criticalScore * 0.15,
   );
 }
 
@@ -148,7 +150,7 @@ export function computeDecisionQuality(ev: PuzzleEvaluationVector): number {
  * Mechanism integrity: staging, non-monotonic progress, goal vacancy, box reuse.
  */
 export function computeMechanismIntegrity(ev: PuzzleEvaluationVector): number {
-  const nonMonoScore = clamp01(ev.nonMonotonicBoxMoves / 3);
+  const nonMonoScore = clamp01(ev.nonMonotonicBoxMoves / 5);
   const stagingScore = clamp01(ev.stagingOperations / 2);
   const vacancyScore = clamp01(ev.temporaryGoalVacancies / 2);
   const multiMoveScore = clamp01(ev.multiMoveBoxCount / Math.max(ev.boxCount, 1));
@@ -183,7 +185,7 @@ export function computeElegance(ev: PuzzleEvaluationVector): number {
 export function computeTedium(ev: PuzzleEvaluationVector): number {
   const walkTedium = ev.emptyWalkRatio;
   const repetitiveTedium = ev.repetitivePushRatio;
-  const longWalkTedium = clamp01(ev.longestWalkStreak / 30);
+  const longWalkTedium = clamp01(ev.longestWalkStreak / 50);
   const movesPerPushTedium = clamp01(ev.movesPerPush / 15);
   const forcedTedium = ev.reachableForcedPushRatio;
 

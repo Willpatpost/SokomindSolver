@@ -83,6 +83,8 @@ function makeVector(overrides: Partial<PuzzleEvaluationVector> = {}): PuzzleEval
     maxBoxEpisodes: 2,
     estimatedDependencyDepth: 1,
     goalOrderConstraints: 1,
+    criticalMoveCount: 0,
+    criticalMoveRatio: 0,
     boardWidth: 10,
     boardHeight: 8,
     totalFloor: 40,

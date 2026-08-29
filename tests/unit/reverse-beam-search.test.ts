@@ -657,10 +657,10 @@ test("V4: more restarts increase archive diversity", () => {
 test("V4: diverse archive respects capacity limit", () => {
   const archive = new DiverseArchive(3, 0);
   const candidates = [
-    { boxPositions: [{ row: 1, column: 1 }], robotPosition: { row: 2, column: 2 }, score: { composite: 10, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0 }, depth: 1, pullHistory: [] },
-    { boxPositions: [{ row: 1, column: 2 }], robotPosition: { row: 2, column: 2 }, score: { composite: 20, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0 }, depth: 2, pullHistory: [] },
-    { boxPositions: [{ row: 1, column: 3 }], robotPosition: { row: 2, column: 2 }, score: { composite: 30, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0 }, depth: 3, pullHistory: [] },
-    { boxPositions: [{ row: 1, column: 4 }], robotPosition: { row: 2, column: 2 }, score: { composite: 5, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0 }, depth: 4, pullHistory: [] },
+    { boxPositions: [{ row: 1, column: 1 }], robotPosition: { row: 2, column: 2 }, score: { composite: 10, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0, deadlockPressure: 0 }, depth: 1, pullHistory: [] },
+    { boxPositions: [{ row: 1, column: 2 }], robotPosition: { row: 2, column: 2 }, score: { composite: 20, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0, deadlockPressure: 0 }, depth: 2, pullHistory: [] },
+    { boxPositions: [{ row: 1, column: 3 }], robotPosition: { row: 2, column: 2 }, score: { composite: 30, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0, deadlockPressure: 0 }, depth: 3, pullHistory: [] },
+    { boxPositions: [{ row: 1, column: 4 }], robotPosition: { row: 2, column: 2 }, score: { composite: 5, boxesOffGoals: 1, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0, deadlockPressure: 0 }, depth: 4, pullHistory: [] },
   ];
 
   archive.offer(candidates[0], "k1");

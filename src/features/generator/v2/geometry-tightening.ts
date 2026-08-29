@@ -38,6 +38,7 @@ export interface TierTighteningPolicy {
   readonly protectSolutionPath: boolean;
   readonly protectPassageCells: boolean;
   readonly protectChokepointNeighborhoods: boolean;
+  readonly maxFloorPerBox?: number;
 }
 
 export const DEFAULT_TIER_TIGHTENING_POLICIES: Readonly<Record<Difficulty, TierTighteningPolicy>> = {
@@ -91,27 +92,29 @@ export const DEFAULT_TIER_TIGHTENING_POLICIES: Readonly<Record<Difficulty, TierT
   },
   expert: {
     enabled: true,
-    maxAccepted: 20,
-    maxMutationsPerPass: 120,
-    minPlayableFloor: 18,
-    minFloorCoverage: 0.30,
+    maxAccepted: 30,
+    maxMutationsPerPass: 150,
+    minPlayableFloor: 15,
+    minFloorCoverage: 0.25,
     minRegionCount: 2,
     minChokepointCount: 1,
     protectSolutionPath: true,
     protectPassageCells: true,
     protectChokepointNeighborhoods: true,
+    maxFloorPerBox: 12,
   },
   master: {
-    enabled: false,
-    maxAccepted: 0,
-    maxMutationsPerPass: 0,
+    enabled: true,
+    maxAccepted: 30,
+    maxMutationsPerPass: 150,
     minPlayableFloor: 20,
-    minFloorCoverage: 0.35,
+    minFloorCoverage: 0.25,
     minRegionCount: 2,
     minChokepointCount: 1,
     protectSolutionPath: true,
     protectPassageCells: true,
     protectChokepointNeighborhoods: true,
+    maxFloorPerBox: 10,
   },
 };
 
@@ -296,6 +299,12 @@ export async function tightenPuzzle(
     currentMetrics = solveResult.metrics;
     if (preservation || tierPolicy) {
       currentStructural = analyzeGrid(grid);
+    }
+
+    if (tierPolicy?.maxFloorPerBox && puzzle.boxes > 0) {
+      if (currentStructural.totalFloor / puzzle.boxes <= tierPolicy.maxFloorPerBox) {
+        break;
+      }
     }
   }
 

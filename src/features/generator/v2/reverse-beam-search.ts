@@ -156,7 +156,8 @@ export function reverseBeamSearch(
   const elapsed = performance.now() - start;
 
   const allCandidates = [...beam];
-  if (!allCandidates.some((c) => c === bestEver)) {
+  const bestFp = stateFingerprint(bestEver.boxPositions);
+  if (!allCandidates.some((c) => stateFingerprint(c.boxPositions) === bestFp)) {
     allCandidates.push(bestEver);
   }
   allCandidates.sort((a, b) => b.score.composite - a.score.composite);

@@ -1,6 +1,10 @@
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { TopologyFamily, GeometryProfile, ReverseSearchProfile, FunctionalBlueprint, SolvedBlueprint } from "./blueprint-types.ts";
+import {
+  EXPERT_SEARCH_PROFILE,
+  MASTER_SEARCH_PROFILE,
+} from "./blueprint-types.ts";
 import type { BeamSearchParams } from "./reverse-beam-search.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
 import type { MotifType, DependencyHint } from "./motifs.ts";
@@ -204,6 +208,76 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
     hybridTypedFractionMax: 0.7,
   },
 };
+
+export const EXPERT_FORGE_PRESET: Partial<ForgeConfig> = {
+  boxCounts: [7, 8, 9, 10],
+  boardWidth: 16,
+  boardHeight: 16,
+  modes: ["mechanism", "motif", "composed"],
+  geometryProfile: {
+    boardWidthRange: [14, 18],
+    boardHeightRange: [14, 18],
+    minRooms: 3,
+    maxRooms: 6,
+    minRoomSize: 3,
+    maxRoomSize: 6,
+    passageWidths: [1],
+    minPlayableFloor: 30,
+    maxPlayableFloor: 100,
+    minFloorCoverage: 0.25,
+    minRegions: 2,
+    minChokepoints: 2,
+  },
+  gates: {
+    ...DEFAULT_FORGE_GATES,
+    minSolutionPushes: 15,
+    maxBoxIndependenceRatio: 0.70,
+    minSolverExpandedStates: 50,
+  },
+};
+
+export const MASTER_FORGE_PRESET: Partial<ForgeConfig> = {
+  boxCounts: [10, 11, 12, 13],
+  boardWidth: 16,
+  boardHeight: 18,
+  modes: ["mechanism"],
+  geometryProfile: {
+    boardWidthRange: [14, 20],
+    boardHeightRange: [14, 20],
+    minRooms: 4,
+    maxRooms: 7,
+    minRoomSize: 3,
+    maxRoomSize: 6,
+    passageWidths: [1],
+    minPlayableFloor: 35,
+    maxPlayableFloor: 120,
+    minFloorCoverage: 0.30,
+    minRegions: 3,
+    minChokepoints: 3,
+  },
+  gates: {
+    ...DEFAULT_FORGE_GATES,
+    minSolutionPushes: 25,
+    maxBoxIndependenceRatio: 0.50,
+    minSolverExpandedStates: 200,
+  },
+};
+
+export function getForgePreset(difficulty: Difficulty): Partial<ForgeConfig> {
+  if (difficulty === "master") return MASTER_FORGE_PRESET;
+  if (difficulty === "expert") return EXPERT_FORGE_PRESET;
+  return {};
+}
+
+function resolveSearchProfile(
+  config: ForgeConfig,
+  difficulty: Difficulty,
+): ReverseSearchProfile | undefined {
+  if (config.reverseSearchProfile) return config.reverseSearchProfile;
+  if (difficulty === "master") return MASTER_SEARCH_PROFILE;
+  if (difficulty === "expert") return EXPERT_SEARCH_PROFILE;
+  return undefined;
+}
 
 export interface ForgeProvenance {
   readonly seed: number;
@@ -519,10 +593,11 @@ async function generateRawCandidate(
 
     let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
 
-    if (config.reverseSearchProfile) {
+    const searchProfile = resolveSearchProfile(config, difficulty);
+    if (searchProfile) {
       const scoringCtx = buildScoringContext(placement.solved.blueprint, placement.solved.grid, placement.solved.goals);
       const mechCtx = buildMechanismReverseContext(plan, scoringCtx);
-      const v4Result = reverseBeamSearchV4(placement.solved, seed, config.reverseSearchProfile, mechCtx);
+      const v4Result = reverseBeamSearchV4(placement.solved, seed, searchProfile, mechCtx);
       if (v4Result.best.depth === 0) {
         return { ok: false, reason: "beam-search-empty" };
       }
@@ -575,8 +650,9 @@ async function generateRawCandidate(
 
   let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
 
-  if (config.reverseSearchProfile) {
-    const v4Result = reverseBeamSearchV4(solved, seed, config.reverseSearchProfile);
+  const searchProfile2 = resolveSearchProfile(config, difficulty);
+  if (searchProfile2) {
+    const v4Result = reverseBeamSearchV4(solved, seed, searchProfile2);
     if (v4Result.best.depth === 0) {
       return { ok: false, reason: "beam-search-empty" };
     }
@@ -850,29 +926,32 @@ async function completeCandidateFromBlueprint(
     let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
     if (forcedReverseState) {
       bestCandidate = forcedReverseState;
-    } else if (config.reverseSearchProfile) {
-      let mechCtx: MechanismReverseContext | undefined;
-      if (bc.mechanismPlan) {
-        const scoringCtx = buildScoringContext(bc.solvedBlueprint.blueprint, bc.solvedBlueprint.grid, bc.solvedBlueprint.goals);
-        mechCtx = buildMechanismReverseContext(bc.mechanismPlan, scoringCtx);
-      }
-      const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, config.reverseSearchProfile, mechCtx);
-      if (v4Result.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty", solverCalls };
-      }
-      bestCandidate = v4Result.best;
-      v4RankedCandidates = v4Result.rankedCandidates;
     } else {
-      const beamParams: BeamSearchParams = {
-        ...DEFAULT_BEAM_PARAMS,
-        seed,
-        ...config.beamParams,
-      };
-      const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
-      if (beam.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty", solverCalls };
+      const mechSearchProfile = resolveSearchProfile(config, difficulty);
+      if (mechSearchProfile) {
+        let mechCtx: MechanismReverseContext | undefined;
+        if (bc.mechanismPlan) {
+          const scoringCtx = buildScoringContext(bc.solvedBlueprint.blueprint, bc.solvedBlueprint.grid, bc.solvedBlueprint.goals);
+          mechCtx = buildMechanismReverseContext(bc.mechanismPlan, scoringCtx);
+        }
+        const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, mechSearchProfile, mechCtx);
+        if (v4Result.best.depth === 0) {
+          return { ok: false, reason: "beam-search-empty", solverCalls };
+        }
+        bestCandidate = v4Result.best;
+        v4RankedCandidates = v4Result.rankedCandidates;
+      } else {
+        const beamParams: BeamSearchParams = {
+          ...DEFAULT_BEAM_PARAMS,
+          seed,
+          ...config.beamParams,
+        };
+        const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
+        if (beam.best.depth === 0) {
+          return { ok: false, reason: "beam-search-empty", solverCalls };
+        }
+        bestCandidate = beam.best;
       }
-      bestCandidate = beam.best;
     }
 
     const scrambled = {
@@ -903,24 +982,27 @@ async function completeCandidateFromBlueprint(
     let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
     if (forcedReverseState) {
       bestCandidate = forcedReverseState;
-    } else if (config.reverseSearchProfile) {
-      const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, config.reverseSearchProfile);
-      if (v4Result.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty", solverCalls };
-      }
-      bestCandidate = v4Result.best;
-      v4RankedCandidates = v4Result.rankedCandidates;
     } else {
-      const beamParams: BeamSearchParams = {
-        ...DEFAULT_BEAM_PARAMS,
-        seed,
-        ...config.beamParams,
-      };
-      const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
-      if (beam.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty", solverCalls };
+      const plainSearchProfile = resolveSearchProfile(config, difficulty);
+      if (plainSearchProfile) {
+        const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, plainSearchProfile);
+        if (v4Result.best.depth === 0) {
+          return { ok: false, reason: "beam-search-empty", solverCalls };
+        }
+        bestCandidate = v4Result.best;
+        v4RankedCandidates = v4Result.rankedCandidates;
+      } else {
+        const beamParams: BeamSearchParams = {
+          ...DEFAULT_BEAM_PARAMS,
+          seed,
+          ...config.beamParams,
+        };
+        const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
+        if (beam.best.depth === 0) {
+          return { ok: false, reason: "beam-search-empty", solverCalls };
+        }
+        bestCandidate = beam.best;
       }
-      bestCandidate = beam.best;
     }
 
     const scrambled = {
