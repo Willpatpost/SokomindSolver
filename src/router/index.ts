@@ -14,5 +14,6 @@ export {
   playHash,
   editorHash,
   statsHash,
+  solverLabHash,
   createShareUrl,
 } from "./navigation";

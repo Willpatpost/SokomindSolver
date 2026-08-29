@@ -17,5 +17,6 @@ export type Route =
       readonly pageNumber?: number;
     }
   | { readonly page: "play"; readonly puzzleId: string; readonly actionLog?: string }
+  | { readonly page: "solver-lab"; readonly puzzleId: string; readonly actionLog?: string }
   | { readonly page: "editor"; readonly customData?: string }
   | { readonly page: "stats" };

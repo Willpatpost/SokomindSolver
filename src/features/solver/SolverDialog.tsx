@@ -19,6 +19,7 @@ import {
   useSolverController,
 } from "./useSolverController";
 import type { SolverRunFingerprint } from "./solver-ui-types";
+import { Link, solverLabHash } from "@/src/router";
 import styles from "./SolverDialog.module.css";
 
 export interface SolverDialogProps {
@@ -254,6 +255,13 @@ export function SolverDialog({
                     ? "Cancelling…"
                     : "Cancel"}
                 </button>
+                <Link
+                  className={styles.labLink}
+                  href={solverLabHash(session.puzzle.id, session.actionLog || undefined)}
+                  onClick={handleClose}
+                >
+                  Open full Solver Lab
+                </Link>
               </div>
 
               {solver.uiPhase === "error" ? (

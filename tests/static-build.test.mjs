@@ -66,9 +66,10 @@ async function coldRouteAssetNames(entryPattern, assetNames) {
 }
 
 const DELIVERY_BUDGETS = Object.freeze({
-  // Includes the on-demand Sprint 7 replay study plus Sprint 8's deterministic
-  // journey and Daily V2 projections; cold Home and Play budgets stay fixed.
-  allScriptsAndStylesGzipBytes: 390_000,
+  // Includes the on-demand Sprint 7 replay study, Sprint 8 journey/Daily V2,
+  // Sprint 9 progression/cosmetics, and Sprint 10 Solver Lab. Cold Home and
+  // Play route budgets stay fixed because the Lab remains route-split.
+  allScriptsAndStylesGzipBytes: 410_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,

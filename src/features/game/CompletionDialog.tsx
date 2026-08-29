@@ -6,6 +6,7 @@ import {
 } from "@/src/shared/puzzle-ratings";
 import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
 import { PuzzleMinimap } from "@/src/features/selector/PuzzleMinimap";
+import type { AchievementDef } from "@/src/features/achievements/achievements";
 import { Modal } from "@/src/shared/ui/Modal";
 import type { CompletionPresentation } from "./completion-presentation";
 import { formatTime } from "./timer-math";
@@ -17,6 +18,7 @@ interface CompletionDialogProps {
   readonly title: string;
   readonly boxes: number;
   readonly moves: number;
+  readonly newAchievements?: readonly AchievementDef[];
   readonly pushes: number;
   readonly elapsedTime?: number;
   readonly presentation: CompletionPresentation;
@@ -89,6 +91,7 @@ export function CompletionDialog({
   title,
   boxes,
   moves,
+  newAchievements = [],
   pushes,
   elapsedTime = 0,
   presentation,
@@ -208,6 +211,30 @@ export function CompletionDialog({
               </li>
             ))}
           </ul>
+        ) : null}
+        {newAchievements.length > 0 ? (
+          <section className={styles.unlocks} aria-labelledby="new-achievements-title">
+            <div>
+              <span aria-hidden="true">+</span>
+              <div>
+                <h3 id="new-achievements-title">
+                  {newAchievements.length === 1 ? "Achievement earned" : `${newAchievements.length} achievements earned`}
+                </h3>
+                <small>Added to Statistics · no puzzle content was locked</small>
+              </div>
+            </div>
+            <ul>
+              {newAchievements.slice(0, 2).map((achievement) => (
+                <li key={achievement.id}>
+                  <span>{achievement.title}</span>
+                  <small>{achievement.description}</small>
+                </li>
+              ))}
+            </ul>
+            {newAchievements.length > 2 ? (
+              <p>And {newAchievements.length - 2} more milestone{newAchievements.length - 2 === 1 ? "" : "s"}.</p>
+            ) : null}
+          </section>
         ) : null}
         <div className={styles.stats}>
           <div>

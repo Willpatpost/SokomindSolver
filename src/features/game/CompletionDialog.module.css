@@ -157,6 +157,68 @@
   line-height: 1.35;
 }
 
+.unlocks {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 11px;
+  border: 1px solid rgb(74 127 150 / 0.2);
+  border-radius: 10px;
+  background: rgb(74 127 150 / 0.07);
+  text-align: left;
+}
+
+.unlocks > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.unlocks > div > span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--blue-500);
+  color: var(--paper-50);
+  font-weight: 900;
+}
+
+.unlocks > div > div,
+.unlocks li {
+  display: grid;
+  gap: 1px;
+}
+
+.unlocks h3,
+.unlocks li > span {
+  color: var(--ink-900);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.unlocks h3 {
+  margin: 0;
+}
+
+.unlocks small,
+.unlocks p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.59rem;
+  line-height: 1.35;
+}
+
+.unlocks ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 0 0 35px;
+  list-style: none;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));

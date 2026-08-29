@@ -513,6 +513,33 @@ html[data-theme-family="minimal-ink"][data-theme="dark"] {
   --game-robot-bg: linear-gradient(150deg, #b9c3be, #68736e);
 }
 
+/* Earned frames change only the board's outer treatment. These overrides
+   follow every theme variant so compatible light and dark modes retain them. */
+html[data-board-frame="sage-thread"] {
+  --game-board-border: rgb(112 136 114 / 0.78);
+  --game-board-shadow:
+    0 0 0 2px rgb(112 136 114 / 0.2),
+    0 18px 45px rgb(23 25 22 / 0.18),
+    inset 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+html[data-board-frame="brass-edge"] {
+  --game-board-border: rgb(203 130 48 / 0.84);
+  --game-board-shadow:
+    0 0 0 2px rgb(229 166 75 / 0.2),
+    0 18px 45px rgb(78 50 20 / 0.22),
+    inset 0 0 0 1px rgb(255 239 198 / 0.08);
+}
+
+html[data-theme-family="midnight-neon"][data-board-frame="neon-orbit"] {
+  --game-board-border: rgb(103 221 237 / 0.88);
+  --game-board-shadow:
+    0 0 0 2px rgb(210 91 239 / 0.35),
+    0 0 24px rgb(73 183 220 / 0.22),
+    0 18px 45px rgb(3 5 15 / 0.42),
+    inset 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
 .page-enter-forward > * {
   opacity: 0;
   transform: translateX(16px);

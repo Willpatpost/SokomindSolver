@@ -52,6 +52,21 @@ export function parseHash(hash: string): ParseResult {
     return { kind: "route", route: { page: "stats" } };
   }
 
+  if (segments[0] === "solver-lab") {
+    const puzzleId = segments.length >= 2
+      ? decodePathSegment(segments[1])
+      : "ultra-tiny";
+    if (puzzleId === null) {
+      return { kind: "route", route: { page: "home" } };
+    }
+    const params = new URLSearchParams(queryString);
+    const actionLog = params.get("play") ?? undefined;
+    return {
+      kind: "route",
+      route: { page: "solver-lab", puzzleId, actionLog },
+    };
+  }
+
   if (segments[0] === "editor") {
     const params = new URLSearchParams(queryString);
     const customData = params.get("custom") ?? undefined;

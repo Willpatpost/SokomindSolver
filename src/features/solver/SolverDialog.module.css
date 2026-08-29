@@ -263,12 +263,13 @@
 
 .primaryActions {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 9px;
   margin-top: 17px;
 }
 
 .primaryActions button,
+.labLink,
 .retry,
 .play {
   min-height: 42px;
@@ -277,6 +278,20 @@
   font-size: 0.76rem;
   font-weight: 850;
   cursor: pointer;
+}
+
+.labLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sage-600);
+  border-radius: var(--radius-sm);
+  color: var(--sage-700);
+  background: rgb(112 136 114 / 0.08);
+  font-size: 0.7rem;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
 }
 
 .start,
@@ -304,6 +319,7 @@
 }
 
 .primaryActions button:focus-visible,
+.labLink:focus-visible,
 .play:focus-visible,
 .retry:focus-visible {
   outline: 2px solid var(--sage-500);
@@ -587,6 +603,10 @@
 
   .primaryActions {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .labLink {
+    grid-column: 1 / -1;
   }
 }
 

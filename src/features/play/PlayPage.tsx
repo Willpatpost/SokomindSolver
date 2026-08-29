@@ -639,6 +639,7 @@ function ValidatedPlayPage({
         boxes={puzzle.boxes}
         elapsedTime={game.elapsed}
         moves={session.moves}
+        newAchievements={game.newAchievements}
         nextLabel={game.nextPuzzle ? "Next room" : "Browse puzzles"}
         onClose={game.closeCompletion}
         onCompareReplay={() => {

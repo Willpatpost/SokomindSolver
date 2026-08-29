@@ -32,7 +32,10 @@ import { useHintController } from "@/src/features/game/use-hint-controller";
 import { useTimer } from "@/src/features/game/use-timer";
 import { PUZZLE_METADATA } from "@/src/catalog/puzzle-metadata";
 import { computeStats, getDailyPuzzleId } from "@/src/features/progress/compute-stats";
-import { getNewlyUnlockedAchievements } from "@/src/features/achievements/achievements";
+import {
+  getNewlyUnlockedAchievements,
+  type AchievementDef,
+} from "@/src/features/achievements/achievements";
 import { usePersistedPlay, type CompletionRecordUpdate } from "./use-persisted-play";
 import { puzzlesHash, useRouter } from "@/src/router";
 import { useSharing } from "./use-sharing";
@@ -95,6 +98,8 @@ export function usePlayController(
       previousProgress: progress,
       progress,
     });
+  const [newAchievements, setNewAchievements] =
+    useState<readonly AchievementDef[]>([]);
   const [solverPuzzleId, setSolverPuzzleId] = useState<string | null>(null);
   const [optimalCache, setOptimalCache] = useState(loadOptimalCache);
   const [deadlockedBoxIds, setDeadlockedBoxIds] = useState<ReadonlySet<string>>(
@@ -206,6 +211,7 @@ export function usePlayController(
         postSolveStats,
         result.progress,
       );
+      setNewAchievements(newAchievements);
       if (newAchievements.length > 0) {
         const names = newAchievements.map((a) => a.title).join(", ");
         clearTimeout(toastTimerRef.current);
@@ -506,6 +512,7 @@ export function usePlayController(
     resetConfirmOpen,
     completionOpen,
     completionResult,
+    newAchievements,
     playback,
     inputEnabled,
     attemptMove,

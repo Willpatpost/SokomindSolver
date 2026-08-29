@@ -2,9 +2,9 @@
 
 ## Status
 
-- **Plan revision:** 2026-08-28
-- **Current delivery point:** Sprint 8 — Guided journey and Daily V2 completed
-- **Next sprint:** Sprint 9 — Achievements, collections, and cosmetics
+- **Plan revision:** 2026-08-29
+- **Current delivery point:** Sprint 10 — Solver Lab completed
+- **Next sprint:** Sprint 11 — Creator intelligence
 - **Product shape:** game-first Sokoban experience with an optional learning path and a first-class Solver Lab
 - **Delivery model:** small, independently shippable sprints with accessibility, performance, and regression gates
 
@@ -344,6 +344,8 @@ A sprint is shippable only when all applicable gates pass:
 
 **Goal:** Make long-term progress expressive while keeping rewards secondary to puzzle mastery.
 
+**Status:** Completed 2026-08-29
+
 **Scope**
 
 - Group achievements into understandable collections.
@@ -360,6 +362,8 @@ A sprint is shippable only when all applicable gates pass:
 ### Sprint 10 — Solver Lab
 
 **Goal:** Turn the project's search-algorithm roots into an excellent optional educational workspace.
+
+**Status:** Completed 2026-08-29
 
 **Scope**
 

@@ -26,6 +26,11 @@ const StatsPage = lazy(() =>
     default: m.StatsPage,
   })),
 );
+const SolverLabPage = lazy(() =>
+  import("@/src/features/solver-lab/SolverLabPage").then((m) => ({
+    default: m.SolverLabPage,
+  })),
+);
 
 const PAGE_LABELS: Record<string, string> = {
   home: "Home",
@@ -35,6 +40,7 @@ const PAGE_LABELS: Record<string, string> = {
   play: "Play",
   editor: "Editor",
   stats: "Statistics",
+  "solver-lab": "Solver Lab",
 };
 
 const PAGE_DEPTH: Record<string, number> = {
@@ -45,6 +51,7 @@ const PAGE_DEPTH: Record<string, number> = {
   play: 3,
   editor: 1,
   stats: 1,
+  "solver-lab": 1,
 };
 
 function routeIdentity(route: Route): string {
@@ -58,6 +65,8 @@ function routeIdentity(route: Route): string {
     case "puzzles-collection":
       return `${route.page}:${route.difficulty}:${route.collection}`;
     case "play":
+      return `${route.page}:${route.puzzleId}:${route.actionLog ?? ""}`;
+    case "solver-lab":
       return `${route.page}:${route.puzzleId}:${route.actionLog ?? ""}`;
     case "editor":
       return route.page;
@@ -221,6 +230,12 @@ export function AppShell() {
           )}
           {route.page === "editor" && <EditorPage customData={route.customData} />}
           {route.page === "stats" && <StatsPage />}
+          {route.page === "solver-lab" && (
+            <SolverLabPage
+              puzzleId={route.puzzleId}
+              actionLog={route.actionLog}
+            />
+          )}
         </div>
       </Suspense>
       <MobileNav />

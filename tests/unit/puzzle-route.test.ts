@@ -9,6 +9,7 @@ import {
   puzzleDifficultyPageHash,
   puzzlesHash,
   homeHash,
+  solverLabHash,
 } from "../../src/router/navigation.ts";
 
 test("parses play route with action log", () => {
@@ -101,6 +102,28 @@ test("parses editor route with custom data", () => {
   }
 });
 
+test("parses Solver Lab routes from an initial or transferred position", () => {
+  const initial = parseHash("#/solver-lab/ultra-tiny");
+  assert.equal(initial.kind, "route");
+  if (initial.kind === "route" && initial.route.page === "solver-lab") {
+    assert.equal(initial.route.puzzleId, "ultra-tiny");
+    assert.equal(initial.route.actionLog, undefined);
+  }
+
+  const transferred = parseHash("#/solver-lab/tiny?play=UDLR");
+  assert.equal(transferred.kind, "route");
+  if (transferred.kind === "route" && transferred.route.page === "solver-lab") {
+    assert.equal(transferred.route.puzzleId, "tiny");
+    assert.equal(transferred.route.actionLog, "UDLR");
+  }
+
+  const defaultLab = parseHash("#/solver-lab");
+  assert.equal(defaultLab.kind, "route");
+  if (defaultLab.kind === "route" && defaultLab.route.page === "solver-lab") {
+    assert.equal(defaultLab.route.puzzleId, "ultra-tiny");
+  }
+});
+
 test("redirects legacy puzzle hash", () => {
   const result = parseHash("#puzzle=grand-hall");
   assert.equal(result.kind, "redirect");
@@ -132,6 +155,8 @@ test("navigation helpers produce correct hashes", () => {
   assert.equal(playHash("huge", "UDLR"), "#/play/huge?play=UDLR");
   assert.equal(editorHash(), "#/editor");
   assert.equal(editorHash("abc"), "#/editor?custom=abc");
+  assert.equal(solverLabHash(), "#/solver-lab/ultra-tiny");
+  assert.equal(solverLabHash("tiny", "UDLR"), "#/solver-lab/tiny?play=UDLR");
   assert.equal(
     puzzleDifficultyPageHash("intermediate", 2),
     "#/puzzles/intermediate?page=2",

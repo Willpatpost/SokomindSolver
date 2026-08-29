@@ -144,6 +144,7 @@ history, so long routes do not copy every earlier snapshot per move.
 - [Experience, sound, and motion](docs/experience.md)
 - [GitHub Pages deployment](docs/deployment.md)
 - [Solver integration](docs/solver-integration.md)
+- [Solver Lab guide and metric definitions](docs/solver-lab.md)
 - [Puzzle format](docs/puzzle-format.md)
 - [Testing strategy](docs/testing.md)
 - [Persistence and sharing](docs/persistence-and-sharing.md)

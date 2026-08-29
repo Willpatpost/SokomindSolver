@@ -204,6 +204,7 @@ fails when the generated facts below differ from source.
 | ratings | `sokomind.ratings.v1` |
 | favorites | `sokomind.favorites.v1` |
 | guidedJourney | `sokomind.guided-journey.v1` |
+| cosmetics | `sokomind.cosmetics.v1` |
 | editorDraft | `sokomind.editor-draft.v1` |
 | editorDraftRecovery | `sokomind.editor-draft-recovery.v1` |
 | session-only | `sokomind:timer` |
@@ -272,7 +273,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **390,000 gzip bytes**
+- All scripts and styles: **410,000 gzip bytes**
 - Largest asset: **80,000 gzip bytes**
 - Solver worker: **55,000 gzip bytes**
 - Nested engine worker: **65,000 gzip bytes**

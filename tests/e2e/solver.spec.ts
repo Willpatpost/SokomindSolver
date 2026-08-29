@@ -196,9 +196,11 @@ test("cancels a running Grand Hall A* search", async ({ page }) => {
   const diagnostics = dialog.getByText("Search diagnostics", { exact: true });
   await expect(diagnostics).toBeVisible();
 
-  // <summary> is natively keyboard-focusable and must participate in the
-  // modal's manual wrap calculation. From Cancel it is the next control.
+  // The full-Lab link and <summary> are both natively keyboard-focusable and
+  // must participate in the modal's manual wrap calculation.
   await cancel.focus();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("link", { name: "Open full Solver Lab" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(diagnostics).toBeFocused();
 

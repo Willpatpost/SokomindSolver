@@ -23,6 +23,8 @@ share a Web Storage origin:
   bounded named-draft store;
 - `sokomind.guided-journey.v1` — the device-local pause/resume choice for the
   optional guided path; chapter progress itself is derived from summary solves;
+- `sokomind.cosmetics.v1` — the selected board-frame keepsake; earned state and
+  active-theme compatibility are derived rather than persisted;
 - `sokomind.editor-draft-recovery.v1` — a quarantined invalid draft that can be
   downloaded or deleted without clearing other data;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
@@ -161,6 +163,14 @@ current daily challenge. Home derives a bounded seven-day history from this
 same ledger and explicitly distinguishes a completed day, a fresh start after a
 miss, and a temporarily unavailable daily assignment. Missing daily state never
 blocks the open catalog.
+
+Achievements do not introduce a second progress ledger. Collection totals,
+requirement progress, unlocks, and the recent-milestone timeline are pure
+projections of the catalog, completion summaries, and explicit local-date
+activity. The cosmetic preference stores only a schema version and selected
+board-frame ID. A locked, malformed, or theme-incompatible selection falls back
+to the classic frame, and cosmetics never modify board tiles, pieces, warnings,
+focus indicators, or game rules.
 
 Shared editor links open as read-only previews. They do not autosave or replace
 any device draft until the player explicitly chooses **Import into editor**

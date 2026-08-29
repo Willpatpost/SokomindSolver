@@ -105,10 +105,10 @@ workers, and the generated 50-board puzzle shards remain runtime-loaded and are
 cached only after use. Static tests derive each cold route's eager JavaScript
 dependency closure and associated styles, include the largest board shard in
 Play's budget, reject board data in the Home closure, and enforce per-shard gzip
-budgets. The complete optional script/style inventory is capped at 390 KB gzip;
-the Sprint 7 replay-study chunks and Sprint 8 guided-journey/Daily V2 projections
-are included in that total while the cold Home and Play route ceilings remain
-unchanged.
+budgets. The complete optional script/style inventory is capped at 410 KB gzip;
+the Sprint 7 replay-study chunks, Sprint 8 guided-journey/Daily V2 projections,
+Sprint 9 progression/cosmetic surfaces, and Sprint 10 Solver Lab are included
+in that total while the cold Home and Play route ceilings remain unchanged.
 Navigation responses never overwrite the known-good shell, so an online 404
 cannot poison offline startup. Runtime writes are restricted to
 manifest-declared same-scope resources and are awaited through the fetch event

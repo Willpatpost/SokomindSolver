@@ -5,6 +5,7 @@ import {
   puzzlesHash,
   statsHash,
   editorHash,
+  solverLabHash,
 } from "@/src/router";
 import styles from "@/src/shared/ui/MobileNav.module.css";
 
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
   { label: "Home", hash: homeHash(), page: "home", icon: "⌂" },
   { label: "Puzzles", hash: puzzlesHash(), page: "puzzles", icon: "▦" },
   { label: "Stats", hash: statsHash(), page: "stats", icon: "◔" },
+  { label: "Lab", hash: solverLabHash(), page: "solver-lab", icon: "⌘" },
   { label: "Editor", hash: editorHash(), page: "editor", icon: "✎" },
 ] as const;
 

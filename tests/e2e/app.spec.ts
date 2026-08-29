@@ -31,6 +31,9 @@ test("solves a room and reports the new personal best", async ({ page }) => {
   await expect(
     dialog.getByRole("list", { name: "Completion milestones" }),
   ).toContainText("First clear");
+  await expect(dialog.getByRole("heading", { name: "Achievement earned" }))
+    .toBeVisible();
+  await expect(dialog).toContainText("First Steps");
   await expect(
     dialog.getByRole("button", { name: "Next room" }),
   ).toBeFocused();

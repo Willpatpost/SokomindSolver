@@ -58,6 +58,16 @@ export function statsHash(): string {
   return "#/stats";
 }
 
+export function solverLabHash(
+  puzzleId = "ultra-tiny",
+  actionLog?: string,
+): string {
+  const base = `#/solver-lab/${encodeURIComponent(puzzleId)}`;
+  return actionLog
+    ? `${base}?play=${encodeURIComponent(actionLog)}`
+    : base;
+}
+
 export function createShareUrl(
   location: { origin: string; pathname: string },
   puzzleId: string,

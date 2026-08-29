@@ -14,10 +14,10 @@ source-derived constants.
 ```text
 index.html
   -> src/main.tsx
-     -> ErrorBoundary -> ExperienceProvider -> App
+     -> ErrorBoundary -> ExperienceProvider -> CosmeticApplicator + App
         -> AmbientBackdrop + persistence/update notices
         -> RouterProvider -> AppShell
-           -> Home / Selector / Play / Editor / Stats
+           -> Home / Selector / Play / Editor / Stats / Solver Lab
 ```
 
 Vite compiles this graph into `dist/`. There is no server entry point, runtime
@@ -42,6 +42,14 @@ artifact can live below a GitHub repository path.
 - `src/features/journey` projects summary progress onto curated, concept-based
   chapters. Its recommendation order is deterministic and advisory; it never
   changes catalog availability or game rules.
+- `src/features/achievements` projects saved progress into visible collection
+  progress, dated milestones, and deterministic board-frame unlocks. Its
+  cosmetics can change only the board frame and shadow; compatibility is
+  checked against the active theme family before application.
+- `src/features/solver-lab` projects the existing worker/controller contract
+  into an optional educational route. It retains run comparisons only for the
+  current puzzle-position workspace and rebuilds solution playback through the
+  core instead of treating worker output as game state.
 - `src/features/progress/daily-challenge.ts` derives current daily framing and
   a bounded seven-day history from the existing local-date participation
   ledger. It does not create a second progress record.
@@ -108,6 +116,11 @@ history cannot erase completion records.
 The guided journey stores only whether its Home surface is paused. Chapter
 completion and the suggested next room are recomputed from catalog metadata and
 summary progress, so the preference cannot unlock, hide, or manufacture a solve.
+Achievement completion, collection totals, and recent milestone dates are also
+derived from summary solves and the visible activity ledger. The cosmetic record
+stores only a selected board-frame ID; unlock and theme compatibility are always
+re-evaluated from current progress before `CosmeticApplicator` sets the root
+presentation attribute.
 The editor key contains a bounded named-document store and migrates the legacy
 single draft without silently overwriting it. See
 [`persistence-and-sharing.md`](persistence-and-sharing.md).
@@ -179,6 +192,14 @@ Every move-optimal search identity retains the exact keeper cell because walking
 distance contributes to the sole move-count objective. First-found searches may
 canonicalize the keeper's reachable region because they do not claim a minimum
 move count.
+
+The dedicated `#/solver-lab/:puzzleId` route can optionally receive the same
+bounded action log used by play links. It therefore studies either a puzzle's
+initial state or an exact replay-validated position without introducing a
+second session format. Search, cancellation, progress, and terminal fencing are
+owned by the existing worker client; the Lab owns only presentation, temporary
+run comparison, and playback selection. Metric definitions and experiment
+semantics are documented in [`solver-lab.md`](solver-lab.md).
 
 A verified long route may enter a separate bounded rewrite worker. That lane
 can canonicalize walks, reorder compatible push chains, and search local

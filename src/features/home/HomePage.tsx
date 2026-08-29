@@ -22,6 +22,7 @@ import {
   puzzleDifficultyHash,
   editorHash,
   statsHash,
+  solverLabHash,
 } from "@/src/router";
 import styles from "./HomePage.module.css";
 import { DailyChallengeCard } from "./DailyChallengeCard";
@@ -280,6 +281,13 @@ export function HomePage() {
               onClick={() => navigate(statsHash())}
             >
               Statistics
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => navigate(solverLabHash())}
+            >
+              Solver Lab
             </button>
             <button
               type="button"

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { configureVitePuzzleLoader } from "./catalog/configure-vite-puzzle-loader";
 import { ExperienceProvider } from "./features/experience";
+import { CosmeticApplicator } from "./features/achievements/CosmeticApplicator";
 import { installCrossTabAppResetListener } from "./shared/app-data-reset";
 import { notifyUpdateAvailable } from "./shared/sw-update-store";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
@@ -21,6 +22,7 @@ createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
       <ExperienceProvider>
+        <CosmeticApplicator />
         <App />
       </ExperienceProvider>
     </ErrorBoundary>

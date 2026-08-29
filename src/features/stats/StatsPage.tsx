@@ -5,10 +5,7 @@ import {
   buildActivityHeatMap,
   computeStats,
 } from "@/src/features/progress/compute-stats";
-import {
-  ACHIEVEMENTS,
-  getUnlockedAchievements,
-} from "@/src/features/achievements/achievements";
+import { ProgressionShowcase } from "@/src/features/achievements/ProgressionShowcase";
 import { summarizeProgressMerge } from "@/src/shared/progress";
 import { readProgressImportFile } from "@/src/shared/progress-import";
 import { clearPersonalBestRoutes } from "@/src/shared/personal-best-routes";
@@ -58,15 +55,6 @@ export function StatsPage() {
   const heatMap = useMemo(
     () => buildActivityHeatMap(progress),
     [progress],
-  );
-
-  const unlocked = useMemo(
-    () => getUnlockedAchievements(stats, progress),
-    [stats, progress],
-  );
-  const unlockedIds = useMemo(
-    () => new Set(unlocked.map((a) => a.id)),
-    [unlocked],
   );
 
   const hasTrackedTime = stats.totalElapsedMs > 0;
@@ -193,18 +181,21 @@ export function StatsPage() {
               <h1 className={styles.pageTitle}>Statistics</h1>
             </div>
             <div className={styles.topBarRight}>
-              <label className={styles.exportButton} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); importInputRef.current?.click(); } }}
+              <button
+                type="button"
+                className={styles.exportButton}
+                onClick={() => importInputRef.current?.click()}
               >
                 Import progress
-                <input
-                  ref={importInputRef}
-                  type="file"
-                  accept=".json,application/json"
-                  className={styles.fileInput}
-                  onChange={handleImport}
-                />
-              </label>
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                aria-label="Import progress backup file"
+                className={styles.fileInput}
+                onChange={handleImport}
+              />
               <ExperienceControls />
             </div>
           </div>
@@ -212,8 +203,9 @@ export function StatsPage() {
             <p className={styles.importStatus} role="status">{importStatus}</p>
           )}
           <div className={styles.empty}>
-            <p>Solve some puzzles to see your statistics here.</p>
+            <p>Solve some puzzles to fill in your play statistics. Achievement paths are ready below.</p>
           </div>
+          <ProgressionShowcase stats={stats} progress={progress} />
         </div>
       </main>
     );
@@ -249,18 +241,21 @@ export function StatsPage() {
             >
               Export progress
             </button>
-            <label className={styles.exportButton} role="button" tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); importInputRef.current?.click(); } }}
+            <button
+              type="button"
+              className={styles.exportButton}
+              onClick={() => importInputRef.current?.click()}
             >
               Import progress
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".json,application/json"
-                className={styles.fileInput}
-                onChange={handleImport}
-              />
-            </label>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              aria-label="Import progress backup file"
+              className={styles.fileInput}
+              onChange={handleImport}
+            />
             <ExperienceControls />
           </div>
         </div>
@@ -441,36 +436,7 @@ export function StatsPage() {
           />
 
           <div className={`${styles.card} ${styles.wideCard}`}>
-            <p className={styles.cardLabel}>
-              Achievements — {unlocked.length}/{ACHIEVEMENTS.length}
-            </p>
-            <div className={styles.achievementGrid}>
-              {ACHIEVEMENTS.map((achievement) => {
-                const earned = unlockedIds.has(achievement.id);
-                return (
-                  <div
-                    key={achievement.id}
-                    className={styles.achievement}
-                    data-earned={earned || undefined}
-                    title={
-                      earned
-                        ? `${achievement.title}: ${achievement.description}`
-                        : achievement.description
-                    }
-                  >
-                    <span className={styles.achievementIcon}>
-                      {achievement.icon}
-                    </span>
-                    <span className={styles.achievementTitle}>
-                      {achievement.title}
-                    </span>
-                    <span className={styles.achievementDesc}>
-                      {achievement.description}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <ProgressionShowcase stats={stats} progress={progress} />
           </div>
 
           <div className={`${styles.card} ${styles.wideCard}`}>
