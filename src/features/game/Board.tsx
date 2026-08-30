@@ -229,10 +229,7 @@ const PieceSlot = memo(function PieceSlot({
       const clearCancelledAnimation = () => {
         if (animation.current === nextAnimation) animation.current = null;
       };
-      nextAnimation.onfinish = () => {
-        clearCancelledAnimation();
-        nextAnimation.cancel();
-      };
+      nextAnimation.onfinish = clearCancelledAnimation;
       nextAnimation.oncancel = clearCancelledAnimation;
     };
 
