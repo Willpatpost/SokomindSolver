@@ -57,22 +57,25 @@ test("pausing locks keyboard and swipe movement until play resumes", async ({ pa
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByTestId("moves-count")).toHaveText("1");
 
-  await page.getByTestId("game-board").evaluate((element) => {
-    const start = { clientX: 100, clientY: 100 };
-    const end = { clientX: 180, clientY: 100 };
-    const dispatch = (type: string, touches: typeof start[], changedTouches: typeof start[]) => {
-      const event = new TouchEvent(type, { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        touches: { value: touches },
-        changedTouches: { value: changedTouches },
-      });
-      element.dispatchEvent(event);
-    };
-    dispatch("touchstart", [start], [start]);
-    dispatch("touchmove", [end], [end]);
-    dispatch("touchend", [], [end]);
-  });
-  await expect(page.getByTestId("moves-count")).toHaveText("1");
+  const hasTouchEvent = await page.evaluate(() => typeof TouchEvent !== "undefined");
+  if (hasTouchEvent) {
+    await page.getByTestId("game-board").evaluate((element) => {
+      const start = { clientX: 100, clientY: 100 };
+      const end = { clientX: 180, clientY: 100 };
+      const dispatch = (type: string, touches: typeof start[], changedTouches: typeof start[]) => {
+        const event = new TouchEvent(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          touches: { value: touches },
+          changedTouches: { value: changedTouches },
+        });
+        element.dispatchEvent(event);
+      };
+      dispatch("touchstart", [start], [start]);
+      dispatch("touchmove", [end], [end]);
+      dispatch("touchend", [], [end]);
+    });
+    await expect(page.getByTestId("moves-count")).toHaveText("1");
+  }
 
   await page.keyboard.press("p");
   await expect(page.getByRole("alert", { name: "Game paused" })).toHaveCount(0);

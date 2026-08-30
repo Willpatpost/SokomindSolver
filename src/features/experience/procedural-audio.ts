@@ -413,7 +413,10 @@ export class ProceduralAudioController {
     }
 
     if (this.context.state === "suspended") {
-      await this.context.resume();
+      await Promise.race([
+        this.context.resume(),
+        new Promise<void>((resolve) => setTimeout(resolve, 500)),
+      ]);
     }
 
     const ready = this.context.state === "running";
