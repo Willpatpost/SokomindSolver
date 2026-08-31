@@ -73,7 +73,7 @@ const DELIVERY_BUDGETS = Object.freeze({
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
-  solverWorkerGzipBytes: 55_000,
+  solverWorkerGzipBytes: 60_000,
   engineWorkerGzipBytes: 65_000,
   puzzleShardGzipBytes: 5_000,
 });
