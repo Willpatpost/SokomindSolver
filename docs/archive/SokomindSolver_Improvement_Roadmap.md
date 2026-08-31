@@ -766,7 +766,7 @@ This must be handled carefully because relaxing hard guards indiscriminately can
 # 6.12 Learn/Tune Analyzer Features From the Full Corpus
 
 The source-checked catalog can serve as a powerful offline tuning corpus; its
-current size is recorded in the [living project reference](PROJECT-REFERENCE.md#runtime-and-catalog).
+current size is recorded in the [living project reference](../PROJECT-REFERENCE.md#runtime-and-catalog).
 
 Without requiring neural networks, generate:
 

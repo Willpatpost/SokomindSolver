@@ -2,7 +2,7 @@
 
 Last updated: August 24, 2026 (Sprint 10 complete)
 
-Design source: `docs/Sokomind_Puzzle_Generation_V2_Roadmap.md`
+Design source: `docs/archive/Sokomind_Puzzle_Generation_V2_Roadmap.md`
 
 ---
 
