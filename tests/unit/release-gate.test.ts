@@ -73,6 +73,14 @@ function makeEvaluation(
     sharedChokepointUses: 1,
     causalEnableCount: 2,
     causalDisableCount: 1,
+    crossTypeSharedRouteCells: 1,
+    crossTypeSharedSupportCells: 1,
+    crossTypeSharedChokepoints: 0,
+    crossTypeCausalEnableCount: 1,
+    crossTypeCausalDisableCount: 0,
+    minPushesPerBox: 2,
+    inactiveBoxCount: 0,
+    onePushBoxCount: 0,
     roomCrossingsInSolution: 3,
     deadlockDensity: 0.05,
     articulationPoints: 2,
@@ -120,9 +128,9 @@ function makeProvenance(
     difficulty: "beginner",
     tightened: true,
     cellsRemoved: 4,
-    typingMode: "generic",
-    genericBoxCount: 3,
-    typedBoxCount: 0,
+    typingMode: "hybrid",
+    genericBoxCount: 2,
+    typedBoxCount: 1,
     ...overrides,
   };
 }
@@ -206,9 +214,19 @@ function makeDiversePack(
   difficulty: Difficulty,
 ): ReviewCandidatePack {
   const rows = makeUniqueRows();
+  const genericBoxCount = difficulty === "beginner" ? 1 : 2;
   const candidate = makeCandidate(
     { boxCount },
-    { seed, family, mode, boxCount, difficulty },
+    {
+      seed,
+      family,
+      mode,
+      boxCount,
+      difficulty,
+      typingMode: "hybrid",
+      genericBoxCount,
+      typedBoxCount: boxCount - genericBoxCount,
+    },
     { id: `gen-v2-${seed}-hash${seed}`, rows, difficulty },
   );
   return buildReviewPack(candidate, difficulty, difficulty, 0);
@@ -226,13 +244,22 @@ function buildDiverseCatalog(
   let seedCounter = 1000;
 
   const tiers: Difficulty[] = ["tutorial", "beginner", "intermediate", "advanced", "expert", "master"];
+  const tierBoxCounts: Readonly<Record<Difficulty, readonly number[]>> = {
+    tutorial: [2],
+    beginner: [3, 4, 5, 6],
+    intermediate: [7, 8, 9],
+    advanced: [10, 11, 12, 13],
+    expert: [14, 15, 16, 17],
+    master: [18, 19, 20, 21, 22],
+  };
   for (const tier of tiers) {
     const count = packsPerTier[tier] ?? 0;
     const packs: ReviewCandidatePack[] = [];
     for (let i = 0; i < count; i++) {
       const family = familyRotation[i % familyRotation.length];
       const mode = modeRotation[i % modeRotation.length];
-      const boxCount = 2 + (i % 4);
+      const range = tierBoxCounts[tier];
+      const boxCount = range[i % range.length];
       packs.push(makeDiversePack(seedCounter++, family, mode, boxCount, tier));
     }
     tierPacks.set(tier, { target: Math.max(count, 5), packs });
@@ -249,17 +276,16 @@ describe("release-gate", () => {
   describe("checkReleaseGate", () => {
     it("passes for a well-populated diverse catalog", () => {
       const catalog = buildDiverseCatalog({
-        tutorial: 2,
         beginner: 3,
         intermediate: 4,
-        advanced: 2,
-        expert: 1,
+        advanced: 3,
+        expert: 2,
         master: 1,
       });
       const config: ReleaseGateConfig = {
         minTotalPuzzles: 10,
         tierQuotas: {
-          tutorial: { min: 1, target: 5 },
+          tutorial: { min: 0, target: 0 },
           beginner: { min: 2, target: 10 },
           intermediate: { min: 2, target: 15 },
           advanced: { min: 1, target: 10 },
@@ -311,7 +337,6 @@ describe("release-gate", () => {
 
     it("warns when a tier is below target but above minimum", () => {
       const catalog = buildDiverseCatalog({
-        tutorial: 2,
         beginner: 3,
         intermediate: 3,
         advanced: 2,
@@ -320,7 +345,7 @@ describe("release-gate", () => {
         ...DEFAULT_RELEASE_GATE_CONFIG,
         minTotalPuzzles: 5,
         tierQuotas: {
-          tutorial: { min: 1, target: 10 },
+          tutorial: { min: 0, target: 0 },
           beginner: { min: 1, target: 10 },
           intermediate: { min: 1, target: 10 },
           advanced: { min: 1, target: 10 },
@@ -542,6 +567,12 @@ describe("release-gate", () => {
           mode: pack.mode,
           boxCount: pack.boxCount,
           typingMode: pack.typingMode,
+          genericBoxCount: pack.genericBoxCount,
+          typedBoxCount: pack.typedBoxCount,
+          minPushesPerBox: pack.minPushesPerBox,
+          inactiveBoxCount: pack.inactiveBoxCount,
+          onePushBoxCount: pack.onePushBoxCount,
+          crossTypeInteractionCount: pack.crossTypeInteractionCount,
           intendedDifficulty: pack.intendedDifficulty,
           classifiedDifficulty: pack.classifiedDifficulty,
           difficultyGap: pack.difficultyGap,
@@ -635,7 +666,7 @@ describe("release-gate", () => {
       assert.ok(DEFAULT_RELEASE_GATE_CONFIG.maxTopologyConcentration <= 1);
       assert.ok(DEFAULT_RELEASE_GATE_CONFIG.maxModeConcentration > 0);
       assert.ok(DEFAULT_RELEASE_GATE_CONFIG.maxModeConcentration <= 1);
-      assert.ok(DEFAULT_RELEASE_GATE_CONFIG.maxDifficultyGap >= 1);
+      assert.equal(DEFAULT_RELEASE_GATE_CONFIG.maxDifficultyGap, 0);
       assert.ok(DEFAULT_RELEASE_GATE_CONFIG.minDistinctTopologies >= 1);
       assert.ok(DEFAULT_RELEASE_GATE_CONFIG.minDistinctModes >= 1);
     });
@@ -653,18 +684,17 @@ describe("release-gate", () => {
   describe("formatReleaseVerdict", () => {
     it("produces readable text for a passing verdict", () => {
       const catalog = buildDiverseCatalog({
-        tutorial: 2,
         beginner: 3,
         intermediate: 4,
-        advanced: 2,
-        expert: 1,
+        advanced: 3,
+        expert: 2,
         master: 1,
       });
       const verdict = checkReleaseGate(catalog, {
         ...DEFAULT_RELEASE_GATE_CONFIG,
         minTotalPuzzles: 10,
         tierQuotas: {
-          tutorial: { min: 1, target: 2 },
+          tutorial: { min: 0, target: 0 },
           beginner: { min: 2, target: 3 },
           intermediate: { min: 2, target: 4 },
           advanced: { min: 1, target: 2 },
@@ -691,7 +721,6 @@ describe("release-gate", () => {
 
     it("shows warnings when present", () => {
       const catalog = buildDiverseCatalog({
-        tutorial: 2,
         beginner: 3,
         intermediate: 3,
         advanced: 2,
@@ -702,7 +731,7 @@ describe("release-gate", () => {
         ...DEFAULT_RELEASE_GATE_CONFIG,
         minTotalPuzzles: 5,
         tierQuotas: {
-          tutorial: { min: 1, target: 100 },
+          tutorial: { min: 0, target: 0 },
           beginner: { min: 1, target: 100 },
           intermediate: { min: 1, target: 100 },
           advanced: { min: 1, target: 100 },
@@ -784,12 +813,12 @@ describe("buildFinalReviewCatalog", () => {
     assert.equal(catalog.tierSummaries.beginner.target, 10);
   });
 
-  it("uses existing V4 classification from provenance when available", () => {
+  it("recomputes box-count classification instead of trusting stale provenance", () => {
     const candidates = new Map<Difficulty, readonly ForgeCandidate[]>();
     candidates.set("advanced", [
       makeCandidate(
-        {},
-        { seed: 20, v4Classification: "expert" },
+        { boxCount: 14 },
+        { seed: 20, boxCount: 14, v4Classification: "master" },
         { id: "gen-v2-20-y" },
       ),
     ]);
@@ -810,15 +839,24 @@ describe("buildFinalReviewCatalog", () => {
     const candidates = new Map<Difficulty, readonly ForgeCandidate[]>();
     const makeUniqueCandidate = (seed: number, diff: Difficulty, fam: "hub" | "linear" | "loop", mode: "plain" | "motif" | "composed") => {
       const rows = makeUniqueRows();
+      const boxCount = diff === "beginner" ? 3 + (seed % 4)
+        : diff === "intermediate" ? 7 + (seed % 3)
+        : diff === "advanced" ? 10 + (seed % 4)
+        : diff === "expert" ? 14 + (seed % 4)
+        : 18 + (seed % 5);
+      const genericBoxCount = diff === "beginner" ? 1 : 2;
       return makeCandidate(
-        { boxCount: 2 + (seed % 3) },
+        { boxCount },
         {
           seed,
           family: fam,
           mode,
-          boxCount: 2 + (seed % 3),
+          boxCount,
           difficulty: diff,
           v4Classification: diff,
+          typingMode: "hybrid",
+          genericBoxCount,
+          typedBoxCount: boxCount - genericBoxCount,
         },
         { id: `gen-v2-${seed}-h${seed}`, rows, difficulty: diff },
       );

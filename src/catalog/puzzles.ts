@@ -23,7 +23,7 @@ import {
  *
  * Definitions intentionally stay data-only so they can be shared by the UI,
  * game engine, tests, and future solver workers without importing one another.
- * During migration, six stale legacy `boxes` values were corrected to agree
+ * During migration, stale legacy `boxes` values were corrected to agree
  * with their unchanged board rows.
  */
 const CANONICAL_PUZZLES = [
@@ -50,14 +50,6 @@ const CANONICAL_PUZZLES = [
     boxes: 1,
     hint: "Walk up and push the box right onto the goal.",
     rows: ["OOOOO", "O XSO", "O   O", "O R O", "OOOOO"],
-  },
-  {
-    id: "tutorial-corner",
-    title: "Corner Lesson",
-    difficulty: "tutorial",
-    boxes: 1,
-    hint: "Corners are dangerous! Don't push the box into a corner without a goal.",
-    rows: ["OOOOOO", "O    O", "O RX O", "O  S O", "O    O", "OOOOOO"],
   },
   {
     id: "tutorial-around",
@@ -92,14 +84,6 @@ const CANONICAL_PUZZLES = [
     rows: ["OOOOOOOOO", "Oc b a  O", "O       O", "O A B C O", "O   R   O", "OOOOOOOOO"],
   },
   {
-    id: "garden-1",
-    title: "Flower Bed",
-    difficulty: "beginner",
-    boxes: 3,
-    hint: "Plant each flower in the right spot in the garden bed.",
-    rows: ["OOOOOOOOO", "O   R   O", "O A B C O", "O       O", "O a b c O", "OOOOOOOOO"],
-  },
-  {
     id: "box-5x5-a",
     title: "Tiny Teaser",
     difficulty: "beginner",
@@ -114,22 +98,6 @@ const CANONICAL_PUZZLES = [
     boxes: 8,
     hint: "Each labeled box has a specific home. Plan the order carefully.",
     rows: ["OOOOOOO", "Oa   bO", "O AXB O", "O XRX O", "OSCXDSO", "OcS SdO", "OOOOOOO"],
-  },
-  {
-    id: "inter-rooms",
-    title: "Two Rooms",
-    difficulty: "intermediate",
-    boxes: 4,
-    hint: "Two rooms connected by one doorway. Solve the far room first.",
-    rows: ["OOOOOOOOOOO", "O    O    O", "O RX   XS O", "O XO O OX O", "OSSO   OS O", "OOOOOOOOOOO"],
-  },
-  {
-    id: "corridor-2",
-    title: "The Pipe",
-    difficulty: "intermediate",
-    boxes: 3,
-    hint: "A straight pipe with branching ends. Route each box correctly.",
-    rows: ["OOOOOOOOOOO", "O S O     O", "O   O X   O", "O     R   O", "O   O X   O", "O S O     O", "OOOOO X   O", "OOOOOO  S O", "OOOOOOOOOOO"],
   },
   {
     id: "garden-2",
@@ -172,52 +140,12 @@ const CANONICAL_PUZZLES = [
     rows: ["OOOOOOOOOO", "OOOOOOOSSO", "OOOOO  abO", "OOOOO XSSO", "OOOOOO  OO", "OR     OOO", "OO A X X O", "OO BXO O O", "OO   O   O", "OOOOOOOOOO"],
   },
   {
-    id: "adv-rotary",
-    title: "The Rotary",
-    difficulty: "advanced",
-    boxes: 2,
-    hint: "The central ring lets you cycle boxes around. Use it!",
-    rows: ["OOOOOOOOOOO", "OOa  ROOOOO", "OO  OO  bOO", "O A    B  O", "O   OO    O", "OOOOOOOOOOO"],
-  },
-  {
-    id: "adv-four-color",
-    title: "Four Corners",
-    difficulty: "advanced",
-    boxes: 4,
-    hint: "Four labeled boxes, four corner goals. They must swap corners.",
-    rows: ["OOOOOOOOO", "Ob     cO", "O       O", "O  C  D O", "O   R   O", "O  A  B O", "O       O", "Od     aO", "OOOOOOOOO"],
-  },
-  {
     id: "adv-gallery",
     title: "The Gallery",
     difficulty: "advanced",
     boxes: 4,
     hint: "Boxes line the gallery walls. Slide them to the exhibition spots.",
     rows: ["OOOOOOOOOO", "O R      O", "O OOOOOO O", "O O    O O", "O X SS X O", "O O    O O", "O OXOOXO O", "O        O", "O   SS   O", "OOOOOOOOOO"],
-  },
-  {
-    id: "box-7x7",
-    title: "Lucky Seven",
-    difficulty: "advanced",
-    boxes: 4,
-    hint: "Symmetric 7x7 with a twist in the center.",
-    rows: ["OOOOOOO", "OS   SO", "O  X  O", "O XRXOO", "O  X  O", "OS   SO", "OOOOOOO"],
-  },
-  {
-    id: "sym-diamond",
-    title: "Diamond",
-    difficulty: "advanced",
-    boxes: 3,
-    hint: "The diamond shape creates tricky corners. Don't get boxed in!",
-    rows: ["OOOOOOOOOOO", "OOOOO OOOOO", "OOOO   OOOO", "OOO  S  OOO", "OO  XRX  OO", "O    X    O", "OO   S   OO", "OOO  S  OOO", "OOOO   OOOO", "OOOOO OOOOO", "OOOOOOOOOOO"],
-  },
-  {
-    id: "theme-library",
-    title: "The Library",
-    difficulty: "advanced",
-    boxes: 4,
-    hint: "Return the books to the correct shelves. A to a, B to b.",
-    rows: ["OOOOOOOOOOO", "OaaO R ObbO", "O  O   O  O", "O  OO OO  O", "O   A B   O", "O  A   B  O", "O         O", "OOOOOOOOOOO"],
   },
   {
     id: "theme-parking",
@@ -250,38 +178,6 @@ const CANONICAL_PUZZLES = [
     boxes: 5,
     hint: "A winding maze with boxes at dead ends. Free them carefully.",
     rows: ["OOOOOOOOOOOO", "O R  O     O", "OOO  O OOO O", "O X  O O S O", "O OO   O   O", "O O  OOOO  O", "O   XO  X  O", "OOOO OS    O", "O  X    OO O", "O SSS X    O", "OOOOOOOOOOOO"],
-  },
-  {
-    id: "expert-tetris",
-    title: "Block Party",
-    difficulty: "expert",
-    boxes: 6,
-    hint: "Fill the goal zone tightly. One wrong push and it's stuck forever.",
-    rows: ["OOOOOOOOO", "O   R   O", "O  X X  O", "OOX   XOO", "OO     OO", "OO X X OO", "OOSSSSSOO", "OO  S  OO", "OOOOOOOOO"],
-  },
-  {
-    id: "theme-museum",
-    title: "Museum Exhibit",
-    difficulty: "expert",
-    boxes: 6,
-    hint: "Place each artifact on its pedestal. The exhibit hall has pillars.",
-    rows: ["OOOOOOOOOOOOO", "O     R     O", "O  A  B  C  O", "O  O  O  O  O", "O           O", "O  O  O  O  O", "O  A  B  C  O", "O           O", "O aa bb cc  O", "OOOOOOOOOOOOO"],
-  },
-  {
-    id: "master-exchange",
-    title: "The Exchange",
-    difficulty: "master",
-    boxes: 8,
-    hint: "Four types of boxes must reach matching goals across a shared floor.",
-    rows: ["OOOOOOOOOOOOO", "OaaO  R  OccO", "O  O     O  O", "O   C   A   O", "O   C   A   O", "O           O", "O   B   D   O", "O   B   D   O", "O  O     O  O", "OddO     ObbO", "OOOOOOOOOOOOO"],
-  },
-  {
-    id: "master-typed-grid",
-    title: "Color Grid",
-    difficulty: "master",
-    boxes: 8,
-    hint: "A grid of colored boxes. Each row must sort to its color.",
-    rows: ["OOOOOOOOOOOOO", "O           O", "O  B  D  A  O", "O           O", "O  C  A  B  O", "O     R     O", "O  D  C     O", "O           O", "O  aa bb    O", "O  cc dd    O", "OOOOOOOOOOOOO"],
   },
 ] as const satisfies readonly PuzzleDefinition[];
 

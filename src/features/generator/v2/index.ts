@@ -346,6 +346,7 @@ export type {
 
 export {
   computeV4Profile,
+  classifyDifficultyByBoxCount,
   computeStructuralScale,
   computeSolutionDepthScore,
   computeHumanReasoningComplexity,

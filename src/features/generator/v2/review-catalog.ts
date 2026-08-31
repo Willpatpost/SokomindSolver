@@ -59,6 +59,15 @@ export function buildReviewPack(
     typedBoxCount: p.typedBoxCount,
     solutionMoves: ev.solutionMoves,
     solutionPushes: ev.solutionPushes,
+    minPushesPerBox: ev.minPushesPerBox ?? 0,
+    inactiveBoxCount: ev.inactiveBoxCount ?? ev.boxCount,
+    onePushBoxCount: ev.onePushBoxCount ?? ev.boxCount,
+    crossTypeInteractionCount:
+      (ev.crossTypeSharedRouteCells ?? 0) +
+      (ev.crossTypeSharedSupportCells ?? 0) +
+      (ev.crossTypeSharedChokepoints ?? 0) +
+      (ev.crossTypeCausalEnableCount ?? 0) +
+      (ev.crossTypeCausalDisableCount ?? 0),
     seed: p.seed,
     family: p.family,
     mode: p.mode,
@@ -195,10 +204,10 @@ export function buildFinalReviewCatalog(
 
     for (const candidate of candidates) {
       const intendedDifficulty = spec.difficulty;
-      const v4Profile = candidate.provenance.v4DifficultyProfile
-        ?? computeV4Profile(candidate.evaluation);
-      const classifiedDifficulty = candidate.provenance.v4Classification
-        ?? v4Profile.classification;
+      // Tier assignment is derived from the current box-count contract. Do
+      // not trust cached provenance from an older difficulty policy.
+      const v4Profile = computeV4Profile(candidate.evaluation);
+      const classifiedDifficulty = v4Profile.classification;
       const gap = tierIndex(classifiedDifficulty) - tierIndex(intendedDifficulty);
 
       // Extract finalist evaluation, handling V4 shape

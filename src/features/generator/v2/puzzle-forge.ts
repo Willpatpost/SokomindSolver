@@ -174,6 +174,13 @@ export interface ForgeAcceptanceGates {
   readonly minDependencyRealizationRate: number;
   readonly maxMovesPerPush: number;
   readonly minSolverExpandedStates: number;
+  /** Every catalog puzzle is hybrid; Beginner needs one of each class. */
+  readonly minGenericBoxCount: number;
+  readonly minTypedBoxCount: number;
+  /** Reject untouched and one-push filler boxes in the verified route. */
+  readonly minPushesPerBox: number;
+  /** Require solution-level evidence that the two box classes interact. */
+  readonly minCrossTypeInteractions: number;
   readonly minPlayableFloor?: number;
   readonly minFloorCoverage?: number;
   readonly minRegionCount?: number;
@@ -190,6 +197,10 @@ export const DEFAULT_FORGE_GATES: ForgeAcceptanceGates = {
   minDependencyRealizationRate: 0.30,
   maxMovesPerPush: 6.0,
   minSolverExpandedStates: 3,
+  minGenericBoxCount: 1,
+  minTypedBoxCount: 1,
+  minPushesPerBox: 2,
+  minCrossTypeInteractions: 1,
 };
 
 export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
@@ -197,7 +208,7 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   retainTarget: 20,
   families: [...TOPOLOGY_FAMILIES],
   boxCounts: [3, 4],
-  difficulties: ["intermediate", "advanced"],
+  difficulties: ["beginner"],
   modes: ["plain", "motif", "composed"],
   motifTypes: ["auto"],
   compositionTypes: ["auto"],
@@ -210,27 +221,27 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   diversityMinDistance: 2.0,
   baseSeed: 10000,
   typingPolicy: {
-    modes: ["generic", "typed", "hybrid"],
+    modes: ["hybrid"],
     hybridTypedFractionMin: 0.3,
     hybridTypedFractionMax: 0.7,
   },
 };
 
 export const EXPERT_FORGE_PRESET: Partial<ForgeConfig> = {
-  boxCounts: [7, 8, 9, 10],
-  boardWidth: 16,
-  boardHeight: 16,
+  boxCounts: [14, 15, 16, 17],
+  boardWidth: 22,
+  boardHeight: 22,
   modes: ["mechanism", "motif", "composed"],
   geometryProfile: {
-    boardWidthRange: [14, 18],
-    boardHeightRange: [14, 18],
+    boardWidthRange: [18, 22],
+    boardHeightRange: [18, 22],
     minRooms: 3,
     maxRooms: 6,
     minRoomSize: 3,
     maxRoomSize: 6,
     passageWidths: [1],
-    minPlayableFloor: 30,
-    maxPlayableFloor: 100,
+    minPlayableFloor: 55,
+    maxPlayableFloor: 150,
     minFloorCoverage: 0.25,
     minRegions: 2,
     minChokepoints: 2,
@@ -240,24 +251,26 @@ export const EXPERT_FORGE_PRESET: Partial<ForgeConfig> = {
     minSolutionPushes: 15,
     maxBoxIndependenceRatio: 0.70,
     minSolverExpandedStates: 50,
+    minGenericBoxCount: 2,
+    minTypedBoxCount: 2,
   },
 };
 
 export const MASTER_FORGE_PRESET: Partial<ForgeConfig> = {
-  boxCounts: [10, 11, 12, 13],
-  boardWidth: 16,
-  boardHeight: 18,
+  boxCounts: [18, 19, 20, 21, 22],
+  boardWidth: 26,
+  boardHeight: 26,
   modes: ["mechanism"],
   geometryProfile: {
-    boardWidthRange: [14, 20],
-    boardHeightRange: [14, 20],
+    boardWidthRange: [18, 26],
+    boardHeightRange: [18, 26],
     minRooms: 4,
     maxRooms: 7,
     minRoomSize: 3,
     maxRoomSize: 6,
     passageWidths: [1],
-    minPlayableFloor: 35,
-    maxPlayableFloor: 120,
+    minPlayableFloor: 75,
+    maxPlayableFloor: 220,
     minFloorCoverage: 0.30,
     minRegions: 3,
     minChokepoints: 3,
@@ -267,6 +280,8 @@ export const MASTER_FORGE_PRESET: Partial<ForgeConfig> = {
     minSolutionPushes: 25,
     maxBoxIndependenceRatio: 0.50,
     minSolverExpandedStates: 200,
+    minGenericBoxCount: 2,
+    minTypedBoxCount: 2,
   },
 };
 
@@ -342,6 +357,9 @@ export type ForgeRejectionReason =
   | "gate-walk-streak"
   | "gate-repetitive-push"
   | "gate-box-independence"
+  | "gate-box-participation"
+  | "gate-mixed-typing"
+  | "gate-cross-type-interaction"
   | "gate-dependency-realization"
   | "gate-moves-per-push"
   | "gate-solver-effort"
@@ -1142,6 +1160,14 @@ async function completeCandidateFromBlueprint(
     return { ok: false, reason: "unsolvable", solverCalls };
   }
 
+  const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
+  const genericBoxCount = boxGoalCounts.generic;
+  const typedBoxCount = boxGoalCounts.typed;
+  const actualBoxes = boxGoalCounts.boxes;
+  if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
+    return { ok: false, reason: "validation-failed", solverCalls };
+  }
+
   // Dependency re-verification
   let depRate = rawResult.dependencyRealizationRate;
   let depEdges = rawResult.composedResult?.realization.totalEdges;
@@ -1194,7 +1220,13 @@ async function completeCandidateFromBlueprint(
   }
 
   // Apply gates
-  const gateResult = applyGates(ev, config.gates, depRate);
+  const gateResult = applyGates(
+    ev,
+    config.gates,
+    depRate,
+    genericBoxCount,
+    typedBoxCount,
+  );
   if (gateResult) {
     return { ok: false, reason: gateResult, solverCalls };
   }
@@ -1202,16 +1234,6 @@ async function completeCandidateFromBlueprint(
   const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
   if (structuralGateResult) {
     return { ok: false, reason: structuralGateResult, solverCalls };
-  }
-
-  // Box count validation
-  const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
-  const genericBoxCount = boxGoalCounts.generic;
-  const typedBoxCount = boxGoalCounts.typed;
-  const actualBoxes = boxGoalCounts.boxes;
-
-  if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
-    return { ok: false, reason: "validation-failed", solverCalls };
   }
 
   // Construct provenance
@@ -1262,8 +1284,28 @@ function applyGates(
   ev: PuzzleEvaluationVector,
   gates: ForgeAcceptanceGates,
   depRate?: number,
+  genericBoxCount = 0,
+  typedBoxCount = 0,
 ): ForgeRejectionReason | null {
   if (!ev.solved) return "unsolvable";
+  if (
+    genericBoxCount < gates.minGenericBoxCount ||
+    typedBoxCount < gates.minTypedBoxCount
+  ) return "gate-mixed-typing";
+  if (
+    (ev.minPushesPerBox ?? 0) < gates.minPushesPerBox ||
+    (ev.inactiveBoxCount ?? ev.boxCount) > 0 ||
+    (ev.onePushBoxCount ?? ev.boxCount) > 0
+  ) return "gate-box-participation";
+  const crossTypeInteractions =
+    (ev.crossTypeSharedRouteCells ?? 0) +
+    (ev.crossTypeSharedSupportCells ?? 0) +
+    (ev.crossTypeSharedChokepoints ?? 0) +
+    (ev.crossTypeCausalEnableCount ?? 0) +
+    (ev.crossTypeCausalDisableCount ?? 0);
+  if (crossTypeInteractions < gates.minCrossTypeInteractions) {
+    return "gate-cross-type-interaction";
+  }
   if (ev.solutionPushes < gates.minSolutionPushes) return "gate-pushes";
   if (ev.unusedFloorRatio > gates.maxUnusedFloorRatio) return "gate-unused-floor";
   if (ev.emptyWalkRatio > gates.maxEmptyWalkRatio) return "gate-empty-walk";
@@ -1782,6 +1824,27 @@ async function runForgeFlat(
     }
     collector.recordInitialSolveSuccess();
 
+    const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
+    const genericBoxCount = boxGoalCounts.generic;
+    const typedBoxCount = boxGoalCounts.typed;
+    const actualBoxes = boxGoalCounts.boxes;
+    if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
+      rejections.push({ seed, reason: "validation-failed" });
+      collector.recordRejection({
+        reason: "validation-failed", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount, actualBoxCount: actualBoxes,
+      });
+      collector.recordBoxScale({
+        requestedBoxes: boxCount,
+        actualBoxes,
+        goalCount: boxGoalCounts.goals,
+        genericBoxes: genericBoxCount,
+        typedBoxes: typedBoxCount,
+        difference: actualBoxes - boxCount,
+      });
+      continue;
+    }
+
     // Step 7: Re-verify dependencies if DAG exists
     let depRate = raw.result.dependencyRealizationRate;
     let depEdges = raw.result.composedResult?.realization.totalEdges;
@@ -1850,7 +1913,13 @@ async function runForgeFlat(
     }
 
     // Step 8: Apply gates using final evaluation
-    const gateResult = applyGates(ev, config.gates, depRate);
+    const gateResult = applyGates(
+      ev,
+      config.gates,
+      depRate,
+      genericBoxCount,
+      typedBoxCount,
+    );
     if (gateResult) {
       rejections.push({ seed, reason: gateResult });
       collector.recordRejection({
@@ -1874,28 +1943,6 @@ async function runForgeFlat(
     collector.recordGatePassed();
 
     // Step 9: Count generic/typed boxes in final puzzle + box scale diagnostics
-    const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
-    const genericBoxCount = boxGoalCounts.generic;
-    const typedBoxCount = boxGoalCounts.typed;
-    const actualBoxes = boxGoalCounts.boxes;
-
-    if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
-      rejections.push({ seed, reason: "validation-failed" });
-      collector.recordRejection({
-        reason: "validation-failed", tier: difficulty, family, mode,
-        requestedBoxCount: boxCount, actualBoxCount: actualBoxes,
-      });
-      collector.recordBoxScale({
-        requestedBoxes: boxCount,
-        actualBoxes,
-        goalCount: boxGoalCounts.goals,
-        genericBoxes: genericBoxCount,
-        typedBoxes: typedBoxCount,
-        difference: actualBoxes - boxCount,
-      });
-      continue;
-    }
-
     collector.recordBoxScale({
       requestedBoxes: boxCount,
       actualBoxes,
@@ -2017,6 +2064,11 @@ function cheapEvalScore(c: ForgeCandidate): number {
   score += ev.estimatedDependencyDepth * 2;
   score += ev.boxSwitchRate * 5;
   score += Math.log2(ev.avgReachablePushes + 1) * 3;
+  score += ((ev.crossTypeSharedRouteCells ?? 0) +
+    (ev.crossTypeSharedSupportCells ?? 0) +
+    (ev.crossTypeSharedChokepoints ?? 0)) * 3;
+  score += ((ev.crossTypeCausalEnableCount ?? 0) +
+    (ev.crossTypeCausalDisableCount ?? 0)) * 2;
   score -= ev.emptyWalkRatio * 10;
   score -= ev.repetitivePushRatio * 8;
   return score;

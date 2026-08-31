@@ -4,7 +4,7 @@ import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { MotifType } from "./motifs.ts";
 import type { BoxTypingMode } from "./puzzle-forge.ts";
 
-export const CATALOG_GENERATOR_VERSION = "4.1.0" as const;
+export const CATALOG_GENERATOR_VERSION = "4.2.0" as const;
 export const REVIEW_CATALOG_SCHEMA_VERSION = 1 as const;
 
 export interface GeneratedPuzzleManifestEntry {
@@ -32,6 +32,10 @@ export interface GeneratedPuzzleManifestEntry {
   readonly difficultyGap: number;
   readonly solutionMoves: number;
   readonly solutionPushes: number;
+  readonly minPushesPerBox?: number;
+  readonly inactiveBoxCount?: number;
+  readonly onePushBoxCount?: number;
+  readonly crossTypeInteractionCount?: number;
   readonly totalFloor: number;
   readonly solversAttempted?: number;
   readonly solversSucceeded?: number;
@@ -69,6 +73,10 @@ export interface ReviewCandidatePack {
   readonly typedBoxCount?: number;
   readonly solutionMoves: number;
   readonly solutionPushes: number;
+  readonly minPushesPerBox: number;
+  readonly inactiveBoxCount: number;
+  readonly onePushBoxCount: number;
+  readonly crossTypeInteractionCount: number;
   readonly seed: number;
   readonly family: TopologyFamily;
   readonly mode: ForgeGenerationMode;

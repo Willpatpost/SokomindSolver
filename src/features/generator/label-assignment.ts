@@ -129,7 +129,7 @@ export function assignPartialLabels(
   const board = parsePuzzle(puzzle);
   const boxCount = board.initialBoxes.length;
 
-  if (boxCount < 2 || boxCount > VALID_LABELS.length) return puzzle;
+  if (boxCount < 2) return puzzle;
 
   const pairing = traceBoxGoalPairing(puzzle, solution.steps);
   if (pairing.size !== boxCount) return puzzle;
@@ -137,11 +137,17 @@ export function assignPartialLabels(
   // Determine how many pairs to type, ensuring at least 1 typed and 1 generic
   let typedCount = Math.round(boxCount * typedFraction);
   typedCount = Math.max(1, Math.min(typedCount, boxCount - 1));
+  if (typedCount > VALID_LABELS.length) return puzzle;
 
   // Build an index array [0..boxCount-1] and shuffle to pick which pairs get typed
   const indices = Array.from({ length: boxCount }, (_, i) => i);
   shuffleArray(indices, rng);
-  const typedSet = new Set(indices.slice(0, typedCount));
+  const crossings = findPathCrossings(puzzle, solution.steps);
+  const typedSet = maximizeCrossTypeRouteInteractions(
+    indices,
+    typedCount,
+    crossings,
+  );
 
   // Assign labels only to typed pairs; leave the rest as X/S
   const labels = VALID_LABELS.slice(0, typedCount) as unknown as string[];
@@ -188,6 +194,50 @@ export function assignPartialLabels(
     ...(puzzle.collection ? { collection: puzzle.collection } : {}),
     rows: newRows,
   };
+}
+
+function maximizeCrossTypeRouteInteractions(
+  shuffledIndices: readonly number[],
+  typedCount: number,
+  crossings: readonly (readonly [number, number])[],
+): Set<number> {
+  const typed = new Set(shuffledIndices.slice(0, typedCount));
+  if (crossings.length === 0) return typed;
+
+  const cutScore = (candidate: ReadonlySet<number>): number => {
+    let score = 0;
+    for (const [a, b] of crossings) {
+      if (candidate.has(a) !== candidate.has(b)) score++;
+    }
+    return score;
+  };
+
+  // Deterministic hill-climb over typed/generic swaps. The shuffled order is
+  // the seeded tie-breaker, while the objective makes the final labels expose
+  // actual route interactions instead of an arbitrary partition.
+  let bestScore = cutScore(typed);
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (const typedIndex of shuffledIndices) {
+      if (!typed.has(typedIndex)) continue;
+      for (const genericIndex of shuffledIndices) {
+        if (typed.has(genericIndex)) continue;
+        const candidate = new Set(typed);
+        candidate.delete(typedIndex);
+        candidate.add(genericIndex);
+        const score = cutScore(candidate);
+        if (score > bestScore) {
+          typed.delete(typedIndex);
+          typed.add(genericIndex);
+          bestScore = score;
+          improved = true;
+        }
+      }
+    }
+  }
+
+  return typed;
 }
 
 export function assignLabels(

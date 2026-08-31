@@ -43,7 +43,7 @@ export const GUIDED_JOURNEY_CHAPTERS: readonly JourneyChapter[] = Object.freeze(
     concept: "Protect escape routes",
     explanation: "Read corners, walls, and turning space early so a harmless-looking push does not become permanent.",
     prerequisiteChapterIds: Object.freeze(["push-fundamentals"]),
-    puzzleIds: Object.freeze(["tutorial-corner", "beginner-detour", "garden-1", "box-5x5-a"]),
+    puzzleIds: Object.freeze(["beginner-detour", "box-5x5-a", "beginner-three", "beginner-typed-line"]),
   }),
   Object.freeze({
     id: "routes-and-order",
@@ -52,7 +52,7 @@ export const GUIDED_JOURNEY_CHAPTERS: readonly JourneyChapter[] = Object.freeze(
     concept: "Sequence the work",
     explanation: "Coordinate several boxes by opening traffic lanes and solving goals in an order that preserves access.",
     prerequisiteChapterIds: Object.freeze(["space-and-corners"]),
-    puzzleIds: Object.freeze(["beginner-three", "corridor-2", "inter-rooms", "workshop-1"]),
+    puzzleIds: Object.freeze(["workshop-1", "classic-1", "theme-kitchen", "garden-2"]),
   }),
   Object.freeze({
     id: "constraint-control",
@@ -61,7 +61,7 @@ export const GUIDED_JOURNEY_CHAPTERS: readonly JourneyChapter[] = Object.freeze(
     concept: "Create room before spending it",
     explanation: "Use staging squares, rotations, and temporary displacement to manage tighter boards without sealing a lane.",
     prerequisiteChapterIds: Object.freeze(["routes-and-order"]),
-    puzzleIds: Object.freeze(["classic-1", "adv-rotary", "adv-gallery", "sym-diamond"]),
+    puzzleIds: Object.freeze(["medium", "large", "adv-gallery", "theme-parking"]),
   }),
   Object.freeze({
     id: "search-frontiers",
@@ -70,7 +70,7 @@ export const GUIDED_JOURNEY_CHAPTERS: readonly JourneyChapter[] = Object.freeze(
     concept: "Compare plans, not just pushes",
     explanation: "Tackle branching positions where progress comes from evaluating alternatives and recognizing future deadlocks.",
     prerequisiteChapterIds: Object.freeze(["constraint-control"]),
-    puzzleIds: Object.freeze(["theme-library", "expert-maze", "expert-tetris", "master-exchange"]),
+    puzzleIds: Object.freeze(["open-field", "expert-maze", "huge"]),
   }),
 ]);
 

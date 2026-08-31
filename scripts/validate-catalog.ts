@@ -59,5 +59,5 @@ for (const d of ["tutorial", "beginner", "intermediate", "advanced", "expert", "
 }
 console.log(`${"TOTAL".padEnd(13)} | ${String(generated.length).padStart(6)} | ${Object.values(labeled).reduce((a, b) => a + b, 0)}`);
 
-console.log("\n(+ 32 canonical puzzles defined in puzzles.ts)");
-console.log(`Grand total: ${generated.length + 32} puzzles`);
+console.log("\n(+ 19 canonical puzzles defined in puzzles.ts)");
+console.log(`Grand total: ${generated.length + 19} puzzles`);

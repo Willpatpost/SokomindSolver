@@ -386,13 +386,10 @@ describe("semantic: difficulty benchmark ordering (19.9)", () => {
     );
   });
 
-  it("expert-level vector classifies >= advanced", () => {
+  it("semantic richness cannot override the box-count tier", () => {
     const v = makeExpertVector();
     const profile = computeV4Profile(v);
-    assert.ok(
-      tierIndex(profile.classification) >= tierIndex("advanced"),
-      `expert vector classified as ${profile.classification}, expected >= advanced`,
-    );
+    assert.equal(profile.classification, "beginner");
   });
 
   it("V4 tier thresholds are monotonically increasing", () => {
@@ -430,13 +427,10 @@ describe("semantic: difficulty benchmark ordering (19.9)", () => {
     );
   });
 
-  it("catastrophic misclassification: rich puzzle never classified tutorial", () => {
-    const v = makeExpertVector();
+  it("18 boxes classify as master regardless of semantic score", () => {
+    const v = { ...makeExpertVector(), boxCount: 18 };
     const profile = computeV4Profile(v);
-    assert.ok(
-      profile.classification !== "tutorial",
-      "expert-level puzzle must never be classified as tutorial",
-    );
+    assert.equal(profile.classification, "master");
   });
 });
 

@@ -370,7 +370,7 @@ describe("review-catalog", () => {
       const tierPacks = new Map<Difficulty, { target: number; packs: ReviewCandidatePack[] }>();
       tierPacks.set("tutorial", { target: 5, packs: [] });
       const catalog = buildReviewCatalog(tierPacks);
-      assert.equal(catalog.generatorVersion, "4.1.0");
+      assert.equal(catalog.generatorVersion, "4.2.0");
     });
 
     it("records tier filter when specified", () => {

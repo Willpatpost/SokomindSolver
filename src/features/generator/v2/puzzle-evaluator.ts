@@ -58,6 +58,14 @@ export interface PuzzleEvaluationVector {
   readonly sharedChokepointUses: number;
   readonly causalEnableCount: number;
   readonly causalDisableCount: number;
+  readonly crossTypeSharedRouteCells?: number;
+  readonly crossTypeSharedSupportCells?: number;
+  readonly crossTypeSharedChokepoints?: number;
+  readonly crossTypeCausalEnableCount?: number;
+  readonly crossTypeCausalDisableCount?: number;
+  readonly minPushesPerBox?: number;
+  readonly inactiveBoxCount?: number;
+  readonly onePushBoxCount?: number;
 
   // --- Packing / room traffic ---
   readonly roomCrossingsInSolution: number;
@@ -199,6 +207,14 @@ export async function evaluatePuzzleWithSteps(
       sharedChokepointUses: interactionMetrics.sharedChokepointUses,
       causalEnableCount: interactionMetrics.causalEnableCount,
       causalDisableCount: interactionMetrics.causalDisableCount,
+      crossTypeSharedRouteCells: interactionMetrics.crossTypeSharedRouteCells,
+      crossTypeSharedSupportCells: interactionMetrics.crossTypeSharedSupportCells,
+      crossTypeSharedChokepoints: interactionMetrics.crossTypeSharedChokepoints,
+      crossTypeCausalEnableCount: interactionMetrics.crossTypeCausalEnableCount,
+      crossTypeCausalDisableCount: interactionMetrics.crossTypeCausalDisableCount,
+      minPushesPerBox: interactionMetrics.minPushesPerBox,
+      inactiveBoxCount: interactionMetrics.inactiveBoxCount,
+      onePushBoxCount: interactionMetrics.onePushBoxCount,
       roomCrossingsInSolution: roomMetrics.roomCrossings,
       deadlockDensity: effortMetrics.expanded > 0
         ? effortMetrics.deadlockPrunes / effortMetrics.expanded

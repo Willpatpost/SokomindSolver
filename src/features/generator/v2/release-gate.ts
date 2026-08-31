@@ -23,6 +23,7 @@ import type {
 } from "./catalog-manifest-types.ts";
 import { REVIEW_CATALOG_SCHEMA_VERSION } from "./catalog-manifest-types.ts";
 import { QUALITY_FLOORS } from "./quality-gate.ts";
+import { classifyDifficultyByBoxCount } from "./difficulty-model.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -57,16 +58,16 @@ export interface ReleaseGateConfig {
 export const DEFAULT_RELEASE_GATE_CONFIG: ReleaseGateConfig = {
   minTotalPuzzles: 10,
   tierQuotas: {
-    tutorial: { min: 1, target: 5 },
+    tutorial: { min: 0, target: 0 },
     beginner: { min: 2, target: 10 },
     intermediate: { min: 2, target: 15 },
     advanced: { min: 1, target: 10 },
-    expert: { min: 0, target: 5 },
-    master: { min: 0, target: 3 },
+    expert: { min: 1, target: 5 },
+    master: { min: 1, target: 3 },
   },
   maxTopologyConcentration: 0.60,
   maxModeConcentration: 0.70,
-  maxDifficultyGap: 2,
+  maxDifficultyGap: 0,
   minDistinctTopologies: 2,
   minDistinctModes: 2,
   minDistinctBoxCounts: 2,
@@ -176,7 +177,16 @@ function validateReviewCatalogShape(value: unknown): {
           errors.push(`${label} ${field} is invalid`);
         }
       }
-      for (const field of ["difficultyGap", "boxCount"] as const) {
+      for (const field of [
+        "difficultyGap",
+        "boxCount",
+        "genericBoxCount",
+        "typedBoxCount",
+        "minPushesPerBox",
+        "inactiveBoxCount",
+        "onePushBoxCount",
+        "crossTypeInteractionCount",
+      ] as const) {
         if (typeof rawPack[field] !== "number" || !Number.isFinite(rawPack[field])) {
           errors.push(`${label} ${field} must be finite`);
         }
@@ -257,6 +267,12 @@ export function checkReviewManifestBinding(
     "mode",
     "boxCount",
     "typingMode",
+    "genericBoxCount",
+    "typedBoxCount",
+    "minPushesPerBox",
+    "inactiveBoxCount",
+    "onePushBoxCount",
+    "crossTypeInteractionCount",
     "intendedDifficulty",
     "classifiedDifficulty",
     "difficultyGap",
@@ -421,6 +437,46 @@ export function checkReleaseGate(
 
   // ---- 4. Quality and mechanism evidence ----
   for (const pack of allPacks) {
+    const boxCountTier = classifyDifficultyByBoxCount(pack.boxCount);
+    if (boxCountTier === "tutorial") {
+      errors.push(`Puzzle "${pack.id}": Tutorial puzzles must not be generator-produced`);
+    }
+    if (
+      pack.difficulty !== boxCountTier ||
+      pack.intendedDifficulty !== boxCountTier ||
+      pack.classifiedDifficulty !== boxCountTier
+    ) {
+      errors.push(
+        `Puzzle "${pack.id}": ${pack.boxCount} boxes requires tier ${boxCountTier}`,
+      );
+    }
+
+    const minPerClass = boxCountTier === "beginner" ? 1 : 2;
+    if (
+      pack.typingMode !== "hybrid" ||
+      (pack.genericBoxCount ?? 0) < minPerClass ||
+      (pack.typedBoxCount ?? 0) < minPerClass ||
+      (pack.genericBoxCount ?? 0) + (pack.typedBoxCount ?? 0) !== pack.boxCount
+    ) {
+      errors.push(
+        `Puzzle "${pack.id}": requires hybrid typing with at least ${minPerClass} generic and ${minPerClass} typed boxes`,
+      );
+    }
+    if (
+      (pack.minPushesPerBox ?? 0) < 2 ||
+      (pack.inactiveBoxCount ?? 1) !== 0 ||
+      (pack.onePushBoxCount ?? 1) !== 0
+    ) {
+      errors.push(
+        `Puzzle "${pack.id}": every box must participate with at least two pushes`,
+      );
+    }
+    if ((pack.crossTypeInteractionCount ?? 0) < 1) {
+      errors.push(
+        `Puzzle "${pack.id}": lacks verified typed/generic interaction`,
+      );
+    }
+
     if (!pack.qualityPassed) {
       const reasons = pack.qualityReasons.length > 0
         ? `: ${pack.qualityReasons.join("; ")}`

@@ -176,8 +176,8 @@ fails when the generated facts below differ from source.
 - License: `MIT`
 - Supported Node.js: `^22.13.0 || >=24.0.0`
 - Catalog schema: `2`
-- Puzzles: **79** across **2** collections and **2** shards
-- Difficulty counts: `tutorial` 21, `beginner` 14, `intermediate` 7, `advanced` 18, `expert` 12, `master` 7
+- Puzzles: **19** across **1** collections and **1** shards
+- Difficulty counts: `tutorial` 4, `beginner` 4, `intermediate` 5, `advanced` 4, `expert` 2
 
 ### Routes
 

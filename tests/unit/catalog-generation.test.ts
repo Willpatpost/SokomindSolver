@@ -316,7 +316,7 @@ test("current generated catalog board hash uniqueness check", () => {
   }
 });
 
-test("current generated manifest records V4.1 and effective typing modes", () => {
+test("current generated manifest records the empty V4.2 catalog", () => {
   const manifestPath = join(
     __dirname,
     "../../src/catalog/generated-puzzles.manifest.json",
@@ -326,12 +326,8 @@ test("current generated manifest records V4.1 and effective typing modes", () =>
     puzzles?: Array<{ boxCount?: number; typingMode?: string }>;
   };
 
-  assert.equal(manifest.generatorVersion, "4.1.0");
-  for (const puzzle of manifest.puzzles ?? []) {
-    if (puzzle.boxCount === 1) {
-      assert.equal(puzzle.typingMode, "generic");
-    }
-  }
+  assert.equal(manifest.generatorVersion, "4.2.0");
+  assert.deepEqual(manifest.puzzles, []);
 });
 
 test("V1 benchmark fixture exists and has expected structure", () => {

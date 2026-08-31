@@ -8,6 +8,36 @@
 
 ---
 
+## Current catalog contract (Generator 4.2)
+
+The catalog generator now uses box count as the sole tier assignment rule:
+
+| Generated tier | Box count |
+|---|---:|
+| Beginner | 3–6 |
+| Intermediate | 7–9 |
+| Advanced | 10–13 |
+| Expert | 14–17 |
+| Master | 18+ (currently sampled through 22) |
+
+Ten boxes belongs to Advanced; this resolves the formerly overlapping
+Intermediate 7–10 and Advanced 10–13 boundary. Tutorial remains a handcrafted
+onboarding tier and is not produced by the catalog generator.
+
+Every generated candidate must be hybrid. Beginner requires at least one
+generic and one typed box; every later tier requires at least two of each.
+The verified solver route must push every box at least twice, and must contain
+typed/generic interaction through shared routes, shared support or chokepoint
+cells, or causal enable/disable events. Hybrid label assignment maximizes the
+cut between crossing box routes so generic destinations retain ambiguity while
+typed and generic pieces participate in the same mechanisms.
+
+Difficulty scores remain useful for quality ranking and rejection within a
+tier, but they no longer reclassify a puzzle. There is no optimal-move proof or
+minimum-move requirement in this policy.
+
+---
+
 ## 1. Purpose
 
 Generator V4 should turn the current procedural generator from a fast catalog-filling system into a quality-first Sokoban puzzle generator capable of producing a large, varied library of genuinely enjoyable puzzles across all difficulty levels.
@@ -1037,14 +1067,17 @@ A key V4 principle is:
 
 # 6. Recommended implementation phases
 
-## Phase 0 — Protect the existing system
+## Phase 0 — Reset and define the quality baseline
 
 Before major changes:
 
-- preserve the current generated catalog as a fixture or tag if not already preserved;
-- ensure the project has a clean passing baseline;
-- create a Generator V4 branch if desired;
-- add deterministic smoke-generation fixtures to make iteration fast.
+- clear the rejected generated catalog and its manifest entries;
+- remove rejected handcrafted puzzles from the user-facing catalog;
+- regenerate lazy catalog metadata and shards from the retained originals;
+- record the rejected catalog's aggregate baseline without preserving its boards;
+- define the solution-story evidence contract;
+- add deterministic qualitative calibration fixtures for every planned story feature;
+- ensure the retained catalog and generator have a passing validation baseline.
 
 Do not regenerate the production catalog after every intermediate phase.
 

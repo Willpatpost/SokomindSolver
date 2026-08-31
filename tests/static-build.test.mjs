@@ -298,8 +298,8 @@ test("asset manifest lists all hashed build assets", async () => {
     );
   }
   assert.ok(
-    manifest.runtime.filter((entry) => /puzzle-shard-/u.test(entry)).length > 1,
-    "board data should be split across multiple runtime-loaded shards",
+    manifest.runtime.filter((entry) => /puzzle-shard-/u.test(entry)).length >= 1,
+    "board data should remain in runtime-loaded shards",
   );
 });
 
@@ -416,7 +416,7 @@ test("production delivery stays within reviewed gzip budgets", async () => {
     totalGzipBytes,
     DELIVERY_BUDGETS.allScriptsAndStylesGzipBytes,
   );
-  assert.ok(puzzleShards.length > 1, "expected multiple puzzle board shards");
+  assert.ok(puzzleShards.length >= 1, "expected at least one puzzle board shard");
   const largestPuzzleShard = puzzleShards.reduce((current, shard) =>
     shard.gzipBytes > current.gzipBytes ? shard : current,
   );

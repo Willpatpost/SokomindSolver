@@ -6,10 +6,10 @@ Working reference derived from `docs/generator-v4-roadmap.md`.
 
 ## Removing existing generated puzzles before starting
 
-The roadmap does **not** say to delete or clear `generated-puzzles.json`.
-Phase 0 explicitly says to preserve the current catalog. Phase 10 says to
-generate a review catalog first and overwrite production only after human
-acceptance. No phase mentions deleting or clearing generated puzzles.
+Phase 0 now intentionally clears the rejected generated catalog and removes the
+explicitly rejected originals. Only aggregate baseline measurements are kept;
+the rejected generated boards are not retained as fixtures. Future catalogs are
+still generated into review artifacts and promoted only after acceptance.
 
 ---
 
@@ -33,20 +33,25 @@ Section 15 lists 20 sequential steps as the recommended immediate order.
 
 ---
 
-## Phase 0 -- Protect the existing system
+## Phase 0 -- Reset and define the quality baseline
 
-**Goal:** Safe baseline before changes.
+**Goal:** Start from an intentionally empty generated catalog with explicit
+quality contracts and retained-original calibration fixtures.
 
 **Tasks:**
-1. Preserve current generated catalog as fixture or git tag
-2. Ensure clean passing test baseline
-3. Create V4 branch (optional)
-4. Add deterministic smoke-generation fixtures
+1. Clear the generated catalog and manifest entries
+2. Remove the 13 rejected originals from the user-facing catalog
+3. Regenerate catalog metadata and lazy board shards
+4. Record aggregate pre-deletion catalog measurements
+5. Define the solution-story schema
+6. Add deterministic calibration fixtures for all planned story features
+7. Ensure a passing validation baseline
 
-**Files:** `src/catalog/generated-puzzles.json` (snapshot only),
-`src/catalog/generated-puzzles.manifest.json` (snapshot only), `tests/`
+**Files:** `src/catalog/puzzles.ts`, `src/catalog/generated-puzzles.json`,
+`src/catalog/generated-puzzles.manifest.json`, generated catalog metadata,
+`tests/fixtures/generator/`, and generator contract documentation.
 
-**Deps:** None. **Clears puzzles:** No, explicitly preserves them.
+**Deps:** None. **Clears puzzles:** Yes, by explicit product decision.
 
 ---
 

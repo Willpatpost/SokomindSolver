@@ -8,6 +8,7 @@ import {
   computeTediumPenalty,
   benchmarkAgainstExpected,
   summarizeBenchmark,
+  classifyDifficultyByBoxCount,
   V4_TIER_THRESHOLDS,
 } from "../../src/features/generator/v2/difficulty-model.ts";
 import type { PuzzleEvaluationVector } from "../../src/features/generator/v2/puzzle-evaluator.ts";
@@ -80,6 +81,21 @@ function makeVector(overrides: Partial<PuzzleEvaluationVector> = {}): PuzzleEval
 }
 
 describe("difficulty-model", () => {
+  describe("classifyDifficultyByBoxCount", () => {
+    it("uses non-overlapping box-count-only tier boundaries", () => {
+      assert.equal(classifyDifficultyByBoxCount(2), "tutorial");
+      assert.equal(classifyDifficultyByBoxCount(3), "beginner");
+      assert.equal(classifyDifficultyByBoxCount(6), "beginner");
+      assert.equal(classifyDifficultyByBoxCount(7), "intermediate");
+      assert.equal(classifyDifficultyByBoxCount(9), "intermediate");
+      assert.equal(classifyDifficultyByBoxCount(10), "advanced");
+      assert.equal(classifyDifficultyByBoxCount(13), "advanced");
+      assert.equal(classifyDifficultyByBoxCount(14), "expert");
+      assert.equal(classifyDifficultyByBoxCount(17), "expert");
+      assert.equal(classifyDifficultyByBoxCount(18), "master");
+      assert.equal(classifyDifficultyByBoxCount(40), "master");
+    });
+  });
   describe("V4_TIER_THRESHOLDS", () => {
     it("has entries for all 6 tiers", () => {
       const tiers = ["tutorial", "beginner", "intermediate", "advanced", "expert", "master"] as const;

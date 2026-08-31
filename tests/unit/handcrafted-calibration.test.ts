@@ -7,6 +7,7 @@ import { getPuzzleById } from "../../src/catalog/puzzles.ts";
 import {
   evaluatePuzzleWithSteps,
   buildCalibrationReport,
+  classifyDifficultyByBoxCount,
   formatCalibrationReport,
 } from "../../src/features/generator/v2/index.ts";
 import type { CalibrationReport } from "../../src/features/generator/v2/index.ts";
@@ -20,15 +21,6 @@ interface BenchmarkEntry {
   height: number;
   totalFloor: number;
 }
-
-const TIER_INDEX: Record<Difficulty, number> = {
-  tutorial: 0,
-  beginner: 1,
-  intermediate: 2,
-  advanced: 3,
-  expert: 4,
-  master: 5,
-};
 
 const fixtureRaw = readFileSync(
   join(import.meta.dirname!, "../../tests/fixtures/generator/handcrafted-benchmark.json"),
@@ -52,12 +44,13 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
     calibrationData.push({
       puzzleId: entry.id,
-      expectedTier: entry.difficulty,
+      expectedTier: classifyDifficultyByBoxCount(entry.boxes),
       vector: result.vector,
     });
+    assert.equal(result.vector.boxCount, entry.boxes, `${entry.id} box count drifted`);
   }
 
-  assert.ok(calibrationData.length >= 20, `expected >= 20 evaluated puzzles, got ${calibrationData.length}`);
+  assert.ok(calibrationData.length >= 15, `expected >= 15 evaluated puzzles, got ${calibrationData.length}`);
   assert.ok(
     unresolved.length <= 1,
     `too many calibration fixtures were unresolved: ${unresolved.join(", ")}`,
@@ -69,30 +62,17 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
   assert.equal(report.totalPuzzles, calibrationData.length);
   assert.ok(
-    report.exactMatchAccuracy >= 0.7,
-    `exact-match accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is below 70%`,
+    report.exactMatchAccuracy === 1,
+    `box-count tier accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is not exact`,
   );
   assert.ok(
-    report.withinOneTierAccuracy >= 0.9,
-    `within-one-tier accuracy ${(report.withinOneTierAccuracy * 100).toFixed(1)}% is below 90%`,
-  );
-  assert.ok(
-    report.perTierAccuracy.expert.matches > 0,
-    "expert calibration requires at least one exact match",
-  );
-  assert.ok(
-    report.perTierAccuracy.master.matches > 0,
-    "master calibration requires at least one exact match",
+    report.withinOneTierAccuracy === 1,
+    `box-count within-one accuracy ${(report.withinOneTierAccuracy * 100).toFixed(1)}% is not exact`,
   );
 
   for (const entry of report.entries) {
     if (entry.expectedTier === "tutorial") {
       assert.notEqual(entry.predictedTier, "master", `tutorial puzzle ${entry.puzzleId} classified as master`);
     }
-  }
-
-  if (report.worstOverclassification) {
-    const delta = TIER_INDEX[report.worstOverclassification.predictedTier] - TIER_INDEX[report.worstOverclassification.expectedTier];
-    assert.ok(delta <= 3, `worst overclassification delta ${delta} exceeds limit 3 (puzzle ${report.worstOverclassification.puzzleId})`);
   }
 });

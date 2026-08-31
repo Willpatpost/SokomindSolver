@@ -162,7 +162,7 @@ export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {
 
 export const EXPERT_SEARCH_PROFILE: ReverseSearchProfile = {
   beamWidth: 12,
-  maxDepth: 120,
+  maxDepth: 140,
   restartCount: 5,
   diverseArchiveSize: 32,
   diversityRadius: 3,
@@ -173,7 +173,7 @@ export const EXPERT_SEARCH_PROFILE: ReverseSearchProfile = {
 
 export const MASTER_SEARCH_PROFILE: ReverseSearchProfile = {
   beamWidth: 16,
-  maxDepth: 160,
+  maxDepth: 200,
   restartCount: 8,
   diverseArchiveSize: 48,
   diversityRadius: 4,

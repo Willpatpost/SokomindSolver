@@ -30,6 +30,21 @@ export const V4_TIER_THRESHOLDS: Readonly<Record<Difficulty, V4DifficultyThresho
   master:        { minComposite: 80.0, minStructural: 5.0, minDepth: 30.0, minReasoning: 50.0, maxTedium: 0.55, minBoxes: 8, minPushes: 30 },
 };
 
+/**
+ * Catalog tiers are a box-count taxonomy. Quality and solution metrics still
+ * rank and reject candidates within a tier, but never rename that tier.
+ * Ten boxes belongs to Advanced so the requested overlapping boundary is
+ * deterministic.
+ */
+export function classifyDifficultyByBoxCount(boxCount: number): Difficulty {
+  if (boxCount >= 18) return "master";
+  if (boxCount >= 14) return "expert";
+  if (boxCount >= 10) return "advanced";
+  if (boxCount >= 7) return "intermediate";
+  if (boxCount >= 3) return "beginner";
+  return "tutorial";
+}
+
 const TIER_ORDER: readonly Difficulty[] = [
   "tutorial",
   "beginner",
@@ -119,23 +134,8 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
   const composite = structuralScale + solutionDepth + humanReasoningComplexity -
     tediumPenalty * 7;
 
-  const classification = classifyFromProfile(
-    composite,
-    structuralScale,
-    solutionDepth,
-    humanReasoningComplexity,
-    tediumPenalty,
-    ev.boxCount,
-    ev.solutionPushes,
-  );
-
-  const confidenceNote = buildConfidenceNote(
-    classification,
-    structuralScale,
-    solutionDepth,
-    humanReasoningComplexity,
-    tediumPenalty,
-  );
+  const classification = classifyDifficultyByBoxCount(ev.boxCount);
+  const confidenceNote = `classified solely from ${ev.boxCount} boxes`;
 
   return {
     structuralScale,
@@ -146,59 +146,6 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
     classification,
     confidenceNote,
   };
-}
-
-function classifyFromProfile(
-  composite: number,
-  structural: number,
-  depth: number,
-  reasoning: number,
-  tedium: number,
-  boxCount: number,
-  solutionPushes: number,
-): Difficulty {
-  for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
-    const tier = TIER_ORDER[i];
-    const t = V4_TIER_THRESHOLDS[tier];
-
-    if (
-      composite >= t.minComposite &&
-      structural >= t.minStructural &&
-      depth >= t.minDepth &&
-      reasoning >= t.minReasoning &&
-      tedium <= t.maxTedium &&
-      boxCount >= (t.minBoxes ?? 0) &&
-      solutionPushes >= (t.minPushes ?? 0)
-    ) {
-      return tier;
-    }
-  }
-  return "tutorial";
-}
-
-function buildConfidenceNote(
-  tier: Difficulty,
-  structural: number,
-  depth: number,
-  reasoning: number,
-  tedium: number,
-): string {
-  const t = V4_TIER_THRESHOLDS[tier];
-  const notes: string[] = [];
-
-  if (tier !== "tutorial") {
-    if (structural < t.minStructural * 1.2)
-      notes.push("structural scale near threshold");
-    if (depth < t.minDepth * 1.2)
-      notes.push("solution depth near threshold");
-    if (reasoning < t.minReasoning * 1.2)
-      notes.push("reasoning complexity near threshold");
-    if (tedium > t.maxTedium * 0.85)
-      notes.push("tedium approaching limit");
-  }
-
-  if (notes.length === 0) return "confident";
-  return notes.join("; ");
 }
 
 export interface V4BenchmarkEntry {

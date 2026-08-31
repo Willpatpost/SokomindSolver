@@ -29,8 +29,8 @@ function isDedicatedBox(character: string): boolean {
   return /^[A-Z]$/.test(character) && !RESERVED_UPPERCASE.has(character);
 }
 
-test("catalog contains canonical + generated puzzles with unique ids", () => {
-  assert.ok(PUZZLES.length >= 50, `expected >=50 puzzles, got ${PUZZLES.length}`);
+test("catalog contains the retained canonical puzzles with unique ids", () => {
+  assert.equal(PUZZLES.length, 19);
   assert.equal(new Set(PUZZLES.map((puzzle) => puzzle.id)).size, PUZZLES.length);
   assert.equal(Object.keys(PUZZLE_BY_ID).length, PUZZLES.length);
 });
@@ -122,13 +122,33 @@ test("Grand Hall retains the historic huge id", () => {
   assert.equal(PUZZLE_BY_ID["huge"]?.title, "Grand Hall");
 });
 
-test("migration corrects the six stale legacy box-count labels", () => {
+test("rejected originals are absent from the user-facing catalog", () => {
+  const rejectedIds = [
+    "tutorial-corner",
+    "garden-1",
+    "inter-rooms",
+    "corridor-2",
+    "adv-rotary",
+    "adv-four-color",
+    "box-7x7",
+    "sym-diamond",
+    "theme-library",
+    "expert-tetris",
+    "theme-museum",
+    "master-exchange",
+    "master-typed-grid",
+  ];
+
+  for (const id of rejectedIds) {
+    assert.equal(PUZZLE_BY_ID[id], undefined, `${id} should not be in the catalog`);
+  }
+});
+
+test("migration retains corrected legacy box-count labels", () => {
   const corrections = {
     medium: { legacy: 5, actual: 8 },
     "garden-2": { legacy: 4, actual: 2 },
     large: { legacy: 5, actual: 6 },
-    "adv-rotary": { legacy: 4, actual: 2 },
-    "sym-diamond": { legacy: 4, actual: 3 },
     huge: { legacy: 12, actual: 17 },
   } as const;
 
@@ -160,12 +180,10 @@ test("catalog helpers preserve curriculum order and support filters", () => {
     );
   }
 
-  // Canonical expert puzzles still appear in expert filter results
+  // The retained canonical expert puzzle still appears in expert filter results.
   const expertSmall = getOrderedPuzzles({ difficulty: "expert", maxBoxes: 6 });
   const expertIds = new Set(expertSmall.map((p) => p.id));
   assert.ok(expertIds.has("expert-maze"));
-  assert.ok(expertIds.has("expert-tetris"));
-  assert.ok(expertIds.has("theme-museum"));
 
   assert.deepEqual(
     getOrderedPuzzles({ search: "grand hall" }).map((puzzle) => puzzle.id),

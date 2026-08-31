@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "status": "phase-0-qualitative-calibration",
+  "features": [
+    { "id": "generic-goal-misdirection", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["open-field"] },
+    { "id": "temporary-progress-reversal", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["beginner-three"] },
+    { "id": "multi-room-journey", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["medium"] },
+    { "id": "goal-room-packing", "positivePuzzleIds": ["large"], "nearMissPuzzleIds": ["open-field"] },
+    { "id": "gate-key-box", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["adv-gallery"] },
+    { "id": "interleaved-box-classes", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["beginner-typed-line"] },
+    { "id": "distinct-solution-phases", "positivePuzzleIds": ["huge"], "nearMissPuzzleIds": ["box-5x5-a"] },
+    { "id": "controlled-false-start", "positivePuzzleIds": ["expert-maze"], "nearMissPuzzleIds": ["tutorial-push"] },
+    { "id": "recovery-optionality", "positivePuzzleIds": ["theme-parking"], "nearMissPuzzleIds": ["beginner-three"] },
+    { "id": "visual-identity", "positivePuzzleIds": ["adv-gallery", "huge"], "nearMissPuzzleIds": ["open-field"] }
+  ]
+}
