@@ -1,9 +1,13 @@
-export * from "./cancellation.ts";
-export * from "./compatibility.ts";
-export * from "./contracts.ts";
-export * from "./protocol.ts";
-export * from "./registry.ts";
-export * from "./validation.ts";
-export * from "./verification.ts";
-export * from "./worker-client.ts";
-export * from "./worker-host.ts";
+export type {
+  SolutionStep,
+  SolverMetadata,
+  SolverPhase,
+  SolverProgress,
+  SolverResult,
+} from "./contracts.ts";
+
+export {
+  createSolverWorkerClient,
+  type SolverRunHandle,
+  type SolverWorkerClient,
+} from "./worker-client.ts";

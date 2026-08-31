@@ -139,8 +139,8 @@ history, so long routes do not copy every earlier snapshot per move.
 - [Living project reference](docs/PROJECT-REFERENCE.md) — authoritative owners,
   contracts, source-derived versions, routes, storage keys, and validation
 - [Architecture](docs/architecture.md)
-- [Consolidated August 11 audit](docs/AUG11AUDIT.MD)
-- [August 11 improvements roadmap](docs/AUG11IMPROVEMENTS.MD)
+- [Consolidated August 11 audit](docs/archive/AUG11AUDIT.MD)
+- [August 11 improvements roadmap](docs/archive/AUG11IMPROVEMENTS.MD)
 - [Experience, sound, and motion](docs/experience.md)
 - [GitHub Pages deployment](docs/deployment.md)
 - [Solver integration](docs/solver-integration.md)

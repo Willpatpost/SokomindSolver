@@ -54,7 +54,7 @@ undifferentiated feature list.
 - Exact preprocessing shares the run budget, frozen optimum gates are
   executable, benchmark promotion requires clean median-five evidence, and
   A/B decisions can veto time or RSS regressions.
-- [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md) is the source-checked index of
+- [`PROJECT-REFERENCE.md`](../PROJECT-REFERENCE.md) is the source-checked index of
   important modules, APIs, schemas, defaults, and engineering contracts.
 
 The sections below describe what remains beyond those foundations.

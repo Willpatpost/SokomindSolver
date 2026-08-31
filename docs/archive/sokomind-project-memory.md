@@ -6,7 +6,7 @@
 **Primary repository:** `Willpatpost/SokomindSolver`  
 
 Current contracts, paths, versions, storage keys, routes, and validation commands
-are authoritative in [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md). Historical
+are authoritative in [`PROJECT-REFERENCE.md`](../PROJECT-REFERENCE.md). Historical
 cluster paths and sprint plans below explain prior work only.
 
 ---

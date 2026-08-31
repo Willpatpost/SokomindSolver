@@ -730,7 +730,7 @@ explicit non-overlapping owners; standard and parallel proof gates run in CI
 with the extended optimum scheduled separately; Dependabot surfaces majors as
 individual reviews; SLURM scripts derive the checkout and accept environment
 overrides; documentation validation covers root/docs links, anchors, paths,
-commands, and encoding. [`PROJECT-REFERENCE.md`](PROJECT-REFERENCE.md) maps
+commands, and encoding. [`PROJECT-REFERENCE.md`](../PROJECT-REFERENCE.md) maps
 important APIs and generates volatile facts directly from source.
 
 **Evidence:** synthetic skip/todo rejection, workflow/package commands, shell

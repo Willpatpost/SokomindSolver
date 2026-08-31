@@ -50,6 +50,8 @@ export interface DependencyEdgeVerification {
   readonly evidence: readonly DependencyEvidence[];
 }
 
+type EdgeVerificationBody = Omit<DependencyEdgeVerification, "edge">;
+
 export interface DependencyVerificationResult {
   readonly totalEdges: number;
   readonly realizedEdges: number;
@@ -175,13 +177,12 @@ function verifyMustPrecede(
   fromNode: DepNode,
   toNode: DepNode,
   completions: BoxCompletionEvent[],
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -198,7 +199,6 @@ function verifyMustPrecede(
   }];
 
   return {
-    edge: null!,
     realized,
     confidence: "observed",
     reason: realized
@@ -215,13 +215,12 @@ function verifyBlocksAccess(
   steps: readonly SolutionStep[],
   moveEvents: BoxMoveEvent[],
   completions: BoxCompletionEvent[],
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -265,7 +264,6 @@ function verifyBlocksAccess(
   }
 
   return {
-    edge: null!,
     realized: orderCorrect,
     confidence: evidence.length > 1 ? "structural" : "observed",
     reason: orderCorrect
@@ -280,13 +278,13 @@ function verifyMustStage(
   toNode: DepNode,
   moveEvents: BoxMoveEvent[],
   completions: BoxCompletionEvent[],
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -334,7 +332,7 @@ function verifyMustStage(
   const realized = orderCorrect && stagingDetected;
 
   return {
-    edge: null!,
+
     realized,
     confidence: stagingDetected ? "structural" : "observed",
     reason: realized
@@ -352,13 +350,13 @@ function verifySharesPassage(
   boxRoutes: Map<number, Set<string>>,
   completions: BoxCompletionEvent[],
   passageCells?: ReadonlySet<string>,
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -401,7 +399,7 @@ function verifySharesPassage(
     (sharedCells > 0 || evidence.length > 0);
 
   return {
-    edge: null!,
+
     realized,
     confidence: evidence.length > 0 ? "structural" : "observed",
     reason: realized
@@ -418,13 +416,13 @@ function verifyMustReopen(
   toNode: DepNode,
   moveEvents: BoxMoveEvent[],
   completions: BoxCompletionEvent[],
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -475,7 +473,7 @@ function verifyMustReopen(
   const realized = reopenDetected;
 
   return {
-    edge: null!,
+
     realized,
     confidence: reopenDetected ? "structural" : "observed",
     reason: realized
@@ -490,13 +488,13 @@ function verifyMustPark(
   toNode: DepNode,
   moveEvents: BoxMoveEvent[],
   completions: BoxCompletionEvent[],
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -538,7 +536,7 @@ function verifyMustPark(
   const realized = parkDetected;
 
   return {
-    edge: null!,
+
     realized,
     confidence: parkDetected ? "structural" : "observed",
     reason: realized
@@ -553,13 +551,13 @@ function verifyChainLink(
   toNode: DepNode,
   completions: BoxCompletionEvent[],
   dag: DepDAG,
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -620,7 +618,7 @@ function verifyChainLink(
   const confidence: VerificationConfidence = chainLength >= 3 ? "structural" : "observed";
 
   return {
-    edge: null!,
+
     realized,
     confidence,
     reason: realized
@@ -636,13 +634,13 @@ function verifyExchangeCross(
   boxRoutes: Map<number, Set<string>>,
   completions: BoxCompletionEvent[],
   passageCells?: ReadonlySet<string>,
-): DependencyEdgeVerification & { realized: boolean } {
+): EdgeVerificationBody {
   const fromCompletion = completions.find((c) => c.goalIndex === fromNode.goalIndex);
   const toCompletion = completions.find((c) => c.goalIndex === toNode.goalIndex);
 
   if (!fromCompletion || !toCompletion) {
     return {
-      edge: null!,
+
       realized: false,
       confidence: "observed",
       reason: !fromCompletion
@@ -707,7 +705,7 @@ function verifyExchangeCross(
   }
 
   return {
-    edge: null!,
+
     realized,
     confidence: realized ? "structural" : "observed",
     reason: realized
@@ -980,7 +978,7 @@ export function verifyDependenciesWithEvidence(
       continue;
     }
 
-    let result: DependencyEdgeVerification & { realized: boolean };
+    let result: EdgeVerificationBody;
 
     switch (edge.type) {
       case "must-precede":
@@ -1009,7 +1007,6 @@ export function verifyDependenciesWithEvidence(
         break;
       default:
         result = {
-          edge,
           realized: false,
           confidence: "observed",
           reason: `Unknown edge type: ${edge.type}`,
