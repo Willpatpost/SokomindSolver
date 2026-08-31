@@ -124,7 +124,7 @@ test("builds a complete static GitHub Pages entry point", async () => {
   assert.match(
     html,
     new RegExp(
-      `property="og:image"\\s+content="${escapeRegExp(new URL("og.png", expectedPublicSiteUrl).href)}"`,
+      `property="og:image"\\s+content="${escapeRegExp(new URL("og.jpg", expectedPublicSiteUrl).href)}"`,
     ),
   );
   assert.match(html, /rel="manifest" href="\.\/manifest\.webmanifest"/);
@@ -132,7 +132,7 @@ test("builds a complete static GitHub Pages entry point", async () => {
   await Promise.all([
     access(path.join(buildDirectory, ".nojekyll")),
     access(path.join(buildDirectory, "favicon.svg")),
-    access(path.join(buildDirectory, "og.png")),
+    access(path.join(buildDirectory, "og.jpg")),
     access(path.join(buildDirectory, "manifest.webmanifest")),
     access(path.join(buildDirectory, "sw.js")),
     access(path.join(buildDirectory, "icon-192.png")),
