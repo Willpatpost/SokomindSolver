@@ -8,6 +8,7 @@ import {
   forgeRunReport,
   enumerateForgeCombinations,
   createForgeSchedule,
+  resolveBoxTypingMode,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
@@ -504,4 +505,11 @@ test("ForgeRunResult includes exactDuplicatesRejected field", async () => {
   });
   assert.equal(typeof result.exactDuplicatesRejected, "number");
   assert.ok(result.exactDuplicatesRejected >= 0);
+});
+
+test("one-box candidates normalize requested typing to generic", () => {
+  assert.equal(resolveBoxTypingMode("typed", 1), "generic");
+  assert.equal(resolveBoxTypingMode("hybrid", 1), "generic");
+  assert.equal(resolveBoxTypingMode("typed", 2), "typed");
+  assert.equal(resolveBoxTypingMode("hybrid", 2), "hybrid");
 });

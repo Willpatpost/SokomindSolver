@@ -48,9 +48,10 @@ import {
   formatReviewSummary,
   validateForAcceptance,
   checkReleaseGate,
+  checkReviewManifestBinding,
   formatReleaseVerdict,
   type ReviewCandidatePack,
-  type ReviewCatalog,
+  CATALOG_GENERATOR_VERSION,
 } from "../src/features/generator/v2/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -675,7 +676,7 @@ function buildManifest(
 
   return {
     schemaVersion: 1,
-    generatorVersion: "3.0.0",
+    generatorVersion: CATALOG_GENERATOR_VERSION,
     catalogHash: catalogHashValue,
     tierQuotas,
     puzzles,
@@ -796,22 +797,31 @@ async function runAcceptance(sourcePath: string): Promise<void> {
   console.log(`  Validation passed (${result.puzzleCount} puzzles).`);
 
   const reviewCatalogFile = join(sourcePath, "review-catalog.json");
-  if (existsSync(reviewCatalogFile)) {
-    console.log("Running release gate...");
-    const reviewCatalog: ReviewCatalog = JSON.parse(readFileSync(reviewCatalogFile, "utf-8"));
-    const releaseVerdict = checkReleaseGate(reviewCatalog);
-    if (!releaseVerdict.passed) {
-      console.error("\nRELEASE GATE FAILED:");
-      console.error(formatReleaseVerdict(releaseVerdict));
-      if (!process.argv.includes("--force")) {
-        console.error("\nUse --force to bypass the release gate.");
-        process.exit(1);
-      }
-      console.warn("\n--force: bypassing release gate failure.");
-    } else {
-      console.log("  Release gate: PASSED");
-    }
+  if (!existsSync(reviewCatalogFile)) {
+    console.error(`ERROR: Review evidence not found: ${reviewCatalogFile}`);
+    process.exit(1);
   }
+
+  console.log("Running release gate...");
+  const reviewCatalog: unknown = JSON.parse(readFileSync(reviewCatalogFile, "utf-8"));
+  const releaseVerdict = checkReleaseGate(reviewCatalog);
+  if (!releaseVerdict.passed) {
+    console.error("\nRELEASE GATE FAILED:");
+    console.error(formatReleaseVerdict(releaseVerdict));
+    process.exit(1);
+  }
+  console.log("  Release gate: PASSED");
+
+  const bindingErrors = checkReviewManifestBinding(
+    reviewCatalog,
+    JSON.parse(manifestJson) as unknown,
+  );
+  if (bindingErrors.length > 0) {
+    for (const error of bindingErrors) console.error(`  ERROR: ${error}`);
+    console.error("\nACCEPTANCE FAILED: review evidence does not match the manifest.");
+    process.exit(1);
+  }
+  console.log("  Review/manifest binding: PASSED");
 
   console.log("\nCopying to production...");
 
@@ -835,9 +845,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (!reviewMode && !dryRun) {
+    console.error(
+      "Catalog generation writes review artifacts only. Use --review, then promote them with --accept after the release gate passes.",
+    );
+    process.exit(1);
+  }
+
   const totalStart = performance.now();
   const modeLabel = reviewMode ? " (REVIEW)" : "";
-  console.log(`\nSokomind V3.0 Typed-Box Catalog Generator${dryRun ? " (DRY RUN)" : ""}${modeLabel}`);
+  console.log(`\nSokomind V${CATALOG_GENERATOR_VERSION} Catalog Generator${dryRun ? " (DRY RUN)" : ""}${modeLabel}`);
   console.log("=".repeat(60));
 
   const activeTierConfigs = tierFilter
@@ -1240,7 +1257,7 @@ async function main(): Promise<void> {
     }
 
     const reviewCatalog = buildReviewCatalog(tierPacks, {
-      generatorVersion: "3.0.0",
+      generatorVersion: CATALOG_GENERATOR_VERSION,
       qualityPreset: qualityPreset,
       tierFilter: tierFilter,
     });
@@ -1283,7 +1300,7 @@ async function main(): Promise<void> {
       console.log("2. Playtest Expert/Master samples");
       console.log("3. Ask: Would I voluntarily play another from this tier?");
       console.log("4. Tune thresholds if needed, then regenerate");
-      console.log(`5. Accept: npx tsx scripts/generate-v2-catalog.ts --accept ${REVIEW_DIR}`);
+      console.log(`5. Accept: node --experimental-strip-types scripts/generate-v2-catalog.ts --accept ${REVIEW_DIR}`);
     }
   } else if (dryRun) {
     console.log(`\n[DRY RUN] Would write ${catalogEntries.length} puzzles to generated-puzzles.json`);
@@ -1291,17 +1308,6 @@ async function main(): Promise<void> {
     for (const w of invariants.warnings) {
       console.warn(`[DRY RUN] ${w}`);
     }
-  } else {
-    console.warn("\nWARNING: Direct production write bypasses the release gate.");
-    console.warn("Use --review mode for release-gate-enforced catalog generation.\n");
-    writeFileSync(CATALOG_PATH, catalogJson);
-    writeFileSync(MANIFEST_PATH, manifestJson);
-    console.log(`Wrote ${catalogEntries.length} puzzles to ${CATALOG_PATH}`);
-    console.log(`Wrote manifest to ${MANIFEST_PATH}`);
-    console.log("Next steps:");
-    console.log("  1. npm run prepare:catalog");
-    console.log("  2. npm run typecheck");
-    console.log("  3. npm run test:unit");
   }
 
   const totalMs = performance.now() - totalStart;

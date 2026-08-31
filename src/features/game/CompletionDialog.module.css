@@ -503,7 +503,6 @@
 
 @keyframes complete-in {
   from {
-    opacity: 0;
     transform: translateY(12px) scale(0.985);
   }
 }

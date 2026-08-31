@@ -73,6 +73,8 @@
 }
 
 .recommendation {
+  --journey-recommendation-text: #fbfaf5;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -81,7 +83,7 @@
   padding: 14px;
   border-radius: 11px;
   background: var(--sage-700);
-  color: var(--paper-50);
+  color: var(--journey-recommendation-text);
 }
 
 .recommendation > div {
@@ -94,7 +96,6 @@
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.8;
 }
 
 .recommendation strong {
@@ -106,7 +107,10 @@
   margin: 1px 0 0;
   font-size: 0.68rem;
   line-height: 1.45;
-  opacity: 0.85;
+}
+
+:global(html[data-theme="dark"]) .recommendation {
+  --journey-recommendation-text: #171916;
 }
 
 .recommendation button {
@@ -116,7 +120,7 @@
   border: 0;
   border-radius: 9px;
   background: var(--paper-50);
-  color: var(--sage-800);
+  color: var(--ink-950);
   font-size: 0.7rem;
   font-weight: 850;
   cursor: pointer;

@@ -4,6 +4,9 @@ import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { MotifType } from "./motifs.ts";
 import type { BoxTypingMode } from "./puzzle-forge.ts";
 
+export const CATALOG_GENERATOR_VERSION = "4.1.0" as const;
+export const REVIEW_CATALOG_SCHEMA_VERSION = 1 as const;
+
 export interface GeneratedPuzzleManifestEntry {
   readonly id: string;
   readonly title: string;
@@ -72,6 +75,17 @@ export interface ReviewCandidatePack {
   readonly motifType?: MotifType;
   readonly compositionType?: string;
   readonly boardHash: string;
+  readonly symmetryHash: string;
+  // Quality-gate evidence
+  readonly qualityPassed: boolean;
+  readonly qualityReasons: readonly string[];
+  readonly qualityPurposefulGeometry: number;
+  readonly qualityInteraction: number;
+  readonly qualityCausalDepth: number;
+  readonly qualityDecision: number;
+  readonly qualityMechanismIntegrity: number;
+  readonly qualityElegance: number;
+  readonly qualityTedium: number;
   // Structural metrics
   readonly regionCount: number;
   readonly chokepoints: number;
@@ -88,6 +102,10 @@ export interface ReviewCandidatePack {
   readonly dependencyEdges?: number;
   readonly dependencyRealized?: number;
   readonly dependencyRealizationRate?: number;
+  readonly mechanismEvidencePassed?: boolean;
+  readonly mechanismEvidenceMissing?: readonly string[];
+  readonly counterfactualEdges?: number;
+  readonly counterfactualTotal?: number;
   // V4 difficulty
   readonly v4Composite?: number;
   readonly v4Classification?: string;
@@ -111,7 +129,7 @@ export interface ReviewCatalogTierSummary {
 }
 
 export interface ReviewCatalog {
-  readonly schemaVersion: number;
+  readonly schemaVersion: typeof REVIEW_CATALOG_SCHEMA_VERSION;
   readonly generatorVersion: string;
   readonly generatedAt: string;
   readonly qualityPreset?: string;

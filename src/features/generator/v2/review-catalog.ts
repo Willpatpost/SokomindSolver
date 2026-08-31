@@ -20,6 +20,10 @@ import type {
   ReviewCatalog,
   ReviewCatalogTierSummary,
 } from "./catalog-manifest-types.ts";
+import {
+  CATALOG_GENERATOR_VERSION,
+  REVIEW_CATALOG_SCHEMA_VERSION,
+} from "./catalog-manifest-types.ts";
 
 // ---------------------------------------------------------------------------
 // buildReviewPack
@@ -61,6 +65,18 @@ export function buildReviewPack(
     motifType: p.motifType,
     compositionType: p.compositionType,
     boardHash: boardHash(candidate.puzzle.rows),
+    symmetryHash: symmetryHash(candidate.puzzle.rows),
+    qualityPassed: candidate.qualityProfile?.passed ?? false,
+    qualityReasons: candidate.qualityProfile?.reasons ?? [
+      "candidate has no recorded quality-gate result",
+    ],
+    qualityPurposefulGeometry: candidate.qualityProfile?.purposefulGeometry ?? 0,
+    qualityInteraction: candidate.qualityProfile?.interactionQuality ?? 0,
+    qualityCausalDepth: candidate.qualityProfile?.causalDepth ?? 0,
+    qualityDecision: candidate.qualityProfile?.decisionQuality ?? 0,
+    qualityMechanismIntegrity: candidate.qualityProfile?.mechanismIntegrity ?? 0,
+    qualityElegance: candidate.qualityProfile?.elegance ?? 0,
+    qualityTedium: candidate.qualityProfile?.tedium ?? 1,
     // Structural metrics
     regionCount: ev.regionCount,
     chokepoints: ev.chokepoints,
@@ -77,6 +93,10 @@ export function buildReviewPack(
     dependencyEdges: p.dependencyEdges,
     dependencyRealized: p.dependencyRealized,
     dependencyRealizationRate: p.dependencyRealizationRate,
+    mechanismEvidencePassed: p.mechanismEvidencePassed,
+    mechanismEvidenceMissing: p.mechanismEvidenceMissing,
+    counterfactualEdges: p.counterfactualEdges,
+    counterfactualTotal: p.counterfactualTotal,
     // V4 difficulty
     v4Composite: v4.composite,
     v4Classification: v4.classification,
@@ -121,8 +141,8 @@ export function buildReviewCatalog(
   }
 
   return {
-    schemaVersion: 1,
-    generatorVersion: options.generatorVersion ?? "3.0.0",
+    schemaVersion: REVIEW_CATALOG_SCHEMA_VERSION,
+    generatorVersion: options.generatorVersion ?? CATALOG_GENERATOR_VERSION,
     generatedAt: new Date().toISOString(),
     qualityPreset: options.qualityPreset,
     tierFilter: options.tierFilter,

@@ -227,6 +227,7 @@ export {
   buildV4Fingerprint,
   validateBlueprintGeometry,
   validateFinalGeometry,
+  resolveBoxTypingMode,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   QUALITY_PRESETS,
@@ -281,6 +282,11 @@ export type {
 } from "./catalog-manifest-types.ts";
 
 export {
+  CATALOG_GENERATOR_VERSION,
+  REVIEW_CATALOG_SCHEMA_VERSION,
+} from "./catalog-manifest-types.ts";
+
+export {
   buildReviewPack,
   buildReviewCatalog,
   buildFinalReviewCatalog,
@@ -296,6 +302,7 @@ export type {
 
 export {
   checkReleaseGate,
+  checkReviewManifestBinding,
   formatReleaseVerdict,
   DEFAULT_RELEASE_GATE_CONFIG,
 } from "./release-gate.ts";

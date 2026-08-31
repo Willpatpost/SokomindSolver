@@ -316,6 +316,24 @@ test("current generated catalog board hash uniqueness check", () => {
   }
 });
 
+test("current generated manifest records V4.1 and effective typing modes", () => {
+  const manifestPath = join(
+    __dirname,
+    "../../src/catalog/generated-puzzles.manifest.json",
+  );
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
+    generatorVersion?: string;
+    puzzles?: Array<{ boxCount?: number; typingMode?: string }>;
+  };
+
+  assert.equal(manifest.generatorVersion, "4.1.0");
+  for (const puzzle of manifest.puzzles ?? []) {
+    if (puzzle.boxCount === 1) {
+      assert.equal(puzzle.typingMode, "generic");
+    }
+  }
+});
+
 test("V1 benchmark fixture exists and has expected structure", () => {
   const fixturePath = join(__dirname, "../fixtures/generator/v1-generated-benchmark.json");
 
@@ -379,4 +397,19 @@ test("V1 and handcrafted benchmark fixtures have no overlapping IDs", () => {
       `Overlap between V1 and handcrafted benchmarks: ${entry.id}`,
     );
   }
+});
+
+test("the standard catalog command cannot bypass review acceptance", () => {
+  const packageJson = JSON.parse(
+    readFileSync(join(__dirname, "../../package.json"), "utf-8"),
+  ) as { scripts?: Record<string, string> };
+  const generatorSource = readFileSync(
+    join(__dirname, "../../scripts/generate-v2-catalog.ts"),
+    "utf-8",
+  );
+
+  assert.match(packageJson.scripts?.["generate:v2-catalog"] ?? "", /--review/u);
+  assert.doesNotMatch(generatorSource, /--force/u);
+  assert.match(generatorSource, /Review evidence not found/u);
+  assert.doesNotMatch(generatorSource, /Direct production write bypasses/u);
 });

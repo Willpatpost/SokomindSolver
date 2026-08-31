@@ -10,6 +10,7 @@ import * as assert from "node:assert/strict";
 
 import {
   checkReleaseGate,
+  checkReviewManifestBinding,
   formatReleaseVerdict,
   DEFAULT_RELEASE_GATE_CONFIG,
   type ReleaseGateConfig,
@@ -122,9 +123,6 @@ function makeProvenance(
     typingMode: "generic",
     genericBoxCount: 3,
     typedBoxCount: 0,
-    dependencyEdges: 2,
-    dependencyRealized: 1,
-    dependencyRealizationRate: 0.5,
     ...overrides,
   };
 }
@@ -158,6 +156,17 @@ function makeCandidate(
     puzzle: makePuzzle(puzzleOverrides),
     provenance: makeProvenance(provOverrides),
     evaluation: makeEvaluation(evalOverrides),
+    qualityProfile: {
+      purposefulGeometry: 0.7,
+      interactionQuality: 0.6,
+      causalDepth: 0.5,
+      decisionQuality: 0.6,
+      mechanismIntegrity: 0.5,
+      elegance: 0.7,
+      tedium: 0.2,
+      passed: true,
+      reasons: [],
+    },
   };
 }
 
@@ -421,6 +430,136 @@ describe("release-gate", () => {
       assert.ok(verdict.errors.some((e) => e.includes("Duplicate board hash")));
     });
 
+    it("rejects failed quality evidence and inconsistent tier counts", () => {
+      const catalog = buildDiverseCatalog({ beginner: 2 });
+      const summary = catalog.tierSummaries.beginner;
+      const forged: ReviewCatalog = {
+        ...catalog,
+        tierSummaries: {
+          ...catalog.tierSummaries,
+          beginner: {
+            ...summary,
+            actual: 99,
+            candidates: [
+              { ...summary.candidates[0], qualityPassed: false, qualityReasons: ["quality floor"] },
+              summary.candidates[1],
+            ],
+          },
+        },
+      };
+      const verdict = checkReleaseGate(forged, {
+        ...DEFAULT_RELEASE_GATE_CONFIG,
+        minTotalPuzzles: 1,
+        tierQuotas: { beginner: { min: 1, target: 2 } },
+        minDistinctTopologies: 1,
+        minDistinctModes: 1,
+        minDistinctBoxCounts: 1,
+      });
+      assert.ok(!verdict.passed);
+      assert.ok(verdict.errors.some((e) => e.includes("quality gate did not pass")));
+      assert.ok(verdict.errors.some((e) => e.includes("reported actual 99")));
+    });
+
+    it("rejects symmetry duplicates and unverified mechanism claims", () => {
+      const catalog = buildDiverseCatalog({ beginner: 2 });
+      const summary = catalog.tierSummaries.beginner;
+      const first = summary.candidates[0];
+      const second = summary.candidates[1];
+      const forged: ReviewCatalog = {
+        ...catalog,
+        tierSummaries: {
+          ...catalog.tierSummaries,
+          beginner: {
+            ...summary,
+            candidates: [
+              first,
+              {
+                ...second,
+                symmetryHash: first.symmetryHash,
+                mode: "mechanism",
+                mechanismEvidencePassed: false,
+                mechanismEvidenceMissing: ["must-precede"],
+              },
+            ],
+          },
+        },
+      };
+      const verdict = checkReleaseGate(forged, {
+        ...DEFAULT_RELEASE_GATE_CONFIG,
+        minTotalPuzzles: 1,
+        tierQuotas: { beginner: { min: 1, target: 2 } },
+        minDistinctTopologies: 1,
+        minDistinctModes: 1,
+        minDistinctBoxCounts: 1,
+      });
+      assert.ok(!verdict.passed);
+      assert.ok(verdict.errors.some((e) => e.includes("Symmetry duplicate")));
+      assert.ok(verdict.errors.some((e) => e.includes("mechanism claim is not verified")));
+      assert.ok(verdict.errors.some((e) => e.includes("missing mechanism evidence")));
+    });
+
+    it("uses measured classifications rather than requested tiers for quotas", () => {
+      const catalog = buildDiverseCatalog({ beginner: 2 });
+      const summary = catalog.tierSummaries.beginner;
+      const forged: ReviewCatalog = {
+        ...catalog,
+        tierSummaries: {
+          ...catalog.tierSummaries,
+          beginner: {
+            ...summary,
+            candidates: summary.candidates.map((pack) => ({
+              ...pack,
+              classifiedDifficulty: "intermediate" as const,
+              difficultyGap: 1,
+            })),
+          },
+        },
+      };
+      const verdict = checkReleaseGate(forged, {
+        ...DEFAULT_RELEASE_GATE_CONFIG,
+        minTotalPuzzles: 1,
+        tierQuotas: { beginner: { min: 1, target: 2 } },
+        minDistinctTopologies: 1,
+        minDistinctModes: 1,
+        minDistinctBoxCounts: 1,
+      });
+      assert.ok(!verdict.passed);
+      assert.equal(verdict.tierCoverage.beginner.actual, 0);
+      assert.ok(verdict.errors.some((e) => e.includes('Tier "beginner"')));
+    });
+
+    it("binds review evidence to the exact promoted manifest", () => {
+      const catalog = buildDiverseCatalog({ beginner: 2 });
+      const packs = catalog.tierSummaries.beginner.candidates;
+      const manifest = {
+        schemaVersion: 1,
+        puzzles: packs.map((pack) => ({
+          id: pack.id,
+          boardHash: pack.boardHash,
+          symmetryHash: pack.symmetryHash,
+          seed: pack.seed,
+          family: pack.family,
+          mode: pack.mode,
+          boxCount: pack.boxCount,
+          typingMode: pack.typingMode,
+          intendedDifficulty: pack.intendedDifficulty,
+          classifiedDifficulty: pack.classifiedDifficulty,
+          difficultyGap: pack.difficultyGap,
+        })),
+      };
+
+      assert.deepEqual(checkReviewManifestBinding(catalog, manifest), []);
+      const mismatched = {
+        ...manifest,
+        puzzles: manifest.puzzles.map((entry, index) =>
+          index === 0 ? { ...entry, boardHash: "tampered" } : entry),
+      };
+      assert.ok(
+        checkReviewManifestBinding(catalog, mismatched)
+          .some((error) => error.includes("boardHash does not match")),
+      );
+    });
+
     it("detects difficulty gap exceeding maximum", () => {
       const candidate = makeCandidate();
       // Build pack with gap of 3
@@ -673,7 +812,14 @@ describe("buildFinalReviewCatalog", () => {
       const rows = makeUniqueRows();
       return makeCandidate(
         { boxCount: 2 + (seed % 3) },
-        { seed, family: fam, mode, boxCount: 2 + (seed % 3), difficulty: diff },
+        {
+          seed,
+          family: fam,
+          mode,
+          boxCount: 2 + (seed % 3),
+          difficulty: diff,
+          v4Classification: diff,
+        },
         { id: `gen-v2-${seed}-h${seed}`, rows, difficulty: diff },
       );
     };

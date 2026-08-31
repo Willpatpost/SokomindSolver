@@ -23,11 +23,11 @@ export interface V4DifficultyThresholds {
 
 export const V4_TIER_THRESHOLDS: Readonly<Record<Difficulty, V4DifficultyThresholds>> = {
   tutorial:      { minComposite: 0,    minStructural: 0,   minDepth: 0,   minReasoning: 0,    maxTedium: 1.0 },
-  beginner:      { minComposite: 4.0,  minStructural: 2.0, minDepth: 2.0, minReasoning: 2.0,  maxTedium: 0.8,  minBoxes: 2, minPushes: 4 },
-  intermediate:  { minComposite: 8.0,  minStructural: 3.5, minDepth: 3.5, minReasoning: 3.5,  maxTedium: 0.7,  minBoxes: 3, minPushes: 8 },
-  advanced:      { minComposite: 14.0, minStructural: 5.0, minDepth: 5.0, minReasoning: 5.5,  maxTedium: 0.6,  minBoxes: 4, minPushes: 12 },
-  expert:        { minComposite: 22.0, minStructural: 7.0, minDepth: 8.0, minReasoning: 8.0,  maxTedium: 0.55, minBoxes: 6, minPushes: 18 },
-  master:        { minComposite: 32.0, minStructural: 9.0, minDepth: 12.0, minReasoning: 12.0, maxTedium: 0.55, minBoxes: 8, minPushes: 30 },
+  beginner:      { minComposite: 4.0,  minStructural: 2.0, minDepth: 2.0, minReasoning: 2.0,  maxTedium: 0.8,  minBoxes: 2, minPushes: 3 },
+  intermediate:  { minComposite: 20.0, minStructural: 3.5, minDepth: 3.5, minReasoning: 3.5,  maxTedium: 0.7,  minBoxes: 2, minPushes: 7 },
+  advanced:      { minComposite: 20.0, minStructural: 5.0, minDepth: 5.0, minReasoning: 5.5,  maxTedium: 0.6,  minBoxes: 4, minPushes: 12 },
+  expert:        { minComposite: 22.0, minStructural: 7.0, minDepth: 8.0, minReasoning: 8.0,  maxTedium: 0.55, minBoxes: 5, minPushes: 18 },
+  master:        { minComposite: 80.0, minStructural: 5.0, minDepth: 30.0, minReasoning: 50.0, maxTedium: 0.55, minBoxes: 8, minPushes: 30 },
 };
 
 const TIER_ORDER: readonly Difficulty[] = [

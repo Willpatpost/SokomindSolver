@@ -38,13 +38,17 @@ const benchmarkEntries: BenchmarkEntry[] = JSON.parse(fixtureRaw);
 
 test("handcrafted calibration report", { timeout: 180_000 }, async () => {
   const calibrationData: { puzzleId: string; expectedTier: Difficulty; vector: import("../../src/features/generator/v2/index.ts").PuzzleEvaluationVector }[] = [];
+  const unresolved: string[] = [];
 
   for (const entry of benchmarkEntries) {
     const puzzle = getPuzzleById(entry.id);
     if (!puzzle) continue;
 
     const result = await evaluatePuzzleWithSteps(puzzle);
-    if (!result.vector) continue;
+    if (!result.vector.solved) {
+      unresolved.push(entry.id);
+      continue;
+    }
 
     calibrationData.push({
       puzzleId: entry.id,
@@ -54,14 +58,32 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
   }
 
   assert.ok(calibrationData.length >= 20, `expected >= 20 evaluated puzzles, got ${calibrationData.length}`);
+  assert.ok(
+    unresolved.length <= 1,
+    `too many calibration fixtures were unresolved: ${unresolved.join(", ")}`,
+  );
 
   const report: CalibrationReport = buildCalibrationReport(calibrationData);
 
   console.log(formatCalibrationReport(report));
 
   assert.equal(report.totalPuzzles, calibrationData.length);
-  assert.ok(report.exactMatchAccuracy >= 0 && report.exactMatchAccuracy <= 1, "exactMatchAccuracy in [0,1]");
-  assert.ok(report.withinOneTierAccuracy >= report.exactMatchAccuracy, "withinOneTier >= exactMatch");
+  assert.ok(
+    report.exactMatchAccuracy >= 0.7,
+    `exact-match accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is below 70%`,
+  );
+  assert.ok(
+    report.withinOneTierAccuracy >= 0.9,
+    `within-one-tier accuracy ${(report.withinOneTierAccuracy * 100).toFixed(1)}% is below 90%`,
+  );
+  assert.ok(
+    report.perTierAccuracy.expert.matches > 0,
+    "expert calibration requires at least one exact match",
+  );
+  assert.ok(
+    report.perTierAccuracy.master.matches > 0,
+    "master calibration requires at least one exact match",
+  );
 
   for (const entry of report.entries) {
     if (entry.expectedTier === "tutorial") {

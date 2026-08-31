@@ -1726,8 +1726,11 @@ npm run generate:v2-catalog -- --tier master --quality standard --dry-run
 # Search aggressively for one or a few exceptional Master puzzles
 npm run generate:v2-catalog -- --tier master --quality exhaustive --target 1 --verbose
 
-# Full production catalog generation
+# Full catalog generation into review-catalog/ (never writes production)
 npm run generate:v2-catalog -- --quality high
+
+# Promote an already-reviewed, release-gate-passing catalog
+node --experimental-strip-types scripts/generate-v2-catalog.ts --accept review-catalog
 ```
 
 Useful optional flags:

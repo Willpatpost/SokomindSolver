@@ -97,6 +97,13 @@ export type { ForgeGenerationMode } from "./forge-sampling.ts";
 
 export type BoxTypingMode = "generic" | "typed" | "hybrid";
 
+export function resolveBoxTypingMode(
+  requestedMode: BoxTypingMode,
+  boxCount: number,
+): BoxTypingMode {
+  return boxCount >= 2 ? requestedMode : "generic";
+}
+
 export interface BoxTypingPolicy {
   readonly modes: readonly BoxTypingMode[];
   readonly hybridTypedFractionMin: number;
@@ -1063,7 +1070,8 @@ async function completeCandidateFromBlueprint(
   }
 
   const modeIndex = seed % config.typingPolicy.modes.length;
-  const typingMode = config.typingPolicy.modes[modeIndex];
+  const requestedTypingMode = config.typingPolicy.modes[modeIndex];
+  const typingMode = resolveBoxTypingMode(requestedTypingMode, boxCount);
 
   let pairingSteps: readonly SolutionStep[] | null = null;
   let prelimMoves = 0;
@@ -1672,7 +1680,8 @@ async function runForgeFlat(
 
     // Step 2: Determine typing mode
     const modeIndex = seed % config.typingPolicy.modes.length;
-    const typingMode = config.typingPolicy.modes[modeIndex];
+    const requestedTypingMode = config.typingPolicy.modes[modeIndex];
+    const typingMode = resolveBoxTypingMode(requestedTypingMode, boxCount);
 
     // Step 3: If not generic, do preliminary solve for box-goal pairing steps
     let pairingSteps: readonly SolutionStep[] | null = null;

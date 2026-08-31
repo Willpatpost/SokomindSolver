@@ -16,11 +16,13 @@
  * short catalog rather than a padded one.
  */
 
-import type { Difficulty } from "../../../core/model.ts";
+import { DIFFICULTIES, type Difficulty } from "../../../core/model.ts";
 import type {
   ReviewCatalog,
   ReviewCandidatePack,
 } from "./catalog-manifest-types.ts";
+import { REVIEW_CATALOG_SCHEMA_VERSION } from "./catalog-manifest-types.ts";
+import { QUALITY_FLOORS } from "./quality-gate.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -105,6 +107,190 @@ export interface ReleaseGateVerdict {
 // Gate implementation
 // ---------------------------------------------------------------------------
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDifficulty(value: unknown): value is Difficulty {
+  return typeof value === "string" &&
+    (DIFFICULTIES as readonly string[]).includes(value);
+}
+
+function validateReviewCatalogShape(value: unknown): {
+  readonly catalog?: ReviewCatalog;
+  readonly errors: readonly string[];
+} {
+  const errors: string[] = [];
+  if (!isRecord(value)) {
+    return { errors: ["Review catalog must be a JSON object"] };
+  }
+  if (value.schemaVersion !== REVIEW_CATALOG_SCHEMA_VERSION) {
+    errors.push(
+      `Review catalog schemaVersion must be ${REVIEW_CATALOG_SCHEMA_VERSION}`,
+    );
+  }
+  if (typeof value.generatorVersion !== "string" || value.generatorVersion.length === 0) {
+    errors.push("Review catalog generatorVersion must be a non-empty string");
+  }
+  if (typeof value.generatedAt !== "string" || !Number.isFinite(Date.parse(value.generatedAt))) {
+    errors.push("Review catalog generatedAt must be a valid timestamp");
+  }
+  if (!isRecord(value.tierSummaries)) {
+    errors.push("Review catalog tierSummaries must be an object");
+    return { errors };
+  }
+
+  for (const [tier, rawSummary] of Object.entries(value.tierSummaries)) {
+    if (!isDifficulty(tier)) {
+      errors.push(`Unknown review tier "${tier}"`);
+      continue;
+    }
+    if (!isRecord(rawSummary)) {
+      errors.push(`Tier "${tier}" summary must be an object`);
+      continue;
+    }
+    if (!Number.isInteger(rawSummary.target) || (rawSummary.target as number) < 0) {
+      errors.push(`Tier "${tier}" target must be a non-negative integer`);
+    }
+    if (!Number.isInteger(rawSummary.actual) || (rawSummary.actual as number) < 0) {
+      errors.push(`Tier "${tier}" actual must be a non-negative integer`);
+    }
+    if (!Array.isArray(rawSummary.candidates)) {
+      errors.push(`Tier "${tier}" candidates must be an array`);
+      continue;
+    }
+
+    rawSummary.candidates.forEach((rawPack, index) => {
+      const label = `Tier "${tier}" candidate ${index}`;
+      if (!isRecord(rawPack)) {
+        errors.push(`${label} must be an object`);
+        return;
+      }
+      for (const field of ["id", "boardHash", "symmetryHash", "family", "mode"] as const) {
+        if (typeof rawPack[field] !== "string" || rawPack[field].length === 0) {
+          errors.push(`${label} ${field} must be a non-empty string`);
+        }
+      }
+      for (const field of ["difficulty", "intendedDifficulty", "classifiedDifficulty"] as const) {
+        if (!isDifficulty(rawPack[field])) {
+          errors.push(`${label} ${field} is invalid`);
+        }
+      }
+      for (const field of ["difficultyGap", "boxCount"] as const) {
+        if (typeof rawPack[field] !== "number" || !Number.isFinite(rawPack[field])) {
+          errors.push(`${label} ${field} must be finite`);
+        }
+      }
+      for (const field of [
+        "qualityPurposefulGeometry",
+        "qualityInteraction",
+        "qualityCausalDepth",
+        "qualityDecision",
+        "qualityMechanismIntegrity",
+        "qualityElegance",
+        "qualityTedium",
+      ] as const) {
+        if (typeof rawPack[field] !== "number" || !Number.isFinite(rawPack[field])) {
+          errors.push(`${label} ${field} must be finite`);
+        }
+      }
+      if (typeof rawPack.qualityPassed !== "boolean") {
+        errors.push(`${label} qualityPassed must be boolean`);
+      }
+      if (!Array.isArray(rawPack.qualityReasons) ||
+        !rawPack.qualityReasons.every((reason) => typeof reason === "string")) {
+        errors.push(`${label} qualityReasons must be a string array`);
+      }
+      if (rawPack.mechanismEvidencePassed !== undefined &&
+        typeof rawPack.mechanismEvidencePassed !== "boolean") {
+        errors.push(`${label} mechanismEvidencePassed must be boolean when present`);
+      }
+      if (rawPack.mechanismEvidenceMissing !== undefined &&
+        (!Array.isArray(rawPack.mechanismEvidenceMissing) ||
+          !rawPack.mechanismEvidenceMissing.every((item) => typeof item === "string"))) {
+        errors.push(`${label} mechanismEvidenceMissing must be a string array when present`);
+      }
+      for (const field of [
+        "dependencyEdges",
+        "dependencyRealized",
+        "dependencyRealizationRate",
+        "counterfactualEdges",
+        "counterfactualTotal",
+      ] as const) {
+        if (rawPack[field] !== undefined &&
+          (typeof rawPack[field] !== "number" || !Number.isFinite(rawPack[field]))) {
+          errors.push(`${label} ${field} must be finite when present`);
+        }
+      }
+    });
+  }
+
+  return errors.length > 0
+    ? { errors }
+    : { catalog: value as unknown as ReviewCatalog, errors };
+}
+
+/**
+ * Bind review evidence to the exact manifest being promoted. This prevents a
+ * valid review file from being paired with a different production catalog.
+ */
+export function checkReviewManifestBinding(
+  reviewValue: unknown,
+  manifestValue: unknown,
+): readonly string[] {
+  const shape = validateReviewCatalogShape(reviewValue);
+  if (!shape.catalog) return [...shape.errors];
+  if (!isRecord(manifestValue) || !Array.isArray(manifestValue.puzzles)) {
+    return ["Generated manifest puzzles must be an array"];
+  }
+
+  const errors: string[] = [];
+  const packs = Object.values(shape.catalog.tierSummaries)
+    .flatMap((summary) => summary.candidates);
+  const packsById = new Map(packs.map((pack) => [pack.id, pack]));
+  const manifestIds = new Set<string>();
+  const boundFields = [
+    "boardHash",
+    "symmetryHash",
+    "seed",
+    "family",
+    "mode",
+    "boxCount",
+    "typingMode",
+    "intendedDifficulty",
+    "classifiedDifficulty",
+    "difficultyGap",
+  ] as const;
+
+  for (const rawEntry of manifestValue.puzzles) {
+    if (!isRecord(rawEntry) || typeof rawEntry.id !== "string") {
+      errors.push("Generated manifest contains an entry without a valid id");
+      continue;
+    }
+    manifestIds.add(rawEntry.id);
+    const pack = packsById.get(rawEntry.id);
+    if (!pack) {
+      errors.push(`Manifest puzzle "${rawEntry.id}" has no review evidence`);
+      continue;
+    }
+    for (const field of boundFields) {
+      if (rawEntry[field] !== pack[field]) {
+        errors.push(
+          `Manifest puzzle "${rawEntry.id}" ${field} does not match review evidence`,
+        );
+      }
+    }
+  }
+
+  for (const pack of packs) {
+    if (!manifestIds.has(pack.id)) {
+      errors.push(`Review puzzle "${pack.id}" is absent from the manifest`);
+    }
+  }
+
+  return errors;
+}
+
 /**
  * Check whether a ReviewCatalog meets release criteria.
  *
@@ -113,16 +299,47 @@ export interface ReleaseGateVerdict {
  * @returns  A verdict with pass/fail, errors, warnings, and metrics.
  */
 export function checkReleaseGate(
-  catalog: ReviewCatalog,
+  value: unknown,
   config: ReleaseGateConfig = DEFAULT_RELEASE_GATE_CONFIG,
 ): ReleaseGateVerdict {
-  const errors: string[] = [];
+  const shape = validateReviewCatalogShape(value);
+  const errors: string[] = [...shape.errors];
   const warnings: string[] = [];
+
+  if (!shape.catalog) {
+    return {
+      passed: false,
+      errors,
+      warnings,
+      tierCoverage: {},
+      diversity: {
+        distinctTopologies: 0,
+        distinctModes: 0,
+        distinctBoxCounts: 0,
+        topologyConcentration: 0,
+        modeConcentration: 0,
+      },
+      totalPuzzles: 0,
+    };
+  }
+  const catalog = shape.catalog;
 
   // Collect all packs across tiers
   const allPacks: ReviewCandidatePack[] = [];
-  for (const summary of Object.values(catalog.tierSummaries)) {
+  for (const [tier, summary] of Object.entries(catalog.tierSummaries)) {
     allPacks.push(...summary.candidates);
+    if (summary.actual !== summary.candidates.length) {
+      errors.push(
+        `Tier "${tier}": reported actual ${summary.actual} does not match ${summary.candidates.length} candidates`,
+      );
+    }
+    for (const pack of summary.candidates) {
+      if (pack.intendedDifficulty !== tier) {
+        errors.push(
+          `Puzzle "${pack.id}": intended tier ${pack.intendedDifficulty} is filed under ${tier}`,
+        );
+      }
+    }
   }
 
   const totalPuzzles = allPacks.length;
@@ -143,11 +360,20 @@ export function checkReleaseGate(
     metTarget: boolean;
   }> = {};
 
-  for (const [tier, summary] of Object.entries(catalog.tierSummaries)) {
+  const coverageTiers = new Set<string>([
+    ...Object.keys(config.tierQuotas),
+    ...Object.keys(catalog.tierSummaries),
+  ]);
+  for (const tier of coverageTiers) {
+    const summary = catalog.tierSummaries[tier];
     const quota = config.tierQuotas[tier as Difficulty];
     const min = quota?.min ?? 0;
-    const target = quota?.target ?? summary.target;
-    const actual = summary.actual;
+    const target = quota?.target ?? summary?.target ?? 0;
+    // Quotas are filled by measured classifications, never by the requested
+    // tier under which a candidate happened to be generated.
+    const actual = allPacks.filter(
+      (pack) => pack.classifiedDifficulty === tier,
+    ).length;
 
     const metMin = actual >= min;
     const metTarget = actual >= target;
@@ -168,7 +394,14 @@ export function checkReleaseGate(
 
   // ---- 3. Duplicate board hashes ----
   const boardHashes = new Map<string, string>();
+  const symmetryHashes = new Map<string, string>();
+  const ids = new Set<string>();
   for (const pack of allPacks) {
+    if (ids.has(pack.id)) {
+      errors.push(`Duplicate puzzle id: "${pack.id}"`);
+    }
+    ids.add(pack.id);
+
     const existing = boardHashes.get(pack.boardHash);
     if (existing) {
       errors.push(
@@ -176,10 +409,120 @@ export function checkReleaseGate(
       );
     }
     boardHashes.set(pack.boardHash, pack.id);
+
+    const symmetricExisting = symmetryHashes.get(pack.symmetryHash);
+    if (symmetricExisting) {
+      errors.push(
+        `Symmetry duplicate: "${pack.id}" and "${symmetricExisting}"`,
+      );
+    }
+    symmetryHashes.set(pack.symmetryHash, pack.id);
   }
 
-  // ---- 4. Difficulty gap ----
+  // ---- 4. Quality and mechanism evidence ----
   for (const pack of allPacks) {
+    if (!pack.qualityPassed) {
+      const reasons = pack.qualityReasons.length > 0
+        ? `: ${pack.qualityReasons.join("; ")}`
+        : "";
+      errors.push(`Puzzle "${pack.id}": quality gate did not pass${reasons}`);
+    }
+    if (pack.qualityPassed && pack.qualityReasons.length > 0) {
+      errors.push(`Puzzle "${pack.id}": passing quality evidence contains rejection reasons`);
+    }
+    const qualityValues = [
+      pack.qualityPurposefulGeometry,
+      pack.qualityInteraction,
+      pack.qualityCausalDepth,
+      pack.qualityDecision,
+      pack.qualityMechanismIntegrity,
+      pack.qualityElegance,
+      pack.qualityTedium,
+    ];
+    if (qualityValues.some((metric) => metric < 0 || metric > 1)) {
+      errors.push(`Puzzle "${pack.id}": quality metrics must stay within [0, 1]`);
+    }
+    const qualityFloor = QUALITY_FLOORS[pack.intendedDifficulty];
+    const failedQualityDimensions = [
+      pack.qualityPurposefulGeometry < qualityFloor.minPurposefulGeometry && "purposeful geometry",
+      pack.qualityInteraction < qualityFloor.minInteractionQuality && "interaction",
+      pack.qualityCausalDepth < qualityFloor.minCausalDepth && "causal depth",
+      pack.qualityDecision < qualityFloor.minDecisionQuality && "decision quality",
+      pack.qualityMechanismIntegrity < qualityFloor.minMechanismIntegrity && "mechanism integrity",
+      pack.qualityElegance < qualityFloor.minElegance && "elegance",
+      pack.qualityTedium > qualityFloor.maxTedium && "tedium",
+    ].filter((dimension): dimension is string => typeof dimension === "string");
+    if (failedQualityDimensions.length > 0) {
+      errors.push(
+        `Puzzle "${pack.id}": recorded quality metrics fail ${pack.intendedDifficulty} floors (${failedQualityDimensions.join(", ")})`,
+      );
+    }
+
+    if (
+      pack.dependencyEdges !== undefined &&
+      pack.dependencyRealized !== undefined
+    ) {
+      if (
+        pack.dependencyEdges < 0 ||
+        pack.dependencyRealized < 0 ||
+        pack.dependencyRealized > pack.dependencyEdges
+      ) {
+        errors.push(`Puzzle "${pack.id}": dependency evidence counts are inconsistent`);
+      }
+      if (pack.dependencyRealizationRate !== undefined) {
+        if (pack.dependencyRealizationRate < 0 || pack.dependencyRealizationRate > 1) {
+          errors.push(`Puzzle "${pack.id}": dependency realization rate must stay within [0, 1]`);
+        }
+        const expectedRate = pack.dependencyEdges === 0
+          ? 1
+          : pack.dependencyRealized / pack.dependencyEdges;
+        if (Math.abs(pack.dependencyRealizationRate - expectedRate) > 1e-9) {
+          errors.push(`Puzzle "${pack.id}": dependency realization rate is inconsistent`);
+        }
+      }
+    }
+    if (
+      pack.counterfactualEdges !== undefined &&
+      pack.counterfactualTotal !== undefined &&
+      (pack.counterfactualEdges < 0 ||
+        pack.counterfactualTotal < 0 ||
+        pack.counterfactualEdges > pack.counterfactualTotal)
+    ) {
+      errors.push(`Puzzle "${pack.id}": counterfactual evidence counts are inconsistent`);
+    }
+
+    const claimsMechanism = pack.mode === "mechanism" ||
+      pack.mechanismEvidencePassed !== undefined ||
+      pack.mechanismEvidenceMissing !== undefined;
+    if (claimsMechanism) {
+      if (pack.mechanismEvidencePassed !== true) {
+        errors.push(`Puzzle "${pack.id}": mechanism claim is not verified`);
+      }
+      if ((pack.mechanismEvidenceMissing?.length ?? 0) > 0) {
+        errors.push(
+          `Puzzle "${pack.id}": missing mechanism evidence: ${pack.mechanismEvidenceMissing!.join(", ")}`,
+        );
+      }
+      if (
+        (pack.classifiedDifficulty === "expert" || pack.classifiedDifficulty === "master") &&
+        ((pack.counterfactualTotal ?? 0) <= 0 || (pack.counterfactualEdges ?? 0) <= 0)
+      ) {
+        errors.push(
+          `Puzzle "${pack.id}": hard-tier mechanism claim lacks counterfactual evidence`,
+        );
+      }
+    }
+  }
+
+  // ---- 5. Difficulty gap ----
+  for (const pack of allPacks) {
+    const measuredGap = DIFFICULTIES.indexOf(pack.classifiedDifficulty) -
+      DIFFICULTIES.indexOf(pack.intendedDifficulty);
+    if (pack.difficultyGap !== measuredGap) {
+      errors.push(
+        `Puzzle "${pack.id}": reported difficulty gap ${pack.difficultyGap} does not match measured gap ${measuredGap}`,
+      );
+    }
     const gap = Math.abs(pack.difficultyGap);
     if (gap > config.maxDifficultyGap) {
       errors.push(
@@ -189,7 +532,7 @@ export function checkReleaseGate(
     }
   }
 
-  // ---- 5. Diversity metrics ----
+  // ---- 6. Diversity metrics ----
   const topologyCounts = new Map<string, number>();
   const modeCounts = new Map<string, number>();
   const boxCountSet = new Set<number>();

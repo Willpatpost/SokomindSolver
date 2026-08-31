@@ -387,9 +387,9 @@ very end, after human acceptance.
 Implemented:
 - New file `review-catalog.ts`: `buildReviewPack()` (ForgeCandidate → ReviewCandidatePack with full provenance, V4 profile, structural/solver/mechanism/depth metrics), `buildReviewCatalog()` (assembles tier packs into ReviewCatalog), `formatReviewSummary()` (human-readable summary with tier distribution, per-candidate details, ASCII boards, playtest question), `validateForAcceptance()` (validates catalog+manifest pair: unique IDs, gen-v2- prefix, board/symmetry hash uniqueness, puzzle validation, manifest/catalog alignment)
 - Extended `catalog-manifest-types.ts` with `ReviewCandidatePack`, `ReviewCatalogTierSummary`, `ReviewCatalog` types
-- Updated `generate-v2-catalog.ts` with two new CLI modes:
-  - `--review`: runs full generation pipeline, outputs to `review-catalog/` directory (review-catalog.json with full candidate packs + V4 profiles, generated-puzzles.json and manifest in production format, review-summary.txt with human-readable report). Does NOT overwrite production.
-  - `--accept <path>`: reads reviewed catalog from path, validates via `validateForAcceptance()`, copies to production only if validation passes
+- Updated `generate-v2-catalog.ts` with a gated two-step workflow:
+  - `npm run generate:v2-catalog`: always runs in review mode and outputs to `review-catalog/` (review evidence, production-format catalog and manifest, summaries, and the release verdict). It cannot overwrite production.
+  - `--accept <path>`: requires review evidence, validates its schema, quality/mechanism metrics, measured tier quotas, duplicate/symmetry hashes, and exact manifest binding, then copies to production only if every gate passes. There is no force bypass.
 - V4 difficulty profiling (`computeV4Profile`) wired into review pack generation
 - All exported from `index.ts`
 - 31 new tests in `review-catalog.test.ts`, all pass

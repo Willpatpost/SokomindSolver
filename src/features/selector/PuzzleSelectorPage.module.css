@@ -651,7 +651,7 @@
 }
 
 :global(html[data-theme="dark"]) .nextButton {
-  background: var(--sage-600);
+  background: var(--sage-700);
 }
 
 @media (prefers-contrast: more) {

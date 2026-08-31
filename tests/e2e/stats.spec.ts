@@ -102,7 +102,6 @@ test("stats import enforces bounds and reports unchanged and rejected records", 
 test("reset all progress preserves every non-progress ownership domain", async ({
   page,
 }) => {
-  await page.goto("./");
   const preserved = {
     experience: JSON.stringify({
       version: 2,
@@ -128,7 +127,9 @@ test("reset all progress preserves every non-progress ownership domain", async (
       resetAt: "2026-08-14T12:00:00.000Z",
     }),
   };
-  await page.evaluate((values) => {
+  await page.addInitScript((values) => {
+    if (sessionStorage.getItem("sokomind:test:stats-reset-seeded") === "1") return;
+    sessionStorage.setItem("sokomind:test:stats-reset-seeded", "1");
     localStorage.setItem("sokomind.progress.v1", JSON.stringify({
       version: 2,
       generation: 2,
@@ -155,8 +156,8 @@ test("reset all progress preserves every non-progress ownership domain", async (
     sessionStorage.setItem("sokomind:timer", "timer-sentinel");
     sessionStorage.setItem("sokomind:timer:ultra-tiny", "room-timer-sentinel");
   }, preserved);
-  await seedReplayHistory(page);
   await page.goto("./#/stats");
+  await seedReplayHistory(page);
 
   await expect(page.getByRole("heading", { name: "Statistics" })).toBeVisible();
   await page.getByRole("button", { name: "Reset all progress" }).click();

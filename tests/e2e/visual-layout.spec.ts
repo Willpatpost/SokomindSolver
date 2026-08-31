@@ -269,17 +269,18 @@ test("movement feedback presents blocked recoil, push compression, and a goal ri
   expect(repeatedRecoil).toBeGreaterThan(0);
 
   await page.keyboard.press("ArrowDown");
-  await expect(board).toHaveAttribute("data-feedback", "solved");
-  await expect(page.locator('[data-feedback-effect="goal-ripple"]')).toHaveCount(1);
   const movedBox = page.locator('[data-piece-feedback="solved"]');
+  await expect(movedBox).toHaveCount(1);
   const compressed = await movedBox.evaluate((slot) =>
     slot.getAnimations().some((animation) =>
       (animation.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => {
         const matrix = new DOMMatrixReadOnly(String(frame.transform));
         return Math.abs(matrix.a - 1) > 0.01 || Math.abs(matrix.d - 1) > 0.01;
       }) ?? false,
-    ));
+  ));
   expect(compressed).toBe(true);
+  await expect(board).toHaveAttribute("data-feedback", "solved");
+  await expect(page.locator('[data-feedback-effect="goal-ripple"]')).toHaveCount(1);
 });
 
 test("reduced motion preserves feedback state without transient board effects", async ({

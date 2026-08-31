@@ -107,8 +107,9 @@ test("entering a shared preview preserves a sub-second edit in the mounted edito
 test("named drafts migrate, create, duplicate, rename, switch, delete, and reload", async ({
   page,
 }) => {
-  await page.goto("./");
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("sokomind:test:legacy-draft-seeded") === "1") return;
+    sessionStorage.setItem("sokomind:test:legacy-draft-seeded", "1");
     localStorage.setItem("sokomind.editor-draft.v1", JSON.stringify({
       width: 3,
       height: 3,
