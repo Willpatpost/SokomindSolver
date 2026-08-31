@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { GameSession } from "@/src/core";
 import type { SolutionStep } from "@/src/solver";
 import type { OptimalRecord } from "@/src/shared/optimal-cache";
@@ -31,9 +31,8 @@ export interface SolverDialogProps {
     fingerprint: SolverRunFingerprint,
   ) => void;
   readonly onSaveOptimal?: (
-    puzzleId: string,
     record: OptimalRecord,
-  ) => void;
+  ) => Promise<boolean>;
 }
 
 export function SolverDialog({
@@ -43,7 +42,10 @@ export function SolverDialog({
   onPlay,
   onSaveOptimal,
 }: SolverDialogProps) {
-  const [savedOptimal, setSavedOptimal] = useState(false);
+  const [optimalSaveStatus, setOptimalSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "failed"
+  >("idle");
+  const optimalSaveAttemptRef = useRef(0);
   const solver = useSolverController({ open, session });
   const terminalMetrics = solver.result?.metrics;
   const elapsedMs = terminalMetrics?.elapsedMs ?? solver.liveElapsedMs;
@@ -77,7 +79,8 @@ export function SolverDialog({
 
   const handleClose = () => {
     solver.cancel("Solver dialog closed");
-    setSavedOptimal(false);
+    optimalSaveAttemptRef.current += 1;
+    setOptimalSaveStatus("idle");
     onClose();
   };
 
@@ -460,20 +463,45 @@ export function SolverDialog({
                       </div>
                     </dl>
                     {canSaveGlobalOptimal && onSaveOptimal ? (
-                      <button
-                        className={styles.play}
-                        disabled={savedOptimal}
-                        onClick={() => {
-                          onSaveOptimal(session.puzzle.id, {
-                            moves: solvedResult.solution.moves,
-                            pushes: solvedResult.solution.pushes,
-                          });
-                          setSavedOptimal(true);
-                        }}
-                        type="button"
-                      >
-                        {savedOptimal ? "Optimal saved ★" : "Save as proven optimal"}
-                      </button>
+                      <>
+                        <button
+                          className={styles.play}
+                          disabled={
+                            optimalSaveStatus === "saving" ||
+                            optimalSaveStatus === "saved"
+                          }
+                          onClick={async () => {
+                            const attempt =
+                              optimalSaveAttemptRef.current + 1;
+                            optimalSaveAttemptRef.current = attempt;
+                            setOptimalSaveStatus("saving");
+                            const saved = await onSaveOptimal({
+                              moves: solvedResult.solution.moves,
+                              pushes: solvedResult.solution.pushes,
+                            }).catch(() => false);
+                            if (optimalSaveAttemptRef.current === attempt) {
+                              setOptimalSaveStatus(
+                                saved ? "saved" : "failed",
+                              );
+                            }
+                          }}
+                          type="button"
+                        >
+                          {optimalSaveStatus === "saving"
+                            ? "Saving optimal…"
+                            : optimalSaveStatus === "saved"
+                              ? "Optimal saved ★"
+                              : optimalSaveStatus === "failed"
+                                ? "Retry saving optimal"
+                                : "Save as proven optimal"}
+                        </button>
+                        {optimalSaveStatus === "failed" ? (
+                          <p className={styles.note} role="status">
+                            The optimal proof is available for this session,
+                            but browser storage could not save it.
+                          </p>
+                        ) : null}
+                      </>
                     ) : null}
                     {solvedResult.solution.optimality === "proven" &&
                     !canSaveGlobalOptimal ? (

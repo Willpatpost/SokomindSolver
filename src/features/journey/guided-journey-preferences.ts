@@ -2,7 +2,9 @@ import {
   STORAGE_KEYS,
   readStoredValue,
   writeStoredValue,
+  type StorageMutationResult,
 } from "../../shared/storage.ts";
+import { trackPersistenceResult } from "../../shared/persistence-health.ts";
 
 export interface GuidedJourneyPreferences {
   readonly version: 1;
@@ -40,7 +42,8 @@ export function loadGuidedJourneyPreferences(): GuidedJourneyPreferences {
 
 export function saveGuidedJourneyPreferences(
   preferences: GuidedJourneyPreferences,
-): GuidedJourneyPreferences {
-  writeStoredValue(STORAGE_KEYS.guidedJourney, JSON.stringify(preferences));
-  return preferences;
+): StorageMutationResult {
+  return trackPersistenceResult(
+    writeStoredValue(STORAGE_KEYS.guidedJourney, JSON.stringify(preferences)),
+  );
 }

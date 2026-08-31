@@ -175,7 +175,7 @@ fails when the generated facts below differ from source.
 - Package version: `0.1.0`
 - License: `MIT`
 - Supported Node.js: `^22.13.0 || >=24.0.0`
-- Catalog schema: `1`
+- Catalog schema: `2`
 - Puzzles: **79** across **2** collections and **2** shards
 - Difficulty counts: `tutorial` 21, `beginner` 14, `intermediate` 7, `advanced` 18, `expert` 12, `master` 7
 
@@ -200,6 +200,7 @@ fails when the generated facts below differ from source.
 | session | `sokomind.session.v1` |
 | optimal | `sokomind.optimal.v4` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
+| personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |
 | ratings | `sokomind.ratings.v1` |
 | favorites | `sokomind.favorites.v1` |
@@ -212,7 +213,7 @@ fails when the generated facts below differ from source.
 | progress payload schema | `2` |
 | saved-session payload schema | `1` |
 | editor-draft payload schema | `2` |
-| optimal-record payload schema | `5` |
+| optimal-record payload schema | `6` |
 
 ### Bounded local data
 

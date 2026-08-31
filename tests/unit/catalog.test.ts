@@ -12,6 +12,7 @@ import {
 } from "../../src/catalog/puzzles.ts";
 import { PUZZLE_METADATA } from "../../src/catalog/puzzle-metadata.ts";
 import { validatePuzzle } from "../../src/core/puzzle.ts";
+import { puzzleRevisionFingerprint } from "../../src/core/puzzle-revision.ts";
 
 const RESERVED_UPPERCASE = new Set(["O", "R", "S", "X"]);
 const RESERVED_LOWERCASE = new Set(["o", "r", "s", "x"]);
@@ -53,6 +54,7 @@ test("lightweight metadata stays aligned with the board catalog", () => {
       height: puzzle.rows.length,
       collection: getEffectiveCollection(puzzle),
       shard: `puzzle-shard-${String(Math.floor(index / 50)).padStart(3, "0")}`,
+      puzzleFingerprint: puzzleRevisionFingerprint(puzzle),
     })),
   );
 });

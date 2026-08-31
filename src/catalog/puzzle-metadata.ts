@@ -12,6 +12,7 @@ import {
   SOKOMIND_ORIGINALS,
 } from "./catalog-types.ts";
 import { isRecord } from "../core/type-guards.ts";
+import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 type MetadataTuple = readonly [
   id: string,
@@ -22,6 +23,7 @@ type MetadataTuple = readonly [
   height: number,
   collection: string,
   shard: string,
+  puzzleFingerprint: string,
 ];
 
 export interface PuzzleMetadata {
@@ -33,11 +35,12 @@ export interface PuzzleMetadata {
   readonly height: number;
   readonly collection: string;
   readonly shard: string;
+  readonly puzzleFingerprint: string;
 }
 
 function metadataTupleError(value: unknown): string | undefined {
-  if (!Array.isArray(value) || value.length !== 8) {
-    return "must be an eight-field tuple";
+  if (!Array.isArray(value) || value.length !== 9) {
+    return "must be a nine-field tuple";
   }
   if (typeof value[0] !== "string" || value[0].trim() === "") {
     return "has an invalid puzzle id";
@@ -69,12 +72,15 @@ function metadataTupleError(value: unknown): string | undefined {
   ) {
     return "has an invalid shard name";
   }
+  if (!isPuzzleRevisionFingerprint(value[8])) {
+    return "has an invalid puzzle fingerprint";
+  }
   return undefined;
 }
 
 export function parsePuzzleMetadata(value: unknown): readonly PuzzleMetadata[] {
-  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.puzzles)) {
-    throw new Error("Puzzle metadata must contain version 1 and a puzzles array.");
+  if (!isRecord(value) || value.version !== 2 || !Array.isArray(value.puzzles)) {
+    throw new Error("Puzzle metadata must contain version 2 and a puzzles array.");
   }
 
   const ids = new Set<string>();
@@ -96,6 +102,7 @@ export function parsePuzzleMetadata(value: unknown): readonly PuzzleMetadata[] {
       height,
       collection,
       shard,
+      puzzleFingerprint,
     ] = tuple as unknown as MetadataTuple;
     if (ids.has(puzzleId)) {
       throw new Error(
@@ -112,6 +119,7 @@ export function parsePuzzleMetadata(value: unknown): readonly PuzzleMetadata[] {
       height,
       collection,
       shard,
+      puzzleFingerprint,
     });
   }));
 }

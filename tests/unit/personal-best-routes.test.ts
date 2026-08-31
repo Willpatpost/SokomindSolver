@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import type { PuzzleDefinition } from "../../src/core/model.ts";
 import {
   MAX_PERSONAL_BEST_ROUTES_PER_PUZZLE,
+  PERSONAL_BEST_ROUTES_VERSION,
   clearPersonalBestRoutes,
   loadPersonalBestRouteIndex,
   loadPersonalBestRoutes,
@@ -34,16 +35,47 @@ const PUZZLE: PuzzleDefinition = Object.freeze({
 });
 
 let restoreIndexedDB: (() => void) | undefined;
+let restoreWindow: (() => void) | undefined;
 
 afterEach(() => {
   restoreIndexedDB?.();
   restoreIndexedDB = undefined;
+  restoreWindow?.();
+  restoreWindow = undefined;
 });
 
 function useMemoryIndexedDB(initial: Iterable<readonly [IDBValidKey, unknown]> = []) {
   const memory = createMemoryIndexedDB(initial);
   restoreIndexedDB = installIndexedDB(memory.factory);
   return memory;
+}
+
+function useMemoryLocalStorage(): Map<string, string> {
+  const values = new Map<string, string>();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const localStorage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  } satisfies Storage;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage },
+  });
+  restoreWindow = () => {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  };
+  return values;
 }
 
 function verified(
@@ -250,11 +282,45 @@ test("quota errors from IndexedDB are non-blocking repository outcomes", async (
 });
 
 test("clearing removes route history without touching other IndexedDB values", async () => {
+  useMemoryLocalStorage();
   const memory = useMemoryIndexedDB([["unrelated", { keep: true }]]);
   await promoteVerifiedPersonalBestRoute(PUZZLE,
     verified("RRR", "2026-08-28T12:00:00.000Z"),
   );
   assert.equal(await clearPersonalBestRoutes(), true);
-  assert.equal(memory.values.has(STORAGE_KEYS.personalBestRoutes), false);
+  assert.deepEqual(memory.values.get(STORAGE_KEYS.personalBestRoutes), {
+    version: PERSONAL_BEST_ROUTES_VERSION,
+    resetGeneration: 1,
+    puzzles: {},
+  });
   assert.deepEqual(memory.values.get("unrelated"), { keep: true });
+});
+
+test("a delayed pre-reset route write cannot resurrect cleared history", async () => {
+  useMemoryLocalStorage();
+  let releaseFirstOpen!: () => void;
+  const firstOpenGate = new Promise<void>((resolve) => {
+    releaseFirstOpen = resolve;
+  });
+  const memory = createMemoryIndexedDB([], {
+    beforeOpenSuccess: (openNumber) =>
+      openNumber === 1 ? firstOpenGate : undefined,
+  });
+  restoreIndexedDB = installIndexedDB(memory.factory);
+
+  const pendingPromotion = promoteVerifiedPersonalBestRoute(
+    PUZZLE,
+    verified("RRR", "2026-08-28T12:00:00.000Z"),
+  );
+  assert.equal(memory.stats.opens, 1);
+  assert.equal(await clearPersonalBestRoutes(), true);
+
+  releaseFirstOpen();
+  assert.equal((await pendingPromotion).status, "rejected");
+  assert.deepEqual(memory.values.get(STORAGE_KEYS.personalBestRoutes), {
+    version: PERSONAL_BEST_ROUTES_VERSION,
+    resetGeneration: 1,
+    puzzles: {},
+  });
+  assert.equal((await loadPersonalBestRoutes(PUZZLE)).status, "missing");
 });

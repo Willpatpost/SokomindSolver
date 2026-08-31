@@ -5,6 +5,7 @@ import {
   PUZZLES,
   getEffectiveCollection,
 } from "../src/catalog/puzzles.ts";
+import { puzzleRevisionFingerprint } from "../src/core/puzzle-revision.ts";
 
 const outputUrl = new URL("../src/catalog/puzzle-metadata.json", import.meta.url);
 const shardsUrl = new URL("../src/catalog/puzzle-shards/", import.meta.url);
@@ -16,7 +17,7 @@ const shards = Array.from(
   (_, index) => PUZZLES.slice(index * shardSize, (index + 1) * shardSize),
 );
 const serialized = `${JSON.stringify({
-  version: 1,
+  version: 2,
   puzzles: PUZZLES.map((puzzle, index) => [
     puzzle.id,
     puzzle.title,
@@ -26,6 +27,7 @@ const serialized = `${JSON.stringify({
     puzzle.rows.length,
     getEffectiveCollection(puzzle),
     shardName(Math.floor(index / shardSize)),
+    puzzleRevisionFingerprint(puzzle),
   ]),
 }, null, 2)}\n`;
 const serializedShards = shards.map((puzzles) => `${JSON.stringify(puzzles)}\n`);

@@ -5,7 +5,9 @@ import {
   STORAGE_KEYS,
   readStoredValue,
   writeStoredValue,
+  type StorageMutationResult,
 } from "../../shared/storage.ts";
+import { trackPersistenceResult } from "../../shared/persistence-health.ts";
 import { ACHIEVEMENTS } from "./achievements.ts";
 
 export type BoardFrameCosmeticId =
@@ -114,10 +116,16 @@ export function loadCosmeticPreference(): CosmeticPreference {
   return parseCosmeticPreference(readStoredValue(STORAGE_KEYS.cosmetics));
 }
 
-export function saveCosmeticPreference(preference: CosmeticPreference): CosmeticPreference {
-  writeStoredValue(STORAGE_KEYS.cosmetics, JSON.stringify(preference));
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(COSMETIC_CHANGE_EVENT));
-  return preference;
+export function saveCosmeticPreference(
+  preference: CosmeticPreference,
+): StorageMutationResult {
+  const result = trackPersistenceResult(
+    writeStoredValue(STORAGE_KEYS.cosmetics, JSON.stringify(preference)),
+  );
+  if (result.ok && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(COSMETIC_CHANGE_EVENT));
+  }
+  return result;
 }
 
 export function isCosmeticUnlocked(

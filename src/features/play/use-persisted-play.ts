@@ -37,6 +37,7 @@ import {
   DOCUMENT_APP_RESET_GENERATION,
   STORAGE_KEYS,
   loadAppResetGeneration,
+  type StorageMutationResult,
 } from "@/src/shared/storage";
 import {
   hydrateSessionFromIDB,
@@ -49,6 +50,7 @@ export interface CompletionRecordUpdate {
   readonly previousBest?: PuzzleRecord;
   readonly previousProgress: ProgressData;
   readonly progress: ProgressData;
+  readonly progressSaveResult?: StorageMutationResult;
 }
 
 export interface DailySolveContext {
@@ -311,6 +313,7 @@ export function usePersistedPlay(
         previousBest,
         previousProgress: update.previous,
         progress: update.snapshot.progress,
+        progressSaveResult: update.result,
       });
     },
     [commitProgressSnapshot, writerId],

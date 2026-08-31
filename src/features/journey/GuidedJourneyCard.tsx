@@ -49,7 +49,8 @@ export function GuidedJourneyCard({
   }, []);
 
   const setDismissed = (dismissed: boolean) => {
-    setPreferences(saveGuidedJourneyPreferences({ version: 1, dismissed }));
+    const next = { version: 1, dismissed } as const;
+    if (saveGuidedJourneyPreferences(next).ok) setPreferences(next);
   };
 
   if (preferences.dismissed) {

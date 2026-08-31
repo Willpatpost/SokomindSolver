@@ -110,9 +110,11 @@ through the core. Puzzle progress never depends on sound or motion preferences.
 Small personal-best summaries remain synchronously available while larger
 action logs live in a fenced asynchronous repository. A candidate route must
 replay to the solved state with exact move and push counters before promotion;
-board-revision fingerprints prevent a route from silently crossing puzzle
-changes. Retention limits apply independently of summary progress, so pruning
-history cannot erase completion records.
+board-revision fingerprints prevent a route or locally cached optimality proof
+from silently crossing puzzle changes. Retention limits apply independently of
+summary progress, so pruning history cannot erase completion records. Clearing
+replay history advances a repository generation and retains an empty tombstone;
+promotions that captured an older generation cannot commit after that reset.
 The guided journey stores only whether its Home surface is paused. Chapter
 completion and the suggested next room are recomputed from catalog metadata and
 summary progress, so the preference cannot unlock, hide, or manufacture a solve.

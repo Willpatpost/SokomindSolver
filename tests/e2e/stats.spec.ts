@@ -1,4 +1,42 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+const REPLAY_STORAGE_KEY = "sokomind.personal-best-routes.v1";
+
+async function seedReplayHistory(page: Page): Promise<void> {
+  await page.evaluate(async (key) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("sokomind", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("kv");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put({ version: 1, puzzles: {} }, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, REPLAY_STORAGE_KEY);
+}
+
+async function readReplayHistory(page: Page): Promise<unknown> {
+  return page.evaluate(async (key) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("sokomind", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const value = await new Promise<unknown>((resolve, reject) => {
+      const tx = db.transaction("kv", "readonly");
+      const request = tx.objectStore("kv").get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return value;
+  }, REPLAY_STORAGE_KEY);
+}
 
 test("stats import enforces bounds and reports unchanged and rejected records", async ({
   page,
@@ -117,13 +155,16 @@ test("reset all progress preserves every non-progress ownership domain", async (
     sessionStorage.setItem("sokomind:timer", "timer-sentinel");
     sessionStorage.setItem("sokomind:timer:ultra-tiny", "room-timer-sentinel");
   }, preserved);
+  await seedReplayHistory(page);
   await page.goto("./#/stats");
 
   await expect(page.getByRole("heading", { name: "Statistics" })).toBeVisible();
   await page.getByRole("button", { name: "Reset all progress" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
   await page.getByRole("textbox").fill("RESET");
+  const reloaded = page.waitForEvent("load");
   await page.getByRole("button", { name: "Permanently reset progress" }).click();
+  await reloaded;
   await expect(page.getByRole("heading", { name: "Sokomind" })).toBeVisible();
 
   const actual = await page.evaluate(() => {
@@ -154,6 +195,58 @@ test("reset all progress preserves every non-progress ownership domain", async (
     timer: "timer-sentinel",
     roomTimer: "room-timer-sentinel",
   });
+  expect(await readReplayHistory(page)).toEqual({
+    version: 1,
+    resetGeneration: 1,
+    puzzles: {},
+  });
+});
+
+test("reset reports a replay-storage failure without claiming completion", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("sokomind.progress.v1", JSON.stringify({
+      version: 2,
+      generation: 0,
+      revision: 1,
+      writerId: "stats-reset-failure-test",
+      completed: {
+        "ultra-tiny": {
+          moves: 1,
+          pushes: 1,
+          completedAt: "2026-08-30T12:00:00.000Z",
+        },
+      },
+      daily: {},
+      activity: {},
+    }));
+  });
+  await page.goto("./#/stats");
+  await seedReplayHistory(page);
+  await page.evaluate(() => {
+    const originalTransaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function transaction(
+      storeNames: string | Iterable<string>,
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions,
+    ): IDBTransaction {
+      if (mode === "readwrite") {
+        throw new DOMException("Storage access denied", "SecurityError");
+      }
+      return originalTransaction.call(this, storeNames, mode, options);
+    };
+  });
+
+  await page.getByRole("button", { name: "Reset all progress" }).click();
+  await page.getByRole("button", { name: "I understand, continue" }).click();
+  await page.getByRole("textbox").fill("RESET");
+  await page.getByRole("button", { name: "Permanently reset progress" }).click();
+
+  await expect(page.getByText(
+    "Progress was reset, but replay storage could not be accessed.",
+  )).toBeVisible();
+  await expect(page).toHaveURL(/#\/stats$/u);
 });
 
 function assertProgressReset(progress: {

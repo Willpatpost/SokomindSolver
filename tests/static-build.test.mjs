@@ -277,6 +277,7 @@ test("asset manifest lists all hashed build assets", async () => {
     /SolverDialog-/,
     /solver\.worker-/,
     /sokomind-engine\.worker-/,
+    /sokomind-proof-worker-/,
     /puzzle-shard-/,
   ]) {
     assert.equal(
@@ -288,6 +289,12 @@ test("asset manifest lists all hashed build assets", async () => {
       manifest.runtime.some((entry) => lazyPattern.test(entry)),
       true,
       `${lazyPattern} should be declared as a runtime asset`,
+    );
+  }
+  for (const workerEntry of entries.filter((entry) => /worker-/u.test(entry))) {
+    assert.ok(
+      manifest.runtime.includes(workerEntry),
+      `${workerEntry} should be cached only after its worker is requested`,
     );
   }
   assert.ok(

@@ -30,6 +30,7 @@ export interface CompletionPresentationInput {
   readonly pushes: number;
   readonly previousBest?: PuzzleRecord;
   readonly isOptimal?: boolean;
+  readonly progressSaved?: boolean;
   /** Set only when this clear crossed the final unsolved collection item. */
   readonly completedCollection?: string;
 }
@@ -41,7 +42,18 @@ function countDifference(value: number, singular: string): string {
 function routeSummary(
   previousBest: PuzzleRecord | undefined,
   moves: number,
+  progressSaved: boolean,
 ): string {
+  if (!progressSaved) {
+    if (!previousBest) {
+      return "First clear completed, but browser storage could not save it.";
+    }
+    const movesDelta = moves - previousBest.moves;
+    if (movesDelta < 0) {
+      return `New personal best — ${countDifference(-movesDelta, "move")} fewer — but browser storage could not save it.`;
+    }
+    return "Puzzle cleared, but browser storage could not record this result.";
+  }
   if (!previousBest) return "First clear saved as your personal best.";
   const movesDelta = moves - previousBest.moves;
   if (movesDelta < 0) {
@@ -57,6 +69,7 @@ export function createCompletionPresentation({
   pushes,
   previousBest,
   isOptimal = false,
+  progressSaved = true,
   completedCollection,
 }: CompletionPresentationInput): CompletionPresentation {
   const movesDelta = previousBest ? moves - previousBest.moves : undefined;
@@ -83,13 +96,17 @@ export function createCompletionPresentation({
     milestones.push({
       kind: "first-clear",
       label: "First clear",
-      detail: "A personal-best route is now on record.",
+      detail: progressSaved
+        ? "A personal-best route is now on record."
+        : "This clear is available for this session, but browser storage could not save it.",
     });
   } else if (movesDelta !== undefined && movesDelta < 0) {
     milestones.push({
       kind: "move-best",
       label: "Move record",
-      detail: `${countDifference(-movesDelta, "move")} fewer than your previous best.`,
+      detail: progressSaved
+        ? `${countDifference(-movesDelta, "move")} fewer than your previous best.`
+        : `${countDifference(-movesDelta, "move")} fewer, but browser storage could not save this result.`,
     });
   }
 
@@ -104,7 +121,9 @@ export function createCompletionPresentation({
     milestones.push({
       kind: "push-improvement",
       label: "Push improvement",
-      detail: `${countDifference(-pushesDelta, "push")} fewer than your previous saved route.`,
+      detail: progressSaved
+        ? `${countDifference(-pushesDelta, "push")} fewer than your previous saved route.`
+        : `${countDifference(-pushesDelta, "push")} fewer, but browser storage could not save this result.`,
     });
   }
 
@@ -123,7 +142,7 @@ export function createCompletionPresentation({
 
   return Object.freeze({
     eyebrow,
-    summary: routeSummary(previousBest, moves),
+    summary: routeSummary(previousBest, moves, progressSaved),
     celebration,
     isOptimal,
     movesDelta,

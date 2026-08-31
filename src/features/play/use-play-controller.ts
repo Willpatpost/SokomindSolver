@@ -21,6 +21,7 @@ import {
   type OptimalRecord,
 } from "@/src/shared/optimal-cache";
 import { STORAGE_KEYS } from "@/src/shared/storage";
+import { puzzleRevisionFingerprint } from "@/src/core/puzzle-revision";
 import { useExperience } from "@/src/features/experience";
 import { detectDeadlock } from "@/src/solver/deadlock-bridge";
 import {
@@ -198,7 +199,12 @@ export function usePlayController(
         variant: solveAudioVariant(
           result.previousBest,
           next.moves,
-          isOptimal(optimalCache, next.puzzle.id, next.moves),
+          isOptimal(
+            optimalCache,
+            next.puzzle.id,
+            puzzleRevisionFingerprint(next.puzzle),
+            next.moves,
+          ),
         ),
       });
       const preSolveStats = computeStats(result.previousProgress, PUZZLE_METADATA);
@@ -425,15 +431,17 @@ export function usePlayController(
 
   // --- Optimal cache ---
 
-  const handleSaveOptimal = useCallback((
-    pid: string,
-    record: OptimalRecord,
-  ) => {
-    setOptimalCache((current) => {
-      const next = setOptimalRecord(current, pid, record);
-      return saveOptimalCache(next).cache;
-    });
-  }, []);
+  const handleSaveOptimal = useCallback(async (record: OptimalRecord) => {
+    const next = setOptimalRecord(
+      optimalCache,
+      session.puzzle.id,
+      puzzleRevisionFingerprint(session.puzzle),
+      record,
+    );
+    const saved = saveOptimalCache(next);
+    setOptimalCache((current) => mergeOptimalCaches(current, saved.cache));
+    return saved.durable;
+  }, [optimalCache, session.puzzle]);
 
   // --- Hints ---
 

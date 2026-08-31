@@ -22,25 +22,36 @@ test("presents an optional, documented search workspace", async ({ page }) => {
 });
 
 test("runs a worker search and steps through its replay-verified route", async ({ page }) => {
+  await page.goto("./#/solver-lab/tutorial-push");
+  await expect(page.getByRole("heading", { name: "One Push Wonder" })).toBeVisible();
   await page.getByLabel("Algorithm").selectOption("classic-astar");
   await page.getByRole("button", { name: "Run search" }).click();
 
   await expect(
     page.getByRole("region", { name: "Search setup" }).getByRole("status"),
-  ).toHaveText("Found 1 moves and 1 pushes.");
+  ).toHaveText(/^Found \d+ moves and \d+ pushes\.$/u);
   await expect(page.getByLabel("Watch result")).toBeVisible();
   await expect(page.getByTestId("solver-lab-board")).toBeVisible();
 
   const position = page.getByLabel("Solution playback position");
   await expect(position).toHaveValue("0");
+  const total = Number(await position.getAttribute("max"));
+  expect(total).toBeGreaterThan(1);
   await page.getByLabel("Speed").selectOption("0.5");
   await page.getByRole("button", { name: "Play route" }).click();
-  await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
-  await page.getByRole("button", { name: "Pause playback" }).click();
+  const pause = page.getByRole("button", { name: "Pause playback" });
+  await expect(pause).toBeVisible();
+  await expect(position).toHaveValue("1", { timeout: 3_000 });
+  await pause.click();
+  const pausedAt = await position.inputValue();
+  await page.waitForTimeout(1_200);
+  await expect(position).toHaveValue(pausedAt);
+  await page.getByRole("button", { name: "First" }).click();
+  await expect(position).toHaveValue("0");
   await expect(page.getByRole("button", { name: "Play route" })).toBeVisible();
   await page.getByRole("button", { name: "Step forward" }).click();
   await expect(position).toHaveValue("1");
-  await expect(page.getByText("Move 1 of 1 · 1 pushes in this route", { exact: true })).toBeVisible();
+  await expect(page.getByText(new RegExp(`Move 1 of ${total} ·`, "u"))).toBeVisible();
 });
 
 test("compares two algorithms on the same position", async ({ page }) => {

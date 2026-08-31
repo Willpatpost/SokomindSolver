@@ -148,6 +148,43 @@ test("solves First Steps with A* and plays the verified route", async ({
   await expect(page.getByTestId("pushes-count")).toHaveText("1");
 });
 
+test("does not claim an optimal proof was saved when both storage tiers fail", async ({
+  page,
+}) => {
+  const dialog = await openSolver(page);
+  await dialog.getByLabel("Algorithm").selectOption("classic-astar");
+  await dialog.getByRole("button", { name: "Start search" }).click();
+  await expect(dialog.getByRole("heading", { name: "Route found" })).toBeVisible();
+
+  await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key === "sokomind.optimal.v4") {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+    const originalTransaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function transaction(
+      storeNames: string | Iterable<string>,
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions,
+    ): IDBTransaction {
+      if (mode === "readwrite") {
+        throw new DOMException("Storage access denied", "SecurityError");
+      }
+      return originalTransaction.call(this, storeNames, mode, options);
+    };
+  });
+
+  await dialog.getByRole("button", { name: "Save as proven optimal" }).click();
+  await expect(dialog.getByRole("button", { name: "Retry saving optimal" })).toBeVisible();
+  await expect(dialog.getByRole("status").filter({
+    hasText: "browser storage could not save it",
+  })).toBeVisible();
+  await expect(dialog).not.toContainText("Optimal saved ★");
+});
+
 test("Sokomind Solver finds a replay-verified Grand Hall route", async ({
   page,
 }) => {
@@ -193,17 +230,6 @@ test("cancels a running Grand Hall A* search", async ({ page }) => {
   const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(cancel).toBeEnabled();
-  const diagnostics = dialog.getByText("Search diagnostics", { exact: true });
-  await expect(diagnostics).toBeVisible();
-
-  // The full-Lab link and <summary> are both natively keyboard-focusable and
-  // must participate in the modal's manual wrap calculation.
-  await cancel.focus();
-  await page.keyboard.press("Tab");
-  await expect(dialog.getByRole("link", { name: "Open full Solver Lab" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(diagnostics).toBeFocused();
-
   await cancel.click();
 
   // On CI runners with constrained memory the A* solver may exhaust its
@@ -217,4 +243,14 @@ test("cancels a running Grand Hall A* search", async ({ page }) => {
     await expect(dialog).toContainText("Search cancelled.");
   }
   await expect(dialog.getByRole("button", { name: "Start search" })).toBeEnabled();
+
+  // The full-Lab link and <summary> are both natively keyboard-focusable and
+  // must participate in the modal's deterministic focus order.
+  const labLink = dialog.getByRole("link", { name: "Open full Solver Lab" });
+  const diagnostics = dialog.getByText("Search diagnostics", { exact: true });
+  await expect(diagnostics).toBeVisible();
+  await labLink.focus();
+  await expect(labLink).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(diagnostics).toBeFocused();
 });

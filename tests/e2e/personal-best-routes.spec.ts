@@ -96,7 +96,11 @@ test("retains replay-verified personal-best history and exposes storage controls
   );
   await expect(progress).toContainText("No replay routes saved yet");
   await expect(progress.getByTestId("completed-count")).toHaveText("1");
-  await expect.poll(() => readRouteRepository(page)).toBeNull();
+  await expect.poll(() => readRouteRepository(page)).toEqual({
+    version: 1,
+    resetGeneration: 1,
+    puzzles: {},
+  });
 });
 
 test("quota-limited route storage never prevents play or summary progress", async ({

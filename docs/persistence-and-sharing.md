@@ -17,7 +17,8 @@ share a Web Storage origin:
 - `sokomind.experience.v2` — audio, volume, motion, theme-family, appearance,
   and Zen-layout preferences (`v1` remains readable for migration);
 - `sokomind.optimal.v4` — locally proven move records from the corrected
-  minimum-move proof pipeline;
+  minimum-move proof pipeline, keyed by puzzle ID and deterministic board
+  revision so a changed room cannot inherit a stale certificate;
 - `sokomind.ratings.v1`, `sokomind.favorites.v1`, and
   `sokomind.editor-draft.v1` — device-local preferences and a schema-v2,
   bounded named-draft store;
@@ -27,6 +28,8 @@ share a Web Storage origin:
   active-theme compatibility are derived rather than persisted;
 - `sokomind.editor-draft-recovery.v1` — a quarantined invalid draft that can be
   downloaded or deleted without clearing other data;
+- `sokomind.personal-best-routes-reset.v1` — the retained generation marker
+  that fences replay-history resets from delayed writes;
 - `sokomind.reset.v1` — a retained cross-tab marker for a confirmed full-data
   reset.
 
@@ -34,7 +37,8 @@ IndexedDB owns `sokomind.personal-best-routes.v1`, the versioned asynchronous
 repository for replay-verified personal-best action logs. Each route includes
 its puzzle ID, deterministic board-revision fingerprint, canonical action log,
 move and push counts, elapsed time when available, completion timestamp, schema
-version, and the `replay-verified` validation marker.
+version, and the `replay-verified` validation marker. The repository also keeps
+its replay-reset generation as an empty tombstone after history is cleared.
 
 Per-puzzle elapsed time uses the tab-private
 `sokomind:timer:<puzzle-id>` session-storage namespace. The legacy exact key
@@ -58,7 +62,9 @@ a generation-fenced IndexedDB pointer lookup, so an IDB-only newest attempt
 remains discoverable through Continue. Optimal-cache
 hydration merges both storage tiers by the lower proven move count. Optimal
 payload schemas 1 through 4 are intentionally discarded because they predate
-the current proof corrections and cannot be trusted as minimum-move proofs.
+the current proof corrections, and schema 5 is discarded because its proofs
+were keyed only by puzzle ID. None can be trusted for the current revision-aware
+minimum-move records.
 
 Every personal-best candidate replays from the current catalog puzzle's
 canonical initial state before either its summary or route is promoted. Solved
@@ -76,6 +82,13 @@ replay history when resetting saved progress. The equivalent Statistics reset
 also clears replay history after its summary reset succeeds. IndexedDB absence, corruption,
 reset-fence mismatch, transaction failure, or quota pressure never blocks play
 or synchronous summary progress.
+
+A replay-history reset atomically replaces the route repository with an empty,
+higher-generation tombstone and then publishes that generation through the
+local marker. A route promotion captures the current generation before doing
+asynchronous work and must still match the durable repository when it commits.
+Consequently, a write that began before the reset is either removed by the
+reset transaction or rejected afterward, rather than resurrecting old history.
 
 Verified routes can be studied from the completion dialog and from the recent
 personal-best shelf on Statistics. The study surface loads routes through the

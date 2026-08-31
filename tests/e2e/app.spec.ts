@@ -49,12 +49,17 @@ test("solves a room and reports the new personal best", async ({ page }) => {
 test("verified optimal clears receive the highest milestone treatment", async ({
   page,
 }) => {
-  await page.evaluate(() => {
+  const fingerprint = PUZZLE_METADATA.find(({ id }) => id === "ultra-tiny")
+    ?.puzzleFingerprint;
+  if (!fingerprint) throw new Error("First Steps metadata is unavailable.");
+  await page.evaluate((puzzleFingerprint) => {
     localStorage.setItem("sokomind.optimal.v4", JSON.stringify({
-      version: 5,
-      records: { "ultra-tiny": { moves: 1, pushes: 1 } },
+      version: 6,
+      records: {
+        [JSON.stringify(["ultra-tiny", puzzleFingerprint])]: { moves: 1, pushes: 1 },
+      },
     }));
-  });
+  }, fingerprint);
   await page.reload();
   await page.getByTestId("game-board").click();
   await page.keyboard.press("ArrowDown");

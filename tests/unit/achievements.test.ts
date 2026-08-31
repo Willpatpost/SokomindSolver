@@ -12,8 +12,10 @@ import {
   DEFAULT_COSMETIC_PREFERENCE,
   getCosmeticStates,
   parseCosmeticPreference,
+  saveCosmeticPreference,
   resolveActiveBoardFrame,
 } from "../../src/features/achievements/cosmetics.ts";
+import { STORAGE_KEYS } from "../../src/shared/storage.ts";
 import { computeStats } from "../../src/features/progress/compute-stats.ts";
 import {
   EMPTY_PROGRESS,
@@ -146,6 +148,18 @@ describe("recent achievement milestones", () => {
 });
 
 describe("board-frame cosmetics", () => {
+  test("reports an unavailable durable cosmetic write", () => {
+    assert.deepEqual(
+      saveCosmeticPreference({ version: 1, boardFrame: "classic" }),
+      {
+        ok: false,
+        key: STORAGE_KEYS.cosmetics,
+        operation: "write",
+        reason: "unavailable",
+      },
+    );
+  });
+
   test("malformed preferences fail closed", () => {
     assert.equal(parseCosmeticPreference(null), DEFAULT_COSMETIC_PREFERENCE);
     assert.equal(parseCosmeticPreference("not-json"), DEFAULT_COSMETIC_PREFERENCE);

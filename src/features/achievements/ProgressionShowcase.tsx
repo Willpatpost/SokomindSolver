@@ -180,11 +180,13 @@ export function ProgressionShowcase({ stats, progress }: ProgressionShowcaseProp
                 aria-pressed={cosmetic.active}
                 disabled={!usable}
                 onClick={() => {
-                  const next = saveCosmeticPreference({
+                  const next = {
                     version: 1,
                     boardFrame: cosmetic.id,
-                  });
-                  setCosmeticPreference(next);
+                  } as const;
+                  if (saveCosmeticPreference(next).ok) {
+                    setCosmeticPreference(next);
+                  }
                 }}
               >
                 <span className={styles.cosmeticPreview} aria-hidden="true"><span /></span>

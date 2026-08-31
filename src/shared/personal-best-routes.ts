@@ -4,13 +4,21 @@ import { isRecord } from "../core/type-guards.ts";
 import type { PuzzleDefinition } from "../core/model.ts";
 import {
   idbFencedGet,
-  idbFencedRemove,
   idbFencedUpdate,
 } from "./idb-storage.ts";
 import {
   DOCUMENT_APP_RESET_GENERATION,
   STORAGE_KEYS,
+  readStoredValue,
+  writeStoredValue,
 } from "./storage.ts";
+import { trackPersistenceResult } from "./persistence-health.ts";
+import {
+  isPuzzleRevisionFingerprint,
+  puzzleRevisionFingerprint,
+} from "../core/puzzle-revision.ts";
+
+export { puzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 export const PERSONAL_BEST_ROUTES_VERSION = 1 as const;
 export const MAX_PERSONAL_BEST_ROUTES_PER_PUZZLE = 8;
@@ -18,7 +26,6 @@ export const MAX_PERSONAL_BEST_ROUTE_ACTIONS = 25_000;
 export const MAX_PERSONAL_BEST_ROUTE_COUNT = 512;
 export const MAX_PERSONAL_BEST_REPOSITORY_ACTIONS = 2_000_000;
 const MAX_PERSONAL_BEST_PUZZLES = 250;
-const FINGERPRINT_FORMAT = /^puzzle-v1:[0-9a-f]{8}$/u;
 
 export interface PersonalBestRouteCandidate {
   readonly actionLog: string;
@@ -45,6 +52,7 @@ export interface PersonalBestRouteHistory {
 
 export interface PersonalBestRouteRepository {
   readonly version: typeof PERSONAL_BEST_ROUTES_VERSION;
+  readonly resetGeneration: number;
   readonly puzzles: Readonly<Record<string, PersonalBestRouteHistory>>;
 }
 
@@ -83,8 +91,24 @@ interface NormalizedRepository {
 export const EMPTY_PERSONAL_BEST_ROUTE_REPOSITORY: PersonalBestRouteRepository =
   Object.freeze({
     version: PERSONAL_BEST_ROUTES_VERSION,
+    resetGeneration: 0,
     puzzles: Object.freeze({}),
   });
+
+function loadPersonalBestRouteResetGeneration(): number {
+  const serialized = readStoredValue(STORAGE_KEYS.personalBestRoutesReset);
+  if (!serialized) return 0;
+  try {
+    const value: unknown = JSON.parse(serialized);
+    return isRecord(value) &&
+      value.version === 1 &&
+      isCount(value.generation)
+      ? value.generation
+      : 0;
+  } catch {
+    return 0;
+  }
+}
 
 function hashText(value: string): string {
   let hash = 0x811c9dc5;
@@ -93,16 +117,6 @@ function hashText(value: string): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-/** Detects a changed board while remaining stable across builds and devices. */
-export function puzzleRevisionFingerprint(puzzle: PuzzleDefinition): string {
-  const canonical = [
-    `boxes:${puzzle.boxes}`,
-    `rows:${puzzle.rows.length}`,
-    ...puzzle.rows.map((row) => `${row.length}:${row}`),
-  ].join("\n");
-  return `puzzle-v1:${hashText(canonical)}`;
 }
 
 function isCanonicalTimestamp(value: unknown): value is string {
@@ -126,7 +140,7 @@ function normalizeSavedRoute(value: unknown): SavedPersonalBestRoute | undefined
     value.puzzleId.length === 0 ||
     value.puzzleId.length > 100 ||
     typeof value.puzzleFingerprint !== "string" ||
-    !FINGERPRINT_FORMAT.test(value.puzzleFingerprint) ||
+    !isPuzzleRevisionFingerprint(value.puzzleFingerprint) ||
     !isActionLog(value.actionLog) ||
     value.actionLog.length > MAX_PERSONAL_BEST_ROUTE_ACTIONS ||
     !isCount(value.moves) ||
@@ -179,6 +193,19 @@ function normalizeRepositoryWithReport(value: unknown): NormalizedRepository {
     };
   }
 
+  const resetGeneration = value.resetGeneration === undefined
+    ? 0
+    : isCount(value.resetGeneration)
+      ? value.resetGeneration
+      : undefined;
+  if (resetGeneration === undefined) {
+    return {
+      repository: EMPTY_PERSONAL_BEST_ROUTE_REPOSITORY,
+      corrupt: true,
+      discardedRecords: 0,
+    };
+  }
+
   let discardedRecords = 0;
   const puzzles: Record<string, PersonalBestRouteHistory> = {};
   for (const [puzzleId, candidate] of Object.entries(value.puzzles)) {
@@ -188,7 +215,7 @@ function normalizeRepositoryWithReport(value: unknown): NormalizedRepository {
       !isRecord(candidate) ||
       candidate.puzzleId !== puzzleId ||
       typeof candidate.puzzleFingerprint !== "string" ||
-      !FINGERPRINT_FORMAT.test(candidate.puzzleFingerprint) ||
+      !isPuzzleRevisionFingerprint(candidate.puzzleFingerprint) ||
       !Array.isArray(candidate.routes)
     ) {
       discardedRecords += 1;
@@ -223,6 +250,7 @@ function normalizeRepositoryWithReport(value: unknown): NormalizedRepository {
   return {
     repository: boundPersonalBestRouteRepository({
       version: PERSONAL_BEST_ROUTES_VERSION,
+      resetGeneration,
       puzzles,
     }),
     corrupt: false,
@@ -284,6 +312,7 @@ export function boundPersonalBestRouteRepository(
   }
   return Object.freeze({
     version: PERSONAL_BEST_ROUTES_VERSION,
+    resetGeneration: repository.resetGeneration,
     puzzles: Object.freeze(puzzles),
   });
 }
@@ -342,6 +371,7 @@ export function verifyPersonalBestRoute(
 export async function promoteVerifiedPersonalBestRoute(
   puzzle: PuzzleDefinition,
   route: SavedPersonalBestRoute,
+  expectedResetGeneration = loadPersonalBestRouteResetGeneration(),
 ): Promise<PersonalBestRoutePromotion> {
   const reverified = verifyPersonalBestRoute(puzzle, route);
   if (
@@ -352,12 +382,24 @@ export async function promoteVerifiedPersonalBestRoute(
     return Object.freeze({ status: "rejected" });
   }
   let promoted = false;
+  let rejectedByReset = false;
   try {
     const result = await idbFencedUpdate(
       STORAGE_KEYS.personalBestRoutes,
       DOCUMENT_APP_RESET_GENERATION,
       (stored) => {
-        const repository = normalizePersonalBestRouteRepository(stored);
+        const storedRepository = normalizePersonalBestRouteRepository(stored);
+        if (storedRepository.resetGeneration > expectedResetGeneration) {
+          rejectedByReset = true;
+          return storedRepository;
+        }
+        const repository = storedRepository.resetGeneration === expectedResetGeneration
+          ? storedRepository
+          : {
+              version: PERSONAL_BEST_ROUTES_VERSION,
+              resetGeneration: expectedResetGeneration,
+              puzzles: {},
+            };
         const existing = repository.puzzles[route.puzzleId];
         const compatibleRoutes = existing?.puzzleFingerprint === route.puzzleFingerprint
           ? existing.routes.flatMap((candidate) => {
@@ -379,11 +421,13 @@ export async function promoteVerifiedPersonalBestRoute(
         };
         return boundPersonalBestRouteRepository({
           version: PERSONAL_BEST_ROUTES_VERSION,
+          resetGeneration: expectedResetGeneration,
           puzzles: { ...repository.puzzles, [route.puzzleId]: history },
         });
       },
     );
     if (!result.applied) return Object.freeze({ status: "unavailable" });
+    if (rejectedByReset) return Object.freeze({ status: "rejected" });
     return promoted
       ? Object.freeze({ status: "saved", route })
       : Object.freeze({ status: "not-better" });
@@ -406,6 +450,16 @@ export async function loadPersonalBestRoutes(
     const normalized = normalizeRepositoryWithReport(stored);
     if (normalized.corrupt) {
       return Object.freeze({ status: "corrupt", routes: [], discardedRecords: 0 });
+    }
+    if (
+      normalized.repository.resetGeneration !==
+      loadPersonalBestRouteResetGeneration()
+    ) {
+      return Object.freeze({
+        status: "missing",
+        routes: [],
+        discardedRecords: normalized.discardedRecords,
+      });
     }
     const history = normalized.repository.puzzles[puzzle.id];
     if (!history) {
@@ -462,6 +516,12 @@ export async function loadPersonalBestRouteIndex(): Promise<PersonalBestRouteInd
     if (normalized.corrupt) {
       return Object.freeze({ status: "corrupt", puzzleIds: [] });
     }
+    if (
+      normalized.repository.resetGeneration !==
+      loadPersonalBestRouteResetGeneration()
+    ) {
+      return Object.freeze({ status: "missing", puzzleIds: [] });
+    }
     const puzzleIds = Object.values(normalized.repository.puzzles)
       .sort((first, second) =>
         second.routes[0]!.completedAt.localeCompare(first.routes[0]!.completedAt))
@@ -502,6 +562,19 @@ export async function loadPersonalBestRouteStorageStats(): Promise<PersonalBestR
         discardedRecords: 0,
       });
     }
+    if (
+      normalized.repository.resetGeneration !==
+      loadPersonalBestRouteResetGeneration()
+    ) {
+      return Object.freeze({
+        status: "missing",
+        puzzleCount: 0,
+        routeCount: 0,
+        actionCount: 0,
+        approximateBytes: 0,
+        discardedRecords: normalized.discardedRecords,
+      });
+    }
     const histories = Object.values(normalized.repository.puzzles);
     const routes = histories.flatMap((history) => history.routes);
     return Object.freeze({
@@ -527,11 +600,34 @@ export async function loadPersonalBestRouteStorageStats(): Promise<PersonalBestR
 }
 
 export async function clearPersonalBestRoutes(): Promise<boolean> {
+  const currentGeneration = loadPersonalBestRouteResetGeneration();
   try {
-    return await idbFencedRemove(
+    const result = await idbFencedUpdate(
       STORAGE_KEYS.personalBestRoutes,
       DOCUMENT_APP_RESET_GENERATION,
+      (stored) => {
+        const storedGeneration = normalizePersonalBestRouteRepository(stored)
+          .resetGeneration;
+        const baseGeneration = Math.max(currentGeneration, storedGeneration);
+        if (baseGeneration >= Number.MAX_SAFE_INTEGER) {
+          throw new Error("Replay reset generation is exhausted.");
+        }
+        return Object.freeze({
+          version: PERSONAL_BEST_ROUTES_VERSION,
+          resetGeneration: baseGeneration + 1,
+          puzzles: Object.freeze({}),
+        });
+      },
     );
+    if (!result.applied || !result.value) return false;
+    const markerResult = trackPersistenceResult(writeStoredValue(
+      STORAGE_KEYS.personalBestRoutesReset,
+      JSON.stringify({
+        version: 1,
+        generation: result.value.resetGeneration,
+      }),
+    ));
+    return markerResult.ok;
   } catch {
     return false;
   }

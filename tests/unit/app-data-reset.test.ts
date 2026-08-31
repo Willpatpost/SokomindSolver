@@ -9,6 +9,7 @@ import {
 import { recordCompletion, type ProgressData } from "../../src/shared/progress.ts";
 import { getPuzzleById } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
+import { puzzleRevisionFingerprint } from "../../src/core/puzzle-revision.ts";
 import { saveOptimalCache } from "../../src/shared/optimal-cache.ts";
 import { saveSession } from "../../src/shared/session-persistence.ts";
 import {
@@ -210,8 +211,13 @@ test("the completed reset marker suppresses stale document mutations", async () 
   assert.ok(puzzle);
   saveSession(createSession(puzzle));
   saveOptimalCache({
-    version: 5,
-    records: { "ultra-tiny": { moves: 1, pushes: 1 } },
+    version: 6,
+    records: {
+      [JSON.stringify([puzzle.id, puzzleRevisionFingerprint(puzzle)])]: {
+        moves: 1,
+        pushes: 1,
+      },
+    },
   });
 
   assert.equal(localStorage.getItem(STORAGE_KEYS.session), null);

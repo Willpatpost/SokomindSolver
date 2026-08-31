@@ -9,6 +9,7 @@ import {
 import { trackPersistenceResult } from "./persistence-health.ts";
 import { idbFencedGet, idbFencedUpdate } from "./idb-storage.ts";
 import { isRecord } from "../core/type-guards.ts";
+import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 export interface OptimalRecord {
   readonly moves: number;
@@ -16,16 +17,17 @@ export interface OptimalRecord {
 }
 
 export interface OptimalCache {
-  readonly version: 5;
+  readonly version: 6;
   readonly records: Readonly<Record<string, OptimalRecord>>;
 }
 
 type OptimalCacheMutationResult = StorageMutationResult & {
   readonly cache: OptimalCache;
+  readonly durable: Promise<boolean>;
 };
 
 const EMPTY_CACHE: OptimalCache = Object.freeze({
-  version: 5,
+  version: 6,
   records: Object.freeze({}),
 });
 
@@ -52,24 +54,42 @@ function normalizeRecord(value: unknown): OptimalRecord | undefined {
   return Object.freeze({ moves: value.moves, pushes: value.pushes });
 }
 
+function optimalRecordKey(puzzleId: string, puzzleFingerprint: string): string {
+  return JSON.stringify([puzzleId, puzzleFingerprint]);
+}
+
+function isValidOptimalRecordKey(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === "string" &&
+      parsed[0].length > 0 &&
+      isPuzzleRevisionFingerprint(parsed[1]);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Accept only records created by the corrected proof pipeline. Versions 1-3
  * could contain false IDA* optimality certificates created by path-dependent
  * backed-f transposition pruning. Version 4 could contain false certificates
- * created by the unsound goal-depth macro prune.
+ * created by the unsound goal-depth macro prune. Version 5 keyed proofs only
+ * by puzzle ID, so a changed board could inherit a stale certificate.
  */
 export function normalizeOptimalCache(value: unknown): OptimalCache {
   if (!isRecord(value) || !isRecord(value.records)) return EMPTY_CACHE;
-  if (value.version !== 5) return EMPTY_CACHE;
+  if (value.version !== 6) return EMPTY_CACHE;
 
   const records: Record<string, OptimalRecord> = {};
-  for (const [puzzleId, candidate] of Object.entries(value.records)) {
-    if (!puzzleId) continue;
+  for (const [recordKey, candidate] of Object.entries(value.records)) {
+    if (!isValidOptimalRecordKey(recordKey)) continue;
     const record = normalizeRecord(candidate);
-    if (record) records[puzzleId] = record;
+    if (record) records[recordKey] = record;
   }
   return Object.freeze({
-    version: 5,
+    version: 6,
     records: Object.freeze(records),
   });
 }
@@ -97,7 +117,7 @@ export function mergeOptimalCaches(
   }
   if (!changed) return first;
   return Object.freeze({
-    version: 5,
+    version: 6,
     records: Object.freeze(records),
   });
 }
@@ -147,11 +167,16 @@ export async function hydrateOptimalCacheFromIDB(
  */
 export function saveOptimalCache(cache: OptimalCache): OptimalCacheMutationResult {
   if (!documentCanPersistAppData()) {
-    return {
-      ok: true,
+    const result = trackPersistenceResult({
+      ok: false,
       key: STORAGE_KEYS.optimal,
       operation: "write",
+      reason: "unavailable",
+    } as const);
+    return {
+      ...result,
       cache,
+      durable: Promise.resolve(false),
     };
   }
 
@@ -163,29 +188,39 @@ export function saveOptimalCache(cache: OptimalCache): OptimalCacheMutationResul
     writeStoredValue(STORAGE_KEYS.optimal, JSON.stringify(merged)),
   );
 
-  void idbFencedUpdate(IDB_KEY, DOCUMENT_APP_RESET_GENERATION, (stored) =>
-    mergeOptimalCaches(normalizeOptimalCache(stored), merged)).catch(() => {});
+  const idbWrite = idbFencedUpdate(
+    IDB_KEY,
+    DOCUMENT_APP_RESET_GENERATION,
+    (stored) => mergeOptimalCaches(normalizeOptimalCache(stored), merged),
+  ).then((outcome) => outcome.applied).catch(() => false);
 
-  return { ...result, cache: merged };
+  return {
+    ...result,
+    cache: merged,
+    durable: result.ok ? Promise.resolve(true) : idbWrite,
+  };
 }
 
 export function setOptimalRecord(
   cache: OptimalCache,
   puzzleId: string,
+  puzzleFingerprint: string,
   record: OptimalRecord,
 ): OptimalCache {
+  const key = optimalRecordKey(puzzleId, puzzleFingerprint);
   return {
-    version: 5,
-    records: { ...cache.records, [puzzleId]: record },
+    version: 6,
+    records: { ...cache.records, [key]: record },
   };
 }
 
 export function isOptimal(
   cache: OptimalCache,
   puzzleId: string,
+  puzzleFingerprint: string,
   playerMoves: number,
 ): boolean {
-  const record = cache.records[puzzleId];
+  const record = getOptimalRecord(cache, puzzleId, puzzleFingerprint);
   if (!record) return false;
   return playerMoves <= record.moves;
 }
@@ -193,6 +228,7 @@ export function isOptimal(
 export function getOptimalRecord(
   cache: OptimalCache,
   puzzleId: string,
+  puzzleFingerprint: string,
 ): OptimalRecord | undefined {
-  return cache.records[puzzleId];
+  return cache.records[optimalRecordKey(puzzleId, puzzleFingerprint)];
 }

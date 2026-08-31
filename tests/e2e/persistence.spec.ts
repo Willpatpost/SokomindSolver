@@ -215,6 +215,10 @@ test("a quota failure shows one warning and a later successful retry clears it",
   const warning = page.getByTestId("persistence-warning");
   await expect(warning).toBeVisible();
   await expect(warning).toHaveCount(1);
+  await expect(completion).toContainText(
+    "First clear completed, but browser storage could not save it.",
+  );
+  await expect(completion).not.toContainText("saved as your personal best");
 
   await completion.getByRole("button", { name: "Study board" }).click();
   await page.getByRole("button", { name: "Undo" }).click();

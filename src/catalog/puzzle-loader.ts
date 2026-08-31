@@ -2,6 +2,7 @@ import type { PuzzleDefinition } from "../core/model.ts";
 import { assertValidPuzzleCatalog } from "./catalog-validation.ts";
 import { SOKOMIND_ORIGINALS } from "./catalog-types.ts";
 import { getPuzzleMetadataById } from "./puzzle-metadata.ts";
+import { puzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 export type ShardUrlMap = Readonly<Record<string, string>>;
 
@@ -61,7 +62,8 @@ function assertMetadataMatch(
     metadata.boxes !== puzzle.boxes ||
     metadata.width !== width ||
     metadata.height !== puzzle.rows.length ||
-    metadata.collection !== collection
+    metadata.collection !== collection ||
+    metadata.puzzleFingerprint !== puzzleRevisionFingerprint(puzzle)
   ) {
     throw new Error(
       `Puzzle board shard ${shard} entry ${index} does not match generated metadata: ${JSON.stringify(puzzle.id)}.`,

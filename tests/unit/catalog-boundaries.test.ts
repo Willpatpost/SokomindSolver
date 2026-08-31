@@ -57,10 +57,11 @@ const VALID_METADATA_TUPLE: readonly unknown[] = [
   5,
   "Test Collection",
   "puzzle-shard-000",
+  "puzzle-v1:12345678",
 ];
 
 function metadataDocument(tuple: unknown): unknown {
-  return { version: 1, puzzles: [tuple] };
+  return { version: 2, puzzles: [tuple] };
 }
 
 test("catalog and metadata documents reject malformed top-level values", () => {
@@ -81,12 +82,12 @@ test("catalog and metadata documents reject malformed top-level values", () => {
     null,
     [],
     {},
-    { version: 2, puzzles: [] },
+    { version: 1, puzzles: [] },
     { version: 1, puzzles: null },
   ]) {
     assert.throws(
       () => parsePuzzleMetadata(value),
-      /Puzzle metadata must contain version 1 and a puzzles array/,
+      /Puzzle metadata must contain version 2 and a puzzles array/,
       `metadata value ${JSON.stringify(value)}`,
     );
   }
@@ -187,7 +188,7 @@ test("metadata parsing reports every malformed tuple field", () => {
   ] as const) {
     assert.throws(
       () => parsePuzzleMetadata(metadataDocument(tuple)),
-      /Puzzle metadata entry 0(?: \("example"\))? must be an eight-field tuple/,
+      /Puzzle metadata entry 0(?: \("example"\))? must be a nine-field tuple/,
       label,
     );
   }
@@ -214,6 +215,8 @@ test("metadata parsing reports every malformed tuple field", () => {
     ["blank collection", 6, " ", /has an invalid collection/],
     ["shard type", 7, 3, /has an invalid shard name/],
     ["malformed shard", 7, "puzzle-shard-1", /has an invalid shard name/],
+    ["fingerprint type", 8, 3, /has an invalid puzzle fingerprint/],
+    ["malformed fingerprint", 8, "puzzle-v2:1234", /has an invalid puzzle fingerprint/],
   ];
 
   for (const [label, index, value, message] of failures) {
@@ -230,17 +233,27 @@ test("metadata parsing reports every malformed tuple field", () => {
 test("metadata parsing rejects malformed and duplicate records", () => {
   assert.throws(
     () => parsePuzzleMetadata({
-      version: 1,
-      puzzles: [["bad", "Bad", "unknown", 1, 5, 5, "Test", "puzzle-shard-000"]],
+      version: 2,
+      puzzles: [[
+        "bad",
+        "Bad",
+        "unknown",
+        1,
+        5,
+        5,
+        "Test",
+        "puzzle-shard-000",
+        "puzzle-v1:12345678",
+      ]],
     }),
     /entry 0 \("bad"\) has an invalid difficulty/,
   );
   assert.throws(
     () => parsePuzzleMetadata({
-      version: 1,
+      version: 2,
       puzzles: [
-        ["same", "One", "tutorial", 1, 5, 5, "Test", "puzzle-shard-000"],
-        ["same", "Two", "tutorial", 1, 5, 5, "Test", "puzzle-shard-000"],
+        ["same", "One", ...VALID_METADATA_TUPLE.slice(2)],
+        ["same", "Two", ...VALID_METADATA_TUPLE.slice(2)],
       ],
     }),
     /entry 1 duplicates puzzle id "same"/,

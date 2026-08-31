@@ -11,6 +11,7 @@ export const STORAGE_KEYS = Object.freeze({
   session: "sokomind.session.v1",
   optimal: "sokomind.optimal.v4",
   personalBestRoutes: "sokomind.personal-best-routes.v1",
+  personalBestRoutesReset: "sokomind.personal-best-routes-reset.v1",
   reset: "sokomind.reset.v1",
   ratings: "sokomind.ratings.v1",
   favorites: "sokomind.favorites.v1",

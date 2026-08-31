@@ -9,8 +9,10 @@ import {
 import {
   DEFAULT_GUIDED_JOURNEY_PREFERENCES,
   parseGuidedJourneyPreferences,
+  saveGuidedJourneyPreferences,
 } from "../../src/features/journey/guided-journey-preferences.ts";
 import type { ProgressData } from "../../src/shared/progress.ts";
+import { STORAGE_KEYS } from "../../src/shared/storage.ts";
 
 const EMPTY: ProgressData = { version: 2, completed: {}, daily: {}, activity: {} };
 
@@ -24,6 +26,7 @@ function metadata(id: string, title = id): PuzzleMetadata {
     height: 3,
     collection: "Test",
     shard: "puzzle-shard-000",
+    puzzleFingerprint: "puzzle-v1:12345678",
   };
 }
 
@@ -108,6 +111,18 @@ describe("guided journey", () => {
 });
 
 describe("guided journey preferences", () => {
+  it("reports an unavailable durable pause or resume write", () => {
+    assert.deepEqual(
+      saveGuidedJourneyPreferences({ version: 1, dismissed: true }),
+      {
+        ok: false,
+        key: STORAGE_KEYS.guidedJourney,
+        operation: "write",
+        reason: "unavailable",
+      },
+    );
+  });
+
   it("fails closed for malformed or incompatible state", () => {
     assert.equal(parseGuidedJourneyPreferences(null), DEFAULT_GUIDED_JOURNEY_PREFERENCES);
     assert.equal(parseGuidedJourneyPreferences("not-json"), DEFAULT_GUIDED_JOURNEY_PREFERENCES);

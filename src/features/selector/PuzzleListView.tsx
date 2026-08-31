@@ -211,7 +211,12 @@ export function PuzzleListView({
                 const complete = completedIds.has(puzzle.id);
                 const record = progress.completed[puzzle.id];
                 const optimal = record
-                  ? isOptimal(optimalCache, puzzle.id, record.moves)
+                  ? isOptimal(
+                      optimalCache,
+                      puzzle.id,
+                      puzzle.puzzleFingerprint,
+                      record.moves,
+                    )
                   : false;
                 const num = (indexMap.get(puzzle.id) ?? 0) + 1;
                 const tooltip = record

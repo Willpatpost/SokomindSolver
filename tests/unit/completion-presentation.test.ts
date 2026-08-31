@@ -31,6 +31,34 @@ test("presents a first clear as a saved personal milestone", () => {
   assert.equal(Object.isFrozen(presentation.milestones), true);
 });
 
+test("does not claim a first clear was saved after persistence fails", () => {
+  const presentation = createCompletionPresentation({
+    moves: 7,
+    pushes: 2,
+    progressSaved: false,
+  });
+
+  assert.equal(
+    presentation.summary,
+    "First clear completed, but browser storage could not save it.",
+  );
+  assert.match(presentation.milestones[0].detail, /could not save/u);
+  assert.doesNotMatch(presentation.summary, /saved as/u);
+});
+
+test("labels an unsaved improvement without calling it a durable record", () => {
+  const presentation = createCompletionPresentation({
+    moves: 16,
+    pushes: 6,
+    previousBest: record(20, 8),
+    progressSaved: false,
+  });
+
+  assert.match(presentation.summary, /could not save/u);
+  assert.match(presentation.milestones[0].detail, /could not save/u);
+  assert.match(presentation.milestones[1].detail, /could not save/u);
+});
+
 test("presents a move record and durable push improvement together", () => {
   const presentation = createCompletionPresentation({
     moves: 16,

@@ -87,6 +87,7 @@ function assetManifestPlugin(): Plugin {
     "SolverDialog-",
     "solver.worker-",
     "sokomind-engine.worker-",
+    "sokomind-proof-worker-",
     "puzzle-shard-",
   ];
 

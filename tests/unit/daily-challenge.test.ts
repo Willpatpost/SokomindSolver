@@ -14,6 +14,7 @@ const PUZZLES: readonly PuzzleMetadata[] = ["a", "b", "c"].map((id) => ({
   height: 4,
   collection: "Test",
   shard: "puzzle-shard-000",
+  puzzleFingerprint: `puzzle-v1:${id.repeat(8)}`,
 }));
 const EMPTY: ProgressData = { version: 2, completed: {}, daily: {}, activity: {} };
 

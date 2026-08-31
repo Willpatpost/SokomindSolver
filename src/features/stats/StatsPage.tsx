@@ -75,7 +75,12 @@ export function StatsPage() {
       setResetStep("idle");
       return;
     }
-    await clearPersonalBestRoutes();
+    const routesCleared = await clearPersonalBestRoutes();
+    if (!routesCleared) {
+      setResetError("Progress was reset, but replay storage could not be accessed.");
+      setResetStep("idle");
+      return;
+    }
     window.location.hash = "";
     window.location.reload();
   }, []);

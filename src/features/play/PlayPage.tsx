@@ -13,6 +13,7 @@ import {
 import { ConfirmDialog } from "@/src/shared/ui/ConfirmDialog";
 import { DeadlockDialog } from "@/src/shared/ui/DeadlockDialog";
 import { isOptimal, getOptimalRecord } from "@/src/shared/optimal-cache";
+import { puzzleRevisionFingerprint } from "@/src/core/puzzle-revision";
 import { useFavorites } from "@/src/shared/use-favorites";
 import { HowToPlay } from "@/src/features/help/HowToPlay";
 import {
@@ -272,33 +273,28 @@ function ValidatedPlayPage({
     puzzle.difficulty,
   ]);
 
+  const puzzleFingerprint = puzzleRevisionFingerprint(puzzle);
   const currentIsOptimal = best
-    ? isOptimal(game.optimalCache, puzzle.id, best.moves)
+    ? isOptimal(game.optimalCache, puzzle.id, puzzleFingerprint, best.moves)
     : false;
   const completionIsOptimal = isOptimal(
     game.optimalCache,
     puzzle.id,
+    puzzleFingerprint,
     session.moves,
   );
-  const completionPresentation = useMemo(
-    () => createCompletionPresentation({
-      moves: session.moves,
-      pushes: session.pushes,
-      previousBest: game.completionResult.previousBest,
-      isOptimal: completionIsOptimal,
-      completedCollection: collectionProgress.completedByThisClear
-        ? collectionProgress.name
-        : undefined,
-    }),
-    [
-      collectionProgress.completedByThisClear,
-      collectionProgress.name,
-      completionIsOptimal,
-      game.completionResult.previousBest,
-      session.moves,
-      session.pushes,
-    ],
-  );
+  const completionProgressSaved =
+    game.completionResult.progressSaveResult?.ok !== false;
+  const completionPresentation = createCompletionPresentation({
+    moves: session.moves,
+    pushes: session.pushes,
+    previousBest: game.completionResult.previousBest,
+    isOptimal: completionIsOptimal,
+    progressSaved: completionProgressSaved,
+    completedCollection: collectionProgress.completedByThisClear
+      ? collectionProgress.name
+      : undefined,
+  });
 
   return (
     <main className={styles.page} data-zen={zenMode || undefined}>
@@ -571,7 +567,11 @@ function ValidatedPlayPage({
           controlsDisabled={!game.inputEnabled}
           elapsed={game.elapsed}
           isOptimal={currentIsOptimal}
-          optimalMoves={getOptimalRecord(game.optimalCache, puzzle.id)?.moves}
+          optimalMoves={getOptimalRecord(
+            game.optimalCache,
+            puzzle.id,
+            puzzleFingerprint,
+          )?.moves}
           canHint={game.hint.canHint}
           hintThinking={game.hint.phase === "thinking"}
           session={session}
