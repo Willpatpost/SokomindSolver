@@ -338,6 +338,7 @@ export {
 
 export {
   analyzeSolutionDepth,
+  analyzeSolutionDepthFromTrace,
 } from "./solution-depth-analysis.ts";
 
 export type {
@@ -373,11 +374,72 @@ export type {
 
 export {
   analyzeInteraction,
+  analyzeInteractionFromTrace,
 } from "./interaction-analysis.ts";
 
 export type {
   InteractionMetrics,
 } from "./interaction-analysis.ts";
+
+export {
+  buildCanonicalSolutionTrace,
+} from "./solution-trace.ts";
+
+export type {
+  CanonicalSolutionTrace,
+  TraceBuildError,
+  TraceBuildErrorCode,
+  TraceBuildOptions,
+  TraceBuildResult,
+  TraceBox,
+  TraceBoxKind,
+  TraceGoal,
+  TraceGoalKind,
+  TracePhase,
+  TracePosition,
+  TracePushEvent,
+  TracePushOption,
+  TraceStepEvent,
+} from "./solution-trace.ts";
+
+export {
+  buildSemanticZoneIndex,
+  deriveSemanticZones,
+} from "./semantic-zones.ts";
+
+export type {
+  SemanticZone,
+  SemanticZoneKind,
+  SemanticZoneMap,
+  SemanticZonePosition,
+} from "./semantic-zones.ts";
+
+export {
+  analyzePassiveSolutionStory,
+} from "./passive-story-analysis.ts";
+
+export type {
+  CrossTypeDependencyEvidence,
+  CrossTypeSharedCellEvidence,
+  GateTrafficAnalysis,
+  GateTrafficEvidence,
+  GenericGoalMisdirectionAnalysis,
+  GenericGoalMisdirectionEvidence,
+  GoalPackingPlacement,
+  GoalRoomPackingAnalysis,
+  GoalRoomPackingEvidence,
+  MixedBoxInteractionAnalysis,
+  MultiRoomJourneyAnalysis,
+  MultiRoomJourneyEvidence,
+  PassiveStoryPhase,
+  PassiveStoryPhaseKind,
+  PassiveStoryProfile,
+  ProgressReversalAnalysis,
+  ProgressReversalEvidence,
+  SolutionPhaseAnalysis,
+  StructuralStoryIdentity,
+  ZoneTransitionEvidence,
+} from "./passive-story-analysis.ts";
 
 export {
   evaluateFinalist,

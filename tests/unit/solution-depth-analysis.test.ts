@@ -68,17 +68,20 @@ describe("analyzeSolutionDepth", () => {
   });
 
   it("detects box switch rate with multiple boxes", () => {
-    // R X . X S S
     const grid = [
-      ["O", "O", "O", "O", "O", "O", "O", "O"],
-      ["O", "R", "X", " ", "X", "S", "S", "O"],
-      ["O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", " ", " ", "X", " ", "S", "O"],
+      ["O", " ", " ", " ", " ", " ", " ", " ", "S", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
     ];
     const steps: SolutionStep[] = [
-      step("right", "push"),   // push box 0 right
+      step("right", "push"),
+      step("down", "walk"),
       step("right", "walk"),
-      step("right", "push"),   // push box 1 right (switch!)
-      step("right", "push"),   // push box 1 right again (no switch)
+      step("right", "walk"),
+      step("right", "walk"),
+      step("up", "walk"),
+      step("right", "push"),
     ];
     const result = analyzeSolutionDepth(grid, steps);
     assert.equal(result.distinctBoxesMoved, 2);
@@ -117,19 +120,21 @@ describe("analyzeSolutionDepth", () => {
   });
 
   it("counts goal order constraints", () => {
-    // Two boxes pushed to goals in sequence
-    // R X . S X . S
     const grid = [
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
-      ["O", "R", "X", " ", "S", "X", " ", "S", "O"],
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", "S", " ", "X", " ", "S", "O"],
+      ["O", " ", " ", " ", " ", " ", " ", " ", " ", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
     ];
     const steps: SolutionStep[] = [
-      step("right", "push"),   // push box 0 right (col 2→3)
-      step("right", "push"),   // push box 0 right (col 3→4, onto goal)
+      step("right", "push"),
+      step("right", "push"),
+      step("down", "walk"),
       step("right", "walk"),
-      step("right", "push"),   // push box 1 right (col 5→6)
-      step("right", "push"),   // push box 1 right (col 6→7, onto goal)
+      step("right", "walk"),
+      step("up", "walk"),
+      step("right", "push"),
+      step("right", "push"),
     ];
     const result = analyzeSolutionDepth(grid, steps);
     assert.ok(result.goalOrderConstraints >= 1, "should detect goal order constraint");
@@ -180,25 +185,29 @@ describe("analyzeSolutionDepth", () => {
   it("estimated dependency depth increases with complexity", () => {
     // Simple 1-box vs multi-box with vacancies
     const simpleGrid = [
-      ["O", "O", "O", "O"],
-      ["O", "R", "X", "O"],
-      ["O", " ", "S", "O"],
-      ["O", "O", "O", "O"],
+      ["O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", "S", "O"],
+      ["O", "O", "O", "O", "O", "O"],
     ];
     const simpleSteps: SolutionStep[] = [
+      step("right", "push"),
       step("right", "push"),
     ];
     const simpleResult = analyzeSolutionDepth(simpleGrid, simpleSteps);
 
     const complexGrid = [
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
-      ["O", "R", "X", " ", "X", " ", "S", "S", "O"],
-      ["O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
+      ["O", "R", "X", " ", "S", " ", "X", " ", "S", "O"],
+      ["O", " ", " ", " ", " ", " ", " ", " ", " ", "O"],
+      ["O", "O", "O", "O", "O", "O", "O", "O", "O", "O"],
     ];
     const complexSteps: SolutionStep[] = [
       step("right", "push"),
       step("right", "push"),
+      step("down", "walk"),
       step("right", "walk"),
+      step("right", "walk"),
+      step("up", "walk"),
       step("right", "push"),
       step("right", "push"),
     ];

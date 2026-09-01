@@ -9,8 +9,16 @@ import { directionDelta } from "../../../core/position.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { enumerateReachablePushes } from "./reachable-pushes.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
-import { analyzeInteraction } from "./interaction-analysis.ts";
-import { analyzeSolutionDepth } from "./solution-depth-analysis.ts";
+import { analyzeInteractionFromTrace } from "./interaction-analysis.ts";
+import { analyzeSolutionDepthFromTrace } from "./solution-depth-analysis.ts";
+import {
+  buildCanonicalSolutionTrace,
+  type CanonicalSolutionTrace,
+} from "./solution-trace.ts";
+import {
+  analyzePassiveSolutionStory,
+  type PassiveStoryProfile,
+} from "./passive-story-analysis.ts";
 import { isBoxChar, isGoalChar, isRobotChar, isWallChar } from "./tile-semantics.ts";
 
 // ---------------------------------------------------------------------------
@@ -125,6 +133,7 @@ export interface PuzzleEvaluationVector {
 export interface PuzzleEvaluationResult {
   readonly vector: PuzzleEvaluationVector;
   readonly steps: readonly SolutionStep[] | null;
+  readonly passiveStory: PassiveStoryProfile | null;
 }
 
 export async function evaluatePuzzleWithSteps(
@@ -158,23 +167,38 @@ export async function evaluatePuzzleWithSteps(
     return {
       vector: buildUnsolvedVector(puzzle, grid, structMetrics, result.metrics),
       steps: null,
+      passiveStory: null,
     };
   }
 
   const { solution, metrics } = result;
   const steps = solution.steps;
+  const traceResult = buildCanonicalSolutionTrace(grid, steps, {
+    puzzleId: puzzle.id,
+    requireSolved: true,
+  });
+  if (!traceResult.ok) {
+    return {
+      vector: buildUnsolvedVector(puzzle, grid, structMetrics, metrics),
+      steps: null,
+      passiveStory: null,
+    };
+  }
+  const trace = traceResult.trace;
 
   const branchMetrics = analyzeBranching(puzzle, steps);
   const walkMetrics = analyzeWalkPatterns(steps);
-  const boxMetrics = analyzeBoxInteraction(puzzle, steps, puzzle.boxes);
-  const roomMetrics = analyzeRoomTraffic(steps, grid, structMetrics);
+  const boxMetrics = analyzeBoxInteraction(trace);
+  const roomMetrics = analyzeRoomTraffic(trace, structMetrics);
   const tediumMetrics = analyzeTedium(steps, structMetrics, grid);
   const effortMetrics = extractEffort(metrics);
   const usageMetrics = analyzeSolutionUsage(grid, steps, structMetrics.totalFloor);
-  const interactionMetrics = analyzeInteraction(
-    grid, steps, structMetrics.chokepoints, grid[0]?.length ?? 0,
+  const interactionMetrics = analyzeInteractionFromTrace(
+    trace,
+    structMetrics.chokepoints,
   );
-  const depthMetrics = analyzeSolutionDepth(grid, steps);
+  const depthMetrics = analyzeSolutionDepthFromTrace(trace);
+  const passiveStory = analyzePassiveSolutionStory(grid, trace);
 
   return {
     vector: {
@@ -251,6 +275,7 @@ export async function evaluatePuzzleWithSteps(
       solved: true,
     },
     steps,
+    passiveStory,
   };
 }
 
@@ -584,52 +609,24 @@ interface BoxInteractionMetrics {
 }
 
 function analyzeBoxInteraction(
-  puzzle: PuzzleDefinition,
-  steps: readonly SolutionStep[],
-  boxCount: number,
+  trace: CanonicalSolutionTrace,
 ): BoxInteractionMetrics {
-  if (boxCount <= 1 || steps.length === 0) {
-    return { independenceRatio: boxCount <= 1 ? 0 : 1, interactionEvents: 0 };
-  }
-
-  const grid = puzzle.rows.map((r) => [...r]);
-  const h = grid.length;
-  const w = h > 0 ? grid[0].length : 0;
-
-  let robot = { row: 0, column: 0 };
-  const boxes: Array<{ row: number; column: number }> = [];
-
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const ch = grid[r][c];
-      if (isRobotChar(ch)) robot = { row: r, column: c };
-      if (isBoxChar(ch)) boxes.push({ row: r, column: c });
-    }
+  if (trace.boxes.length <= 1 || trace.pushes.length === 0) {
+    return {
+      independenceRatio: trace.boxes.length <= 1 ? 0 : 1,
+      interactionEvents: 0,
+    };
   }
 
   let transitions = 0;
-  let prevBoxIdx = -1;
-  let totalPushes = 0;
-
-  for (const step of steps) {
-    const dir = directionDelta(step.direction);
-    const nr = robot.row + dir.row;
-    const nc = robot.column + dir.column;
-
-    if (step.kind === "push") {
-      const bi = boxes.findIndex((b) => b.row === nr && b.column === nc);
-      if (bi >= 0) {
-        if (prevBoxIdx >= 0 && bi !== prevBoxIdx) transitions++;
-        prevBoxIdx = bi;
-        totalPushes++;
-        boxes[bi] = { row: nr + dir.row, column: nc + dir.column };
-      }
-    }
-    robot = { row: nr, column: nc };
+  let previousBoxId = -1;
+  for (const push of trace.pushes) {
+    if (previousBoxId >= 0 && push.boxId !== previousBoxId) transitions++;
+    previousBoxId = push.boxId;
   }
 
-  const independenceRatio = totalPushes > 1
-    ? 1 - Math.min(1, transitions / (totalPushes - 1))
+  const independenceRatio = trace.pushes.length > 1
+    ? 1 - Math.min(1, transitions / (trace.pushes.length - 1))
     : 1;
 
   return {
@@ -647,61 +644,31 @@ interface RoomTrafficMetrics {
 }
 
 function analyzeRoomTraffic(
-  steps: readonly SolutionStep[],
-  grid: string[][],
+  trace: CanonicalSolutionTrace,
   metrics: StructuralMetrics,
 ): RoomTrafficMetrics {
   if (metrics.regions.length === 0) return { roomCrossings: 0 };
 
-  const h = grid.length;
-  const w = h > 0 ? grid[0].length : 0;
-
   const regionMap = new Map<string, number>();
   for (let ri = 0; ri < metrics.regions.length; ri++) {
     for (const cellIdx of metrics.regions[ri].cells) {
-      const cr = Math.floor(cellIdx / w);
-      const cc = cellIdx % w;
+      const cr = Math.floor(cellIdx / trace.boardWidth);
+      const cc = cellIdx % trace.boardWidth;
       regionMap.set(`${cr},${cc}`, ri);
     }
   }
 
-  let robot = { row: 0, column: 0 };
-  const boxes: Array<{ row: number; column: number }> = [];
-  const boxSet = new Set<string>();
-
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const ch = grid[r][c];
-      if (isRobotChar(ch)) robot = { row: r, column: c };
-      if (isBoxChar(ch)) {
-        boxes.push({ row: r, column: c });
-        boxSet.add(`${r},${c}`);
-      }
-    }
-  }
-
   let crossings = 0;
-  for (const step of steps) {
-    const dir = directionDelta(step.direction);
-    const nr = robot.row + dir.row;
-    const nc = robot.column + dir.column;
-
-    if (step.kind === "push") {
-      const bi = boxes.findIndex((b) => b.row === nr && b.column === nc);
-      if (bi >= 0) {
-        const fromRegion = regionMap.get(`${nr},${nc}`);
-        const destR = nr + dir.row;
-        const destC = nc + dir.column;
-        const toRegion = regionMap.get(`${destR},${destC}`);
-        if (fromRegion !== undefined && toRegion !== undefined && fromRegion !== toRegion) {
-          crossings++;
-        }
-        boxSet.delete(`${nr},${nc}`);
-        boxes[bi] = { row: destR, column: destC };
-        boxSet.add(`${destR},${destC}`);
-      }
+  for (const push of trace.pushes) {
+    const fromRegion = regionMap.get(`${push.from.row},${push.from.column}`);
+    const toRegion = regionMap.get(`${push.to.row},${push.to.column}`);
+    if (
+      fromRegion !== undefined &&
+      toRegion !== undefined &&
+      fromRegion !== toRegion
+    ) {
+      crossings++;
     }
-    robot = { row: nr, column: nc };
   }
 
   return { roomCrossings: crossings };

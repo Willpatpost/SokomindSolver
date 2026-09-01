@@ -3,7 +3,10 @@ import { expect, test } from "@playwright/test";
 import { ACHIEVEMENTS } from "../../src/features/achievements/achievements";
 import { PUZZLE_METADATA } from "../../src/catalog/puzzle-metadata";
 
-const solvedIds = PUZZLE_METADATA.slice(0, 10).map(({ id }) => id);
+const solvedIds = PUZZLE_METADATA
+  .filter(({ difficulty }) => difficulty !== "tutorial")
+  .slice(0, 10)
+  .map(({ id }) => id);
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((puzzleIds) => {

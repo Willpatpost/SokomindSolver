@@ -7,6 +7,7 @@ import {
 } from "./blueprint-types.ts";
 import type { BeamSearchParams } from "./reverse-beam-search.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
+import type { PassiveStoryProfile } from "./passive-story-analysis.ts";
 import type { MotifType, DependencyHint } from "./motifs.ts";
 import type {
   ComposedPuzzleResult,
@@ -336,6 +337,8 @@ export interface ForgeCandidate {
   readonly puzzle: PuzzleDefinition;
   readonly provenance: ForgeProvenance;
   readonly evaluation: PuzzleEvaluationVector;
+  /** Passive evidence only; it does not affect gates or ranking in Phase 2. */
+  readonly passiveStory?: PassiveStoryProfile;
   readonly tighteningResult?: TighteningResult;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
@@ -1267,6 +1270,7 @@ async function completeCandidateFromBlueprint(
       puzzle: { ...puzzle, id: `forge-${seed}` },
       provenance,
       evaluation: ev,
+      passiveStory: evalResult.passiveStory ?? undefined,
       tighteningResult,
       dag: rawResult.dag,
       hints: rawResult.hints,
@@ -1989,6 +1993,7 @@ async function runForgeFlat(
       puzzle: { ...puzzle, id: `forge-${seed}` },
       provenance,
       evaluation: ev,
+      passiveStory: evalResult.passiveStory ?? undefined,
       tighteningResult,
       dag: raw.result.dag,
       hints: raw.result.hints,

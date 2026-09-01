@@ -19,7 +19,6 @@ test("difficulty random actions have unique accessible names", async ({ page }) 
     "Intermediate",
     "Advanced",
     "Expert",
-    "Master",
   ]) {
     await expect(page.getByRole("button", {
       name: `Random unsolved ${difficulty} puzzle`,
@@ -36,9 +35,6 @@ test("drill-down from home to puzzles to play", async ({ page }) => {
   await page.getByText("Tutorial").click();
   await expect(page).toHaveURL(/#\/puzzles\/tutorial$/);
   await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Sokomind Originals" }).click();
-  await expect(page).toHaveURL(/#\/puzzles\/tutorial\/Sokomind%20Originals$/);
   await expect(page.getByText("First Steps")).toBeVisible();
 
   await page.getByText("First Steps").click();
@@ -129,9 +125,9 @@ test("invalid play links return home without overwriting the saved attempt", asy
 test("collection page lists puzzles with status and search filtering", async ({
   page,
 }) => {
-  await page.goto("./#/puzzles/beginner/Sokomind%20Generated");
+  await page.goto("./#/puzzles/beginner/Sokomind%20Originals");
   await expect(
-    page.getByRole("heading", { name: "Sokomind Generated" }),
+    page.getByRole("heading", { name: "Sokomind Originals" }),
   ).toBeVisible();
 
   const rows = page.getByTestId("puzzle-row");
@@ -143,28 +139,28 @@ test("collection page lists puzzles with status and search filtering", async ({
   await expect(status).toBeVisible();
 
   const search = page.getByPlaceholder("Search");
-  await search.pressSequentially("Beginner 1");
+  await search.pressSequentially("Three in a Row");
   await expect(search).toBeFocused();
-  await expect(search).toHaveValue("Beginner 1");
-  await expect(page).toHaveURL(/Sokomind%20Generated$/);
+  await expect(search).toHaveValue("Three in a Row");
+  await expect(page).toHaveURL(/Sokomind%20Originals$/);
   await expect(rows).toHaveCount(1);
 });
 
 test("puzzle lists restore filters, scroll, and row focus after play", async ({
   page,
 }) => {
-  await page.goto("./#/puzzles/beginner/Sokomind%20Generated");
+  await page.goto("./#/puzzles/beginner/Sokomind%20Originals");
   const search = page.getByRole("searchbox", { name: "Search puzzles" });
   const rows = page.getByTestId("puzzle-row");
 
-  await search.fill("Beginner 1");
+  await search.fill("Three in a Row");
   await expect(rows).toHaveCount(1);
   const filteredRow = rows.first();
   const filteredPuzzleId = await filteredRow.getAttribute("data-puzzle-id");
   const filteredPuzzleTitle = await filteredRow.locator("strong").textContent();
   await filteredRow.click();
   await page.getByRole("link", { name: "Back to puzzles" }).click();
-  await expect(search).toHaveValue("Beginner 1");
+  await expect(search).toHaveValue("Three in a Row");
   await expect(page.locator(`[data-puzzle-id="${filteredPuzzleId}"]`)).toBeFocused();
   const recent = page.getByRole("complementary", {
     name: "Recently played puzzle",
@@ -185,7 +181,7 @@ test("puzzle lists restore filters, scroll, and row focus after play", async ({
   await deepRow.click();
   await page.getByRole("link", { name: "Back to puzzles" }).click();
 
-  await expect(page).toHaveURL(/Sokomind%20Generated$/);
+  await expect(page).toHaveURL(/Sokomind%20Originals$/);
   await expect(page.locator(`[data-puzzle-id="${deepPuzzleId}"]`)).toBeFocused();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(
     Math.max(0, savedScrollY - 2),

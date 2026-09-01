@@ -1,13 +1,10 @@
 import type { SolutionStep } from "../../../solver/contracts.ts";
-import { directionDelta } from "../../../core/position.ts";
-import { enumerateReachablePushes } from "./reachable-pushes.ts";
 import {
-  isBoxChar,
-  isGenericBoxChar,
-  isRobotChar,
-} from "./tile-semantics.ts";
-
-type BoxKind = "generic" | "typed";
+  buildCanonicalSolutionTrace,
+  type CanonicalSolutionTrace,
+  type TraceBoxKind,
+} from "./solution-trace.ts";
+import { isBoxChar } from "./tile-semantics.ts";
 
 export interface InteractionMetrics {
   readonly sharedRouteCells: number;
@@ -49,193 +46,109 @@ function emptyMetrics(boxCount: number): InteractionMetrics {
   };
 }
 
-export function analyzeInteraction(
-  grid: readonly (readonly string[])[],
-  steps: readonly SolutionStep[],
-  structuralChokepoints: ReadonlySet<number>,
-  boardWidth: number,
-): InteractionMetrics {
-  const h = grid.length;
-  const w = h > 0 ? grid[0].length : 0;
+function countShared<T>(sets: ReadonlyMap<number, ReadonlySet<T>>): number {
+  const uses = new Map<T, number>();
+  for (const values of sets.values()) {
+    for (const value of values) uses.set(value, (uses.get(value) ?? 0) + 1);
+  }
+  return [...uses.values()].filter((count) => count >= 2).length;
+}
 
-  let robot = { row: 0, column: 0 };
-  const boxes: Array<{ row: number; column: number; kind: BoxKind }> = [];
-
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const ch = grid[r][c];
-      if (isRobotChar(ch)) robot = { row: r, column: c };
-      if (isBoxChar(ch)) {
-        boxes.push({
-          row: r,
-          column: c,
-          kind: isGenericBoxChar(ch) ? "generic" : "typed",
-        });
-      }
+function countCrossTypeShared<T>(
+  sets: ReadonlyMap<number, ReadonlySet<T>>,
+  kindByBox: ReadonlyMap<number, TraceBoxKind>,
+): number {
+  const kindsByValue = new Map<T, Set<TraceBoxKind>>();
+  for (const [boxId, values] of sets) {
+    const kind = kindByBox.get(boxId);
+    if (!kind) continue;
+    for (const value of values) {
+      const kinds = kindsByValue.get(value) ?? new Set<TraceBoxKind>();
+      kinds.add(kind);
+      kindsByValue.set(value, kinds);
     }
   }
+  return [...kindsByValue.values()].filter((kinds) => kinds.size >= 2).length;
+}
 
-  if (boxes.length <= 1) {
-    return emptyMetrics(boxes.length);
-  }
+export function analyzeInteractionFromTrace(
+  trace: CanonicalSolutionTrace,
+  structuralChokepoints: ReadonlySet<number>,
+  boardWidth: number = trace.boardWidth,
+): InteractionMetrics {
+  if (trace.boxes.length === 0) return emptyMetrics(0);
 
   const routeCellsByBox = new Map<number, Set<string>>();
   const supportCellsByBox = new Map<number, Set<string>>();
   const chokepointUsesByBox = new Map<number, Set<number>>();
-  for (let i = 0; i < boxes.length; i++) {
-    routeCellsByBox.set(i, new Set());
-    supportCellsByBox.set(i, new Set());
-    chokepointUsesByBox.set(i, new Set());
+  const kindByBox = new Map<number, TraceBoxKind>();
+  for (const box of trace.boxes) {
+    routeCellsByBox.set(box.id, new Set());
+    supportCellsByBox.set(box.id, new Set());
+    chokepointUsesByBox.set(box.id, new Set());
+    kindByBox.set(box.id, box.kind);
   }
 
   let causalEnableCount = 0;
   let causalDisableCount = 0;
   let crossTypeCausalEnableCount = 0;
   let crossTypeCausalDisableCount = 0;
-  const pushesByBox = new Array<number>(boxes.length).fill(0);
 
-  const flatGrid = grid.map((r) => [...r]);
+  for (const push of trace.pushes) {
+    supportCellsByBox.get(push.boxId)!.add(
+      `${push.keeperSupport.row},${push.keeperSupport.column}`,
+    );
+    routeCellsByBox.get(push.boxId)!.add(`${push.from.row},${push.from.column}`);
+    routeCellsByBox.get(push.boxId)!.add(`${push.to.row},${push.to.column}`);
 
-  for (const step of steps) {
-    const delta = directionDelta(step.direction);
-    const nr = robot.row + delta.row;
-    const nc = robot.column + delta.column;
-
-    if (step.kind === "push") {
-      const bi = boxes.findIndex((b) => b.row === nr && b.column === nc);
-      if (bi >= 0) {
-        pushesByBox[bi]++;
-        const destR = nr + delta.row;
-        const destC = nc + delta.column;
-
-        const beforePushes = enumerateReachablePushes(flatGrid, robot, boxes);
-
-        const supportKey = `${robot.row},${robot.column}`;
-        supportCellsByBox.get(bi)!.add(supportKey);
-
-        const fromKey = `${nr},${nc}`;
-        const toKey = `${destR},${destC}`;
-        routeCellsByBox.get(bi)!.add(fromKey);
-        routeCellsByBox.get(bi)!.add(toKey);
-
-        const cellIdx = nr * boardWidth + nc;
-        if (structuralChokepoints.has(cellIdx)) {
-          chokepointUsesByBox.get(bi)!.add(cellIdx);
-        }
-        const destIdx = destR * boardWidth + destC;
-        if (structuralChokepoints.has(destIdx)) {
-          chokepointUsesByBox.get(bi)!.add(destIdx);
-        }
-
-        boxes[bi] = { ...boxes[bi], row: destR, column: destC };
-
-        const afterPushes = enumerateReachablePushes(flatGrid, { row: nr, column: nc }, boxes);
-
-        const beforeSet = new Set(
-          beforePushes
-            .filter((p) => p.boxIndex !== bi)
-            .map((p) => `${p.boxIndex},${p.direction}`),
-        );
-        const afterSet = new Set(
-          afterPushes
-            .filter((p) => p.boxIndex !== bi)
-            .map((p) => `${p.boxIndex},${p.direction}`),
-        );
-
-        for (const key of afterSet) {
-          if (!beforeSet.has(key)) {
-            causalEnableCount++;
-            const otherBox = Number(key.slice(0, key.indexOf(",")));
-            if (boxes[otherBox]?.kind !== boxes[bi].kind) {
-              crossTypeCausalEnableCount++;
-            }
-          }
-        }
-        for (const key of beforeSet) {
-          if (!afterSet.has(key)) {
-            causalDisableCount++;
-            const otherBox = Number(key.slice(0, key.indexOf(",")));
-            if (boxes[otherBox]?.kind !== boxes[bi].kind) {
-              crossTypeCausalDisableCount++;
-            }
-          }
-        }
+    for (const position of [push.from, push.to]) {
+      const index = position.row * boardWidth + position.column;
+      if (structuralChokepoints.has(index)) {
+        chokepointUsesByBox.get(push.boxId)!.add(index);
       }
     }
 
-    robot = { row: nr, column: nc };
-  }
-
-  let sharedRouteCells = 0;
-  const allRouteCells = new Map<string, number>();
-  const routeKinds = new Map<string, Set<BoxKind>>();
-  for (const [boxIndex, cells] of routeCellsByBox) {
-    for (const key of cells) {
-      allRouteCells.set(key, (allRouteCells.get(key) ?? 0) + 1);
-      const kinds = routeKinds.get(key) ?? new Set<BoxKind>();
-      kinds.add(boxes[boxIndex].kind);
-      routeKinds.set(key, kinds);
+    causalEnableCount += push.enabledPushes.length;
+    causalDisableCount += push.disabledPushes.length;
+    for (const option of push.enabledPushes) {
+      if (kindByBox.get(option.boxId) !== push.boxKind) crossTypeCausalEnableCount++;
+    }
+    for (const option of push.disabledPushes) {
+      if (kindByBox.get(option.boxId) !== push.boxKind) crossTypeCausalDisableCount++;
     }
   }
-  for (const count of allRouteCells.values()) {
-    if (count >= 2) sharedRouteCells++;
-  }
-  const crossTypeSharedRouteCells = [...routeKinds.values()].filter(
-    (kinds) => kinds.size >= 2,
-  ).length;
 
-  let sharedSupportCells = 0;
-  const allSupportCells = new Map<string, number>();
-  const supportKinds = new Map<string, Set<BoxKind>>();
-  for (const [boxIndex, cells] of supportCellsByBox) {
-    for (const key of cells) {
-      allSupportCells.set(key, (allSupportCells.get(key) ?? 0) + 1);
-      const kinds = supportKinds.get(key) ?? new Set<BoxKind>();
-      kinds.add(boxes[boxIndex].kind);
-      supportKinds.set(key, kinds);
-    }
-  }
-  for (const count of allSupportCells.values()) {
-    if (count >= 2) sharedSupportCells++;
-  }
-  const crossTypeSharedSupportCells = [...supportKinds.values()].filter(
-    (kinds) => kinds.size >= 2,
-  ).length;
-
-  let sharedChokepointUses = 0;
-  const allChokepointUses = new Map<number, number>();
-  const chokepointKinds = new Map<number, Set<BoxKind>>();
-  for (const [boxIndex, cells] of chokepointUsesByBox) {
-    for (const idx of cells) {
-      allChokepointUses.set(idx, (allChokepointUses.get(idx) ?? 0) + 1);
-      const kinds = chokepointKinds.get(idx) ?? new Set<BoxKind>();
-      kinds.add(boxes[boxIndex].kind);
-      chokepointKinds.set(idx, kinds);
-    }
-  }
-  for (const count of allChokepointUses.values()) {
-    if (count >= 2) sharedChokepointUses++;
-  }
-  const crossTypeSharedChokepoints = [...chokepointKinds.values()].filter(
-    (kinds) => kinds.size >= 2,
-  ).length;
-
-  const inactiveBoxCount = pushesByBox.filter((pushes) => pushes === 0).length;
-  const onePushBoxCount = pushesByBox.filter((pushes) => pushes === 1).length;
-
+  const pushesByBox = trace.boxes.map((box) => box.pushCount);
   return {
-    sharedRouteCells,
-    sharedSupportCells,
-    sharedChokepointUses,
+    sharedRouteCells: countShared(routeCellsByBox),
+    sharedSupportCells: countShared(supportCellsByBox),
+    sharedChokepointUses: countShared(chokepointUsesByBox),
     causalEnableCount,
     causalDisableCount,
-    crossTypeSharedRouteCells,
-    crossTypeSharedSupportCells,
-    crossTypeSharedChokepoints,
+    crossTypeSharedRouteCells: countCrossTypeShared(routeCellsByBox, kindByBox),
+    crossTypeSharedSupportCells: countCrossTypeShared(supportCellsByBox, kindByBox),
+    crossTypeSharedChokepoints: countCrossTypeShared(chokepointUsesByBox, kindByBox),
     crossTypeCausalEnableCount,
     crossTypeCausalDisableCount,
     minPushesPerBox: Math.min(...pushesByBox),
-    inactiveBoxCount,
-    onePushBoxCount,
+    inactiveBoxCount: pushesByBox.filter((pushes) => pushes === 0).length,
+    onePushBoxCount: pushesByBox.filter((pushes) => pushes === 1).length,
   };
+}
+
+export function analyzeInteraction(
+  grid: readonly (readonly string[])[],
+  steps: readonly SolutionStep[],
+  structuralChokepoints: ReadonlySet<number>,
+  boardWidth: number,
+): InteractionMetrics {
+  const result = buildCanonicalSolutionTrace(grid, steps);
+  if (!result.ok) {
+    const boxCount = grid.reduce(
+      (count, row) => count + row.filter(isBoxChar).length,
+      0,
+    );
+    return emptyMetrics(boxCount);
+  }
+  return analyzeInteractionFromTrace(result.trace, structuralChokepoints, boardWidth);
 }
