@@ -263,6 +263,9 @@ export type {
   RestartDiagnostics,
   RejectionBreakdown,
   ForgeDiagnosticReport,
+  PassiveStoryDistribution,
+  PassiveStoryNumericMetric,
+  MetricDistribution,
 } from "./generator-diagnostics.ts";
 
 export {
@@ -416,10 +419,13 @@ export type {
 
 export {
   analyzePassiveSolutionStory,
+  summarizePassiveStory,
+  explainPassiveStory,
 } from "./passive-story-analysis.ts";
 
 export type {
   CrossTypeDependencyEvidence,
+  CrossTypeSwitchEvidence,
   CrossTypeSharedCellEvidence,
   GateTrafficAnalysis,
   GateTrafficEvidence,
@@ -434,12 +440,29 @@ export type {
   PassiveStoryPhase,
   PassiveStoryPhaseKind,
   PassiveStoryProfile,
+  PassiveStorySummary,
   ProgressReversalAnalysis,
   ProgressReversalEvidence,
   SolutionPhaseAnalysis,
   StructuralStoryIdentity,
   ZoneTransitionEvidence,
 } from "./passive-story-analysis.ts";
+
+export {
+  buildMechanismConstructionPlan,
+  verifyMechanismConstruction,
+} from "./mechanism-construction.ts";
+
+export type {
+  ConstructedEvidenceReference,
+  ConstructedStoryEvidenceKind,
+  MechanismConstructionDirective,
+  MechanismConstructionPlan,
+  MechanismConstructionTarget,
+  MechanismConstructionTargetResult,
+  MechanismConstructionVerification,
+  MechanismGoalTarget,
+} from "./mechanism-construction.ts";
 
 export {
   evaluateFinalist,

@@ -48,7 +48,10 @@ export type DependencyEdgeType =
   | "must-reopen"
   | "must-park"
   | "chain-link"
-  | "exchange-cross";
+  | "exchange-cross"
+  | "assignment-cross"
+  | "support-conflict"
+  | "chain-merge";
 
 export interface DependencyNode {
   readonly id: number;

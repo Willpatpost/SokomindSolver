@@ -188,4 +188,6 @@ test("empty collector produces zeroed report", () => {
   assert.equal(report.boxScaleMismatchCount, 0);
   assert.equal(report.restartDiagnostics.length, 0);
   assert.deepEqual(report.rejectionBreakdown.byReason, {});
+  assert.equal(report.passiveStoryDistribution.candidateCount, 0);
+  assert.deepEqual(report.passiveStoryDistribution.metrics, {});
 });

@@ -33,6 +33,9 @@ const DEFINING_EDGE_MAP: Record<MechanismType, DependencyEdgeType> = {
   "temporary-parking": "must-park",
   "dependency-chain": "chain-link",
   "cross-room-exchange": "exchange-cross",
+  "assignment-misdirection": "assignment-cross",
+  "support-square-contention": "support-conflict",
+  "multi-chain-merge": "chain-merge",
 };
 
 const VALID_EVIDENCE_KINDS: ReadonlySet<MechanismEvidenceKind> = new Set([
@@ -45,6 +48,9 @@ const VALID_EVIDENCE_KINDS: ReadonlySet<MechanismEvidenceKind> = new Set([
   "park-and-resume",
   "strict-chain-order",
   "exchange-passage",
+  "assignment-surprise",
+  "support-contention",
+  "chain-merge",
 ]);
 
 function makeMockPlan(

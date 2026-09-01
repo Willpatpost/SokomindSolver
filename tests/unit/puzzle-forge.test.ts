@@ -9,6 +9,7 @@ import {
   enumerateForgeCombinations,
   createForgeSchedule,
   resolveBoxTypingMode,
+  classifyDifficultyByBoxCount,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   type ForgeConfig,
@@ -33,6 +34,13 @@ const SMALL_CONFIG: ForgeConfig = {
   modes: ["plain", "motif", "composed"],
   baseSeed: 20000,
 };
+
+test("forge rejects tutorial generation and sub-Beginner box counts", async () => {
+  await assert.rejects(
+    runForge({ ...SMALL_CONFIG, difficulties: ["tutorial"], boxCounts: [1] }),
+    /tutorial generation is disabled/,
+  );
+});
 
 async function solvePuzzle(p: PuzzleDefinition): Promise<boolean> {
   const session = createSession(p);
@@ -121,12 +129,26 @@ test("every retained candidate has complete provenance", async () => {
       SMALL_CONFIG.modes.includes(c.provenance.mode),
       "mode from config",
     );
-    assert.ok(
-      SMALL_CONFIG.difficulties.includes(c.provenance.difficulty),
-      "difficulty from config",
+    assert.equal(
+      c.provenance.difficulty,
+      classifyDifficultyByBoxCount(c.provenance.boxCount),
+      "difficulty derives from box count",
     );
     assert.equal(typeof c.provenance.tightened, "boolean");
     assert.equal(typeof c.provenance.cellsRemoved, "number");
+  }
+});
+
+test("forge derives every candidate tier solely from its final box count", async () => {
+  const result = await runForge({
+    ...SMALL_CONFIG,
+    batchSize: 10,
+    difficulties: ["expert"],
+    boxCounts: [3],
+  });
+  for (const candidate of result.candidates) {
+    assert.equal(candidate.puzzle.difficulty, "beginner");
+    assert.equal(candidate.provenance.difficulty, "beginner");
   }
 });
 

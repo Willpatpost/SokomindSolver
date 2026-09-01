@@ -384,6 +384,54 @@ test("objective vector: mechanism progress is non-negative with mechCtx", () => 
   assert.ok(vec.mechanismProgress >= 0);
 });
 
+test("objective vector: new constructed mechanisms contribute concrete progress", () => {
+  const solved = getSolved(5014);
+  const ctx = buildScoringContext(solved.blueprint, solved.grid, solved.goals);
+  const makePlan = (type: MechanismPlan["mechanisms"][number]["type"]): MechanismPlan => ({
+    mechanisms: [{ type, primaryRoomIds: [0, 1], minGoals: 2, allocatedGoals: 3, weight: 1 }],
+    intendedDependencies: [], evidenceRequirements: [], tier: "advanced", seed: 5014,
+  });
+
+  const assignmentBoxes = [solved.goals[1], solved.goals[2], solved.goals[0]];
+  const assignment = computeObjectiveVector(
+    ctx,
+    assignmentBoxes,
+    [{ boxIndex: 0 }, { boxIndex: 1 }],
+    buildMechanismReverseContext(makePlan("assignment-misdirection"), ctx),
+  );
+  assert.ok(assignment.mechanismProgress > 0);
+
+  let contentionBoxes: Array<{ row: number; column: number }> | undefined;
+  for (let row = 1; row + 1 < solved.grid.length && !contentionBoxes; row++) {
+    for (let column = 1; column + 2 < solved.grid[row].length; column++) {
+      if (solved.grid[row][column] !== "O" && solved.grid[row][column + 1] !== "O" && solved.grid[row][column + 2] !== "O") {
+        contentionBoxes = [
+          { row, column },
+          { row, column: column + 2 },
+          { row: solved.goals[2].row, column: solved.goals[2].column },
+        ];
+        break;
+      }
+    }
+  }
+  assert.ok(contentionBoxes);
+  const contention = computeObjectiveVector(
+    ctx,
+    contentionBoxes,
+    [{ boxIndex: 0 }, { boxIndex: 1 }, { boxIndex: 0 }],
+    buildMechanismReverseContext(makePlan("support-square-contention"), ctx),
+  );
+  assert.ok(contention.mechanismProgress > 0);
+
+  const merge = computeObjectiveVector(
+    ctx,
+    assignmentBoxes,
+    [{ boxIndex: 0 }, { boxIndex: 1 }, { boxIndex: 2 }],
+    buildMechanismReverseContext(makePlan("multi-chain-merge"), ctx),
+  );
+  assert.ok(merge.mechanismProgress > 0);
+});
+
 // ===========================================================================
 // Multiple Archive Candidates Tests
 // ===========================================================================

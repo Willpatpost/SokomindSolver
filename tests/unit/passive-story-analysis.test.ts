@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { PuzzleDefinition } from "../../src/core/model.ts";
-import { analyzePassiveSolutionStory } from "../../src/features/generator/v2/passive-story-analysis.ts";
+import {
+  analyzePassiveSolutionStory,
+  explainPassiveStory,
+  summarizePassiveStory,
+} from "../../src/features/generator/v2/passive-story-analysis.ts";
 import { evaluatePuzzleWithSteps } from "../../src/features/generator/v2/puzzle-evaluator.ts";
 import {
   buildCanonicalSolutionTrace,
@@ -213,9 +217,17 @@ test("reports typed/generic interleaving and concrete shared cells", () => {
   const story = analyze("mixed", rows, steps);
 
   assert.equal(story.mixedBoxInteraction.crossTypeSwitchCount, 1);
+  assert.deepEqual(story.mixedBoxInteraction.switchEvidence, [{
+    pushIndex: 3,
+    fromBoxId: 0,
+    toBoxId: 1,
+  }]);
   assert.ok(story.mixedBoxInteraction.crossTypeSharedRouteCells >= 3);
   assert.ok(story.mixedBoxInteraction.sharedCellEvidence.some((cell) =>
     cell.role === "route" && cell.boxIds.length === 2));
+  const summary = summarizePassiveStory(story);
+  assert.equal(summary.crossTypeSwitches, 1);
+  assert.ok(explainPassiveStory(story).some((line) => line.includes("Typed and generic")));
 });
 
 test("rejects a board that does not match the trace identity", () => {

@@ -194,7 +194,10 @@ export type MechanismType =
   | "corridor-traffic"
   | "temporary-parking"
   | "dependency-chain"
-  | "cross-room-exchange";
+  | "cross-room-exchange"
+  | "assignment-misdirection"
+  | "support-square-contention"
+  | "multi-chain-merge";
 
 export const MECHANISM_TYPES: readonly MechanismType[] = [
   "packing-chain",
@@ -205,6 +208,9 @@ export const MECHANISM_TYPES: readonly MechanismType[] = [
   "temporary-parking",
   "dependency-chain",
   "cross-room-exchange",
+  "assignment-misdirection",
+  "support-square-contention",
+  "multi-chain-merge",
 ];
 
 export interface MechanismSpec {
@@ -213,6 +219,13 @@ export interface MechanismSpec {
   readonly minGoals: number;
   readonly allocatedGoals: number;
   readonly weight: number;
+  /** Stable order in which this mechanism should become strategically relevant. */
+  readonly sequenceIndex?: number;
+  /** Require the final typed/generic cut to cross this mechanism's local box graph. */
+  readonly crossTypeDependencyRequired?: boolean;
+  readonly minSharedSupportCells?: number;
+  readonly assignmentMisdirectionRequired?: boolean;
+  readonly mergePredecessorCount?: number;
 }
 
 export type MechanismEvidenceKind =
@@ -224,7 +237,10 @@ export type MechanismEvidenceKind =
   | "reopen-gate"
   | "park-and-resume"
   | "strict-chain-order"
-  | "exchange-passage";
+  | "exchange-passage"
+  | "assignment-surprise"
+  | "support-contention"
+  | "chain-merge";
 
 export interface MechanismEvidenceRequirement {
   readonly mechanismType: MechanismType;
@@ -288,7 +304,10 @@ export type MechanismEdgeType =
   | "must-reopen"
   | "must-park"
   | "chain-link"
-  | "exchange-cross";
+  | "exchange-cross"
+  | "assignment-cross"
+  | "support-conflict"
+  | "chain-merge";
 
 export interface BlueprintDiagnostics {
   readonly seed: number;

@@ -107,6 +107,12 @@ export interface CrossTypeDependencyEvidence {
   readonly effect: "enabled" | "disabled";
 }
 
+export interface CrossTypeSwitchEvidence {
+  readonly pushIndex: number;
+  readonly fromBoxId: number;
+  readonly toBoxId: number;
+}
+
 export interface CrossTypeSharedCellEvidence {
   readonly row: number;
   readonly column: number;
@@ -120,6 +126,7 @@ export interface MixedBoxInteractionAnalysis {
   readonly crossTypeDependencyCount: number;
   readonly crossTypeSharedRouteCells: number;
   readonly crossTypeSharedSupportCells: number;
+  readonly switchEvidence: readonly CrossTypeSwitchEvidence[];
   readonly dependencyEvidence: readonly CrossTypeDependencyEvidence[];
   readonly sharedCellEvidence: readonly CrossTypeSharedCellEvidence[];
 }
@@ -170,6 +177,58 @@ export interface PassiveStoryProfile {
   readonly mixedBoxInteraction: MixedBoxInteractionAnalysis;
   readonly solutionPhases: SolutionPhaseAnalysis;
   readonly structuralIdentity: StructuralStoryIdentity;
+}
+
+/** Compact, JSON-friendly story measurements for diagnostics and review packs. */
+export interface PassiveStorySummary {
+  readonly assignmentMisdirections: number;
+  readonly reversalEpisodes: number;
+  readonly multiRoomJourneys: number;
+  readonly orderedPackingPairs: number;
+  readonly gateTransitions: number;
+  readonly gateReopenings: number;
+  readonly crossTypeDependencies: number;
+  readonly crossTypeSwitches: number;
+  readonly solutionPhases: number;
+  readonly revisitedPhases: number;
+  readonly usedZones: number;
+  readonly crossZonePushes: number;
+  readonly traversalSignature: string;
+}
+
+export function summarizePassiveStory(profile: PassiveStoryProfile): PassiveStorySummary {
+  return Object.freeze({
+    assignmentMisdirections: profile.genericGoalMisdirection.misdirectedBoxCount,
+    reversalEpisodes: profile.progressReversals.reversalCount,
+    multiRoomJourneys: profile.multiRoomJourneys.journeyBoxCount,
+    orderedPackingPairs: profile.goalRoomPacking.orderedPairs,
+    gateTransitions: profile.gateTraffic.gateStoryCount,
+    gateReopenings: profile.gateTraffic.reopenedGateCount,
+    crossTypeDependencies: profile.mixedBoxInteraction.crossTypeDependencyCount,
+    crossTypeSwitches: profile.mixedBoxInteraction.crossTypeSwitchCount,
+    solutionPhases: profile.solutionPhases.phaseCount,
+    revisitedPhases: profile.solutionPhases.boxRevisitPhaseCount,
+    usedZones: profile.structuralIdentity.usedZoneCount,
+    crossZonePushes: profile.structuralIdentity.crossZonePushCount,
+    traversalSignature: profile.structuralIdentity.traversalSignature,
+  });
+}
+
+/** Short evidence-led explanations intended for human catalog review. */
+export function explainPassiveStory(profile: PassiveStoryProfile): readonly string[] {
+  const s = summarizePassiveStory(profile);
+  const explanations: string[] = [];
+  if (s.assignmentMisdirections > 0) {
+    explanations.push(`${s.assignmentMisdirections} generic box assignment${s.assignmentMisdirections === 1 ? "" : "s"} bypass the nearest compatible goal.`);
+  }
+  if (s.reversalEpisodes > 0) explanations.push(`${s.reversalEpisodes} productive reversal episode${s.reversalEpisodes === 1 ? "" : "s"} temporarily move a box away from its final goal.`);
+  if (s.multiRoomJourneys > 0) explanations.push(`${s.multiRoomJourneys} box journey${s.multiRoomJourneys === 1 ? "" : "s"} cross multiple rooms.`);
+  if (s.orderedPackingPairs > 0) explanations.push(`${s.orderedPackingPairs} deep-before-shallow packing relation${s.orderedPackingPairs === 1 ? "" : "s"} appear in the solution.`);
+  if (s.gateTransitions > 0) explanations.push(`${s.gateTransitions} gate traffic sequence${s.gateTransitions === 1 ? "" : "s"}${s.gateReopenings > 0 ? `, including ${s.gateReopenings} reopening${s.gateReopenings === 1 ? "" : "s"}` : ""}.`);
+  if (s.crossTypeDependencies > 0 || s.crossTypeSwitches > 0) explanations.push(`Typed and generic boxes interact through ${s.crossTypeDependencies} causal dependencies and ${s.crossTypeSwitches} consecutive-work switches.`);
+  if (s.revisitedPhases > 0) explanations.push(`${s.revisitedPhases} solution phase${s.revisitedPhases === 1 ? "" : "s"} return to an earlier box.`);
+  if (explanations.length === 0) explanations.push("The canonical solution contains no measured story mechanism beyond direct transport and placement.");
+  return Object.freeze(explanations);
 }
 
 type Grid = readonly (readonly string[])[];
@@ -594,12 +653,20 @@ function analyzeMixedBoxInteraction(trace: CanonicalSolutionTrace): MixedBoxInte
   const kindByBox = new Map(trace.boxes.map((box) => [box.id, box.kind] as const));
   let boxSwitchCount = 0;
   let crossTypeSwitchCount = 0;
+  const switchEvidence: CrossTypeSwitchEvidence[] = [];
   for (let index = 1; index < trace.pushes.length; index++) {
     const before = trace.pushes[index - 1];
     const after = trace.pushes[index];
     if (before.boxId === after.boxId) continue;
     boxSwitchCount++;
-    if (before.boxKind !== after.boxKind) crossTypeSwitchCount++;
+    if (before.boxKind !== after.boxKind) {
+      crossTypeSwitchCount++;
+      switchEvidence.push(Object.freeze({
+        pushIndex: after.pushIndex,
+        fromBoxId: before.boxId,
+        toBoxId: after.boxId,
+      }));
+    }
   }
 
   const dependencies: CrossTypeDependencyEvidence[] = [];
@@ -627,6 +694,7 @@ function analyzeMixedBoxInteraction(trace: CanonicalSolutionTrace): MixedBoxInte
     crossTypeDependencyCount: dependencies.length,
     crossTypeSharedRouteCells: route.length,
     crossTypeSharedSupportCells: support.length,
+    switchEvidence: Object.freeze(switchEvidence),
     dependencyEvidence: Object.freeze(dependencies),
     sharedCellEvidence: Object.freeze([...route, ...support]),
   });

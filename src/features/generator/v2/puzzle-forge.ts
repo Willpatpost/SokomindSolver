@@ -47,7 +47,7 @@ import { evaluateFinalistV4, computeCurationObjectives } from "./finalist-evalua
 import type { FinalistEvaluation, FinalistEvaluationV4, CurationObjectives } from "./finalist-evaluator.ts";
 import type { V4EvaluatorPolicy } from "./solver-bottleneck.ts";
 import { DEFAULT_V4_POLICY } from "./solver-bottleneck.ts";
-import { computeV4Profile } from "./difficulty-model.ts";
+import { classifyDifficultyByBoxCount, computeV4Profile } from "./difficulty-model.ts";
 import type { V4DifficultyProfile } from "./difficulty-model.ts";
 import {
   nonDominatedSort,
@@ -76,6 +76,12 @@ import {
   constrainBlueprintParams,
 } from "./mechanism-plan.ts";
 import type { MechanismPlan, MechanismType } from "./blueprint-types.ts";
+import {
+  buildMechanismConstructionPlan,
+  verifyMechanismConstruction,
+  type MechanismConstructionPlan,
+  type MechanismConstructionVerification,
+} from "./mechanism-construction.ts";
 
 import type { GridPosition } from "../generator-types.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
@@ -327,6 +333,10 @@ export interface ForgeProvenance {
   readonly mechanismCount?: number;
   readonly mechanismEvidencePassed?: boolean;
   readonly mechanismEvidenceMissing?: readonly string[];
+  readonly mechanismConstructionTargets?: number;
+  readonly mechanismConstructionRealized?: number;
+  readonly mechanismConstructionPassed?: boolean;
+  readonly mechanismConstructionMissing?: readonly string[];
   readonly counterfactualEdges?: number;
   readonly counterfactualTotal?: number;
   readonly v4DifficultyProfile?: V4DifficultyProfile;
@@ -339,6 +349,9 @@ export interface ForgeCandidate {
   readonly evaluation: PuzzleEvaluationVector;
   /** Passive evidence only; it does not affect gates or ranking in Phase 2. */
   readonly passiveStory?: PassiveStoryProfile;
+  /** Phase 3 construction intent and localized post-generation evidence. */
+  readonly mechanismConstruction?: MechanismConstructionPlan;
+  readonly mechanismConstructionVerification?: MechanismConstructionVerification;
   readonly tighteningResult?: TighteningResult;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
@@ -417,6 +430,7 @@ export interface BlueprintCandidate {
   readonly structuralMetrics: StructuralMetrics;
   /** For mechanism mode, the solved blueprint + plan */
   readonly mechanismPlan?: MechanismPlan;
+  readonly mechanismConstruction?: MechanismConstructionPlan;
   readonly mechanismTypes?: readonly MechanismType[];
   readonly solvedBlueprint?: SolvedBlueprint;
   readonly dag?: DependencyDAG;
@@ -466,6 +480,7 @@ interface RawGenResult {
   readonly dependencyRealizationRate?: number;
   readonly mechanismTypes?: readonly MechanismType[];
   readonly mechanismPlan?: MechanismPlan;
+  readonly mechanismConstruction?: MechanismConstructionPlan;
 }
 
 function sampleDimension(
@@ -616,6 +631,7 @@ async function generateRawCandidate(
 
     const placement = placeGoalsFromPlan(activeBp, plan);
     if (!placement) return { ok: false, reason: "goal-placement-failed" };
+    const mechanismConstruction = buildMechanismConstructionPlan(placement);
 
     const template = toSolvedTemplate(placement.solved);
 
@@ -663,6 +679,7 @@ async function generateRawCandidate(
         compositionType: placement.dag.compositionId,
         mechanismTypes: plan.mechanisms.map((m) => m.type),
         mechanismPlan: plan,
+        mechanismConstruction,
       },
     };
   }
@@ -818,6 +835,7 @@ function generateBlueprintCandidate(
 
     const placement = placeGoalsFromPlan(activeBp, plan);
     if (!placement) return { ok: false, reason: "goal-placement-failed" };
+    const mechanismConstruction = buildMechanismConstructionPlan(placement);
 
     return {
       ok: true,
@@ -827,6 +845,7 @@ function generateBlueprintCandidate(
         grid: bpGrid,
         structuralMetrics,
         mechanismPlan: plan,
+        mechanismConstruction,
         mechanismTypes: plan.mechanisms.map((m) => m.type),
         solvedBlueprint: placement.solved,
         dag: placement.dag,
@@ -1000,6 +1019,7 @@ async function completeCandidateFromBlueprint(
       compositionType: bc.compositionType,
       mechanismTypes: bc.mechanismTypes,
       mechanismPlan: bc.mechanismPlan,
+      mechanismConstruction: bc.mechanismConstruction,
     };
     v4RankedCandidatesOut = v4RankedCandidates;
   } else if (bc.solvedBlueprint) {
@@ -1130,7 +1150,17 @@ async function completeCandidateFromBlueprint(
     } else {
       const range = config.typingPolicy.hybridTypedFractionMax - config.typingPolicy.hybridTypedFractionMin;
       const typedFraction = config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
-      candidatePuzzle = assignPartialLabels(puzzle, solution, labelRng, typedFraction);
+      candidatePuzzle = assignPartialLabels(
+        puzzle,
+        solution,
+        labelRng,
+        typedFraction,
+        rawResult.mechanismConstruction?.targets.map((target) => ({
+          goalIndices: new Set(target.goals.map((goal) => goal.goalIndex)),
+          minTyped: 1,
+          minGeneric: target.type === "assignment-misdirection" ? 2 : 1,
+        })) ?? [],
+      );
     }
 
     if (candidatePuzzle !== puzzle) {
@@ -1162,6 +1192,15 @@ async function completeCandidateFromBlueprint(
   if (!ev.solved) {
     return { ok: false, reason: "unsolvable", solverCalls };
   }
+
+  const mechanismConstructionVerification =
+    rawResult.mechanismConstruction && evalResult.trace && evalResult.passiveStory
+      ? verifyMechanismConstruction(
+          rawResult.mechanismConstruction,
+          evalResult.trace,
+          evalResult.passiveStory,
+        )
+      : undefined;
 
   const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
   const genericBoxCount = boxGoalCounts.generic;
@@ -1260,6 +1299,11 @@ async function completeCandidateFromBlueprint(
     mechanismCount: rawResult.mechanismTypes?.length,
     mechanismEvidencePassed,
     mechanismEvidenceMissing,
+    mechanismConstructionTargets: mechanismConstructionVerification?.targetCount,
+    mechanismConstructionRealized: mechanismConstructionVerification?.realizedTargetCount,
+    mechanismConstructionPassed: mechanismConstructionVerification?.passed,
+    mechanismConstructionMissing: mechanismConstructionVerification?.targetResults
+      .flatMap((result) => result.missingEvidence.map((kind) => `${result.targetId}:${kind}`)),
     counterfactualEdges,
     counterfactualTotal,
   };
@@ -1271,6 +1315,8 @@ async function completeCandidateFromBlueprint(
       provenance,
       evaluation: ev,
       passiveStory: evalResult.passiveStory ?? undefined,
+      mechanismConstruction: rawResult.mechanismConstruction,
+      mechanismConstructionVerification,
       tighteningResult,
       dag: rawResult.dag,
       hints: rawResult.hints,
@@ -1586,6 +1632,9 @@ function paretoScore(c: ForgeCandidate): number {
 export async function runForge(
   config: ForgeConfig = DEFAULT_FORGE_CONFIG,
 ): Promise<ForgeRunResult> {
+  if (config.difficulties.includes("tutorial") || config.boxCounts.some((count) => count < 3)) {
+    throw new Error("Generated catalog puzzles start at Beginner with at least 3 boxes; tutorial generation is disabled");
+  }
   if (config.funnelBudgets) {
     return runForgeFunnel(config, config.funnelBudgets);
   }
@@ -1649,7 +1698,8 @@ async function runForgeFlat(
 
   for (let i = 0; i < schedule.length; i++) {
     const { seed, combination } = schedule[i];
-    const { family, boxCount, mode, difficulty } = combination;
+    const { family, boxCount, mode } = combination;
+    const difficulty = classifyDifficultyByBoxCount(boxCount);
 
     collector.recordAttempt();
 
@@ -1781,6 +1831,11 @@ async function runForgeFlat(
           solution,
           labelRng,
           typedFraction,
+          raw.result.mechanismConstruction?.targets.map((target) => ({
+            goalIndices: new Set(target.goals.map((goal) => goal.goalIndex)),
+            minTyped: 1,
+            minGeneric: target.type === "assignment-misdirection" ? 2 : 1,
+          })) ?? [],
         );
       }
 
@@ -1827,6 +1882,16 @@ async function runForgeFlat(
       continue;
     }
     collector.recordInitialSolveSuccess();
+    if (evalResult.passiveStory) collector.recordPassiveStory(evalResult.passiveStory);
+
+    const mechanismConstructionVerification =
+      raw.result.mechanismConstruction && evalResult.trace && evalResult.passiveStory
+        ? verifyMechanismConstruction(
+            raw.result.mechanismConstruction,
+            evalResult.trace,
+            evalResult.passiveStory,
+          )
+        : undefined;
 
     const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
     const genericBoxCount = boxGoalCounts.generic;
@@ -1985,6 +2050,11 @@ async function runForgeFlat(
       mechanismCount: raw.result.mechanismTypes?.length,
       mechanismEvidencePassed,
       mechanismEvidenceMissing,
+      mechanismConstructionTargets: mechanismConstructionVerification?.targetCount,
+      mechanismConstructionRealized: mechanismConstructionVerification?.realizedTargetCount,
+      mechanismConstructionPassed: mechanismConstructionVerification?.passed,
+      mechanismConstructionMissing: mechanismConstructionVerification?.targetResults
+        .flatMap((result) => result.missingEvidence.map((kind) => `${result.targetId}:${kind}`)),
       counterfactualEdges,
       counterfactualTotal,
     };
@@ -1994,6 +2064,8 @@ async function runForgeFlat(
       provenance,
       evaluation: ev,
       passiveStory: evalResult.passiveStory ?? undefined,
+      mechanismConstruction: raw.result.mechanismConstruction,
+      mechanismConstructionVerification,
       tighteningResult,
       dag: raw.result.dag,
       hints: raw.result.hints,
@@ -2124,7 +2196,8 @@ async function runForgeFunnel(
 
   for (let i = 0; i < schedule.length; i++) {
     const { seed, combination } = schedule[i];
-    const { family, boxCount, mode, difficulty } = combination;
+    const { family, boxCount, mode } = combination;
+    const difficulty = classifyDifficultyByBoxCount(boxCount);
 
     collector.recordAttempt();
 
@@ -2189,6 +2262,9 @@ async function runForgeFunnel(
     collector.recordPuzzleValidationSuccess();
     collector.recordInitialSolveSuccess();
     collector.recordGatePassed();
+    if (completion.candidate.passiveStory) {
+      collector.recordPassiveStory(completion.candidate.passiveStory);
+    }
 
     const boxGoalCounts = countBoxesAndGoals(completion.candidate.puzzle.rows);
     collector.recordBoxScale({
@@ -2220,6 +2296,9 @@ async function runForgeFunnel(
           const extraFp = extra.candidate.puzzle.rows.join("");
           if (extraFp !== bestFp) {
             completedCandidates.push(extra.candidate);
+            if (extra.candidate.passiveStory) {
+              collector.recordPassiveStory(extra.candidate.passiveStory);
+            }
           }
         }
       }

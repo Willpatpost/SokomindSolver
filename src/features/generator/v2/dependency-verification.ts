@@ -17,7 +17,8 @@ interface DepNode {
 }
 
 type DepEdgeType = "must-precede" | "must-stage" | "shares-passage" | "blocks-access"
-  | "must-reopen" | "must-park" | "chain-link" | "exchange-cross";
+  | "must-reopen" | "must-park" | "chain-link" | "exchange-cross"
+  | "assignment-cross" | "support-conflict" | "chain-merge";
 
 interface DepEdge {
   readonly from: number;
@@ -911,6 +912,7 @@ function applyCounterfactual(
     case "must-stage":
       return counterfactualMustStage(fromNode, toNode, puzzle);
     case "exchange-cross":
+    case "assignment-cross":
       return counterfactualExchangeCross(fromNode, toNode, puzzle);
     default:
       return null;
@@ -959,7 +961,7 @@ export function verifyDependenciesWithEvidence(
   steps: readonly SolutionStep[],
   passageCells?: ReadonlySet<string>,
 ): DependencyVerificationResult {
-  const { moveEvents, completions, boxRoutes } = replaySolution(puzzle, steps);
+  const { moveEvents, completions, boxRoutes, boxSupportCells } = replaySolution(puzzle, steps);
 
   const edgeDetails: DependencyEdgeVerification[] = [];
 
@@ -1005,6 +1007,38 @@ export function verifyDependenciesWithEvidence(
       case "exchange-cross":
         result = verifyExchangeCross(fromNode, toNode, boxRoutes, completions, passageCells);
         break;
+      case "assignment-cross": {
+        const base = verifyExchangeCross(fromNode, toNode, boxRoutes, completions, passageCells);
+        result = base.realized ? {
+          ...base,
+          evidence: [...base.evidence, { kind: "assignment-surprise", description: "The assigned boxes cross rooms instead of taking the locally obvious goal pairing" }],
+        } : base;
+        break;
+      }
+      case "support-conflict": {
+        const fromCompletion = completions.find((item) => item.goalIndex === fromNode.goalIndex);
+        const toCompletion = completions.find((item) => item.goalIndex === toNode.goalIndex);
+        const fromSupport = fromCompletion ? boxSupportCells.get(fromCompletion.boxIndex) : undefined;
+        const toSupport = toCompletion ? boxSupportCells.get(toCompletion.boxIndex) : undefined;
+        const shared = fromSupport && toSupport
+          ? [...fromSupport].filter((cell) => toSupport.has(cell))
+          : [];
+        result = {
+          realized: shared.length > 0,
+          confidence: "observed",
+          reason: shared.length > 0 ? `${shared.length} keeper support cells are shared` : "No shared keeper support cell was used",
+          evidence: shared.length > 0 ? [{ kind: "support-contention", description: `Boxes used shared support cells: ${shared.join(", ")}` }] : [],
+        };
+        break;
+      }
+      case "chain-merge": {
+        const base = verifyMustPrecede(fromNode, toNode, completions);
+        result = base.realized ? {
+          ...base,
+          evidence: [...base.evidence, { kind: "chain-merge", description: "A predecessor chain completed before the shared merge goal" }],
+        } : base;
+        break;
+      }
       default:
         result = {
           realized: false,

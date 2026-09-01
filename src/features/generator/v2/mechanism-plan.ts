@@ -209,6 +209,57 @@ export const MECHANISM_CATALOG: Record<MechanismType, MechanismCatalogEntry> = {
       "Goals in different rooms requiring boxes to cross through a shared " +
       "narrow passage in opposing directions",
   },
+  "assignment-misdirection": {
+    type: "assignment-misdirection",
+    minBoxes: 3,
+    maxUsefulBoxes: 8,
+    scalable: true,
+    minRooms: 2,
+    needsNarrowPassage: true,
+    needsTerminalRoom: false,
+    needsLargeRoom: false,
+    evidenceRequirements: {
+      mechanismType: "assignment-misdirection",
+      requiredKinds: ["assignment-surprise"],
+      minEvidenceCount: 1,
+      description: "A generic box must bypass a nearer compatible goal for its actual goal",
+    },
+    description: "Distribute interchangeable goals across rooms so the obvious nearest assignment is wrong.",
+  },
+  "support-square-contention": {
+    type: "support-square-contention",
+    minBoxes: 2,
+    maxUsefulBoxes: 6,
+    scalable: true,
+    minRooms: 1,
+    needsNarrowPassage: false,
+    needsTerminalRoom: false,
+    needsLargeRoom: true,
+    evidenceRequirements: {
+      mechanismType: "support-square-contention",
+      requiredKinds: ["support-contention"],
+      minEvidenceCount: 1,
+      description: "Multiple boxes require the same keeper support or staging square",
+    },
+    description: "Place goals around a shared support square so using it for one box constrains another.",
+  },
+  "multi-chain-merge": {
+    type: "multi-chain-merge",
+    minBoxes: 4,
+    maxUsefulBoxes: 10,
+    scalable: true,
+    minRooms: 2,
+    needsNarrowPassage: false,
+    needsTerminalRoom: true,
+    needsLargeRoom: false,
+    evidenceRequirements: {
+      mechanismType: "multi-chain-merge",
+      requiredKinds: ["chain-merge"],
+      minEvidenceCount: 1,
+      description: "Two independent ordering chains must both complete before a shared merge goal",
+    },
+    description: "Construct two ordered chains that converge on a shared final staging or packing constraint.",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -284,6 +335,12 @@ export function deriveGeometryRequirements(
     preferredFamilies.push("linear", "hub", "branch", "loop", "nested");
   }
 
+  const supportContention = mechanismTypes.includes("support-square-contention");
+  const parkingPocketRequired = mechanismTypes.some((type) =>
+    type === "temporary-parking" || type === "staging-dependency");
+  const gateRequired = mechanismTypes.some((type) =>
+    type === "gatekeeper" || type === "gate-reopening");
+
   return {
     requiredRooms,
     requiredNarrowPassages,
@@ -291,6 +348,16 @@ export function deriveGeometryRequirements(
     largeRoomRequired,
     minRoomArea,
     preferredFamilies,
+    requiredSupportCells: supportContention ? [
+      { dr: 0, dc: 0, role: "shared-keeper-support" },
+      { dr: 0, dc: -1, role: "first-box-approach" },
+      { dr: 0, dc: 1, role: "second-box-approach" },
+    ] : undefined,
+    parkingPocketRequired,
+    gateMobilityPattern: gateRequired ? {
+      minClearance: mechanismTypes.includes("gate-reopening") ? 2 : 1,
+      direction: "any",
+    } : undefined,
   };
 }
 
@@ -442,6 +509,15 @@ const COMPATIBILITY_TABLE: Record<string, number> = {
   "cross-room-exchange|staging-dependency": 0.6,
   "cross-room-exchange|packing-chain": 0.5,
   "cross-room-exchange|temporary-parking": 0.55,
+  "assignment-misdirection|cross-room-exchange": 0.85,
+  "assignment-misdirection|corridor-traffic": 0.8,
+  "assignment-misdirection|gate-reopening": 0.7,
+  "support-square-contention|staging-dependency": 0.9,
+  "support-square-contention|temporary-parking": 0.85,
+  "support-square-contention|packing-chain": 0.7,
+  "multi-chain-merge|packing-chain": 0.9,
+  "multi-chain-merge|dependency-chain": 0.9,
+  "multi-chain-merge|gatekeeper": 0.75,
   // Self-pairs (you can stack the same mechanism in different rooms)
   "packing-chain|packing-chain": 0.4,
   "gatekeeper|gatekeeper": 0.3,
@@ -451,6 +527,9 @@ const COMPATIBILITY_TABLE: Record<string, number> = {
   "temporary-parking|temporary-parking": 0.5,
   "dependency-chain|dependency-chain": 0.3,
   "cross-room-exchange|cross-room-exchange": 0.2,
+  "assignment-misdirection|assignment-misdirection": 0.35,
+  "support-square-contention|support-square-contention": 0.35,
+  "multi-chain-merge|multi-chain-merge": 0.25,
   // Low compatibility (conflict for same narrow passage)
   "gate-reopening|cross-room-exchange": 0.3,
   "gate-reopening|temporary-parking": 0.5,
@@ -621,6 +700,15 @@ function topologyScore(mechanism: MechanismType, blueprint: FunctionalBlueprint)
     case "cross-room-exchange":
       score += narrow.length * 0.4 + (blueprint.rooms.length >= 3 ? 0.5 : 0);
       break;
+    case "assignment-misdirection":
+      score += narrow.length * 0.35 + blueprint.rooms.length * 0.2;
+      break;
+    case "support-square-contention":
+      score += large.length * 0.65;
+      break;
+    case "multi-chain-merge":
+      score += terminals.length * 0.45 + (blueprint.rooms.length >= 2 ? 0.5 : 0);
+      break;
   }
 
   return score;
@@ -660,6 +748,11 @@ function buildMechanismSpecs(
     minGoals: catalog[type].minBoxes,
     allocatedGoals: allocations[idx],
     weight: 1.0,
+    sequenceIndex: idx,
+    crossTypeDependencyRequired: true,
+    minSharedSupportCells: type === "support-square-contention" ? 1 : undefined,
+    assignmentMisdirectionRequired: type === "assignment-misdirection" || undefined,
+    mergePredecessorCount: type === "multi-chain-merge" ? 2 : undefined,
   }));
 }
 
@@ -745,6 +838,24 @@ function assignRoomsToMechanisms(
         break;
       }
 
+      case "assignment-misdirection": {
+        const passage = pickNarrowPassage(narrow, usedPassages, rng);
+        if (passage) {
+          usedPassages.add(`${passage.from}-${passage.to}`);
+          assignments.push([passage.from, passage.to]);
+        } else {
+          assignments.push(blueprint.rooms.slice(0, 2).map((room) => room.id));
+        }
+        break;
+      }
+
+      case "multi-chain-merge": {
+        const candidates = terminals.length >= 2 ? terminals : blueprint.rooms;
+        const sorted = [...candidates].sort((a, b) => b.width * b.height - a.width * a.height);
+        assignments.push(sorted.slice(0, Math.min(3, sorted.length)).map((room) => room.id));
+        break;
+      }
+
       case "staging-dependency":
       case "temporary-parking": {
         if (large.length > 0) {
@@ -756,6 +867,13 @@ function assignRoomsToMechanisms(
           );
           assignments.push([sorted[0].id]);
         }
+        break;
+      }
+
+      case "support-square-contention": {
+        const candidates = large.length > 0 ? large : blueprint.rooms;
+        const room = pickUnused(candidates, assignments, rng);
+        assignments.push([room.id]);
         break;
       }
 
@@ -828,6 +946,31 @@ function buildIntendedDependencies(specs: MechanismSpec[]): MechanismDependencyE
         if (connEdge) edges.push(connEdge);
       }
     }
+  }
+
+  // Preserve the explicit mechanism story order even when two mechanisms do
+  // not happen to share a room. This gives reverse construction a stable
+  // sequence to reward and the final verifier an observable completion edge.
+  const hasPath = (from: number, to: number): boolean => {
+    const pending = [from];
+    const seen = new Set<number>();
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      if (current === to) return true;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      for (const edge of edges) if (edge.fromMechanism === current) pending.push(edge.toMechanism);
+    }
+    return false;
+  };
+  for (let index = 0; index + 1 < specs.length; index++) {
+    if (hasPath(index, index + 1) || hasPath(index + 1, index)) continue;
+    edges.push({
+      fromMechanism: index,
+      toMechanism: index + 1,
+      edgeType: "must-precede",
+      description: `${specs[index].type} precedes ${specs[index + 1].type} in the intended mechanism sequence`,
+    });
   }
 
   return edges;
@@ -1051,6 +1194,12 @@ function mapMechanismEdgeType(mechEdge: MechanismEdgeType): DependencyEdgeType {
       return "chain-link";
     case "exchange-cross":
       return "exchange-cross";
+    case "assignment-cross":
+      return "assignment-cross";
+    case "support-conflict":
+      return "support-conflict";
+    case "chain-merge":
+      return "chain-merge";
   }
 }
 
@@ -1099,6 +1248,12 @@ function placeMechanismGoals(
       return placeDependencyChain(spec, blueprint, grid, roomMap, usedCells, startNodeId);
     case "cross-room-exchange":
       return placeCrossRoomExchange(spec, blueprint, grid, roomMap, usedCells, startNodeId, rng);
+    case "assignment-misdirection":
+      return placeAssignmentMisdirection(spec, blueprint, grid, roomMap, usedCells, startNodeId, rng);
+    case "support-square-contention":
+      return placeSupportSquareContention(spec, blueprint, grid, roomMap, usedCells, startNodeId);
+    case "multi-chain-merge":
+      return placeMultiChainMerge(spec, blueprint, grid, roomMap, usedCells, startNodeId);
   }
 }
 
@@ -1720,6 +1875,113 @@ function placeCrossRoomExchange(
   return null;
 }
 
+function placeAssignmentMisdirection(
+  spec: MechanismSpec,
+  blueprint: FunctionalBlueprint,
+  grid: readonly (readonly string[])[],
+  roomMap: Map<number, FunctionalRoom>,
+  usedCells: Set<string>,
+  startNodeId: number,
+  rng: () => number,
+): MechanismGoalResult | null {
+  const exchange = placeCrossRoomExchange(spec, blueprint, grid, roomMap, usedCells, startNodeId, rng);
+  if (!exchange) return null;
+  return {
+    goals: exchange.goals,
+    nodes: exchange.nodes.map((node, index) => ({ ...node, role: index === 0 ? "misdirection-anchor" : "misdirection-alternative" })),
+    edges: exchange.edges.map((edge) => ({ ...edge, type: "assignment-cross" as const, description: `Assignment surprise: ${edge.description}` })),
+  };
+}
+
+function placeSupportSquareContention(
+  spec: MechanismSpec,
+  blueprint: FunctionalBlueprint,
+  grid: readonly (readonly string[])[],
+  roomMap: Map<number, FunctionalRoom>,
+  usedCells: Set<string>,
+  startNodeId: number,
+): MechanismGoalResult | null {
+  const room = roomMap.get(spec.primaryRoomIds[0]);
+  if (!room) return null;
+  const viable = collectRoomFloorCells(room, grid, blueprint)
+    .filter((cell) => cell.reversePullDirs >= 1 && !usedCells.has(`${cell.row},${cell.column}`));
+  let pair: [RoomFloorCell, RoomFloorCell] | undefined;
+  for (let i = 0; i < viable.length && !pair; i++) {
+    for (let j = i + 1; j < viable.length; j++) {
+      const dr = Math.abs(viable[i].row - viable[j].row);
+      const dc = Math.abs(viable[i].column - viable[j].column);
+      if ((dr === 2 && dc === 0) || (dr === 0 && dc === 2)) {
+        pair = [viable[i], viable[j]];
+        break;
+      }
+    }
+  }
+  if (!pair) return null;
+  const remaining = viable.filter((cell) => cell !== pair![0] && cell !== pair![1]);
+  remaining.sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
+  const selected = [...pair, ...remaining.slice(0, spec.allocatedGoals - 2)];
+  const goals = selectGoals(selected, spec.allocatedGoals, room.id, grid);
+  if (goals.length < spec.allocatedGoals) return null;
+  const nodes = goals.map((goal, index): DependencyNode => ({
+    id: startNodeId + index,
+    goalId: goal.goalId ?? `r${goal.roomId}-support-${index}`,
+    goalIndex: startNodeId + index,
+    roomId: goal.roomId,
+    role: index < 2 ? "shared-support" : "contention-dependent",
+  }));
+  const edges: DependencyEdge[] = [{
+    from: startNodeId,
+    to: startNodeId + 1,
+    type: "support-conflict",
+    description: "Both goal approaches contend for the same intervening keeper support square",
+  }];
+  return { goals, nodes, edges };
+}
+
+function placeMultiChainMerge(
+  spec: MechanismSpec,
+  blueprint: FunctionalBlueprint,
+  grid: readonly (readonly string[])[],
+  roomMap: Map<number, FunctionalRoom>,
+  usedCells: Set<string>,
+  startNodeId: number,
+): MechanismGoalResult | null {
+  const rooms = spec.primaryRoomIds.map((id) => roomMap.get(id)).filter((room): room is FunctionalRoom => room !== undefined);
+  if (rooms.length < 2) return null;
+  const countA = Math.max(2, Math.ceil(spec.allocatedGoals / 2));
+  const countB = spec.allocatedGoals - countA;
+  if (countB < 2) return null;
+  const choose = (room: FunctionalRoom, count: number): GoalCell[] => {
+    const cells = collectRoomFloorCells(room, grid, blueprint)
+      .filter((cell) => cell.reversePullDirs >= 1 && !usedCells.has(`${cell.row},${cell.column}`))
+      .sort((a, b) => b.depthFromDoorway - a.depthFromDoorway);
+    return selectGoals(cells, count, room.id, grid);
+  };
+  const goalsA = choose(rooms[0], countA);
+  const goalsB = choose(rooms[1], countB);
+  if (goalsA.length < countA || goalsB.length < countB) return null;
+  const goals = [...goalsA, ...goalsB];
+  const mergeNode = startNodeId + countA - 1;
+  const nodes = goals.map((goal, index): DependencyNode => ({
+    id: startNodeId + index,
+    goalId: goal.goalId ?? `r${goal.roomId}-merge-${index}`,
+    goalIndex: startNodeId + index,
+    roomId: goal.roomId,
+    role: startNodeId + index === mergeNode ? "chain-merge" : index < countA ? "chain-a" : "chain-b",
+  }));
+  const edges: DependencyEdge[] = [];
+  for (let index = 0; index < countA - 1; index++) edges.push({
+    from: startNodeId + index, to: startNodeId + index + 1, type: "chain-link",
+    description: "First ordered chain advances toward the merge constraint",
+  });
+  for (let index = countA; index < goals.length - 1; index++) edges.push({
+    from: startNodeId + index, to: startNodeId + index + 1, type: "chain-link",
+    description: "Second ordered chain advances toward the merge constraint",
+  });
+  edges.push({ from: startNodeId + goals.length - 1, to: mergeNode, type: "chain-merge", description: "Both chains must complete before the merge goal" });
+  return { goals, nodes, edges };
+}
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -1783,6 +2045,9 @@ const MECHANISM_EVIDENCE_KINDS: ReadonlySet<string> = new Set<MechanismEvidenceK
   "park-and-resume",
   "strict-chain-order",
   "exchange-passage",
+  "assignment-surprise",
+  "support-contention",
+  "chain-merge",
 ]);
 
 const MECHANISM_DEFINING_EDGE: Record<MechanismType, string> = {
@@ -1794,6 +2059,9 @@ const MECHANISM_DEFINING_EDGE: Record<MechanismType, string> = {
   "temporary-parking": "must-park",
   "dependency-chain": "chain-link",
   "cross-room-exchange": "exchange-cross",
+  "assignment-misdirection": "assignment-cross",
+  "support-square-contention": "support-conflict",
+  "multi-chain-merge": "chain-merge",
 };
 
 export function verifyMechanismEvidence(

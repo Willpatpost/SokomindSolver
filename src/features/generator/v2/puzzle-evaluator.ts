@@ -133,6 +133,7 @@ export interface PuzzleEvaluationVector {
 export interface PuzzleEvaluationResult {
   readonly vector: PuzzleEvaluationVector;
   readonly steps: readonly SolutionStep[] | null;
+  readonly trace: CanonicalSolutionTrace | null;
   readonly passiveStory: PassiveStoryProfile | null;
 }
 
@@ -167,6 +168,7 @@ export async function evaluatePuzzleWithSteps(
     return {
       vector: buildUnsolvedVector(puzzle, grid, structMetrics, result.metrics),
       steps: null,
+      trace: null,
       passiveStory: null,
     };
   }
@@ -181,6 +183,7 @@ export async function evaluatePuzzleWithSteps(
     return {
       vector: buildUnsolvedVector(puzzle, grid, structMetrics, metrics),
       steps: null,
+      trace: null,
       passiveStory: null,
     };
   }
@@ -275,6 +278,7 @@ export async function evaluatePuzzleWithSteps(
       solved: true,
     },
     steps,
+    trace,
     passiveStory,
   };
 }

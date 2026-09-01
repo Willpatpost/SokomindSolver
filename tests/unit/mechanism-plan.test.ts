@@ -60,8 +60,8 @@ function findBlueprintWithPassage(): FunctionalBlueprint | null {
 // 1. All mechanism types in catalog
 // ---------------------------------------------------------------------------
 
-test("mechanism-plan: MECHANISM_CATALOG has entries for all 8 types", () => {
-  assert.equal(MECHANISM_TYPES.length, 8, "should have 8 mechanism types");
+test("mechanism-plan: MECHANISM_CATALOG has entries for all 11 types", () => {
+  assert.equal(MECHANISM_TYPES.length, 11, "should have 11 mechanism types");
   for (const mType of MECHANISM_TYPES) {
     const entry = MECHANISM_CATALOG[mType];
     assert.ok(entry, `catalog should have entry for ${mType}`);
@@ -75,6 +75,39 @@ test("mechanism-plan: MECHANISM_CATALOG has entries for all 8 types", () => {
       entry.evidenceRequirements.requiredKinds.length >= 1,
       `${mType} should require at least 1 evidence kind`,
     );
+  }
+});
+
+test("mechanism-plan: seeded construction repeatedly places all three story mechanisms", () => {
+  const targets: readonly MechanismType[] = [
+    "assignment-misdirection",
+    "support-square-contention",
+    "multi-chain-merge",
+  ];
+  for (const type of targets) {
+    let placed = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const blueprint = generateBlueprintWithRetry({
+        ...DEFAULT_BLUEPRINT_PARAMS,
+        seed,
+        family: "linear",
+        boardWidth: 16,
+        boardHeight: 16,
+        minRooms: 3,
+        maxRooms: 4,
+      }, 20);
+      if (!blueprint) continue;
+      const functional = assignRoomRoles(blueprint, seed, 6);
+      const plan = createMechanismPlan(
+        functional,
+        "advanced",
+        type === "multi-chain-merge" ? 6 : 4,
+        seed,
+        [type],
+      );
+      if (plan && placeGoalsFromPlan(functional, plan)) placed++;
+    }
+    assert.ok(placed >= 10, `${type} placed only ${placed} times in the seeded sweep`);
   }
 });
 

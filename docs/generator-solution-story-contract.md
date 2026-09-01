@@ -72,11 +72,63 @@ The profile is attached to solved `PuzzleEvaluationResult` and `ForgeCandidate`
 objects but is not part of `PuzzleEvaluationVector`. Phase 2 therefore changes
 neither acceptance, ranking, difficulty, nor catalog output.
 
+Compact story summaries, traversal-fingerprint distributions, and evidence-led
+explanations are emitted through forge diagnostics and review packs only.
+
 Delayed false starts and recovery optionality are intentionally not claimed by
 passive analysis. They require bounded counterfactual searches in a later phase.
 
 Semantic zones are derived from the final board, not copied from an earlier
 blueprint, so tightening and typing cannot leave stale evidence.
+
+## Phase 3 mechanism construction
+
+Mechanism mode now converts every placed mechanism into an explicit
+`MechanismConstructionTarget`. A target retains the real goal cells, their
+room/depth roles, dependencies on other targets, a construction directive, and
+the passive evidence that the final solution must demonstrate:
+
+- packing chains construct depth-ordered goal sequences;
+- gate mechanisms construct doorway traffic, including reopening when required;
+- staging and parking mechanisms construct displacement-and-return work;
+- corridor and exchange mechanisms construct shared multi-room transport;
+- dependency chains construct ordered, revisited work;
+- assignment misdirection splits compatible goals across rooms and requires
+  the final generic pairing to bypass an initially nearer goal;
+- support-square contention places goals around a shared keeper-support cell;
+  and
+- multi-chain merge constructs two ordered chains that converge on one merge
+  constraint.
+
+Every mechanism carries an explicit sequence index and a target-local
+typed/generic dependency requirement.
+
+Verification is localized. Evidence only realizes a target when it involves
+the boxes that actually finish on that target's goal cells. This prevents an
+unrelated story elsewhere on the board from validating a decorative or lost
+mechanism. Verification runs against the final post-typing canonical trace and
+is attached to forge candidates and provenance. During Phase 3 it remains
+diagnostic and does not change acceptance, ranking, difficulty, or catalog
+output.
+
+Hybrid typing is also constructive rather than a random fraction. It builds a
+weighted interaction graph from shared box routes, shared keeper-support
+cells, and consecutive push switches, then chooses typed boxes to maximize the
+cut across that graph. Beginner puzzles retain at least one typed and one
+generic box. Every higher tier with at least four boxes retains at least two of
+each. Typed labels remain paired to the exact goals reached by the canonical
+solution.
+
+Mechanism goal groups add high-weight edges to that interaction graph. Thus a
+global typed/generic interaction elsewhere cannot satisfy a mechanism: each
+target must contain its own cross-class cut and its final passive verification
+must observe target-local cross-type evidence.
+
+Reverse scoring rewards assignment surprise, shared-support contention,
+converging-chain participation, staging/parking revisits, and the reverse of
+the declared forward mechanism sequence. These rewards act during construction;
+the final evaluator remains the authority on whether the intended evidence
+survived.
 
 ## Required feature families
 

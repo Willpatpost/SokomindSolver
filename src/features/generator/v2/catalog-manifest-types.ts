@@ -3,6 +3,7 @@ import type { TopologyFamily } from "./blueprint-types.ts";
 import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { MotifType } from "./motifs.ts";
 import type { BoxTypingMode } from "./puzzle-forge.ts";
+import type { PassiveStorySummary } from "./passive-story-analysis.ts";
 
 export const CATALOG_GENERATOR_VERSION = "4.2.0" as const;
 export const REVIEW_CATALOG_SCHEMA_VERSION = 1 as const;
@@ -128,6 +129,9 @@ export interface ReviewCandidatePack {
   readonly temporaryGoalVacancies?: number;
   readonly estimatedDependencyDepth?: number;
   readonly goalOrderConstraints?: number;
+  // Passive solution-story evidence (review-only; never an acceptance input)
+  readonly passiveStory?: PassiveStorySummary;
+  readonly storyExplanations?: readonly string[];
 }
 
 export interface ReviewCatalogTierSummary {

@@ -24,6 +24,7 @@ import {
   CATALOG_GENERATOR_VERSION,
   REVIEW_CATALOG_SCHEMA_VERSION,
 } from "./catalog-manifest-types.ts";
+import { explainPassiveStory, summarizePassiveStory } from "./passive-story-analysis.ts";
 
 // ---------------------------------------------------------------------------
 // buildReviewPack
@@ -120,6 +121,12 @@ export function buildReviewPack(
     temporaryGoalVacancies: ev.temporaryGoalVacancies,
     estimatedDependencyDepth: ev.estimatedDependencyDepth,
     goalOrderConstraints: ev.goalOrderConstraints,
+    passiveStory: candidate.passiveStory
+      ? summarizePassiveStory(candidate.passiveStory)
+      : undefined,
+    storyExplanations: candidate.passiveStory
+      ? explainPassiveStory(candidate.passiveStory)
+      : undefined,
   };
 }
 
@@ -348,6 +355,13 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
           ` vacancies=${pack.temporaryGoalVacancies} depDepth=${pack.estimatedDependencyDepth}` +
           ` goalOrder=${pack.goalOrderConstraints}`,
         );
+      }
+
+      if (pack.storyExplanations && pack.storyExplanations.length > 0) {
+        lines.push("Solution story:");
+        for (const explanation of pack.storyExplanations) {
+          lines.push(`  - ${explanation}`);
+        }
       }
 
       // ASCII board

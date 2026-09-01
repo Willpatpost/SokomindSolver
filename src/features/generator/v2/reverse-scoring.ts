@@ -204,7 +204,7 @@ export function computeObjectiveVector(
 function computeMechanismProgress(
   ctx: ScoringContext,
   boxPositions: readonly GridPosition[],
-  _history: readonly PullHistoryEntry[],
+  history: readonly PullHistoryEntry[],
   mechCtx: MechanismReverseContext,
 ): number {
   let progress = 0;
@@ -212,7 +212,13 @@ function computeMechanismProgress(
   const MP_DR = [-1, 1, 0, 0];
   const MP_DC = [0, 0, -1, 1];
 
+  let goalOffset = 0;
+  const ranges: Array<{ start: number; end: number }> = [];
   for (const mech of mechanisms) {
+    const range = { start: goalOffset, end: goalOffset + mech.allocatedGoals };
+    ranges.push(range);
+    const groupIndices = Array.from({ length: mech.allocatedGoals }, (_, index) => goalOffset + index)
+      .filter((index) => index < boxPositions.length && index < ctx.goals.length);
     switch (mech.type) {
       case "gate-reopening":
       case "gatekeeper": {
@@ -293,9 +299,68 @@ function computeMechanismProgress(
         progress += Math.min(passageAdjacent * 0.5, 3.0);
         break;
       }
+      case "staging-dependency":
+      case "temporary-parking": {
+        const displaced = groupIndices.filter((index) =>
+          boxPositions[index].row !== ctx.goals[index].row ||
+          boxPositions[index].column !== ctx.goals[index].column).length;
+        const revisited = groupIndices.filter((boxIndex) => {
+          const occurrences = history.map((entry) => entry.boxIndex).filter((index) => index === boxIndex).length;
+          return occurrences >= 2;
+        }).length;
+        progress += Math.min(displaced * 0.5 + revisited, 3.0);
+        break;
+      }
+      case "assignment-misdirection": {
+        let surprises = 0;
+        for (const index of groupIndices) {
+          const own = Math.abs(boxPositions[index].row - ctx.goals[index].row) +
+            Math.abs(boxPositions[index].column - ctx.goals[index].column);
+          const alternative = Math.min(...groupIndices
+            .filter((other) => other !== index)
+            .map((other) => Math.abs(boxPositions[index].row - ctx.goals[other].row) +
+              Math.abs(boxPositions[index].column - ctx.goals[other].column)));
+          if (alternative < own) surprises++;
+        }
+        progress += Math.min(surprises * 1.25, 4.0);
+        break;
+      }
+      case "support-square-contention": {
+        let contention = 0;
+        for (let left = 0; left < groupIndices.length; left++) {
+          for (let right = left + 1; right < groupIndices.length; right++) {
+            const a = boxPositions[groupIndices[left]];
+            const b = boxPositions[groupIndices[right]];
+            const dr = Math.abs(a.row - b.row);
+            const dc = Math.abs(a.column - b.column);
+            if ((dr === 2 && dc === 0) || (dr === 0 && dc === 2)) contention++;
+          }
+        }
+        progress += Math.min(contention * 1.5, 3.0);
+        break;
+      }
+      case "multi-chain-merge": {
+        const moved = new Set(history
+          .filter((entry) => entry.boxIndex >= range.start && entry.boxIndex < range.end)
+          .map((entry) => entry.boxIndex));
+        const rooms = new Set(groupIndices.map((index) =>
+          ctx.roomLookup.get(`${boxPositions[index].row},${boxPositions[index].column}`))
+          .filter((room): room is number => room !== undefined));
+        progress += Math.min(moved.size * 0.5 + Math.max(0, rooms.size - 1), 4.0);
+        break;
+      }
       default:
         break;
     }
+    goalOffset = range.end;
+  }
+
+  // Reverse search should dismantle later mechanisms before earlier ones so
+  // replay produces the plan's explicit forward sequence.
+  for (let index = 0; index + 1 < ranges.length; index++) {
+    const firstCurrent = history.findIndex((entry) => entry.boxIndex >= ranges[index].start && entry.boxIndex < ranges[index].end);
+    const firstNext = history.findIndex((entry) => entry.boxIndex >= ranges[index + 1].start && entry.boxIndex < ranges[index + 1].end);
+    if (firstNext >= 0 && (firstCurrent < 0 || firstNext < firstCurrent)) progress += 0.75;
   }
 
   return progress;

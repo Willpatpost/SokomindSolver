@@ -2,6 +2,8 @@ import type { Difficulty } from "../../../core/model.ts";
 import type { TopologyFamily } from "./blueprint-types.ts";
 import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { RestartStats } from "./reverse-beam-search.ts";
+import { summarizePassiveStory } from "./passive-story-analysis.ts";
+import type { PassiveStoryProfile, PassiveStorySummary } from "./passive-story-analysis.ts";
 
 // ---------------------------------------------------------------------------
 // Per-stage funnel counters (Section 5, 0.2)
@@ -74,7 +76,29 @@ export interface ForgeDiagnosticReport {
   readonly rejectionBreakdown: RejectionBreakdown;
   readonly restartDiagnostics: readonly RestartDiagnostics[];
   readonly boxScaleMismatchCount: number;
+  readonly passiveStoryDistribution: PassiveStoryDistribution;
 }
+
+export type PassiveStoryNumericMetric = Exclude<keyof PassiveStorySummary, "traversalSignature">;
+
+export interface MetricDistribution {
+  readonly min: number;
+  readonly max: number;
+  readonly mean: number;
+}
+
+export interface PassiveStoryDistribution {
+  readonly candidateCount: number;
+  readonly metrics: Readonly<Partial<Record<PassiveStoryNumericMetric, MetricDistribution>>>;
+  readonly traversalSignatures: Readonly<Record<string, number>>;
+}
+
+const PASSIVE_STORY_NUMERIC_METRICS: readonly PassiveStoryNumericMetric[] = [
+  "assignmentMisdirections", "reversalEpisodes", "multiRoomJourneys",
+  "orderedPackingPairs", "gateTransitions", "gateReopenings",
+  "crossTypeDependencies", "crossTypeSwitches", "solutionPhases",
+  "revisitedPhases", "usedZones", "crossZonePushes",
+];
 
 // ---------------------------------------------------------------------------
 // Mutable collector — accumulates diagnostics during a forge run
@@ -107,6 +131,7 @@ export class DiagnosticCollector {
   private readonly _rejections: RejectionRecord[] = [];
   private readonly _boxScale: BoxScaleDiagnostics[] = [];
   private readonly _restarts: RestartDiagnostics[] = [];
+  private readonly _passiveStories: PassiveStorySummary[] = [];
 
   recordAttempt(): void {
     this._attempted++;
@@ -168,6 +193,10 @@ export class DiagnosticCollector {
     this._restarts.push(diag);
   }
 
+  recordPassiveStory(profile: PassiveStoryProfile): void {
+    this._passiveStories.push(summarizePassiveStory(profile));
+  }
+
   addRestartStatsFromV4(
     perRestartStats: readonly RestartStats[],
   ): void {
@@ -216,6 +245,21 @@ export class DiagnosticCollector {
       if (bs.difference !== 0) boxScaleMismatchCount++;
     }
 
+    const storyMetrics: Partial<Record<PassiveStoryNumericMetric, MetricDistribution>> = {};
+    for (const metric of PASSIVE_STORY_NUMERIC_METRICS) {
+      const values = this._passiveStories.map((story) => story[metric]);
+      if (values.length > 0) storyMetrics[metric] = {
+        min: Math.min(...values),
+        max: Math.max(...values),
+        mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+      };
+    }
+    const traversalSignatures: Record<string, number> = {};
+    for (const story of this._passiveStories) {
+      const signature = story.traversalSignature || "(none)";
+      traversalSignatures[signature] = (traversalSignatures[signature] ?? 0) + 1;
+    }
+
     return {
       funnel: {
         attempted: this._attempted,
@@ -243,6 +287,11 @@ export class DiagnosticCollector {
       },
       restartDiagnostics: [...this._restarts],
       boxScaleMismatchCount,
+      passiveStoryDistribution: {
+        candidateCount: this._passiveStories.length,
+        metrics: storyMetrics,
+        traversalSignatures,
+      },
     };
   }
 }
@@ -273,6 +322,13 @@ export function formatDiagnosticReport(report: ForgeDiagnosticReport): string {
   lines.push(`  qualityPassed              ${f.qualityPassed}`);
   lines.push(`  difficultyPassed           ${f.difficultyPassed}`);
   lines.push(`  curated                    ${f.curated}`);
+  lines.push("");
+
+  lines.push(`Passive story candidates: ${report.passiveStoryDistribution.candidateCount}`);
+  for (const [metric, distribution] of Object.entries(report.passiveStoryDistribution.metrics)) {
+    if (!distribution) continue;
+    lines.push(`  ${metric.padEnd(28)} min=${distribution.min} max=${distribution.max} mean=${distribution.mean.toFixed(2)}`);
+  }
   lines.push("");
 
   lines.push(`Box scale mismatches: ${report.boxScaleMismatchCount} / ${report.boxScaleIssues.length}`);
