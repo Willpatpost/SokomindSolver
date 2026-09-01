@@ -82,11 +82,17 @@ import {
   type MechanismConstructionPlan,
   type MechanismConstructionVerification,
 } from "./mechanism-construction.ts";
+import {
+  applyStoryAwareTyping,
+  verifyStoryAwareTyping,
+  type StoryAwareTypingPlan,
+  type StoryAwareTypingVerification,
+} from "./story-aware-typing.ts";
 
 import type { GridPosition } from "../generator-types.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
 import { buildPuzzleFromScramble } from "../generate-puzzle.ts";
-import { assignLabels, assignPartialLabels } from "../label-assignment.ts";
+import { assignLabels } from "../label-assignment.ts";
 import { createSession, move } from "../../../core/game-session.ts";
 import { isGoalChar, isGenericBoxChar, isTypedBoxChar } from "./tile-semantics.ts";
 import {
@@ -337,6 +343,10 @@ export interface ForgeProvenance {
   readonly mechanismConstructionRealized?: number;
   readonly mechanismConstructionPassed?: boolean;
   readonly mechanismConstructionMissing?: readonly string[];
+  readonly storyAwareTypingTargets?: number;
+  readonly storyAwareTypingRealized?: number;
+  readonly storyAwareTypingPassed?: boolean;
+  readonly storyAwareTypingMissing?: readonly string[];
   readonly counterfactualEdges?: number;
   readonly counterfactualTotal?: number;
   readonly v4DifficultyProfile?: V4DifficultyProfile;
@@ -352,6 +362,9 @@ export interface ForgeCandidate {
   /** Phase 3 construction intent and localized post-generation evidence. */
   readonly mechanismConstruction?: MechanismConstructionPlan;
   readonly mechanismConstructionVerification?: MechanismConstructionVerification;
+  /** Phase 4 class assignment intent and exact-final-route verification. */
+  readonly storyAwareTyping?: StoryAwareTypingPlan;
+  readonly storyAwareTypingVerification?: StoryAwareTypingVerification;
   readonly tighteningResult?: TighteningResult;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
@@ -389,6 +402,7 @@ export type ForgeRejectionReason =
   | "motif-failed"
   | "composition-failed"
   | "replay-validation-failed"
+  | "story-typing-failed"
   | "duplicate-exact"
   | "difficulty-mismatch"
   | "duplicate-cross-tier"
@@ -1130,6 +1144,7 @@ async function completeCandidateFromBlueprint(
   }
 
   let puzzleChanged = false;
+  let storyAwareTyping: StoryAwareTypingPlan | undefined;
   if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
     const solution = {
       steps: pairingSteps,
@@ -1150,17 +1165,16 @@ async function completeCandidateFromBlueprint(
     } else {
       const range = config.typingPolicy.hybridTypedFractionMax - config.typingPolicy.hybridTypedFractionMin;
       const typedFraction = config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
-      candidatePuzzle = assignPartialLabels(
+      const typingResult = applyStoryAwareTyping(
         puzzle,
         solution,
         labelRng,
         typedFraction,
-        rawResult.mechanismConstruction?.targets.map((target) => ({
-          goalIndices: new Set(target.goals.map((goal) => goal.goalIndex)),
-          minTyped: 1,
-          minGeneric: target.type === "assignment-misdirection" ? 2 : 1,
-        })) ?? [],
+        rawResult.mechanismConstruction,
       );
+      if (!typingResult) return { ok: false, reason: "story-typing-failed", solverCalls };
+      candidatePuzzle = typingResult.puzzle;
+      storyAwareTyping = typingResult.plan;
     }
 
     if (candidatePuzzle !== puzzle) {
@@ -1201,6 +1215,13 @@ async function completeCandidateFromBlueprint(
           evalResult.passiveStory,
         )
       : undefined;
+  const storyAwareTypingVerification =
+    storyAwareTyping && evalResult.trace && evalResult.passiveStory
+      ? verifyStoryAwareTyping(storyAwareTyping, evalResult.trace, evalResult.passiveStory)
+      : undefined;
+  if (storyAwareTyping && !storyAwareTypingVerification?.passed) {
+    return { ok: false, reason: "story-typing-failed", solverCalls };
+  }
 
   const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
   const genericBoxCount = boxGoalCounts.generic;
@@ -1304,6 +1325,12 @@ async function completeCandidateFromBlueprint(
     mechanismConstructionPassed: mechanismConstructionVerification?.passed,
     mechanismConstructionMissing: mechanismConstructionVerification?.targetResults
       .flatMap((result) => result.missingEvidence.map((kind) => `${result.targetId}:${kind}`)),
+    storyAwareTypingTargets: storyAwareTypingVerification?.targetCount,
+    storyAwareTypingRealized: storyAwareTypingVerification?.realizedTargetCount,
+    storyAwareTypingPassed: storyAwareTypingVerification?.passed,
+    storyAwareTypingMissing: storyAwareTypingVerification?.targets
+      .filter((target) => !target.passed)
+      .map((target) => target.targetId),
     counterfactualEdges,
     counterfactualTotal,
   };
@@ -1317,6 +1344,8 @@ async function completeCandidateFromBlueprint(
       passiveStory: evalResult.passiveStory ?? undefined,
       mechanismConstruction: rawResult.mechanismConstruction,
       mechanismConstructionVerification,
+      storyAwareTyping,
+      storyAwareTypingVerification,
       tighteningResult,
       dag: rawResult.dag,
       hints: rawResult.hints,
@@ -1802,6 +1831,7 @@ async function runForgeFlat(
 
     // Step 4: Apply typing transformation
     let puzzleChanged = false;
+    let storyAwareTyping: StoryAwareTypingPlan | undefined;
     if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
       const solution = {
         steps: pairingSteps,
@@ -1826,17 +1856,23 @@ async function runForgeFlat(
           config.typingPolicy.hybridTypedFractionMin;
         const typedFraction =
           config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
-        candidatePuzzle = assignPartialLabels(
+        const typingResult = applyStoryAwareTyping(
           puzzle,
           solution,
           labelRng,
           typedFraction,
-          raw.result.mechanismConstruction?.targets.map((target) => ({
-            goalIndices: new Set(target.goals.map((goal) => goal.goalIndex)),
-            minTyped: 1,
-            minGeneric: target.type === "assignment-misdirection" ? 2 : 1,
-          })) ?? [],
+          raw.result.mechanismConstruction,
         );
+        if (!typingResult) {
+          rejections.push({ seed, reason: "story-typing-failed" });
+          collector.recordRejection({
+            reason: "story-typing-failed", tier: difficulty, family, mode,
+            requestedBoxCount: boxCount,
+          });
+          continue;
+        }
+        candidatePuzzle = typingResult.puzzle;
+        storyAwareTyping = typingResult.plan;
       }
 
       if (candidatePuzzle !== puzzle) {
@@ -1892,6 +1928,18 @@ async function runForgeFlat(
             evalResult.passiveStory,
           )
         : undefined;
+    const storyAwareTypingVerification =
+      storyAwareTyping && evalResult.trace && evalResult.passiveStory
+        ? verifyStoryAwareTyping(storyAwareTyping, evalResult.trace, evalResult.passiveStory)
+        : undefined;
+    if (storyAwareTyping && !storyAwareTypingVerification?.passed) {
+      rejections.push({ seed, reason: "story-typing-failed" });
+      collector.recordRejection({
+        reason: "story-typing-failed", tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
+      continue;
+    }
 
     const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
     const genericBoxCount = boxGoalCounts.generic;
@@ -2055,6 +2103,12 @@ async function runForgeFlat(
       mechanismConstructionPassed: mechanismConstructionVerification?.passed,
       mechanismConstructionMissing: mechanismConstructionVerification?.targetResults
         .flatMap((result) => result.missingEvidence.map((kind) => `${result.targetId}:${kind}`)),
+      storyAwareTypingTargets: storyAwareTypingVerification?.targetCount,
+      storyAwareTypingRealized: storyAwareTypingVerification?.realizedTargetCount,
+      storyAwareTypingPassed: storyAwareTypingVerification?.passed,
+      storyAwareTypingMissing: storyAwareTypingVerification?.targets
+        .filter((target) => !target.passed)
+        .map((target) => target.targetId),
       counterfactualEdges,
       counterfactualTotal,
     };
@@ -2066,6 +2120,8 @@ async function runForgeFlat(
       passiveStory: evalResult.passiveStory ?? undefined,
       mechanismConstruction: raw.result.mechanismConstruction,
       mechanismConstructionVerification,
+      storyAwareTyping,
+      storyAwareTypingVerification,
       tighteningResult,
       dag: raw.result.dag,
       hints: raw.result.hints,

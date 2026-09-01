@@ -130,6 +130,40 @@ the declared forward mechanism sequence. These rewards act during construction;
 the final evaluator remains the authority on whether the intended evidence
 survived.
 
+## Phase 4 story-aware typing
+
+Hybrid typing is now a constrained solution-story assignment rather than a
+cosmetic post-process. The optimizer consumes the generic witness replay and
+searches for a fixed-size typed subset that satisfies all of the following:
+
+- at least one typed and one generic box in Beginner, and at least two of each
+  in every higher tier;
+- a global cross-class relationship backed by causal enable/disable evidence,
+  a shared route or keeper-support cell, doorway traffic, productive reversal,
+  or verified goal-room ordering;
+- target-local typed/generic minima for every constructed mechanism;
+- role opposition for gates, staging, parking, corridor traffic,
+  support-square contention, and both incoming chains of a merge; and
+- for assignment-misdirection, at least one surprising box and a nearer
+  alternative both remain generic so labels cannot reveal the assignment.
+
+Boards whose only relationship is that two independent boxes are pushed one
+after another do not receive a hybrid assignment. If no assignment satisfies
+the story constraints, the candidate is rejected with `story-typing-failed`;
+the pipeline no longer silently falls back to an all-generic board.
+
+For boards with at most fourteen boxes the class assignment is selected by an
+exact constrained search. Larger boards use deterministic seeded multi-start
+local search. Both approaches maximize the weighted route/support/ordering cut
+after satisfying the hard story constraints.
+
+After final forward evaluation, `verifyStoryAwareTyping()` checks the class
+minimums, strong cross-class relationship, preserved generic ambiguity, and
+role opposition against the exact final trace selected by the evaluator. The
+plan and verification are attached to the forge candidate and summarized in
+provenance/review output. Unlike Phase 3's diagnostic-only construction report,
+failed Phase 4 typing verification rejects the candidate.
+
 ## Required feature families
 
 The story profile will preserve separate measurements for:

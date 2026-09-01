@@ -113,6 +113,10 @@ export interface ReviewCandidatePack {
   readonly dependencyRealizationRate?: number;
   readonly mechanismEvidencePassed?: boolean;
   readonly mechanismEvidenceMissing?: readonly string[];
+  readonly storyAwareTypingTargets?: number;
+  readonly storyAwareTypingRealized?: number;
+  readonly storyAwareTypingPassed?: boolean;
+  readonly storyAwareTypingMissing?: readonly string[];
   readonly counterfactualEdges?: number;
   readonly counterfactualTotal?: number;
   // V4 difficulty

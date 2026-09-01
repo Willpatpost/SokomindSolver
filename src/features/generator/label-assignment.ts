@@ -31,12 +31,47 @@ export interface HybridTypingConstructionPlan {
   readonly minPerKind: number;
   readonly interactionCutWeight: number;
   readonly interactionEdges: readonly HybridTypingInteractionEdge[];
+  readonly constraintResults: readonly HybridTypingConstraintResult[];
+}
+
+export interface HybridTypingGenericWitness {
+  /** The box whose non-nearest assignment must remain ambiguous. */
+  readonly boxIndex: number;
+  /** Boxes paired with nearer compatible goals. At least one must remain generic. */
+  readonly alternativeBoxIndices: readonly number[];
+}
+
+export interface HybridTypingOppositionRequirement {
+  readonly id: string;
+  /** At least one pair must be split across typed and generic classes. */
+  readonly pairs: readonly (readonly [number, number])[];
+}
+
+export interface HybridTypingConstraintResult {
+  readonly id: string;
+  readonly boxIndices: readonly number[];
+  readonly typedCount: number;
+  readonly genericCount: number;
+  readonly classMinimumsSatisfied: boolean;
+  readonly interactionCutSatisfied: boolean;
+  readonly genericWitnessSatisfied: boolean;
+  readonly oppositionSatisfied: boolean;
+  readonly satisfied: boolean;
 }
 
 export interface HybridTypingGoalGroup {
+  readonly id?: string;
   readonly goalIndices: ReadonlySet<number>;
   readonly minTyped?: number;
   readonly minGeneric?: number;
+  /** Require an actual route/support/switch edge to cross the class boundary. */
+  readonly requireInteractionCut?: boolean;
+  /** When present, the cut must include one of these concrete interaction kinds. */
+  readonly requiredInteractionKinds?: readonly HybridTypingInteractionKind[];
+  /** Preserve at least one complete generic-goal ambiguity witness. */
+  readonly genericWitnesses?: readonly HybridTypingGenericWitness[];
+  /** Preserve role-specific cross-class relationships such as gate/traffic. */
+  readonly oppositionRequirements?: readonly HybridTypingOppositionRequirement[];
 }
 
 export type HybridTypingGoalGroupInput = ReadonlySet<number> | HybridTypingGoalGroup;
@@ -238,40 +273,223 @@ function minimumHybridClassSize(puzzle: PuzzleDefinition, boxCount: number): num
   return boxCount >= 4 ? 2 : 1;
 }
 
-function maximizeInteractionCut(
-  shuffledIndices: readonly number[],
-  typedCount: number,
+interface PreparedTypingConstraint {
+  readonly group: HybridTypingGoalGroup;
+  readonly id: string;
+  readonly boxes: readonly number[];
+}
+
+function cutScore(
+  candidate: ReadonlySet<number>,
   edges: readonly HybridTypingInteractionEdge[],
-): Set<number> {
-  const typed = new Set(shuffledIndices.slice(0, typedCount));
-  const cutScore = (candidate: ReadonlySet<number>): number => edges.reduce(
+): number {
+  return edges.reduce(
     (score, edge) => score + (candidate.has(edge.boxA) !== candidate.has(edge.boxB)
       ? edge.weight
       : 0),
     0,
   );
-  let bestScore = cutScore(typed);
+}
+
+function interactionCutSatisfied(
+  candidate: ReadonlySet<number>,
+  constraint: PreparedTypingConstraint,
+  baseEdges: readonly HybridTypingInteractionEdge[],
+): boolean {
+  if (!constraint.group.requireInteractionCut) return true;
+  const boxes = new Set(constraint.boxes);
+  const requiredKinds = constraint.group.requiredInteractionKinds ?? [];
+  return baseEdges.some((edge) =>
+    boxes.has(edge.boxA) && boxes.has(edge.boxB) &&
+    candidate.has(edge.boxA) !== candidate.has(edge.boxB) &&
+    (requiredKinds.length === 0 || edge.kinds.some((kind) => requiredKinds.includes(kind))));
+}
+
+function genericWitnessSatisfied(
+  candidate: ReadonlySet<number>,
+  constraint: PreparedTypingConstraint,
+): boolean {
+  const witnesses = constraint.group.genericWitnesses ?? [];
+  if (witnesses.length === 0) return true;
+  return witnesses.some((witness) =>
+    !candidate.has(witness.boxIndex) &&
+    witness.alternativeBoxIndices.some((boxIndex) => !candidate.has(boxIndex)));
+}
+
+function oppositionSatisfied(
+  candidate: ReadonlySet<number>,
+  constraint: PreparedTypingConstraint,
+): boolean {
+  return (constraint.group.oppositionRequirements ?? []).every((requirement) =>
+    requirement.pairs.some(([left, right]) =>
+      candidate.has(left) !== candidate.has(right)));
+}
+
+function inspectConstraint(
+  candidate: ReadonlySet<number>,
+  constraint: PreparedTypingConstraint,
+  baseEdges: readonly HybridTypingInteractionEdge[],
+): HybridTypingConstraintResult {
+  const typedCount = constraint.boxes.filter((box) => candidate.has(box)).length;
+  const genericCount = constraint.boxes.length - typedCount;
+  const classMinimumsSatisfied =
+    typedCount >= (constraint.group.minTyped ?? 1) &&
+    genericCount >= (constraint.group.minGeneric ?? 1);
+  const hasInteractionCut = interactionCutSatisfied(candidate, constraint, baseEdges);
+  const hasGenericWitness = genericWitnessSatisfied(candidate, constraint);
+  const hasOpposition = oppositionSatisfied(candidate, constraint);
+  return Object.freeze({
+    id: constraint.id,
+    boxIndices: Object.freeze([...constraint.boxes]),
+    typedCount,
+    genericCount,
+    classMinimumsSatisfied,
+    interactionCutSatisfied: hasInteractionCut,
+    genericWitnessSatisfied: hasGenericWitness,
+    oppositionSatisfied: hasOpposition,
+    satisfied:
+      classMinimumsSatisfied && hasInteractionCut && hasGenericWitness && hasOpposition,
+  });
+}
+
+function violationCount(
+  candidate: ReadonlySet<number>,
+  constraints: readonly PreparedTypingConstraint[],
+  baseEdges: readonly HybridTypingInteractionEdge[],
+): number {
+  return constraints.reduce((total, constraint) => {
+    const result = inspectConstraint(candidate, constraint, baseEdges);
+    return total +
+      (result.classMinimumsSatisfied ? 0 : 1) +
+      (result.interactionCutSatisfied ? 0 : 1) +
+      (result.genericWitnessSatisfied ? 0 : 1) +
+      (result.oppositionSatisfied ? 0 : 1);
+  }, 0);
+}
+
+function candidateFitness(
+  candidate: ReadonlySet<number>,
+  edges: readonly HybridTypingInteractionEdge[],
+  constraints: readonly PreparedTypingConstraint[],
+  baseEdges: readonly HybridTypingInteractionEdge[],
+): readonly [number, number] {
+  return [violationCount(candidate, constraints, baseEdges), cutScore(candidate, edges)];
+}
+
+function isBetterFitness(
+  left: readonly [number, number],
+  right: readonly [number, number],
+): boolean {
+  return left[0] < right[0] || (left[0] === right[0] && left[1] > right[1]);
+}
+
+function optimizeAssignment(
+  initial: ReadonlySet<number>,
+  order: readonly number[],
+  edges: readonly HybridTypingInteractionEdge[],
+  constraints: readonly PreparedTypingConstraint[],
+  baseEdges: readonly HybridTypingInteractionEdge[],
+): Set<number> {
+  const typed = new Set(initial);
+  let fitness = candidateFitness(typed, edges, constraints, baseEdges);
   while (true) {
-    let improvingSwap: readonly [number, number] | undefined;
-    search: for (const typedIndex of shuffledIndices) {
+    let bestSwap: readonly [number, number] | undefined;
+    let bestFitness = fitness;
+    for (const typedIndex of order) {
       if (!typed.has(typedIndex)) continue;
-      for (const genericIndex of shuffledIndices) {
+      for (const genericIndex of order) {
         if (typed.has(genericIndex)) continue;
         const candidate = new Set(typed);
         candidate.delete(typedIndex);
         candidate.add(genericIndex);
-        const score = cutScore(candidate);
-        if (score <= bestScore) continue;
-        bestScore = score;
-        improvingSwap = [typedIndex, genericIndex];
-        break search;
+        const nextFitness = candidateFitness(candidate, edges, constraints, baseEdges);
+        if (!isBetterFitness(nextFitness, bestFitness)) continue;
+        bestFitness = nextFitness;
+        bestSwap = [typedIndex, genericIndex];
       }
     }
-    if (!improvingSwap) break;
-    typed.delete(improvingSwap[0]);
-    typed.add(improvingSwap[1]);
+    if (!bestSwap) break;
+    typed.delete(bestSwap[0]);
+    typed.add(bestSwap[1]);
+    fitness = bestFitness;
   }
   return typed;
+}
+
+function exactAssignment(
+  boxCount: number,
+  typedCount: number,
+  edges: readonly HybridTypingInteractionEdge[],
+  constraints: readonly PreparedTypingConstraint[],
+  baseEdges: readonly HybridTypingInteractionEdge[],
+  tieOrder: readonly number[],
+): Set<number> | null {
+  let best: Set<number> | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestTie = Number.POSITIVE_INFINITY;
+  const rank = new Map(tieOrder.map((boxIndex, index) => [boxIndex, index] as const));
+  const visit = (next: number, remaining: number, selected: number[]): void => {
+    if (remaining === 0) {
+      const candidate = new Set(selected);
+      if (violationCount(candidate, constraints, baseEdges) !== 0) return;
+      const score = cutScore(candidate, edges);
+      const tie = selected.reduce((sum, boxIndex) => sum + (rank.get(boxIndex) ?? 0), 0);
+      if (score > bestScore || (score === bestScore && tie < bestTie)) {
+        best = candidate;
+        bestScore = score;
+        bestTie = tie;
+      }
+      return;
+    }
+    for (let boxIndex = next; boxIndex <= boxCount - remaining; boxIndex++) {
+      selected.push(boxIndex);
+      visit(boxIndex + 1, remaining - 1, selected);
+      selected.pop();
+    }
+  };
+  visit(0, typedCount, []);
+  return best;
+}
+
+function maximizeInteractionCut(
+  shuffledIndices: readonly number[],
+  typedCount: number,
+  edges: readonly HybridTypingInteractionEdge[],
+  constraints: readonly PreparedTypingConstraint[],
+  baseEdges: readonly HybridTypingInteractionEdge[],
+  rng: () => number,
+): Set<number> | null {
+  if (shuffledIndices.length <= 14) {
+    return exactAssignment(
+      shuffledIndices.length,
+      typedCount,
+      edges,
+      constraints,
+      baseEdges,
+      shuffledIndices,
+    );
+  }
+
+  let best: Set<number> | null = null;
+  let bestFitness: readonly [number, number] = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+  const starts = Math.max(128, shuffledIndices.length * 8);
+  for (let start = 0; start < starts; start++) {
+    const order = [...shuffledIndices];
+    if (start > 0) shuffleArray(order, rng);
+    const optimized = optimizeAssignment(
+      new Set(order.slice(0, typedCount)),
+      order,
+      edges,
+      constraints,
+      baseEdges,
+    );
+    const fitness = candidateFitness(optimized, edges, constraints, baseEdges);
+    if (isBetterFitness(fitness, bestFitness)) {
+      best = optimized;
+      bestFitness = fitness;
+    }
+  }
+  return bestFitness[0] === 0 ? best : null;
 }
 
 export function buildHybridTypingConstructionPlan(
@@ -302,6 +520,13 @@ export function buildHybridTypingConstructionPlan(
     .filter(([, goalIndex]) => group.goalIndices.has(goalIndex))
     .map(([boxIndex]) => boxIndex)
     .sort((a, b) => a - b));
+  const constraints: readonly PreparedTypingConstraint[] = Object.freeze(
+    normalizedGroups.map((group, index) => Object.freeze({
+      group,
+      id: group.id ?? `goal-group-${index}`,
+      boxes: Object.freeze(groupBoxes[index]),
+    })),
+  );
   for (let groupIndex = 0; groupIndex < normalizedGroups.length; groupIndex++) {
     const boxes = groupBoxes[groupIndex];
     for (let left = 0; left < boxes.length; left++) {
@@ -318,39 +543,15 @@ export function buildHybridTypingConstructionPlan(
     }
   }
   const edges = Object.freeze([...edgeMap.values()]);
-  const typedBoxIndices = maximizeInteractionCut(shuffledIndices, typedCount, edges);
-  // Repair the weighted cut to satisfy explicit per-mechanism class minima
-  // without changing the global typed count.
-  for (let pass = 0; pass < normalizedGroups.length * 2; pass++) {
-    let changed = false;
-    for (let groupIndex = 0; groupIndex < normalizedGroups.length; groupIndex++) {
-      const group = normalizedGroups[groupIndex];
-      const boxes = groupBoxes[groupIndex];
-      const minTyped = group.minTyped ?? 1;
-      const minGeneric = group.minGeneric ?? 1;
-      const typedHere = boxes.filter((box) => typedBoxIndices.has(box));
-      if (typedHere.length < minTyped) {
-        const add = boxes.find((box) => !typedBoxIndices.has(box));
-        const remove = shuffledIndices.find((box) => typedBoxIndices.has(box) && !boxes.includes(box));
-        if (add !== undefined && remove !== undefined) {
-          typedBoxIndices.add(add); typedBoxIndices.delete(remove); changed = true;
-        }
-      } else if (boxes.length - typedHere.length < minGeneric) {
-        const remove = typedHere[0];
-        const add = shuffledIndices.find((box) => !typedBoxIndices.has(box) && !boxes.includes(box));
-        if (remove !== undefined && add !== undefined) {
-          typedBoxIndices.delete(remove); typedBoxIndices.add(add); changed = true;
-        }
-      }
-    }
-    if (!changed) break;
-  }
-  if (normalizedGroups.some((group, index) => {
-    const boxes = groupBoxes[index];
-    const typedHere = boxes.filter((box) => typedBoxIndices.has(box)).length;
-    return typedHere < (group.minTyped ?? 1) ||
-      boxes.length - typedHere < (group.minGeneric ?? 1);
-  })) return null;
+  const typedBoxIndices = maximizeInteractionCut(
+    shuffledIndices,
+    typedCount,
+    edges,
+    constraints,
+    baseEdges,
+    rng,
+  );
+  if (!typedBoxIndices) return null;
   const genericBoxIndices = new Set(shuffledIndices.filter((index) =>
     !typedBoxIndices.has(index)));
   const interactionCutWeight = edges.reduce(
@@ -361,6 +562,8 @@ export function buildHybridTypingConstructionPlan(
     ),
     0,
   );
+  const constraintResults = Object.freeze(constraints.map((constraint) =>
+    inspectConstraint(typedBoxIndices, constraint, baseEdges)));
   return Object.freeze({
     typedBoxIndices,
     genericBoxIndices,
@@ -369,6 +572,7 @@ export function buildHybridTypingConstructionPlan(
     minPerKind,
     interactionCutWeight,
     interactionEdges: edges,
+    constraintResults,
   });
 }
 
@@ -415,6 +619,24 @@ export function assignPartialLabels(
     requiredGoalGroups,
   );
   if (!construction) return puzzle;
+  return applyHybridTypingConstructionPlan(puzzle, solution.steps, construction, rng);
+}
+
+/** Apply an already-verified class assignment without re-running its optimizer. */
+export function applyHybridTypingConstructionPlan(
+  puzzle: PuzzleDefinition,
+  steps: readonly SolutionStep[],
+  construction: HybridTypingConstructionPlan,
+  rng: () => number,
+): PuzzleDefinition {
+  const board = parsePuzzle(puzzle);
+  const boxCount = board.initialBoxes.length;
+  const pairing = traceBoxGoalPairing(puzzle, steps);
+  if (
+    pairing.size !== boxCount ||
+    construction.typedCount + construction.genericCount !== boxCount ||
+    construction.typedBoxIndices.size !== construction.typedCount
+  ) return puzzle;
   const { typedCount, typedBoxIndices: typedSet } = construction;
 
   // Assign labels only to typed pairs; leave the rest as X/S

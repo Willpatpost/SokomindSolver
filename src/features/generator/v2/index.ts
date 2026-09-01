@@ -453,6 +453,19 @@ export {
   verifyMechanismConstruction,
 } from "./mechanism-construction.ts";
 
+export {
+  applyStoryAwareTyping,
+  verifyStoryAwareTyping,
+} from "./story-aware-typing.ts";
+
+export type {
+  StoryAwareTypingPlan,
+  StoryAwareTypingResult,
+  StoryAwareTypingTargetPlan,
+  StoryAwareTypingTargetVerification,
+  StoryAwareTypingVerification,
+} from "./story-aware-typing.ts";
+
 export type {
   ConstructedEvidenceReference,
   ConstructedStoryEvidenceKind,

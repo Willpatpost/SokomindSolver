@@ -105,6 +105,10 @@ export function buildReviewPack(
     dependencyRealizationRate: p.dependencyRealizationRate,
     mechanismEvidencePassed: p.mechanismEvidencePassed,
     mechanismEvidenceMissing: p.mechanismEvidenceMissing,
+    storyAwareTypingTargets: p.storyAwareTypingTargets,
+    storyAwareTypingRealized: p.storyAwareTypingRealized,
+    storyAwareTypingPassed: p.storyAwareTypingPassed,
+    storyAwareTypingMissing: p.storyAwareTypingMissing,
     counterfactualEdges: p.counterfactualEdges,
     counterfactualTotal: p.counterfactualTotal,
     // V4 difficulty
