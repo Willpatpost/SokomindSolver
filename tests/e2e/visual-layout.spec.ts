@@ -268,16 +268,32 @@ test("movement feedback presents blocked recoil, push compression, and a goal ri
     slot.getAnimations().length);
   expect(repeatedRecoil).toBeGreaterThan(0);
 
+  await page.evaluate(() => {
+    const w = window as Window & { __sawPushCompression?: boolean };
+    const orig = Element.prototype.animate;
+    w.__sawPushCompression = false;
+    Element.prototype.animate = function (...args: Parameters<typeof orig>) {
+      const result = orig.apply(this, args);
+      const kf = args[0];
+      if (Array.isArray(kf)) {
+        for (const frame of kf) {
+          if (typeof frame.transform === "string" &&
+              /scale3d\(\s*(?!1[\s,])/.test(frame.transform)) {
+            w.__sawPushCompression = true;
+          }
+        }
+      }
+      Element.prototype.animate = orig;
+      return result;
+    };
+  });
+
   await page.keyboard.press("ArrowDown");
   const movedBox = page.locator('[data-piece-feedback="solved"]');
   await expect(movedBox).toHaveCount(1);
-  const compressed = await movedBox.evaluate((slot) =>
-    slot.getAnimations().some((animation) =>
-      (animation.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => {
-        const matrix = new DOMMatrixReadOnly(String(frame.transform));
-        return Math.abs(matrix.a - 1) > 0.01 || Math.abs(matrix.d - 1) > 0.01;
-      }) ?? false,
-  ));
+  const compressed = await page.evaluate(
+    () => (window as Window & { __sawPushCompression?: boolean }).__sawPushCompression,
+  );
   expect(compressed).toBe(true);
   await expect(board).toHaveAttribute("data-feedback", "solved");
   await expect(page.locator('[data-feedback-effect="goal-ripple"]')).toHaveCount(1);

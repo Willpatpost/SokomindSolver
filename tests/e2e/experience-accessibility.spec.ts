@@ -157,6 +157,9 @@ test("legacy appearance migrates to Cozy Study and the version 2 key", async ({
   page,
 }) => {
   await page.goto("./");
+  await page.waitForFunction(
+    () => localStorage.getItem("sokomind.experience.v2") !== null,
+  );
   await page.evaluate(() => {
     localStorage.removeItem("sokomind.experience.v2");
     localStorage.setItem("sokomind.experience.v1", JSON.stringify({
