@@ -12,6 +12,7 @@ import {
   classifyDifficultyByBoxCount,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
+  DEFAULT_STORY_QUALITY_POLICY,
   type ForgeConfig,
 } from "../../src/features/generator/v2/index.ts";
 
@@ -115,7 +116,20 @@ test("different baseSeed produces different candidates", async () => {
 
 test("every retained candidate has complete provenance", async () => {
   const result = await runForge(SMALL_CONFIG);
+  assert.ok(result.candidates.length > 0, "the seeded flat run must retain candidates");
+  assert.equal(result.storySelection?.selected, result.candidates.length);
+  assert.equal(result.storySelection?.target, SMALL_CONFIG.retainTarget);
+  assert.equal(result.storySelection?.decisions.filter((decision) => decision.reason === "selected").length, result.candidates.length);
   for (const c of result.candidates) {
+    assert.equal(c.storyAwareTypingVerification?.passed, true);
+    assert.equal(c.qualityProfile?.passed, true);
+    assert.equal(c.qualityProfile?.story?.passed, true);
+    assert.equal(c.storyAwareTypingVerification?.boardMatches, true);
+    assert.ok(c.counterfactualStory, "flat candidates include bounded counterfactual evidence");
+    assert.ok(c.counterfactualStory.probes.length <= c.counterfactualStory.budget.maxProbes);
+    assert.ok(c.counterfactualStory.expandedStates <= c.counterfactualStory.budget.maxTotalStates);
+    assert.equal(c.provenance.storyAwareTypingPassed, true);
+    assert.equal(c.provenance.storyAwareTypingTargets, c.storyAwareTyping?.targets.length);
     assert.ok(c.provenance.seed >= SMALL_CONFIG.baseSeed, "seed in range");
     assert.ok(
       SMALL_CONFIG.families.includes(c.provenance.family),
@@ -137,6 +151,29 @@ test("every retained candidate has complete provenance", async () => {
     assert.equal(typeof c.provenance.tightened, "boolean");
     assert.equal(typeof c.provenance.cellsRemoved, "number");
   }
+});
+
+test("counterfactual diagnostics do not change candidate acceptance, ranking, or tiers", async () => {
+  const enabled = await runForge(SMALL_CONFIG);
+  const disabled = await runForge({ ...SMALL_CONFIG, counterfactualBudget: { maxProbes: 0 } });
+  assert.ok(enabled.candidates.length > 0);
+  assert.deepEqual(enabled.candidates.map((candidate) => candidate.puzzle),
+    disabled.candidates.map((candidate) => candidate.puzzle));
+  assert.deepEqual(enabled.rejections, disabled.rejections);
+  assert.equal(enabled.totalValid, disabled.totalValid);
+  assert.ok(enabled.diagnostics!.counterfactualSummary.probes > 0);
+  assert.equal(disabled.diagnostics!.counterfactualSummary.probes, 0);
+});
+
+test("quality policy rejects candidates without relaxing its floor to fill a quota", async () => {
+  const result = await runForge({
+    ...SMALL_CONFIG,
+    storyQualityPolicy: { minStoryFamilies: { ...DEFAULT_STORY_QUALITY_POLICY.minStoryFamilies, beginner: 8 } },
+  });
+  assert.equal(result.candidates.length, 0);
+  assert.ok(result.rejections.some((rejection) => rejection.reason === "story-feature-variety"));
+  assert.ok(result.diagnostics!.qualityAssessments.some((entry) => !entry.profile.passed &&
+    entry.profile.story?.requiredStoryFamilies === 8));
 });
 
 test("forge derives every candidate tier solely from its final box count", async () => {

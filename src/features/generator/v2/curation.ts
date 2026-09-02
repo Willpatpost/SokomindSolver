@@ -1,4 +1,5 @@
 import type { CurationObjectives } from "./finalist-evaluator.ts";
+import { storyDiversityDistance, type StoryDiversityProfile } from "./story-diversity.ts";
 
 export interface CuratedCandidate<T> {
   readonly item: T;
@@ -6,6 +7,7 @@ export interface CuratedCandidate<T> {
   readonly front: number;
   readonly noveltyScore: number;
   readonly structuralFingerprint?: string;
+  readonly storyDiversity?: StoryDiversityProfile;
 }
 
 export interface DiversityQuotas {
@@ -39,7 +41,7 @@ function dominates(a: CurationObjectives, b: CurationObjectives): boolean {
 }
 
 export function nonDominatedSort<T>(
-  items: readonly { item: T; objectives: CurationObjectives }[],
+  items: readonly { item: T; objectives: CurationObjectives; structuralFingerprint?: string; storyDiversity?: StoryDiversityProfile }[],
 ): CuratedCandidate<T>[] {
   const n = items.length;
   const assigned = new Array<number>(n).fill(-1);
@@ -83,6 +85,8 @@ export function nonDominatedSort<T>(
     objectives: entry.objectives,
     front: assigned[i],
     noveltyScore: 0,
+    structuralFingerprint: entry.structuralFingerprint,
+    storyDiversity: entry.storyDiversity,
   }));
 }
 
@@ -148,6 +152,9 @@ export function computeNoveltyScores<T>(
           c.structuralFingerprint !== candidates[j].structuralFingerprint) {
         dist += 0.5;
       }
+      if (c.storyDiversity && candidates[j].storyDiversity) {
+        dist += storyDiversityDistance(c.storyDiversity, candidates[j].storyDiversity!);
+      }
       distances.push(dist);
     }
     distances.sort((a, b) => a - b);
@@ -182,12 +189,12 @@ export function selectByParetoNovelty<T>(
   return selected;
 }
 
-export function selectWithDiversityQuotas<T extends { structuralFingerprint?: string }>(
+export function selectWithDiversityQuotas<T>(
   candidates: readonly CuratedCandidate<T>[],
   quota: number,
   quotas?: DiversityQuotas,
 ): CuratedCandidate<T>[] {
-  if (!quotas || candidates.length <= quota) {
+  if (!quotas) {
     return selectByParetoNovelty(candidates, quota);
   }
 
@@ -197,54 +204,39 @@ export function selectWithDiversityQuotas<T extends { structuralFingerprint?: st
   });
 
   const selected: CuratedCandidate<T>[] = [];
-  const bucketCounts = new Map<string, number>();
 
   for (const c of sorted) {
     if (selected.length >= quota) break;
-
-    const fp = c.structuralFingerprint ?? "";
-    const parts = fp.split("|");
-    const topology = parts[0] ?? "";
-    const mode = parts[1] ?? "";
-    const motif = parts[2] ?? "";
-    const mechanism = parts[3] ?? "";
-
-    let blocked = false;
-    if (quotas.maxPerTopology !== undefined && topology) {
-      const key = `topo:${topology}`;
-      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerTopology) blocked = true;
-    }
-    if (quotas.maxPerMode !== undefined && mode) {
-      const key = `mode:${mode}`;
-      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMode) blocked = true;
-    }
-    if (quotas.maxPerMotif !== undefined && motif && motif !== "none") {
-      const key = `motif:${motif}`;
-      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMotif) blocked = true;
-    }
-    if (quotas.maxPerMechanism !== undefined && mechanism && mechanism !== "none") {
-      const key = `mech:${mechanism}`;
-      if ((bucketCounts.get(key) ?? 0) >= quotas.maxPerMechanism) blocked = true;
-    }
-
-    if (!blocked) {
-      selected.push(c);
-      if (topology) bucketCounts.set(`topo:${topology}`, (bucketCounts.get(`topo:${topology}`) ?? 0) + 1);
-      if (mode) bucketCounts.set(`mode:${mode}`, (bucketCounts.get(`mode:${mode}`) ?? 0) + 1);
-      if (motif && motif !== "none") bucketCounts.set(`motif:${motif}`, (bucketCounts.get(`motif:${motif}`) ?? 0) + 1);
-      if (mechanism && mechanism !== "none") bucketCounts.set(`mech:${mechanism}`, (bucketCounts.get(`mech:${mechanism}`) ?? 0) + 1);
-    }
-  }
-
-  if (selected.length < quota) {
-    for (const c of sorted) {
-      if (selected.length >= quota) break;
-      if (selected.includes(c)) continue;
-      selected.push(c);
-    }
+    if (diversityQuotaAllows(c, selected, quotas)) selected.push(c);
   }
 
   return selected;
+}
+
+/** Apply metadata caps to the actual selected set, not an earlier preselection. */
+export function diversityQuotaAllows(
+  candidate: { readonly structuralFingerprint?: string },
+  selected: readonly { readonly structuralFingerprint?: string }[],
+  quotas?: DiversityQuotas,
+): boolean {
+  if (!quotas) return true;
+  const parts = (candidate.structuralFingerprint ?? "").split("|");
+  const fields = ["maxPerTopology", "maxPerMode", "maxPerMotif", "maxPerMechanism"] as const;
+  for (let i = 0; i < fields.length; i++) {
+    const limit = quotas[fields[i]];
+    if (limit === undefined) continue;
+    if (!Number.isInteger(limit) || limit < 0) throw new Error("Diversity quotas must be non-negative integers");
+    const keys = i === 3 ? (parts[i] ?? "").split("+") : [parts[i]];
+    for (const key of keys) {
+      if (!key || key === "none") continue;
+      const count = selected.filter((entry) => {
+        const other = (entry.structuralFingerprint ?? "").split("|")[i] ?? "";
+        return i === 3 ? other.split("+").includes(key) : other === key;
+      }).length;
+      if (count >= limit) return false;
+    }
+  }
+  return true;
 }
 
 export interface PopulationDiagnostics {

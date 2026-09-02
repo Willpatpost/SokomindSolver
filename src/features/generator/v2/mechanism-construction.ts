@@ -5,6 +5,7 @@ import type {
 import type { MechanismPlacementResult } from "./mechanism-plan.ts";
 import type { PassiveStoryProfile } from "./passive-story-analysis.ts";
 import type { CanonicalSolutionTrace, TracePosition } from "./solution-trace.ts";
+import { strongStoryPairs } from "./story-interaction-graph.ts";
 
 export type MechanismConstructionDirective =
   | "ordered-goal-depth"
@@ -222,6 +223,7 @@ function reference(
 
 function evidenceForKind(
   kind: ConstructedStoryEvidenceKind,
+  trace: CanonicalSolutionTrace,
   story: PassiveStoryProfile,
   relevantBoxes: ReadonlySet<number>,
   relevantGoals: ReadonlySet<string>,
@@ -231,7 +233,9 @@ function evidenceForKind(
     story.goalRoomPacking.evidence.forEach((item, index) => {
       const placements = item.placements.filter((placement) =>
         relevantGoals.has(placement.goalId));
-      if (placements.length < 2 || item.orderedPairs === 0) return;
+      if (!placements.some((deeper) => placements.some((shallower) =>
+        deeper.depthFromEntrance > shallower.depthFromEntrance &&
+        deeper.completionPushIndex < shallower.completionPushIndex))) return;
       result.push(reference(
         kind,
         index,
@@ -313,29 +317,22 @@ function evidenceForKind(
   } else if (kind === "multi-chain-merge") {
     story.goalRoomPacking.evidence.forEach((item, index) => {
       const placements = item.placements.filter((placement) => relevantGoals.has(placement.goalId));
-      if (placements.length < 2 || item.orderedPairs === 0) return;
+      if (!placements.some((deeper) => placements.some((shallower) =>
+        deeper.depthFromEntrance > shallower.depthFromEntrance &&
+        deeper.completionPushIndex < shallower.completionPushIndex))) return;
       result.push(reference(kind, index, placements.map((placement) => placement.boxId), placements.map((placement) => placement.goalId), placements.map((placement) => placement.completionPushIndex), [item.roomId]));
     });
     if (result.length < 2) result.length = 0;
   } else {
-    story.mixedBoxInteraction.switchEvidence.forEach((item, index) => {
-      if (!relevantBoxes.has(item.fromBoxId) || !relevantBoxes.has(item.toBoxId)) return;
+    strongStoryPairs(trace, story).forEach((pair, index) => {
+      if (!pair.every((boxId) => relevantBoxes.has(boxId)) ||
+        trace.boxes[pair[0]].kind === trace.boxes[pair[1]].kind) return;
       result.push(reference(
         kind,
         index,
-        [item.fromBoxId, item.toBoxId],
+        pair,
         [],
-        [item.pushIndex],
-      ));
-    });
-    story.mixedBoxInteraction.dependencyEvidence.forEach((item, index) => {
-      if (!relevantBoxes.has(item.sourceBoxId) || !relevantBoxes.has(item.targetBoxId)) return;
-      result.push(reference(
-        kind,
-        story.mixedBoxInteraction.switchEvidence.length + index,
-        [item.sourceBoxId, item.targetBoxId],
-        [],
-        [item.pushIndex],
+        trace.pushes.filter((push) => pair.includes(push.boxId)).map((push) => push.pushIndex),
       ));
     });
   }
@@ -373,14 +370,16 @@ export function verifyMechanismConstruction(
     const relevantBoxes = new Set(targetBoxIds);
     const relevantGoals = new Set(targetGoalIds);
     const evidence = target.requiredEvidence.flatMap((kind) =>
-      evidenceForKind(kind, story, relevantBoxes, relevantGoals));
+      evidenceForKind(kind, trace, story, relevantBoxes, relevantGoals));
     const observedEvidence = [...new Set(evidence.map((item) => item.kind))];
     const missingEvidence = target.requiredEvidence.filter((kind) =>
       !observedEvidence.includes(kind));
     return Object.freeze({
       targetId: target.id,
       type: target.type,
-      realized: targetGoalIds.length === target.goals.length && missingEvidence.length === 0,
+      realized: trace.solved && story.solved && target.goals.length > 0 &&
+        new Set(targetGoalIds).size === target.goals.length &&
+        new Set(targetBoxIds).size === target.goals.length && missingEvidence.length === 0,
       targetGoalIds,
       targetBoxIds: Object.freeze(targetBoxIds),
       requiredEvidence: target.requiredEvidence,

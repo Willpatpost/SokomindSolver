@@ -169,7 +169,7 @@ test("mechanism verification requires evidence localized to its target boxes", (
   assert.deepEqual(missing.targetResults[0].missingEvidence, ["multi-room-journey"]);
 });
 
-test("cross-type construction is proven by concrete push-switch evidence", () => {
+test("cross-type construction requires concrete shared-work evidence", () => {
   const rows = [
     "OOOOOOOOOO",
     "O R X aS O",

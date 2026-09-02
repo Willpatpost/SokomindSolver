@@ -35,6 +35,8 @@ import type {
 
 import type { PuzzleEvaluationVector } from "../../src/features/generator/v2/puzzle-evaluator.ts";
 import type { PuzzleDefinition, Difficulty } from "../../src/core/model.ts";
+import { syntheticStoryReport } from "../support/story-quality.ts";
+import { boardHash } from "../../src/features/generator/v2/puzzle-identity.ts";
 
 // ---------------------------------------------------------------------------
 // Mock builders (same shape as review-catalog.test.ts)
@@ -160,11 +162,14 @@ function makeCandidate(
   provOverrides: Partial<ForgeProvenance> = {},
   puzzleOverrides: Partial<PuzzleDefinition> = {},
 ): ForgeCandidate {
+  const puzzle = makePuzzle(puzzleOverrides);
+  const provenance = makeProvenance(provOverrides);
   return {
-    puzzle: makePuzzle(puzzleOverrides),
-    provenance: makeProvenance(provOverrides),
+    puzzle,
+    provenance,
     evaluation: makeEvaluation(evalOverrides),
     qualityProfile: {
+      story: syntheticStoryReport(boardHash(puzzle.rows), provenance.boxCount, provenance.genericBoxCount),
       purposefulGeometry: 0.7,
       interactionQuality: 0.6,
       causalDepth: 0.5,
@@ -229,7 +234,8 @@ function makeDiversePack(
     },
     { id: `gen-v2-${seed}-hash${seed}`, rows, difficulty },
   );
-  return buildReviewPack(candidate, difficulty, difficulty, 0);
+  const pack = buildReviewPack(candidate, difficulty, difficulty, 0);
+  return { ...pack, storyQuality: syntheticStoryReport(pack.boardHash, boxCount, genericBoxCount) };
 }
 
 /**
@@ -771,7 +777,7 @@ describe("buildFinalReviewCatalog", () => {
       qualityPreset: "standard",
     });
 
-    assert.equal(catalog.schemaVersion, 1);
+    assert.equal(catalog.schemaVersion, 2);
     assert.equal(catalog.generatorVersion, "4.1.0");
     assert.equal(catalog.qualityPreset, "standard");
     assert.equal(catalog.tierSummaries.beginner.actual, 2);

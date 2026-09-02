@@ -406,6 +406,11 @@ test("the standard catalog command cannot bypass review acceptance", () => {
 
   assert.match(packageJson.scripts?.["generate:v2-catalog"] ?? "", /--review/u);
   assert.doesNotMatch(generatorSource, /--force/u);
-  assert.match(generatorSource, /Review evidence not found/u);
+  assert.match(generatorSource, /readPromotionBundle/u);
+  assert.match(generatorSource, /installPromotionBundle/u);
+  const promotionSource = readFileSync(join(__dirname, "../../scripts/lib/catalog-promotion.ts"), "utf-8");
+  assert.match(promotionSource, /checkReleaseGate/u);
+  assert.match(promotionSource, /checkReviewManifestBinding/u);
+  assert.match(promotionSource, /buildCanonicalSolutionTrace/u);
   assert.doesNotMatch(generatorSource, /Direct production write bypasses/u);
 });

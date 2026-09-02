@@ -448,8 +448,20 @@ describe("true funnel refactor", () => {
 
   it("funnel candidates have complete provenance", async () => {
     const result = await runForge(FUNNEL_CONFIG);
-
+    assert.ok(result.candidates.length > 0, "the seeded funnel must retain candidates");
+    assert.equal(result.storySelection?.selected, result.candidates.length);
+    assert.equal(result.storySelection?.target, FUNNEL_CONFIG.funnelBudgets!.catalogQuota);
+    assert.equal(result.storySelection?.decisions.filter((decision) => decision.reason === "selected").length, result.candidates.length);
     for (const c of result.candidates) {
+      assert.equal(c.storyAwareTypingVerification?.passed, true);
+      assert.equal(c.qualityProfile?.passed, true);
+      assert.equal(c.qualityProfile?.story?.passed, true);
+      assert.equal(c.storyAwareTypingVerification?.boardMatches, true);
+      assert.ok(c.counterfactualStory, "funnel candidates include bounded counterfactual evidence");
+      assert.ok(c.counterfactualStory.probes.length <= c.counterfactualStory.budget.maxProbes);
+      assert.ok(c.counterfactualStory.expandedStates <= c.counterfactualStory.budget.maxTotalStates);
+      assert.equal(c.provenance.storyAwareTypingPassed, true);
+      assert.equal(c.provenance.storyAwareTypingTargets, c.storyAwareTyping?.targets.length);
       assert.ok(c.provenance.seed >= FUNNEL_CONFIG.baseSeed, "seed in range");
       assert.ok(
         FUNNEL_CONFIG.families.includes(c.provenance.family),

@@ -8,6 +8,16 @@ import {
 import type { BeamSearchParams } from "./reverse-beam-search.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
 import type { PassiveStoryProfile } from "./passive-story-analysis.ts";
+import { summarizePassiveStory } from "./passive-story-analysis.ts";
+import {
+  buildStoryDiversityProfile, selectStoryDiverse, formatStorySelection,
+  type StoryDiversityPolicy, type StorySelectionReport,
+} from "./story-diversity.ts";
+import {
+  analyzeCounterfactualStory,
+  type CounterfactualBudget,
+  type CounterfactualStoryProfile,
+} from "./counterfactual-analysis.ts";
 import type { MotifType, DependencyHint } from "./motifs.ts";
 import type {
   ComposedPuzzleResult,
@@ -52,9 +62,9 @@ import type { V4DifficultyProfile } from "./difficulty-model.ts";
 import {
   nonDominatedSort,
   computeNoveltyScores,
-  selectWithDiversityQuotas,
+  diversityQuotaAllows,
 } from "./curation.ts";
-import type { DiversityQuotas, CuratedCandidate } from "./curation.ts";
+import type { DiversityQuotas } from "./curation.ts";
 import {
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,
@@ -100,7 +110,8 @@ import {
   formatDiagnosticReport,
   type ForgeDiagnosticReport,
 } from "./generator-diagnostics.ts";
-import { assessQuality, type PuzzleQualityProfile } from "./quality-gate.ts";
+import type { PuzzleQualityProfile } from "./quality-gate.ts";
+import { assessCandidateQuality, type StoryQualityPolicy, type StoryQualityRejectionCode } from "./story-quality-policy.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -165,6 +176,7 @@ export interface ForgeConfig {
   readonly tighteningParams: TighteningParams;
   readonly tierTighteningPolicies?: Readonly<Record<string, TierTighteningPolicy>>;
   readonly gates: ForgeAcceptanceGates;
+  /** Legacy metric retained for config compatibility; story-aware curation replaces it. */
   readonly diversityMinDistance: number;
   readonly baseSeed: number;
   readonly typingPolicy: BoxTypingPolicy;
@@ -175,6 +187,10 @@ export interface ForgeConfig {
   readonly v4EvaluatorPolicy?: V4EvaluatorPolicy;
   readonly v4DifficultyValidation?: boolean;
   readonly diversityQuotas?: DiversityQuotas;
+  /** Phase 5 diagnostic searches; do not affect acceptance or ranking. */
+  readonly counterfactualBudget?: Partial<CounterfactualBudget>;
+  readonly storyQualityPolicy?: StoryQualityPolicy;
+  readonly storyDiversityPolicy?: StoryDiversityPolicy;
 }
 
 export interface ForgeAcceptanceGates {
@@ -354,6 +370,8 @@ export interface ForgeProvenance {
 }
 
 export interface ForgeCandidate {
+  /** Exact final evaluated witness, retained for independent promotion replay. */
+  readonly solutionSteps?: readonly SolutionStep[];
   readonly puzzle: PuzzleDefinition;
   readonly provenance: ForgeProvenance;
   readonly evaluation: PuzzleEvaluationVector;
@@ -365,6 +383,7 @@ export interface ForgeCandidate {
   /** Phase 4 class assignment intent and exact-final-route verification. */
   readonly storyAwareTyping?: StoryAwareTypingPlan;
   readonly storyAwareTypingVerification?: StoryAwareTypingVerification;
+  readonly counterfactualStory?: CounterfactualStoryProfile;
   readonly tighteningResult?: TighteningResult;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
@@ -374,6 +393,7 @@ export interface ForgeCandidate {
 }
 
 export type ForgeRejectionReason =
+  | StoryQualityRejectionCode
   | "blueprint-failed"
   | "goal-placement-failed"
   | "beam-search-empty"
@@ -452,6 +472,7 @@ export interface BlueprintCandidate {
 }
 
 export interface ForgeRunResult {
+  readonly storySelection?: StorySelectionReport;
   readonly config: ForgeConfig;
   readonly candidates: readonly ForgeCandidate[];
   readonly rejections: readonly ForgeRejection[];
@@ -934,7 +955,7 @@ async function completeCandidateFromBlueprint(
   forcedReverseState?: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number },
 ): Promise<
   | { ok: true; candidate: ForgeCandidate; solverCalls: number; rankedCandidates?: readonly ArchiveCandidate[] }
-  | { ok: false; reason: ForgeRejectionReason; solverCalls: number }
+  | { ok: false; reason: ForgeRejectionReason; solverCalls: number; qualityProfile?: PuzzleQualityProfile }
 > {
   const { seed, family, boxCount, mode, difficulty } = bc;
   let solverCalls = 0;
@@ -1299,6 +1320,21 @@ async function completeCandidateFromBlueprint(
     return { ok: false, reason: structuralGateResult, solverCalls };
   }
 
+  const counterfactualStory = evalResult.trace
+    ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
+    : undefined;
+  const qualityProfile = assessCandidateQuality({
+    puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
+    counterfactualStory, construction: rawResult.mechanismConstruction,
+    constructionRequired: mode === "mechanism", typing: storyAwareTyping,
+  }, config.storyQualityPolicy);
+  if (!qualityProfile.passed) {
+    return {
+      ok: false, reason: qualityProfile.story?.violations[0]?.code ?? "quality-gate-failed",
+      solverCalls, qualityProfile,
+    };
+  }
+
   // Construct provenance
   const provGrid = parseRowsToGrid(puzzle.rows);
   const provMetrics = analyzeGrid(provGrid);
@@ -1341,7 +1377,10 @@ async function completeCandidateFromBlueprint(
       puzzle: { ...puzzle, id: `forge-${seed}` },
       provenance,
       evaluation: ev,
+      solutionSteps: evalResult.steps ?? undefined,
       passiveStory: evalResult.passiveStory ?? undefined,
+      counterfactualStory,
+      qualityProfile,
       mechanismConstruction: rawResult.mechanismConstruction,
       mechanismConstructionVerification,
       storyAwareTyping,
@@ -1519,7 +1558,7 @@ export function validateFinalGeometry(
  * Encodes topology, mode, mechanism/motif, box count bucket, region bucket,
  * and dependency pattern — not just solution length buckets.
  *
- * Format: topology|mode|mechanism-or-motif|boxBucket|regionBucket|depPattern
+ * Format: topology|mode|motif-or-composition|mechanisms|boxTier|regionBucket|depPattern
  */
 export function buildV4Fingerprint(c: ForgeCandidate): string {
   const p = c.provenance;
@@ -1528,21 +1567,9 @@ export function buildV4Fingerprint(c: ForgeCandidate): string {
   const topology = p.family;
   const mode = p.mode;
 
-  // Mechanism or motif identification
-  let mechOrMotif = "none";
-  if (p.mechanismTypes && p.mechanismTypes.length > 0) {
-    mechOrMotif = [...p.mechanismTypes].sort().join("+");
-  } else if (p.motifType) {
-    mechOrMotif = p.motifType;
-  } else if (p.compositionType) {
-    mechOrMotif = p.compositionType;
-  }
-
-  // Box count bucket (1-2, 3-4, 5-6, 7+)
-  const boxBucket = p.boxCount <= 2 ? "b1-2"
-    : p.boxCount <= 4 ? "b3-4"
-    : p.boxCount <= 6 ? "b5-6"
-    : "b7+";
+  const motif = p.motifType ?? p.compositionType ?? "none";
+  const mechanisms = [...(p.mechanismTypes ?? [])].sort().join("+") || "none";
+  const boxBucket = classifyDifficultyByBoxCount(ev.boxCount);
 
   // Region bucket from evaluation
   const regionBucket = ev.regionCount <= 2 ? "r1-2"
@@ -1557,76 +1584,42 @@ export function buildV4Fingerprint(c: ForgeCandidate): string {
       : "dep-low";
   }
 
-  return `${topology}|${mode}|${mechOrMotif}|${boxBucket}|${regionBucket}|${depPattern}`;
+  return `${topology}|${mode}|${motif}|${mechanisms}|${boxBucket}|${regionBucket}|${depPattern}`;
 }
 
 // ---------------------------------------------------------------------------
-// Diversity: structural fingerprint + distance (legacy, used by flat path)
+// Shared catalog curation for flat generation, funnel generation and CLI pools
 // ---------------------------------------------------------------------------
 
-function candidateFingerprint(c: ForgeCandidate): string {
-  const ev = c.evaluation;
-  const p = c.provenance;
-  const bucketFloor = Math.round(ev.totalFloor / 5) * 5;
-  const bucketPushes = Math.round(ev.solutionPushes / 3) * 3;
-  const bucketMoves = Math.round(ev.solutionMoves / 5) * 5;
-  return `${p.family}|${p.mode}|${p.motifType ?? "none"}|${p.boxCount}|${bucketFloor}|${bucketPushes}|${bucketMoves}`;
-}
-
-function metricDistance(a: ForgeCandidate, b: ForgeCandidate): number {
-  const ea = a.evaluation;
-  const eb = b.evaluation;
-  let d = 0;
-  d += Math.abs(ea.totalFloor - eb.totalFloor) / 20;
-  d += Math.abs(ea.solutionMoves - eb.solutionMoves) / 10;
-  d += Math.abs(ea.solutionPushes - eb.solutionPushes) / 5;
-  d += Math.abs(ea.boxIndependenceRatio - eb.boxIndependenceRatio) * 5;
-  d += Math.abs(ea.emptyWalkRatio - eb.emptyWalkRatio) * 3;
-  d += Math.abs(ea.unusedFloorRatio - eb.unusedFloorRatio) * 3;
-  d += Math.abs(ea.deadlockDensity - eb.deadlockDensity) * 2;
-  return d;
-}
-
-function selectDiverse(
-  candidates: ForgeCandidate[],
+export function curateForgeCandidates(
+  candidates: readonly ForgeCandidate[],
   target: number,
-  minDistance: number,
-): ForgeCandidate[] {
-  if (candidates.length <= target) return candidates;
-
-  candidates.sort((a, b) => {
-    const scoreA = paretoScore(a);
-    const scoreB = paretoScore(b);
-    return scoreB - scoreA;
-  });
-
-  const selected: ForgeCandidate[] = [];
-  const seenFingerprints = new Set<string>();
-
-  for (const c of candidates) {
-    if (selected.length >= target) break;
-
-    const fp = candidateFingerprint(c);
-    if (seenFingerprints.has(fp)) {
-      const tooClose = selected.some(
-        (s) => metricDistance(c, s) < minDistance,
-      );
-      if (tooClose) continue;
-    }
-
-    selected.push(c);
-    seenFingerprints.add(fp);
-  }
-
-  if (selected.length < target) {
-    for (const c of candidates) {
-      if (selected.length >= target) break;
-      if (selected.includes(c)) continue;
-      selected.push(c);
-    }
-  }
-
-  return selected;
+  quotas?: DiversityQuotas,
+  policy?: StoryDiversityPolicy,
+): { candidates: readonly ForgeCandidate[]; report: StorySelectionReport } {
+  const entries = candidates.map((c) => ({
+    item: c,
+    objectives: c.curationObjectives ?? computeCurationObjectives(
+      c.evaluation, { avgExpandedStates: c.evaluation.solverExpandedStates } as FinalistEvaluation,
+      c.provenance.dependencyRealizationRate,
+    ),
+    structuralFingerprint: buildV4Fingerprint(c),
+    storyDiversity: c.qualityProfile?.passed ? buildStoryDiversityProfile(
+      c.puzzle.rows, c.qualityProfile.story,
+      c.passiveStory?.boardHash === boardHash(c.puzzle.rows) ? summarizePassiveStory(c.passiveStory) : undefined,
+    ) : undefined,
+  }));
+  const scored = computeNoveltyScores(nonDominatedSort(entries));
+  const ranked = [...scored]
+    .sort((a, b) => a.front - b.front || b.noveltyScore - a.noveltyScore ||
+      a.item.puzzle.id.localeCompare(b.item.puzzle.id));
+  const result = selectStoryDiverse(ranked.map((entry, rank) => ({
+    item: entry.item, id: entry.item.puzzle.id, profile: entry.storyDiversity, rank,
+  })), target, policy, (entry, selected) => diversityQuotaAllows(
+    { structuralFingerprint: buildV4Fingerprint(entry.item) },
+    selected.map((other) => ({ structuralFingerprint: buildV4Fingerprint(other.item) })), quotas,
+  ));
+  return { candidates: result.selected.map((entry) => entry.item), report: result.report };
 }
 
 // ---------------------------------------------------------------------------
@@ -2113,11 +2106,31 @@ async function runForgeFlat(
       counterfactualTotal,
     };
 
+    const counterfactualStory = evalResult.trace
+      ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
+      : undefined;
+    if (counterfactualStory) collector.recordCounterfactualStory(counterfactualStory);
+    const qualityProfile = assessCandidateQuality({
+      puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
+      counterfactualStory, construction: raw.result.mechanismConstruction,
+      constructionRequired: mode === "mechanism", typing: storyAwareTyping,
+    }, config.storyQualityPolicy);
+    collector.recordQualityAssessment(seed, qualityProfile);
+    if (!qualityProfile.passed) {
+      const reason = qualityProfile.story?.violations[0]?.code ?? "quality-gate-failed";
+      rejections.push({ seed, reason });
+      collector.recordRejection({ reason, tier: difficulty, family, mode, requestedBoxCount: boxCount });
+      continue;
+    }
+    collector.recordQualityPassed();
     validCandidates.push({
       puzzle: { ...puzzle, id: `forge-${seed}` },
       provenance,
       evaluation: ev,
+      solutionSteps: evalResult.steps ?? undefined,
       passiveStory: evalResult.passiveStory ?? undefined,
+      counterfactualStory,
+      qualityProfile,
       mechanismConstruction: raw.result.mechanismConstruction,
       mechanismConstructionVerification,
       storyAwareTyping,
@@ -2151,11 +2164,13 @@ async function runForgeFlat(
     }
   }
 
-  const retained = selectDiverse(
+  const selection = curateForgeCandidates(
     dedupedCandidates,
     config.retainTarget,
-    config.diversityMinDistance,
+    config.diversityQuotas,
+    config.storyDiversityPolicy,
   );
+  const retained = selection.candidates;
 
   for (let ci = 0; ci < retained.length; ci++) {
     collector.recordCurated();
@@ -2169,6 +2184,7 @@ async function runForgeFlat(
   return {
     config,
     candidates: retained,
+    storySelection: selection.report,
     rejections,
     totalAttempted: config.batchSize,
     totalValid: validCandidates.length,
@@ -2303,6 +2319,7 @@ async function runForgeFunnel(
     totalSolverCalls += completion.solverCalls;
 
     if (!completion.ok) {
+      if (completion.qualityProfile) collector.recordQualityAssessment(bc.seed, completion.qualityProfile);
       rejections.push({ seed: bc.seed, reason: completion.reason });
       const stages = inferStagesFromRejection(completion.reason);
       if (stages.reverse) collector.recordReverseSearchSuccess();
@@ -2318,8 +2335,12 @@ async function runForgeFunnel(
     collector.recordPuzzleValidationSuccess();
     collector.recordInitialSolveSuccess();
     collector.recordGatePassed();
+    collector.recordQualityAssessment(bc.seed, completion.candidate.qualityProfile!);
     if (completion.candidate.passiveStory) {
       collector.recordPassiveStory(completion.candidate.passiveStory);
+    }
+    if (completion.candidate.counterfactualStory) {
+      collector.recordCounterfactualStory(completion.candidate.counterfactualStory);
     }
 
     const boxGoalCounts = countBoxesAndGoals(completion.candidate.puzzle.rows);
@@ -2348,12 +2369,17 @@ async function runForgeFunnel(
           depth: rc.candidate.depth,
         });
         totalSolverCalls += extra.solverCalls;
+        const extraQuality = extra.ok ? extra.candidate.qualityProfile : extra.qualityProfile;
+        if (extraQuality) collector.recordQualityAssessment(bc.seed, extraQuality);
         if (extra.ok) {
           const extraFp = extra.candidate.puzzle.rows.join("");
           if (extraFp !== bestFp) {
             completedCandidates.push(extra.candidate);
             if (extra.candidate.passiveStory) {
               collector.recordPassiveStory(extra.candidate.passiveStory);
+            }
+            if (extra.candidate.counterfactualStory) {
+              collector.recordCounterfactualStory(extra.candidate.counterfactualStory);
             }
           }
         }
@@ -2399,7 +2425,7 @@ async function runForgeFunnel(
   type ScoredEntry = { c: ForgeCandidate; deepScore: number; finalist: FinalistEvaluationV4; objectives: CurationObjectives };
   const finalistEvaluated: ScoredEntry[] = [];
   for (const c of stageE_survivors) {
-    const finalist = await evaluateFinalistV4(c.puzzle, v4Policy);
+    const finalist = await evaluateFinalistV4(c.puzzle, v4Policy, c.solutionSteps);
     const objectives = computeCurationObjectives(
       c.evaluation,
       finalist,
@@ -2415,8 +2441,10 @@ async function runForgeFunnel(
   // ---- Stage G: Hard quality qualification ----
   const qualityPassed: ScoredEntry[] = [];
   for (const entry of finalistEvaluated) {
-    const qualityProfile = assessQuality(entry.c.evaluation, entry.c.provenance.difficulty);
-    if (!qualityProfile.passed) {
+    // The same final-board quality gate already ran during candidate completion.
+    // Never replace it with a legacy vector-only assessment here.
+    const qualityProfile = entry.c.qualityProfile;
+    if (!qualityProfile?.passed || !qualityProfile.story?.passed) {
       rejections.push({ seed: entry.c.provenance.seed, reason: "quality-gate-failed" });
       collector.recordRejection({
         reason: "quality-gate-failed",
@@ -2473,39 +2501,9 @@ async function runForgeFunnel(
   const stageH_survivors = difficultyPassed.slice(0, budgets.deepRetain).map((s) => s.c);
 
   // ---- Stage I: V4 diversity curation (Pareto + novelty + diversity quotas) ----
-  let finalCandidates: ForgeCandidate[];
-
-  if (stageH_survivors.length > 0) {
-    // Build curation entries with objectives and structural fingerprints
-    const curationEntries = stageH_survivors.map((c) => ({
-      item: c,
-      objectives: c.curationObjectives ?? computeCurationObjectives(
-        c.evaluation,
-        { avgExpandedStates: c.evaluation.solverExpandedStates } as FinalistEvaluation,
-        c.provenance.dependencyRealizationRate,
-      ),
-      structuralFingerprint: buildV4Fingerprint(c),
-    }));
-
-    // Non-dominated sort
-    const sorted = nonDominatedSort(curationEntries);
-
-    // Compute novelty scores with normalization
-    const withNovelty = computeNoveltyScores(sorted);
-
-    // Select with diversity quotas
-    // Type assertion needed: selectWithDiversityQuotas has an overly strict
-    // generic constraint on T, but only accesses CuratedCandidate.structuralFingerprint.
-    const quotas = config.diversityQuotas;
-    type FpItem = ForgeCandidate & { structuralFingerprint?: string };
-    finalCandidates = selectWithDiversityQuotas(
-      withNovelty as CuratedCandidate<FpItem>[],
-      budgets.catalogQuota,
-      quotas,
-    ).map((cc) => cc.item);
-  } else {
-    finalCandidates = [];
-  }
+  const selection = curateForgeCandidates(stageH_survivors, budgets.catalogQuota,
+    config.diversityQuotas, config.storyDiversityPolicy);
+  const finalCandidates = selection.candidates;
 
   for (let ci = 0; ci < finalCandidates.length; ci++) {
     collector.recordCurated();
@@ -2530,6 +2528,7 @@ async function runForgeFunnel(
   return {
     config,
     candidates: finalCandidates,
+    storySelection: selection.report,
     rejections,
     totalAttempted: budgets.rawAttemptBudget,
     totalValid: completedCandidates.length,
@@ -2708,6 +2707,7 @@ export function forgeRunReport(result: ForgeRunResult): string {
   lines.push("");
 
   lines.push("Pipeline:");
+  if (result.storySelection) lines.push(formatStorySelection(result.storySelection));
   lines.push(
     `  Attempted: ${summary.totalAttempted} | Valid: ${summary.totalValid} | Retained: ${summary.totalRetained}`,
   );

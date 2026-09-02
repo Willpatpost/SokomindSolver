@@ -170,7 +170,7 @@ test("Grand Hall calibration is replay-valid and demonstrates its claimed story"
     construction(
       "multi-chain-merge",
       "converging-chains",
-      ["goal-2", "goal-6", "goal-14", "goal-15"],
+      ["goal-2", "goal-6", "goal-13", "goal-14"],
       ["multi-chain-merge", "ordered-packing", "cross-type-interaction"],
     ),
   ];
@@ -178,4 +178,13 @@ test("Grand Hall calibration is replay-valid and demonstrates its claimed story"
     const verification = verifyMechanismConstruction(planned, trace.trace, story);
     assert.equal(verification.passed, true, `${planned.targets[0].type} should verify on Grand Hall`);
   }
+  // Goals 14 and 15 have equal depth: another ordered pair in their room
+  // must not turn this near miss into a second verified packing chain.
+  const nearMiss = construction(
+    "multi-chain-merge", "converging-chains", ["goal-2", "goal-6", "goal-14", "goal-15"],
+    ["multi-chain-merge", "ordered-packing", "cross-type-interaction"],
+  );
+  const nearMissResult = verifyMechanismConstruction(nearMiss, trace.trace, story);
+  assert.equal(nearMissResult.passed, false);
+  assert.ok(nearMissResult.targetResults[0].missingEvidence.includes("multi-chain-merge"));
 });

@@ -155,8 +155,8 @@ describe("V4 forge integration", () => {
       const fp = buildV4Fingerprint(c);
       const parts = fp.split("|");
 
-      // V4 fingerprint has 6 parts
-      assert.equal(parts.length, 6, `fingerprint "${fp}" should have 6 pipe-separated parts`);
+      // Motif and mechanism buckets must remain separate for their quotas.
+      assert.equal(parts.length, 7, `fingerprint "${fp}" should have 7 pipe-separated parts`);
 
       // Part 0: topology family
       assert.ok(
@@ -173,22 +173,19 @@ describe("V4 forge integration", () => {
       // Part 2: mechanism or motif (for plain mode, "none")
       assert.equal(typeof parts[2], "string");
 
-      // Part 3: box bucket
-      assert.ok(
-        parts[3].startsWith("b"),
-        `box bucket "${parts[3]}" should start with "b"`,
-      );
+      assert.equal(typeof parts[3], "string");
+      assert.equal(parts[4], c.puzzle.difficulty);
 
       // Part 4: region bucket
       assert.ok(
-        parts[4].startsWith("r"),
-        `region bucket "${parts[4]}" should start with "r"`,
+        parts[5].startsWith("r"),
+        `region bucket "${parts[5]}" should start with "r"`,
       );
 
       // Part 5: dependency pattern
       assert.ok(
-        ["none", "dep-low", "dep-med", "dep-high"].includes(parts[5]),
-        `dep pattern "${parts[5]}" should be one of the known values`,
+        ["none", "dep-low", "dep-med", "dep-high"].includes(parts[6]),
+        `dep pattern "${parts[6]}" should be one of the known values`,
       );
     }
   });

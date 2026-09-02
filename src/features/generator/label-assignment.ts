@@ -499,6 +499,7 @@ export function buildHybridTypingConstructionPlan(
   typedFraction: number,
   requiredGoalGroups: readonly HybridTypingGoalGroupInput[] = [],
 ): HybridTypingConstructionPlan | null {
+  if (!Number.isFinite(typedFraction)) return null;
   const board = parsePuzzle(puzzle);
   const boxCount = board.initialBoxes.length;
   if (boxCount < 2) return null;

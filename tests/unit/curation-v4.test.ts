@@ -144,7 +144,7 @@ describe("curation-v4", () => {
       assert.ok(plainCount <= 2, `plain count ${plainCount} should be <= 2`);
     });
 
-    it("falls back to fill quota when quotas are too restrictive", () => {
+    it("keeps an honest shortfall when quotas are restrictive, including small pools", () => {
       const candidates = makeCandidates([
         "hub|plain|none|none",
         "hub|plain|none|none",
@@ -152,7 +152,7 @@ describe("curation-v4", () => {
       ]);
       const quotas: DiversityQuotas = { maxPerTopology: 1 };
       const selected = selectWithDiversityQuotas(candidates, 3, quotas);
-      assert.equal(selected.length, 3, "should still fill quota via fallback");
+      assert.equal(selected.length, 1, "must not waive diversity caps to fill quota");
     });
 
     it("without quotas behaves like selectByParetoNovelty", () => {
@@ -179,6 +179,16 @@ describe("curation-v4", () => {
         s.structuralFingerprint?.includes("|chain|"),
       ).length;
       assert.ok(chainCount <= 2, `chain motif count ${chainCount} should be <= 2`);
+    });
+
+    it("counts individual mechanisms inside combined plans", () => {
+      const selected = selectWithDiversityQuotas(makeCandidates([
+        "hub|mechanism|none|gate+packing", "loop|mechanism|none|packing+support",
+        "hub|mechanism|none|support",
+      ]), 3, { maxPerMechanism: 1 });
+      assert.equal(selected.length, 2);
+      assert.ok(selected[0].structuralFingerprint?.includes("gate+packing"));
+      assert.ok(selected[1].structuralFingerprint?.endsWith("|support"));
     });
   });
 });

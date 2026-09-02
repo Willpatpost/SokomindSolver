@@ -1,9 +1,9 @@
 /**
  * Quality gate — Sprint 11
  *
- * Prevents technically valid but uninteresting puzzles from entering any high
- * tier.  Applies **before** difficulty classification so that a Master puzzle
- * that is bad is rejected rather than classified Master.
+ * Legacy numeric dimensions used alongside the Phase 6 solution-story policy.
+ * Catalog tiers are fixed by box count; poor puzzles are rejected within that
+ * tier, never relabeled to fill a quota.
  *
  * The gate computes a multi-dimensional quality profile and enforces:
  *   1. A tier-independent quality floor (every puzzle must pass).
@@ -12,12 +12,14 @@
 
 import type { Difficulty } from "../../../core/model.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
+import type { StoryQualityReport } from "./story-quality-types.ts";
 
 // ---------------------------------------------------------------------------
 // Quality profile
 // ---------------------------------------------------------------------------
 
 export interface PuzzleQualityProfile {
+  readonly story?: StoryQualityReport;
   /** How much of the geometry is used purposefully by the solution. */
   readonly purposefulGeometry: number;
   /** Degree of multi-box interaction (shared routes, causal events). */
@@ -224,6 +226,14 @@ export function assessQuality(
 
   const floor = QUALITY_FLOORS[tier];
   const reasons: string[] = [];
+  if (!ev.solved) reasons.push("evaluation must contain a solved puzzle");
+  if (Object.values(ev).some((value) => typeof value === "number" && !Number.isFinite(value))) {
+    reasons.push("evaluation metrics must be finite");
+  }
+  if ([purposefulGeometry, interactionQuality, causalDepth, decisionQuality,
+    mechanismIntegrity, elegance, tedium].some((value) => !Number.isFinite(value))) {
+    reasons.push("quality dimensions require complete finite evaluation metrics");
+  }
 
   if (purposefulGeometry < floor.minPurposefulGeometry)
     reasons.push(`purposefulGeometry ${purposefulGeometry.toFixed(3)} < ${floor.minPurposefulGeometry}`);

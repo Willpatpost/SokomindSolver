@@ -13,6 +13,9 @@ import {
   type V4DifficultyProfile,
 } from "../../src/features/generator/v2/index.ts";
 import type { PuzzleDefinition, Difficulty } from "../../src/core/model.ts";
+import { analyzeCounterfactualStory } from "../../src/features/generator/v2/counterfactual-analysis.ts";
+import { DELAYED_FALSE_START } from "../fixtures/generator/counterfactual-stories.ts";
+import { fixtureTrace } from "../support/counterfactual-replay.ts";
 
 // ---------------------------------------------------------------------------
 // Mock builders
@@ -304,6 +307,41 @@ describe("review-catalog", () => {
       assert.equal(pack.dependencyRealizationRate, 0.8);
     });
 
+    it("includes story-aware typing verification in JSON and the review summary", () => {
+      const candidate = {
+        ...makeCandidate({}, {
+          storyAwareTypingTargets: 2,
+          storyAwareTypingRealized: 2,
+          storyAwareTypingPassed: true,
+          storyAwareTypingMissing: [],
+        }),
+        storyAwareTypingVerification: {
+          passed: true, boardMatches: true, targetCount: 2, realizedTargetCount: 2, targets: [],
+        },
+      };
+      const pack = buildReviewPack(candidate, "beginner", "beginner", 0);
+      assert.equal(pack.storyAwareTypingPassed, true);
+      assert.deepEqual(pack.storyAwareTypingVerification, candidate.storyAwareTypingVerification);
+      const catalog = buildReviewCatalog(new Map([
+        ["beginner", { target: 1, packs: [pack] }],
+      ]));
+      assert.match(formatReviewSummary(catalog), /Story-aware typing: passed; 2\/2 targets verified/);
+    });
+
+    it("includes bounded search evidence, uncertainty, and explanations in review JSON and text", () => {
+      const { grid, trace } = fixtureTrace(DELAYED_FALSE_START);
+      const profile = analyzeCounterfactualStory(grid, trace, { maxElapsedMs: 0 });
+      const candidate = { ...makeCandidate(), puzzle: DELAYED_FALSE_START.puzzle, counterfactualStory: profile };
+      const pack = buildReviewPack(candidate, "beginner", "beginner", 0);
+      assert.deepEqual(pack.counterfactualStory, profile);
+      assert.equal(pack.counterfactualStory.boardHash, pack.boardHash);
+      const catalog = buildReviewCatalog(new Map([["beginner", { target: 1, packs: [pack] }]]));
+      const summary = formatReviewSummary(catalog);
+      assert.match(summary, /Counterfactual searches:/);
+      assert.match(summary, /unknown/);
+      assert.match(summary, /no necessity or dead-end claim/);
+    });
+
     it("includes ASCII board representation", () => {
       const candidate = makeCandidate();
       const pack = buildReviewPack(candidate, "beginner", "beginner", 0);
@@ -335,7 +373,7 @@ describe("review-catalog", () => {
         qualityPreset: "standard",
       });
 
-      assert.equal(catalog.schemaVersion, 1);
+      assert.equal(catalog.schemaVersion, 2);
       assert.equal(catalog.generatorVersion, "3.0.0");
       assert.equal(catalog.qualityPreset, "standard");
       assert.equal(typeof catalog.generatedAt, "string");
@@ -603,7 +641,7 @@ describe("review-catalog", () => {
       const tierPacks = new Map<Difficulty, { target: number; packs: ReviewCandidatePack[] }>();
       tierPacks.set("beginner", { target: 5, packs: [] });
       const catalog = buildReviewCatalog(tierPacks);
-      assert.equal(catalog.schemaVersion, 1);
+      assert.equal(catalog.schemaVersion, 2);
     });
   });
 });

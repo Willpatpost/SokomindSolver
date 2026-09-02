@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Small quality regression samples, not production catalog entries or optimal-solution claims",
+  "config": {
+    "batchSize": 1,
+    "retainTarget": 1,
+    "families": [
+      "linear"
+    ],
+    "boxCounts": [
+      3
+    ],
+    "difficulties": [
+      "beginner"
+    ],
+    "modes": [
+      "plain"
+    ],
+    "motifTypes": [
+      "auto"
+    ],
+    "compositionTypes": [
+      "auto"
+    ],
+    "boardWidth": 12,
+    "boardHeight": 12,
+    "blueprintRetries": 30,
+    "beamParams": {
+      "maxDepth": 40
+    },
+    "tighteningParams": {
+      "maxMutationsPerPass": 200,
+      "maxAccepted": 80,
+      "solverLimitMs": 10000,
+      "solverLimitStates": 1500000
+    },
+    "gates": {
+      "minSolutionPushes": 4,
+      "maxUnusedFloorRatio": 0.85,
+      "maxEmptyWalkRatio": 0.8,
+      "maxLongestWalkStreak": 25,
+      "maxRepetitivePushRatio": 0.85,
+      "maxBoxIndependenceRatio": 0.9,
+      "minDependencyRealizationRate": 0.3,
+      "maxMovesPerPush": 5,
+      "minSolverExpandedStates": 3,
+      "minGenericBoxCount": 1,
+      "minTypedBoxCount": 1,
+      "minPushesPerBox": 2,
+      "minCrossTypeInteractions": 1,
+      "minPlayableFloor": 15
+    },
+    "diversityMinDistance": 2,
+    "baseSeed": 0,
+    "typingPolicy": {
+      "modes": [
+        "hybrid"
+      ],
+      "hybridTypedFractionMin": 0.3,
+      "hybridTypedFractionMax": 0.7
+    },
+    "geometryProfile": {
+      "boardWidthRange": [
+        10,
+        14
+      ],
+      "boardHeightRange": [
+        10,
+        14
+      ],
+      "minRooms": 1,
+      "maxRooms": 4,
+      "minRoomSize": 3,
+      "maxRoomSize": 5,
+      "passageWidths": [
+        1
+      ],
+      "minPlayableFloor": 15,
+      "maxPlayableFloor": 50,
+      "minFloorCoverage": 0.08,
+      "minRegions": 1,
+      "minChokepoints": 0
+    },
+    "reverseSearchProfile": {
+      "beamWidth": 6,
+      "maxDepth": 40,
+      "restartCount": 1,
+      "diverseArchiveSize": 8,
+      "diversityRadius": 2,
+      "stochasticTieBreaking": true,
+      "antiImmediateUndo": true
+    }
+  },
+  "samples": [
+    {
+      "seed": 310005,
+      "boxCount": 5,
+      "rows": [
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOcSbOOO   OO",
+        "OO  OOOOX  OO",
+        "OOC     BA OO",
+        "OOSa OOO XROO",
+        "OOOOOOOO  OOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO"
+      ],
+      "witness": "LULLLLLdlUUluRdddlUUdrrrrrrrddlUruLLLLLdlUUdrrrrrrruulDrdLLLLLLdlluurDrrrrrruulDrdLLLLLLulD",
+      "expected": {
+        "genericBoxes": 2,
+        "typedBoxes": 3,
+        "moves": 91,
+        "pushes": 36,
+        "pushesPerBox": [
+          8,
+          2,
+          8,
+          9,
+          9
+        ],
+        "families": [
+          "productive-reversal",
+          "multi-room-journey",
+          "gate-traffic",
+          "shared-transport",
+          "shared-support",
+          "causal-dependency"
+        ]
+      }
+    },
+    {
+      "seed": 310049,
+      "boxCount": 3,
+      "rows": [
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOSSOO",
+        "OOOROOOOO  OO",
+        "OO AX      OO",
+        "OO  XOOO   OO",
+        "OO   OOOOOaOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO",
+        "OOOOOOOOOOOOO"
+      ],
+      "witness": "DRRRRRRdrUUdllllllllddrUluRRRRRRRurDDulllllllddrUluRRRRRdrUU",
+      "expected": {
+        "genericBoxes": 2,
+        "typedBoxes": 1,
+        "moves": 60,
+        "pushes": 27,
+        "pushesPerBox": [
+          11,
+          8,
+          8
+        ],
+        "families": [
+          "assignment-misdirection",
+          "productive-reversal",
+          "multi-room-journey",
+          "gate-traffic",
+          "shared-transport",
+          "shared-support",
+          "causal-dependency"
+        ]
+      }
+    }
+  ]
+}

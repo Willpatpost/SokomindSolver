@@ -264,6 +264,7 @@ export type {
   RejectionBreakdown,
   ForgeDiagnosticReport,
   PassiveStoryDistribution,
+  CounterfactualDiagnosticSummary,
   PassiveStoryNumericMetric,
   MetricDistribution,
 } from "./generator-diagnostics.ts";
@@ -545,3 +546,34 @@ export type {
 } from "./curation.ts";
 
 export { WALL_CHAR } from "./tile-semantics.ts";
+export { curateForgeCandidates } from "./puzzle-forge.ts";
+export {
+  STORY_DIVERSITY_VERSION, DEFAULT_STORY_DIVERSITY_POLICY, storyLayoutKeys,
+  buildStoryDiversityProfile, storyDiversityDistance, selectStoryDiverse,
+  summarizeStoryDiversity, storyDiversityLimits, formatStorySelection,
+  checkStoryDiversityForRelease,
+} from "./story-diversity.ts";
+export type {
+  StoryDiversityProfile, StoryDiversityPolicy, StorySelectionEntry, StorySelectionDecision,
+  StorySelectionReason, StorySelectionReport, StoryCatalogDiversity, StoryDiversityNeighbor,
+} from "./story-diversity.ts";
+
+export {
+  assessStoryQuality, assessCandidateQuality, storyQualityViolations, checkStoryQualityForRelease,
+  DEFAULT_STORY_QUALITY_POLICY, STORY_QUALITY_POLICY_VERSION, STORY_QUALITY_FAMILIES,
+} from "./story-quality-policy.ts";
+export type {
+  StoryQualityInput, StoryQualityPolicy, StoryQualityFamily, StoryBoxParticipation,
+  StoryQualityMeasurements, StoryQualityReport, StoryQualityRejectionCode, StoryQualityViolation,
+} from "./story-quality-policy.ts";
+
+export { analyzeCounterfactualStory, DEFAULT_COUNTERFACTUAL_BUDGET } from "./counterfactual-analysis.ts";
+export type {
+  CounterfactualBudget,
+  CounterfactualOutcome,
+  CounterfactualProbeKind,
+  CounterfactualClassification,
+  CounterfactualState,
+  CounterfactualProbeEvidence,
+  CounterfactualStoryProfile,
+} from "./counterfactual-analysis.ts";

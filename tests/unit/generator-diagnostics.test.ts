@@ -1,10 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { analyzeCounterfactualStory } from "../../src/features/generator/v2/counterfactual-analysis.ts";
+import { DELAYED_FALSE_START } from "../fixtures/generator/counterfactual-stories.ts";
+import { fixtureTrace } from "../support/counterfactual-replay.ts";
 
 import {
   DiagnosticCollector,
   formatDiagnosticReport,
 } from "../../src/features/generator/v2/generator-diagnostics.ts";
+
+test("DiagnosticCollector separates bounded-search uncertainty from missing or disproven evidence", () => {
+  const collector = new DiagnosticCollector();
+  assert.equal(collector.build().counterfactualSummary.candidateCount, 0);
+  const { grid, trace } = fixtureTrace(DELAYED_FALSE_START);
+  const profile = analyzeCounterfactualStory(grid, trace, { maxElapsedMs: 0 });
+  collector.recordCounterfactualStory(profile);
+  collector.recordCounterfactualStory(profile);
+  const report = collector.build();
+  assert.equal(report.counterfactualSummary.candidateCount, 2);
+  assert.equal(report.counterfactualSummary.probes, 2 * profile.probes.length);
+  assert.equal(report.counterfactualSummary.unknownProbes, 2 * profile.unknownProbes);
+  assert.equal(report.counterfactualSummary.necessaryDependencies, 0);
+  assert.equal(report.counterfactualSummary.delayedFalseStarts, 0);
+  assert.match(formatDiagnosticReport(report), /Counterfactual search candidates: 2/);
+});
 
 test("DiagnosticCollector tracks pipeline funnel counts", () => {
   const c = new DiagnosticCollector();

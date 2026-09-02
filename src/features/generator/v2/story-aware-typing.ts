@@ -10,6 +10,8 @@ import {
 } from "../label-assignment.ts";
 import type { MechanismType } from "./blueprint-types.ts";
 import type { MechanismConstructionPlan } from "./mechanism-construction.ts";
+import { boardHash } from "./puzzle-identity.ts";
+import { strongStoryPairs, sharedCellPairs } from "./story-interaction-graph.ts";
 import {
   analyzePassiveSolutionStory,
   type PassiveStoryProfile,
@@ -33,6 +35,9 @@ export interface StoryAwareTypingTargetPlan {
 }
 
 export interface StoryAwareTypingPlan {
+  readonly boardHash: string;
+  /** Witness pairing, used to rebind goal roles after a different final solve. */
+  readonly boxGoalIds: readonly string[];
   readonly hybridPlan: HybridTypingConstructionPlan;
   readonly targets: readonly StoryAwareTypingTargetPlan[];
 }
@@ -45,10 +50,12 @@ export interface StoryAwareTypingResult {
 export interface StoryAwareTypingTargetVerification {
   readonly targetId: string;
   readonly mechanismType: MechanismType | "global";
+  readonly targetBoxIds: readonly number[];
   readonly typedCount: number;
   readonly genericCount: number;
   readonly classMinimumsSatisfied: boolean;
   readonly strongInteractionSatisfied: boolean;
+  readonly supportContentionSatisfied: boolean;
   readonly assignmentAmbiguitySatisfied: boolean;
   readonly roleOppositionSatisfied: boolean;
   readonly passed: boolean;
@@ -56,6 +63,7 @@ export interface StoryAwareTypingTargetVerification {
 
 export interface StoryAwareTypingVerification {
   readonly passed: boolean;
+  readonly boardMatches: boolean;
   readonly targetCount: number;
   readonly realizedTargetCount: number;
   readonly targets: readonly StoryAwareTypingTargetVerification[];
@@ -85,48 +93,6 @@ function distinctPairs(pairs: readonly BoxPair[]): readonly BoxPair[] {
   }));
 }
 
-/**
- * Relationships that represent actual Sokoban cooperation rather than mere
- * spatial proximity or two consecutive independent pushes.
- */
-function strongStoryPairs(story: PassiveStoryProfile): readonly BoxPair[] {
-  const pairs: BoxPair[] = [];
-  for (const edge of story.mixedBoxInteraction.dependencyEvidence) {
-    const pair = normalizedPair(edge.sourceBoxId, edge.targetBoxId);
-    if (pair) pairs.push(pair);
-  }
-  for (const cell of story.mixedBoxInteraction.sharedCellEvidence) {
-    for (let left = 0; left < cell.boxIds.length; left++) {
-      for (let right = left + 1; right < cell.boxIds.length; right++) {
-        const pair = normalizedPair(cell.boxIds[left], cell.boxIds[right]);
-        if (pair) pairs.push(pair);
-      }
-    }
-  }
-  for (const room of story.goalRoomPacking.evidence) {
-    if (room.orderedPairs === 0) continue;
-    for (let index = 1; index < room.placements.length; index++) {
-      const pair = normalizedPair(
-        room.placements[index - 1].boxId,
-        room.placements[index].boxId,
-      );
-      if (pair) pairs.push(pair);
-    }
-  }
-  for (const gate of story.gateTraffic.evidence) {
-    for (const trafficBoxId of gate.trafficBoxIds) {
-      const pair = normalizedPair(gate.gateBoxId, trafficBoxId);
-      if (pair) pairs.push(pair);
-    }
-  }
-  for (const reversal of story.progressReversals.evidence) {
-    for (const benefitingBoxId of reversal.benefitingBoxIds) {
-      const pair = normalizedPair(reversal.boxId, benefitingBoxId);
-      if (pair) pairs.push(pair);
-    }
-  }
-  return distinctPairs(pairs);
-}
 
 function minimumClassSize(puzzle: PuzzleDefinition): number {
   return puzzle.difficulty === "beginner" || puzzle.difficulty === "tutorial" ? 1 : 2;
@@ -234,7 +200,7 @@ function buildTargetPlans(
   const minKind = minimumClassSize(puzzle);
   const allBoxes = trace.boxes.map((box) => box.id);
   const allGoals = trace.goals.map((goal) => goal.id);
-  const allStrongPairs = strongStoryPairs(story);
+  const allStrongPairs = strongStoryPairs(trace, story);
   if (allStrongPairs.length === 0) return null;
   const targets: StoryAwareTypingTargetPlan[] = [Object.freeze({
     targetId: "global-story",
@@ -264,6 +230,14 @@ function buildTargetPlans(
       : Object.freeze([]);
     if (target.type === "assignment-misdirection" && genericWitnesses.length === 0) return null;
     const roleRequirements = roleOppositions(trace, target.goals, target.id);
+    const supportPairs = target.type === "support-square-contention"
+      ? sharedCellPairs(trace, "support").filter(([left, right]) =>
+        boxSet.has(left) && boxSet.has(right))
+      : [];
+    if (target.type === "support-square-contention" && supportPairs.length === 0) return null;
+    const supportRequirements = supportPairs.length > 0
+      ? [Object.freeze({ id: `${target.id}:shared-support`, pairs: supportPairs })]
+      : [];
     const storyRequirements = targetStrongPairs.length > 0
       ? [Object.freeze({ id: `${target.id}:observed-story`, pairs: targetStrongPairs })]
       : [];
@@ -280,7 +254,9 @@ function buildTargetPlans(
       minGeneric: target.type === "assignment-misdirection" ? 2 : 1,
       requireStrongInteraction,
       genericWitnesses,
-      oppositionRequirements: Object.freeze([...storyRequirements, ...roleRequirements]),
+      oppositionRequirements: Object.freeze([
+        ...storyRequirements, ...roleRequirements, ...supportRequirements,
+      ]),
     }));
   }
   return Object.freeze(targets);
@@ -312,12 +288,15 @@ export function applyStoryAwareTyping(
   typedFraction: number,
   construction?: MechanismConstructionPlan,
 ): StoryAwareTypingResult | null {
+  if (!Number.isFinite(typedFraction)) return null;
   const traceResult = buildCanonicalSolutionTrace(
     puzzle.rows.map((row) => [...row]),
     solution.steps,
     { puzzleId: puzzle.id, requireSolved: true },
   );
   if (!traceResult.ok) return null;
+  if (traceResult.trace.boxes.some((box) => box.kind !== "generic") ||
+    traceResult.trace.goals.some((goal) => goal.kind !== "generic")) return null;
   const story = analyzePassiveSolutionStory(
     puzzle.rows.map((row) => [...row]),
     traceResult.trace,
@@ -341,7 +320,12 @@ export function applyStoryAwareTyping(
   if (typedPuzzle === puzzle) return null;
   return Object.freeze({
     puzzle: typedPuzzle,
-    plan: Object.freeze({ hybridPlan, targets }),
+    plan: Object.freeze({
+      boardHash: boardHash(typedPuzzle.rows),
+      boxGoalIds: Object.freeze(traceResult.trace.boxes.map((box) => box.finalGoalId!)),
+      hybridPlan,
+      targets,
+    }),
   });
 }
 
@@ -365,11 +349,24 @@ export function verifyStoryAwareTyping(
     throw new Error("Story-aware typing verification requires matching trace and story evidence");
   }
   const kinds = kindByBox(trace);
-  const finalStrongPairs = strongStoryPairs(story);
+  const boardMatches = plan.boardHash === trace.boardHash;
+  const finalStrongPairs = strongStoryPairs(trace, story);
+  const finalSupportPairs = sharedCellPairs(trace, "support");
+  const boxByGoal = new Map(trace.boxes
+    .filter((box) => box.finalGoalId !== undefined)
+    .map((box) => [box.finalGoalId!, box.id] as const));
+  const rebindPair = ([left, right]: BoxPair): BoxPair | null => {
+    const finalLeft = boxByGoal.get(plan.boxGoalIds[left]);
+    const finalRight = boxByGoal.get(plan.boxGoalIds[right]);
+    return finalLeft === undefined || finalRight === undefined
+      ? null : normalizedPair(finalLeft, finalRight);
+  };
   const results = plan.targets.map((target): StoryAwareTypingTargetVerification => {
-    const targetBoxes = new Set(target.boxIds);
-    const typedCount = target.boxIds.filter((boxId) => kinds.get(boxId) === "typed").length;
-    const genericCount = target.boxIds.filter((boxId) => kinds.get(boxId) === "generic").length;
+    const targetBoxIds = target.goalIds.map((goalId) => boxByGoal.get(goalId))
+      .filter((boxId): boxId is number => boxId !== undefined);
+    const targetBoxes = new Set(targetBoxIds);
+    const typedCount = targetBoxIds.filter((boxId) => kinds.get(boxId) === "typed").length;
+    const genericCount = targetBoxIds.filter((boxId) => kinds.get(boxId) === "generic").length;
     const classMinimumsSatisfied =
       typedCount >= target.minTyped && genericCount >= target.minGeneric;
     const strongInteractionSatisfied = !target.requireStrongInteraction || finalStrongPairs.some(
@@ -377,18 +374,28 @@ export function verifyStoryAwareTyping(
     );
     const assignmentAmbiguitySatisfied = target.genericWitnesses.length === 0 ||
       story.genericGoalMisdirection.evidence.some((evidence) =>
-        targetBoxes.has(evidence.boxId));
+        targetBoxes.has(evidence.boxId) && target.goalIds.includes(evidence.actualGoalId));
+    const supportContentionSatisfied = target.mechanismType !== "support-square-contention" ||
+      finalSupportPairs.some((pair) => targetBoxes.has(pair[0]) && targetBoxes.has(pair[1]) &&
+        pairIsCrossType(pair, kinds));
     const roleOppositionSatisfied = target.oppositionRequirements.every((requirement) =>
-      requirement.pairs.some((pair) => pairIsCrossType(pair, kinds)));
-    const passed = classMinimumsSatisfied && strongInteractionSatisfied &&
+      requirement.pairs.some((pair) => {
+        const finalPair = rebindPair(pair);
+        return finalPair !== null && pairIsCrossType(finalPair, kinds);
+      }));
+    const passed = boardMatches && trace.solved && story.solved &&
+      targetBoxes.size === target.goalIds.length && classMinimumsSatisfied &&
+      strongInteractionSatisfied && supportContentionSatisfied &&
       assignmentAmbiguitySatisfied && roleOppositionSatisfied;
     return Object.freeze({
       targetId: target.targetId,
       mechanismType: target.mechanismType,
+      targetBoxIds: Object.freeze(targetBoxIds),
       typedCount,
       genericCount,
       classMinimumsSatisfied,
       strongInteractionSatisfied,
+      supportContentionSatisfied,
       assignmentAmbiguitySatisfied,
       roleOppositionSatisfied,
       passed,
@@ -397,6 +404,7 @@ export function verifyStoryAwareTyping(
   const realizedTargetCount = results.filter((result) => result.passed).length;
   return Object.freeze({
     passed: results.length > 0 && realizedTargetCount === results.length,
+    boardMatches,
     targetCount: results.length,
     realizedTargetCount,
     targets: Object.freeze(results),

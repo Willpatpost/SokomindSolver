@@ -1,6 +1,7 @@
-import { writeFileSync, readFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readPromotionBundle, installPromotionBundle } from "./lib/catalog-promotion.ts";
 
 import type { Difficulty, PuzzleDefinition } from "../src/core/model.ts";
 import { DIFFICULTIES } from "../src/core/model.ts";
@@ -13,16 +14,13 @@ import {
   evaluatePuzzles,
   summarizePopulation,
   createGeneratedPuzzleId,
-  framePuzzleRows,
   boardHash,
   symmetryHash,
   evaluateFinalistV4,
   computeCurationObjectives,
-  nonDominatedSort,
-  computeNoveltyScores,
-  selectWithDiversityQuotas,
-  buildV4Fingerprint,
-  diagnosePopulation,
+  curateForgeCandidates,
+  formatStorySelection,
+  type StorySelectionReport,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   DEFAULT_V4_POLICY,
@@ -41,14 +39,11 @@ import {
   type FinalistEvaluation,
   type FinalistEvaluationV4,
   type CurationObjectives,
-  type CuratedCandidate,
   computeV4Profile,
   buildReviewPack,
   buildReviewCatalog,
   formatReviewSummary,
-  validateForAcceptance,
   checkReleaseGate,
-  checkReviewManifestBinding,
   formatReleaseVerdict,
   type ReviewCandidatePack,
   CATALOG_GENERATOR_VERSION,
@@ -68,20 +63,36 @@ const verbose = process.argv.includes("--verbose");
 
 function cliFlag(name: string): string | undefined {
   const idx = process.argv.indexOf(name);
-  return idx >= 0 && idx + 1 < process.argv.length
-    ? process.argv[idx + 1]
-    : undefined;
+  if (idx < 0) return undefined;
+  const value = process.argv[idx + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
+  return value;
+}
+
+function integerFlag(name: string, minimum: number, maximum: number): number | undefined {
+  const raw = cliFlag(name);
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new Error(`${name} must be an integer in [${minimum}, ${maximum}]`);
+  return value;
 }
 
 const tierFilter = cliFlag("--tier") as Difficulty | undefined;
 const qualityPreset = cliFlag("--quality") as keyof typeof QUALITY_PRESETS | undefined;
-const maxSeedWindows = Number(cliFlag("--max-seed-windows") ?? "3");
+if (qualityPreset && !(qualityPreset in QUALITY_PRESETS)) throw new Error(`Unknown quality preset: ${qualityPreset}`);
+const maxSeedWindows = integerFlag("--max-seed-windows", 0, 100) ?? 3;
+const attemptBudget = integerFlag("--attempts", 1, 10000);
+const targetOverride = integerFlag("--target", 1, 1000);
+const seedOffset = integerFlag("--seed-offset", 0, 1000000000) ?? 0;
+const skipBenchmark = process.argv.includes("--skip-benchmark");
 const SEED_WINDOW_SIZE = 10000;
+// Optimality proofs are not part of the current catalog contract.
+const CATALOG_EVALUATOR_POLICY = { ...DEFAULT_V4_POLICY, proofMaxBoxes: 0 };
 
 const reviewMode = process.argv.includes("--review");
 const acceptPath = cliFlag("--accept");
 
-const REVIEW_DIR = join(__dirname, "../review-catalog");
+const REVIEW_DIR = resolve(cliFlag("--output") ?? join(__dirname, "../review-catalog", `run-${new Date().toISOString().replace(/[:.]/gu, "-")}`));
 
 // ---------------------------------------------------------------------------
 // Per-tier forge configurations
@@ -267,7 +278,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
       retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 15, catalogQuota: 20 },
+      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 20, catalogQuota: 20 },
       families: ["linear", "hub", "loop", "branch"] as TopologyFamily[],
       boxCounts: [7, 8, 9],
       difficulties: ["intermediate"],
@@ -295,7 +306,7 @@ const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
       retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 15, catalogQuota: 20 },
+      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 20, catalogQuota: 20 },
       families: ["linear", "hub", "loop", "branch", "nested"] as TopologyFamily[],
       boxCounts: [10, 11, 12, 13],
       difficulties: ["advanced"],
@@ -392,7 +403,7 @@ function classifyCandidate(
 }
 
 function difficultyGap(intended: Difficulty, classified: Difficulty): number {
-  return (TIER_RANK.get(intended) ?? 0) - (TIER_RANK.get(classified) ?? 0);
+  return (TIER_RANK.get(classified) ?? 0) - (TIER_RANK.get(intended) ?? 0);
 }
 
 interface CatalogCandidate {
@@ -431,7 +442,8 @@ function catalogCandidateToEntry(
     difficulty: cc.assignedDifficulty,
     boxes: cc.candidate.puzzle.boxes,
     collection: "Sokomind Generated",
-    rows: [...framePuzzleRows(cc.candidate.puzzle.rows)],
+    // Never change geometry/coordinates after the final trace and plans were verified.
+    rows: [...cc.candidate.puzzle.rows],
   };
 }
 
@@ -550,7 +562,6 @@ function globalDedup(
 
 function applyDifficultyPolicy(
   pools: Map<Difficulty, CatalogCandidate[]>,
-  tierTargets: Map<Difficulty, number>,
 ): number {
   let rejectedCount = 0;
 
@@ -560,7 +571,7 @@ function applyDifficultyPolicy(
       if (cc.rejected) continue;
 
       const absGap = Math.abs(cc.gap);
-      if (absGap >= 2) {
+      if (absGap !== 0) {
         cc.rejected = true;
         cc.rejectionReason = "difficulty-mismatch";
         rejectedCount++;
@@ -573,27 +584,6 @@ function applyDifficultyPolicy(
         continue;
       }
 
-      if (absGap === 1 && cc.classifiedDifficulty !== cc.intendedDifficulty) {
-        const classifiedPool = pools.get(cc.classifiedDifficulty) ?? [];
-        const classifiedActive = classifiedPool.filter((c) => !c.rejected).length;
-        const classifiedTarget = tierTargets.get(cc.classifiedDifficulty) ?? 0;
-
-        if (classifiedActive < classifiedTarget) {
-          const oldPool = pools.get(cc.intendedDifficulty);
-          if (oldPool) {
-            const idx = oldPool.indexOf(cc);
-            if (idx >= 0) oldPool.splice(idx, 1);
-          }
-          cc.assignedDifficulty = cc.classifiedDifficulty;
-          classifiedPool.push(cc);
-          if (verbose) {
-            console.log(
-              `    [difficulty] Reclassifying seed ${cc.candidate.provenance.seed}: ` +
-              `${cc.intendedDifficulty} → ${cc.classifiedDifficulty}`,
-            );
-          }
-        }
-      }
     }
   }
 
@@ -756,74 +746,21 @@ function checkInvariants(
 async function runAcceptance(sourcePath: string): Promise<void> {
   console.log(`\nSokomind Catalog Acceptance: ${sourcePath}`);
   console.log("=".repeat(60));
-
-  const catalogFile = join(sourcePath, "generated-puzzles.json");
-  const manifestFile = join(sourcePath, "generated-puzzles.manifest.json");
-
-  if (!existsSync(catalogFile)) {
-    console.error(`ERROR: Catalog file not found: ${catalogFile}`);
-    process.exit(1);
+  const bundle = readPromotionBundle(resolve(sourcePath));
+  const result = installPromotionBundle(bundle, dirname(CATALOG_PATH), join(__dirname, "../review-catalog/backups"), { dryRun });
+  for (const warning of result.verification.warnings) console.warn(`  WARNING: ${warning}`);
+  for (const error of result.verification.errors) console.error(`  ERROR: ${error}`);
+  if (!result.verification.passed) {
+    console.error("\nPROMOTION BLOCKED. Production files were not changed.");
+    process.exitCode = 1;
+    return;
   }
-  if (!existsSync(manifestFile)) {
-    console.error(`ERROR: Manifest file not found: ${manifestFile}`);
-    process.exit(1);
-  }
-
-  const catalogJson = readFileSync(catalogFile, "utf-8");
-  const manifestJson = readFileSync(manifestFile, "utf-8");
-
-  console.log("Validating review catalog...");
-  const result = validateForAcceptance(catalogJson, manifestJson);
-
-  for (const error of result.errors) {
-    console.error(`  ERROR: ${error}`);
-  }
-  for (const warning of result.warnings) {
-    console.warn(`  WARNING: ${warning}`);
-  }
-
-  if (!result.passed) {
-    console.error(`\nACCEPTANCE FAILED: ${result.errors.length} error(s). Fix and retry.`);
-    process.exit(1);
-  }
-
-  console.log(`  Validation passed (${result.puzzleCount} puzzles).`);
-
-  const reviewCatalogFile = join(sourcePath, "review-catalog.json");
-  if (!existsSync(reviewCatalogFile)) {
-    console.error(`ERROR: Review evidence not found: ${reviewCatalogFile}`);
-    process.exit(1);
-  }
-
-  console.log("Running release gate...");
-  const reviewCatalog: unknown = JSON.parse(readFileSync(reviewCatalogFile, "utf-8"));
-  const releaseVerdict = checkReleaseGate(reviewCatalog);
-  if (!releaseVerdict.passed) {
-    console.error("\nRELEASE GATE FAILED:");
-    console.error(formatReleaseVerdict(releaseVerdict));
-    process.exit(1);
-  }
-  console.log("  Release gate: PASSED");
-
-  const bindingErrors = checkReviewManifestBinding(
-    reviewCatalog,
-    JSON.parse(manifestJson) as unknown,
-  );
-  if (bindingErrors.length > 0) {
-    for (const error of bindingErrors) console.error(`  ERROR: ${error}`);
-    console.error("\nACCEPTANCE FAILED: review evidence does not match the manifest.");
-    process.exit(1);
-  }
-  console.log("  Review/manifest binding: PASSED");
-
-  console.log("\nCopying to production...");
-
-  copyFileSync(catalogFile, CATALOG_PATH);
-  copyFileSync(manifestFile, MANIFEST_PATH);
-
+  console.log(`  Verified ${result.verification.replayed} exact solution replays and story reports.`);
+  if (dryRun) { console.log("[DRY RUN] Promotion verified; production files were not changed."); return; }
   console.log(`  Wrote ${CATALOG_PATH}`);
   console.log(`  Wrote ${MANIFEST_PATH}`);
-  console.log("\nAcceptance complete. Next steps:");
+  console.log(`  Recovery backup: ${result.backupDirectory}`);
+  console.log("\nPromotion installed. Validate derived metadata and the application:");
   console.log("  1. npm run prepare:catalog");
   console.log("  2. npm run typecheck");
   console.log("  3. npm run test:unit");
@@ -850,13 +787,31 @@ async function main(): Promise<void> {
   console.log(`\nSokomind V${CATALOG_GENERATOR_VERSION} Catalog Generator${dryRun ? " (DRY RUN)" : ""}${modeLabel}`);
   console.log("=".repeat(60));
 
-  const activeTierConfigs = tierFilter
+  const selectedTierConfigs = tierFilter
     ? TIER_CONFIGS.filter((tc) => tc.difficulty === tierFilter)
     : TIER_CONFIGS;
-
-  if (tierFilter && activeTierConfigs.length === 0) {
+  if (tierFilter && selectedTierConfigs.length === 0) {
     console.error(`Unknown tier: ${tierFilter}`);
     process.exit(1);
+  }
+
+  const activeTierConfigs = selectedTierConfigs.map(({ difficulty, config: base }) => {
+    const target = targetOverride ?? base.retainTarget;
+    const budgets = qualityPreset ? QUALITY_PRESETS[qualityPreset] : base.funnelBudgets;
+    const config: ForgeConfig = { ...base, baseSeed: base.baseSeed + seedOffset, retainTarget: target,
+      v4EvaluatorPolicy: CATALOG_EVALUATOR_POLICY,
+      batchSize: attemptBudget ?? base.batchSize,
+      funnelBudgets: budgets ? { ...budgets, rawAttemptBudget: attemptBudget ?? budgets.rawAttemptBudget,
+        deepRetain: Math.max(target, budgets.deepRetain), catalogQuota: target } : undefined };
+    return { difficulty, config };
+  });
+  if (!dryRun) {
+    if (existsSync(REVIEW_DIR) && readdirSync(REVIEW_DIR).length > 0) throw new Error(`Refusing to overwrite an existing review run: ${REVIEW_DIR}`);
+    mkdirSync(join(REVIEW_DIR, "runs"), { recursive: true });
+    writeFileSync(join(REVIEW_DIR, "generation-plan.json"), JSON.stringify({
+      startedAt: new Date().toISOString(), generatorVersion: CATALOG_GENERATOR_VERSION,
+      maxSeedWindows, seedOffset, skipBenchmark, tiers: activeTierConfigs,
+    }, null, 2) + "\n", { flag: "wx" });
   }
 
   const tierTargets = new Map<Difficulty, number>(
@@ -870,18 +825,16 @@ async function main(): Promise<void> {
   console.log("\n>>> Phase 1: Per-tier forge generation...");
   const pools = new Map<Difficulty, CatalogCandidate[]>();
   const tierReports: string[] = [];
+  const curationReports: Record<string, StorySelectionReport> = {};
 
-  for (const { difficulty, config: baseConfig } of activeTierConfigs) {
-    let config = baseConfig;
-    if (qualityPreset && qualityPreset in QUALITY_PRESETS) {
-      const presetBudgets = QUALITY_PRESETS[qualityPreset];
-      config = { ...config, funnelBudgets: presetBudgets };
-    }
+  for (const { difficulty, config } of activeTierConfigs) {
     const budgetLabel = config.funnelBudgets
       ? `raw=${config.funnelBudgets.rawAttemptBudget}, quota=${config.funnelBudgets.catalogQuota}`
       : `batch=${config.batchSize}, target=${config.retainTarget}`;
     console.log(`\n    [forge] ${difficulty} tier (${budgetLabel})...`);
     const result = await runForge(config);
+    if (!dryRun) writeFileSync(join(REVIEW_DIR, "runs", `${difficulty}-initial.json`), JSON.stringify(result, null, 2) + "\n", { flag: "wx" });
+    if (result.storySelection) curationReports[`${difficulty}/initial-forge`] = result.storySelection;
     const report = forgeRunReport(result);
     tierReports.push(report);
 
@@ -920,7 +873,7 @@ async function main(): Promise<void> {
   // -----------------------------------------------------------------------
 
   console.log("\n>>> Phase 2: Difficulty policy...");
-  const diffRejects = applyDifficultyPolicy(pools, tierTargets);
+  const diffRejects = applyDifficultyPolicy(pools);
   console.log(`    Difficulty mismatches rejected: ${diffRejects}`);
 
   // -----------------------------------------------------------------------
@@ -954,8 +907,12 @@ async function main(): Promise<void> {
         ...config,
         baseSeed: retrySeed,
         retainTarget: shortfall + 5,
+        funnelBudgets: config.funnelBudgets ? { ...config.funnelBudgets, catalogQuota: shortfall + 5,
+          deepRetain: Math.max(config.funnelBudgets.deepRetain, shortfall + 5) } : undefined,
       };
       const retryResult = await runForge(retryConfig);
+      if (!dryRun) writeFileSync(join(REVIEW_DIR, "runs", `${difficulty}-retry-${window}.json`), JSON.stringify(retryResult, null, 2) + "\n", { flag: "wx" });
+      if (retryResult.storySelection) curationReports[`${difficulty}/retry-${window}`] = retryResult.storySelection;
 
       const retryCandidates: CatalogCandidate[] = retryResult.candidates.map((c) => {
         const classified = classifyCandidate(c.evaluation);
@@ -974,7 +931,7 @@ async function main(): Promise<void> {
       pool.push(...retryCandidates);
       pools.set(difficulty, pool);
 
-      applyDifficultyPolicy(pools, tierTargets);
+      applyDifficultyPolicy(pools);
       globalDedup(pools);
 
       console.log(
@@ -1007,53 +964,27 @@ async function main(): Promise<void> {
 
     console.log(`    [finalist] ${difficulty}: evaluating ${candidates.length} candidates...`);
     for (const cc of candidates) {
-      cc.finalistEval = await evaluateFinalistV4(cc.candidate.puzzle, DEFAULT_V4_POLICY);
+      cc.finalistEval = cc.candidate.finalistEvaluation && "witnessValid" in cc.candidate.finalistEvaluation
+        ? cc.candidate.finalistEvaluation
+        : await evaluateFinalistV4(cc.candidate.puzzle, CATALOG_EVALUATOR_POLICY, cc.candidate.solutionSteps);
       cc.curationObjectives = computeCurationObjectives(
         cc.candidate.evaluation,
         cc.finalistEval,
         cc.candidate.provenance.dependencyRealizationRate,
       );
-      cc.structuralFingerprint = buildV4Fingerprint(cc.candidate);
     }
 
     const target = tierTargets.get(difficulty) ?? 0;
-    if (candidates.length > target) {
-      const sorted = nonDominatedSort(
-        candidates.map((cc) => ({
-          item: cc,
-          objectives: cc.curationObjectives!,
-          structuralFingerprint: cc.structuralFingerprint,
-        })),
-      );
-      const scored = computeNoveltyScores(sorted);
-      const selected = selectWithDiversityQuotas(
-        scored as CuratedCandidate<CatalogCandidate & { structuralFingerprint?: string }>[],
-        target,
-      );
-      const selectedSet = new Set(selected.map((s) => s.item));
-
-      let culled = 0;
-      for (const cc of candidates) {
-        if (!selectedSet.has(cc)) {
-          cc.rejected = true;
-          culled++;
-        }
-      }
-
-      const diag = diagnosePopulation(scored);
-      console.log(
-        `    [curation] ${difficulty}: ${diag.totalCandidates} → ${selected.length} ` +
-        `(${diag.frontCount} Pareto fronts, culled ${culled})`,
-      );
-      if (verbose) {
-        console.log(`      Front sizes: [${diag.frontSizes.join(", ")}]`);
-        console.log(
-          `      Novelty range: ${diag.noveltyRange.min.toFixed(3)}–${diag.noveltyRange.max.toFixed(3)} ` +
-          `(avg ${diag.noveltyRange.avg.toFixed(3)})`,
-        );
-      }
-    } else {
-      console.log(`    [curation] ${difficulty}: ${candidates.length} ≤ target ${target}, keeping all`);
+    // Run even for small/underfilled pools: quota shortfalls do not waive diversity.
+    const selection = curateForgeCandidates(candidates.map((cc) => ({
+      ...cc.candidate, curationObjectives: cc.curationObjectives,
+    })), target);
+    curationReports[difficulty] = selection.report;
+    const selectedIds = new Set(selection.candidates.map((candidate) => candidate.puzzle.id));
+    for (const cc of candidates) cc.rejected = !selectedIds.has(cc.candidate.puzzle.id);
+    console.log(`    [curation] ${difficulty}: ${formatStorySelection(selection.report)}`);
+    if (verbose) for (const decision of selection.report.decisions) {
+      console.log(`      ${decision.id}: ${decision.reason}${decision.relatedId ? ` (${decision.relatedId})` : ""}`);
     }
   }
 
@@ -1107,6 +1038,7 @@ async function main(): Promise<void> {
   let benchmarkReport = "(skipped — no handcrafted baseline or no V2 non-tutorial puzzles)";
 
   try {
+    if (skipBenchmark) throw new Error("Benchmark explicitly skipped for a bounded generation run");
     const handcraftedMeta: readonly { id: string; difficulty: Difficulty }[] =
       JSON.parse(readFileSync(HANDCRAFTED_BENCHMARK_PATH, "utf-8"));
     const handcraftedIds = new Set(
@@ -1132,7 +1064,7 @@ async function main(): Promise<void> {
       benchmarkReport = comparisonReport(handcraftedSummary, v2Summary);
     }
   } catch {
-    benchmarkReport = "(skipped — handcrafted benchmark fixture not available)";
+    benchmarkReport = skipBenchmark ? "(skipped explicitly with --skip-benchmark)" : "(skipped — handcrafted benchmark fixture not available)";
   }
 
   // -----------------------------------------------------------------------
@@ -1261,6 +1193,7 @@ async function main(): Promise<void> {
       generatorVersion: CATALOG_GENERATOR_VERSION,
       qualityPreset: qualityPreset,
       tierFilter: tierFilter,
+      curationReports,
     });
     const reviewSummary = formatReviewSummary(reviewCatalog);
     const releaseVerdict = checkReleaseGate(reviewCatalog);
@@ -1279,6 +1212,13 @@ async function main(): Promise<void> {
       writeFileSync(join(REVIEW_DIR, "generated-puzzles.manifest.json"), manifestJson);
       writeFileSync(join(REVIEW_DIR, "review-summary.txt"), reviewSummary + "\n");
       writeFileSync(join(REVIEW_DIR, "release-gate-verdict.txt"), formatReleaseVerdict(releaseVerdict) + "\n");
+      writeFileSync(join(REVIEW_DIR, "release-gate-verdict.json"), JSON.stringify(releaseVerdict, null, 2) + "\n");
+      writeFileSync(join(REVIEW_DIR, "generation-result.json"), JSON.stringify({
+        completedAt: new Date().toISOString(), elapsedMs: performance.now() - totalStart,
+        status: releaseVerdict.passed ? "ready-for-review" : "release-blocked",
+        totalPuzzles: catalogEntries.length, tierCoverage: releaseVerdict.tierCoverage,
+        productionChanged: false,
+      }, null, 2) + "\n");
 
       console.log(`\nWrote review catalog to ${REVIEW_DIR}/`);
       console.log(`  review-catalog.json        — full candidate packs with V4 profiles`);
@@ -1297,11 +1237,12 @@ async function main(): Promise<void> {
       console.log("=".repeat(60));
       console.log("REVIEW BEFORE ACCEPTING");
       console.log("=".repeat(60));
-      console.log("1. Read review-catalog/review-summary.txt");
+      console.log(`1. Read ${join(REVIEW_DIR, "review-summary.txt")}`);
       console.log("2. Playtest Expert/Master samples");
       console.log("3. Ask: Would I voluntarily play another from this tier?");
       console.log("4. Tune thresholds if needed, then regenerate");
-      console.log(`5. Accept: node --experimental-strip-types scripts/generate-v2-catalog.ts --accept ${REVIEW_DIR}`);
+      console.log(`5. Verify without writing: node --experimental-strip-types scripts/generate-v2-catalog.ts --accept "${REVIEW_DIR}" --dry-run`);
+      console.log(`6. Promote: node --experimental-strip-types scripts/generate-v2-catalog.ts --accept "${REVIEW_DIR}"`);
     }
   } else if (dryRun) {
     console.log(`\n[DRY RUN] Would write ${catalogEntries.length} puzzles to generated-puzzles.json`);

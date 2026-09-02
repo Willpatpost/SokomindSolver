@@ -25,6 +25,10 @@ import {
   REVIEW_CATALOG_SCHEMA_VERSION,
 } from "./catalog-manifest-types.ts";
 import { explainPassiveStory, summarizePassiveStory } from "./passive-story-analysis.ts";
+import {
+  buildStoryDiversityProfile, summarizeStoryDiversity, formatStorySelection,
+  type StorySelectionReport,
+} from "./story-diversity.ts";
 
 // ---------------------------------------------------------------------------
 // buildReviewPack
@@ -43,10 +47,19 @@ export function buildReviewPack(
 
   // Compute V4 profile if not provided
   const v4 = v4Profile ?? computeV4Profile(ev);
+  const story = candidate.passiveStory?.boardHash === boardHash(candidate.puzzle.rows)
+    ? candidate.passiveStory : undefined;
+  const passiveSummary = story ? summarizePassiveStory(story) : undefined;
 
   return {
     id: candidate.puzzle.id,
     ascii: forgeCandidateToAscii(candidate),
+    rows: candidate.puzzle.rows,
+    solutionSteps: candidate.solutionSteps,
+    storyAwareTypingPlan: candidate.storyAwareTyping,
+    mechanismConstructionPlan: candidate.mechanismConstruction,
+    storyEvidence: story,
+    storyDiversity: buildStoryDiversityProfile(candidate.puzzle.rows, candidate.qualityProfile?.story, passiveSummary),
     difficulty: candidate.puzzle.difficulty,
     intendedDifficulty,
     classifiedDifficulty,
@@ -77,6 +90,7 @@ export function buildReviewPack(
     boardHash: boardHash(candidate.puzzle.rows),
     symmetryHash: symmetryHash(candidate.puzzle.rows),
     qualityPassed: candidate.qualityProfile?.passed ?? false,
+    storyQuality: candidate.qualityProfile?.story,
     qualityReasons: candidate.qualityProfile?.reasons ?? [
       "candidate has no recorded quality-gate result",
     ],
@@ -109,6 +123,8 @@ export function buildReviewPack(
     storyAwareTypingRealized: p.storyAwareTypingRealized,
     storyAwareTypingPassed: p.storyAwareTypingPassed,
     storyAwareTypingMissing: p.storyAwareTypingMissing,
+    storyAwareTypingVerification: candidate.storyAwareTypingVerification,
+    counterfactualStory: candidate.counterfactualStory,
     counterfactualEdges: p.counterfactualEdges,
     counterfactualTotal: p.counterfactualTotal,
     // V4 difficulty
@@ -125,11 +141,9 @@ export function buildReviewPack(
     temporaryGoalVacancies: ev.temporaryGoalVacancies,
     estimatedDependencyDepth: ev.estimatedDependencyDepth,
     goalOrderConstraints: ev.goalOrderConstraints,
-    passiveStory: candidate.passiveStory
-      ? summarizePassiveStory(candidate.passiveStory)
-      : undefined,
-    storyExplanations: candidate.passiveStory
-      ? explainPassiveStory(candidate.passiveStory)
+    passiveStory: passiveSummary,
+    storyExplanations: story
+      ? explainPassiveStory(story)
       : undefined,
   };
 }
@@ -142,6 +156,7 @@ export interface ReviewCatalogOptions {
   readonly generatorVersion?: string;
   readonly qualityPreset?: string;
   readonly tierFilter?: string;
+  readonly curationReports?: Readonly<Record<string, StorySelectionReport>>;
 }
 
 export function buildReviewCatalog(
@@ -157,6 +172,7 @@ export function buildReviewCatalog(
       target,
       actual: packs.length,
       candidates: packs,
+      storyDiversity: summarizeStoryDiversity(packs.map((pack) => ({ id: pack.id, profile: pack.storyDiversity }))),
     };
   }
 
@@ -167,6 +183,9 @@ export function buildReviewCatalog(
     qualityPreset: options.qualityPreset,
     tierFilter: options.tierFilter,
     tierSummaries,
+    storyDiversity: summarizeStoryDiversity([...tierPacks.values()].flatMap(({ packs }) =>
+      packs.map((pack) => ({ id: pack.id, profile: pack.storyDiversity })))),
+    curationReports: options.curationReports,
   };
 }
 
@@ -280,6 +299,26 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
   if (catalog.qualityPreset) lines.push(`Quality: ${catalog.qualityPreset}`);
   if (catalog.tierFilter) lines.push(`Tier filter: ${catalog.tierFilter}`);
   lines.push("");
+  if (catalog.storyDiversity) {
+    const diversity = catalog.storyDiversity;
+    lines.push("CATALOG STORY COVERAGE (observed evidence, not a human fun score)");
+    lines.push(`Measured: ${diversity.measured}; distinct story baskets: ${Object.keys(diversity.storyCounts).length}; ` +
+      `visual layouts: ${Object.keys(diversity.visualCounts).length}`);
+    lines.push(`Family coverage: ${Object.entries(diversity.familyCounts).map(([family, count]) => `${family}=${count}`).join(", ")}`);
+    lines.push(`Pacing: ${Object.entries(diversity.pacingCounts).map(([kind, count]) => `${kind}=${count}`).join(", ")}`);
+    lines.push(`Largest story basket: ${(diversity.storyConcentration * 100).toFixed(0)}%; ` +
+      `largest visual group: ${(diversity.visualConcentration * 100).toFixed(0)}%`);
+    lines.push(`Coverage gaps: ${diversity.missingFamilies.join(", ") || "none"}`);
+    if (diversity.missingEvidenceIds.length > 0) lines.push(`Missing evidence: ${diversity.missingEvidenceIds.join(", ")}`);
+    for (const ids of diversity.cloneGroups) lines.push(`LAYOUT CLONES: ${ids.join(", ")}`);
+    lines.push("");
+  }
+  for (const [tier, report] of Object.entries(catalog.curationReports ?? {})) {
+    lines.push(`${tier}: ${formatStorySelection(report)}`);
+    for (const decision of report.decisions.filter((decision) => decision.reason !== "selected")) {
+      lines.push(`  ${decision.id}: ${decision.reason}${decision.relatedId ? ` (${decision.relatedId})` : ""}`);
+    }
+  }
 
   // Tier distribution table
   lines.push(`${"Tier".padEnd(15)} ${"Target".padStart(8)} ${"Actual".padStart(8)} ${"Status".padStart(10)}`);
@@ -308,6 +347,7 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
 
     lines.push("=".repeat(70));
     lines.push(`${tier.toUpperCase()} TIER (${summary.actual} candidates)`);
+    if (summary.storyDiversity) lines.push(`Story coverage gaps: ${summary.storyDiversity.missingFamilies.join(", ") || "none"}`);
     lines.push("=".repeat(70));
 
     for (const pack of summary.candidates) {
@@ -317,6 +357,12 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
       lines.push(`Boxes: ${pack.boxCount} | Typing: ${pack.typingMode}`);
       lines.push(`Board: ${pack.boardWidth}x${pack.boardHeight} | Floor: ${pack.playableFloor}`);
       lines.push(`Moves: ${pack.solutionMoves} | Pushes: ${pack.solutionPushes}`);
+      if (pack.solutionSteps) lines.push(`Replay witness: ${pack.solutionSteps.length} recorded steps (not an optimality claim)`);
+      if (pack.storyDiversity) lines.push(`Story identity: ${pack.storyDiversity.storySignature}`);
+      const neighbors = catalog.storyDiversity?.nearestNeighbors[pack.id] ?? [];
+      for (const neighbor of neighbors) {
+        lines.push(`Closest neighbor: ${neighbor.id} (distance ${neighbor.distance.toFixed(3)}): ${neighbor.reasons.join("; ") || "different measured story and layout"}`);
+      }
       lines.push(
         `Difficulty: intended=${pack.intendedDifficulty}, classified=${pack.classifiedDifficulty}, gap=${pack.difficultyGap}`,
       );
@@ -352,6 +398,13 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
         );
       }
 
+      if (pack.storyAwareTypingPassed !== undefined) {
+        lines.push(
+          `Story-aware typing: ${pack.storyAwareTypingPassed ? "passed" : "failed"}` +
+          `; ${pack.storyAwareTypingRealized ?? 0}/${pack.storyAwareTypingTargets ?? 0} targets verified`,
+        );
+      }
+
       // Solution depth
       if (pack.nonMonotonicBoxMoves !== undefined) {
         lines.push(
@@ -361,11 +414,44 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
         );
       }
 
+      if (pack.storyQuality) {
+        const quality = pack.storyQuality;
+        lines.push(`Story quality (${quality.policyVersion}): ${quality.passed ? "passed" : "failed"}; ` +
+          `${quality.measurements.families.length}/${quality.requiredStoryFamilies} required story families: ` +
+          quality.measurements.families.join(", "));
+        for (const violation of quality.violations) lines.push(`  - ${violation.code}: ${violation.message}`);
+        lines.push("Box participation (stable zero-based identities):");
+        for (const box of quality.measurements.boxes) lines.push(`  Box ${box.boxId} (${box.kind}): ${box.pushes} pushes, ` +
+          `${box.distinctCells} cells; works with ${box.interactionPartners.map((id) => `box ${id}`).join(", ")}`);
+      }
+      if (pack.counterfactualStory) {
+        const cf = pack.counterfactualStory;
+        lines.push(`Counterfactual searches: ${cf.recoverableAlternatives} recoverable alternatives, ` +
+          `${cf.delayedFalseStarts} delayed false starts, ${cf.necessaryDependencies} necessary, ` +
+          `${cf.optionalDependencies} optional, ${cf.unknownProbes} unknown; ` +
+          `${cf.expandedStates} states, ${cf.omittedProbes} probes not sampled.`);
+        for (const probe of cf.probes) lines.push(`  - ${probe.explanation}`);
+      }
       if (pack.storyExplanations && pack.storyExplanations.length > 0) {
         lines.push("Solution story:");
         for (const explanation of pack.storyExplanations) {
           lines.push(`  - ${explanation}`);
         }
+      }
+      if (pack.storyEvidence) {
+        const evidence = pack.storyEvidence;
+        lines.push("Story landmarks (zero-based push indices in the evaluated witness):");
+        for (const assignment of evidence.genericGoalMisdirection.evidence) lines.push(
+          `  Generic box ${assignment.boxId} reaches ${assignment.actualGoalId}, bypassing nearer ${assignment.nearestGoalIds.join(", ")}.`);
+        for (const reversal of evidence.progressReversals.evidence) lines.push(
+          `  Pushes ${reversal.reversalPushIndex}–${reversal.recoveryPushIndex}: box ${reversal.boxId} backs away and recovers, benefiting boxes ${reversal.benefitingBoxIds.join(", ")}.`);
+        for (const gate of evidence.gateTraffic.evidence) lines.push(
+          `  Push ${gate.openingPushIndex}: gate box ${gate.gateBoxId} opens for boxes ${gate.trafficBoxIds.join(", ")}` +
+          `${gate.reopeningPushIndex === undefined ? "." : `; reopens at ${gate.reopeningPushIndex}.`}`);
+        lines.push("Phase timeline:");
+        for (const phase of evidence.solutionPhases.phases) lines.push(
+          `  ${phase.startPushIndex}–${phase.endPushIndex}: ${phase.kind}; boxes ${phase.boxIds.join(", ")}; ` +
+          `zones ${phase.zoneIds.join(", ")}${phase.revisitsBox ? "; returns to earlier work" : ""}`);
       }
 
       // ASCII board
@@ -377,6 +463,13 @@ export function formatReviewSummary(catalog: ReviewCatalog): string {
   lines.push("");
   lines.push("=".repeat(70));
   lines.push("PLAYTEST QUESTION: Would you voluntarily play another from this tier?");
+  lines.push("Human review checklist (automatic qualification is not playtest approval):");
+  lines.push("  [ ] Every box feels necessary; no filler or repetitive cleanup.");
+  lines.push("  [ ] Generic assignments are interesting; labels do not give away the whole plan.");
+  lines.push("  [ ] Typed and generic boxes genuinely affect one another.");
+  lines.push("  [ ] The story has satisfying changes of task, without excessive walking.");
+  lines.push("  [ ] Compare closest neighbors: this feels like a different puzzle.");
+  lines.push("  [ ] Note the best moment, tedious sections, and keep/rework/reject decision.");
   lines.push("=".repeat(70));
 
   return lines.join("\n");

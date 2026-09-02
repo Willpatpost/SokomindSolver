@@ -4,6 +4,8 @@ import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { RestartStats } from "./reverse-beam-search.ts";
 import { summarizePassiveStory } from "./passive-story-analysis.ts";
 import type { PassiveStoryProfile, PassiveStorySummary } from "./passive-story-analysis.ts";
+import type { CounterfactualStoryProfile } from "./counterfactual-analysis.ts";
+import type { PuzzleQualityProfile } from "./quality-gate.ts";
 
 // ---------------------------------------------------------------------------
 // Per-stage funnel counters (Section 5, 0.2)
@@ -77,6 +79,20 @@ export interface ForgeDiagnosticReport {
   readonly restartDiagnostics: readonly RestartDiagnostics[];
   readonly boxScaleMismatchCount: number;
   readonly passiveStoryDistribution: PassiveStoryDistribution;
+  readonly counterfactualSummary: CounterfactualDiagnosticSummary;
+  readonly qualityAssessments: readonly { readonly seed: number; readonly profile: PuzzleQualityProfile }[];
+}
+
+export interface CounterfactualDiagnosticSummary {
+  readonly candidateCount: number;
+  readonly probes: number;
+  readonly omittedProbes: number;
+  readonly expandedStates: number;
+  readonly recoverableAlternatives: number;
+  readonly delayedFalseStarts: number;
+  readonly necessaryDependencies: number;
+  readonly optionalDependencies: number;
+  readonly unknownProbes: number;
 }
 
 export type PassiveStoryNumericMetric = Exclude<keyof PassiveStorySummary, "traversalSignature">;
@@ -132,6 +148,8 @@ export class DiagnosticCollector {
   private readonly _boxScale: BoxScaleDiagnostics[] = [];
   private readonly _restarts: RestartDiagnostics[] = [];
   private readonly _passiveStories: PassiveStorySummary[] = [];
+  private readonly _counterfactualStories: CounterfactualStoryProfile[] = [];
+  private readonly _qualityAssessments: { seed: number; profile: PuzzleQualityProfile }[] = [];
 
   recordAttempt(): void {
     this._attempted++;
@@ -195,6 +213,14 @@ export class DiagnosticCollector {
 
   recordPassiveStory(profile: PassiveStoryProfile): void {
     this._passiveStories.push(summarizePassiveStory(profile));
+  }
+
+  recordCounterfactualStory(profile: CounterfactualStoryProfile): void {
+    this._counterfactualStories.push(profile);
+  }
+
+  recordQualityAssessment(seed: number, profile: PuzzleQualityProfile): void {
+    this._qualityAssessments.push({ seed, profile });
   }
 
   addRestartStatsFromV4(
@@ -292,6 +318,18 @@ export class DiagnosticCollector {
         metrics: storyMetrics,
         traversalSignatures,
       },
+      counterfactualSummary: {
+        candidateCount: this._counterfactualStories.length,
+        probes: this._counterfactualStories.reduce((sum, profile) => sum + profile.probes.length, 0),
+        omittedProbes: this._counterfactualStories.reduce((sum, profile) => sum + profile.omittedProbes, 0),
+        expandedStates: this._counterfactualStories.reduce((sum, profile) => sum + profile.expandedStates, 0),
+        recoverableAlternatives: this._counterfactualStories.reduce((sum, profile) => sum + profile.recoverableAlternatives, 0),
+        delayedFalseStarts: this._counterfactualStories.reduce((sum, profile) => sum + profile.delayedFalseStarts, 0),
+        necessaryDependencies: this._counterfactualStories.reduce((sum, profile) => sum + profile.necessaryDependencies, 0),
+        optionalDependencies: this._counterfactualStories.reduce((sum, profile) => sum + profile.optionalDependencies, 0),
+        unknownProbes: this._counterfactualStories.reduce((sum, profile) => sum + profile.unknownProbes, 0),
+      },
+      qualityAssessments: [...this._qualityAssessments],
     };
   }
 }
@@ -325,6 +363,16 @@ export function formatDiagnosticReport(report: ForgeDiagnosticReport): string {
   lines.push("");
 
   lines.push(`Passive story candidates: ${report.passiveStoryDistribution.candidateCount}`);
+  lines.push(`Quality assessments: ${report.qualityAssessments.length}; ` +
+    `${report.qualityAssessments.filter((entry) => entry.profile.passed).length} passed.`);
+  for (const { seed, profile } of report.qualityAssessments) {
+    if (!profile.passed) lines.push(`  seed ${seed}: ${profile.reasons.join("; ")}`);
+  }
+  const cf = report.counterfactualSummary;
+  lines.push(`Counterfactual search candidates: ${cf.candidateCount}; ${cf.probes} probes, ` +
+    `${cf.recoverableAlternatives} recoverable, ${cf.delayedFalseStarts} delayed false starts, ` +
+    `${cf.necessaryDependencies} necessary, ${cf.optionalDependencies} optional, ${cf.unknownProbes} unknown; ` +
+    `${cf.expandedStates} states, ${cf.omittedProbes} omitted probes.`);
   for (const [metric, distribution] of Object.entries(report.passiveStoryDistribution.metrics)) {
     if (!distribution) continue;
     lines.push(`  ${metric.padEnd(28)} min=${distribution.min} max=${distribution.max} mean=${distribution.mean.toFixed(2)}`);

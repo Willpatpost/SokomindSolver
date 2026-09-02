@@ -3,10 +3,16 @@ import type { TopologyFamily } from "./blueprint-types.ts";
 import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { MotifType } from "./motifs.ts";
 import type { BoxTypingMode } from "./puzzle-forge.ts";
-import type { PassiveStorySummary } from "./passive-story-analysis.ts";
+import type { PassiveStorySummary, PassiveStoryProfile } from "./passive-story-analysis.ts";
+import type { StoryDiversityProfile, StoryCatalogDiversity, StorySelectionReport } from "./story-diversity.ts";
+import type { StoryAwareTypingVerification, StoryAwareTypingPlan } from "./story-aware-typing.ts";
+import type { MechanismConstructionPlan } from "./mechanism-construction.ts";
+import type { SolutionStep } from "../../../solver/contracts.ts";
+import type { CounterfactualStoryProfile } from "./counterfactual-analysis.ts";
+import type { StoryQualityReport } from "./story-quality-policy.ts";
 
 export const CATALOG_GENERATOR_VERSION = "4.2.0" as const;
-export const REVIEW_CATALOG_SCHEMA_VERSION = 1 as const;
+export const REVIEW_CATALOG_SCHEMA_VERSION = 2 as const;
 
 export interface GeneratedPuzzleManifestEntry {
   readonly id: string;
@@ -61,6 +67,13 @@ export interface GeneratedPuzzleManifest {
 export interface ReviewCandidatePack {
   readonly id: string;
   readonly ascii: string;
+  /** Exact final rows, separate from the annotated ASCII report. */
+  readonly rows?: readonly string[];
+  readonly solutionSteps?: readonly SolutionStep[];
+  readonly storyAwareTypingPlan?: StoryAwareTypingPlan;
+  readonly mechanismConstructionPlan?: MechanismConstructionPlan;
+  readonly storyDiversity?: StoryDiversityProfile;
+  readonly storyEvidence?: PassiveStoryProfile;
   readonly difficulty: Difficulty;
   readonly intendedDifficulty: Difficulty;
   readonly classifiedDifficulty: Difficulty;
@@ -88,6 +101,7 @@ export interface ReviewCandidatePack {
   // Quality-gate evidence
   readonly qualityPassed: boolean;
   readonly qualityReasons: readonly string[];
+  readonly storyQuality?: StoryQualityReport;
   readonly qualityPurposefulGeometry: number;
   readonly qualityInteraction: number;
   readonly qualityCausalDepth: number;
@@ -117,6 +131,8 @@ export interface ReviewCandidatePack {
   readonly storyAwareTypingRealized?: number;
   readonly storyAwareTypingPassed?: boolean;
   readonly storyAwareTypingMissing?: readonly string[];
+  readonly storyAwareTypingVerification?: StoryAwareTypingVerification;
+  readonly counterfactualStory?: CounterfactualStoryProfile;
   readonly counterfactualEdges?: number;
   readonly counterfactualTotal?: number;
   // V4 difficulty
@@ -133,7 +149,7 @@ export interface ReviewCandidatePack {
   readonly temporaryGoalVacancies?: number;
   readonly estimatedDependencyDepth?: number;
   readonly goalOrderConstraints?: number;
-  // Passive solution-story evidence (review-only; never an acceptance input)
+  // Measured solution-story evidence; Phase 7 also uses it for catalog curation.
   readonly passiveStory?: PassiveStorySummary;
   readonly storyExplanations?: readonly string[];
 }
@@ -142,6 +158,7 @@ export interface ReviewCatalogTierSummary {
   readonly target: number;
   readonly actual: number;
   readonly candidates: readonly ReviewCandidatePack[];
+  readonly storyDiversity?: StoryCatalogDiversity;
 }
 
 export interface ReviewCatalog {
@@ -151,4 +168,6 @@ export interface ReviewCatalog {
   readonly qualityPreset?: string;
   readonly tierFilter?: string;
   readonly tierSummaries: Record<string, ReviewCatalogTierSummary>;
+  readonly storyDiversity?: StoryCatalogDiversity;
+  readonly curationReports?: Readonly<Record<string, StorySelectionReport>>;
 }

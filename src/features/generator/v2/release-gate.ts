@@ -24,6 +24,11 @@ import type {
 import { REVIEW_CATALOG_SCHEMA_VERSION } from "./catalog-manifest-types.ts";
 import { QUALITY_FLOORS } from "./quality-gate.ts";
 import { classifyDifficultyByBoxCount } from "./difficulty-model.ts";
+import { checkStoryQualityForRelease } from "./story-quality-policy.ts";
+import {
+  checkStoryDiversityForRelease, summarizeStoryDiversity, storyDiversityLimits,
+  type StoryCatalogDiversity,
+} from "./story-diversity.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -78,6 +83,7 @@ export const DEFAULT_RELEASE_GATE_CONFIG: ReleaseGateConfig = {
 // ---------------------------------------------------------------------------
 
 export interface ReleaseGateVerdict {
+  readonly storyDiversity?: StoryCatalogDiversity;
   /** True only if every check passed. */
   readonly passed: boolean;
   /** Hard failures -- any of these blocks release. */
@@ -436,8 +442,18 @@ export function checkReleaseGate(
   }
 
   // ---- 4. Quality and mechanism evidence ----
+  const storyPacks: ReviewCandidatePack[] = [];
   for (const pack of allPacks) {
     const boxCountTier = classifyDifficultyByBoxCount(pack.boxCount);
+    const storyErrors = checkStoryQualityForRelease(pack.storyQuality, pack);
+    for (const error of storyErrors) {
+      errors.push(`Puzzle "${pack.id}": ${error}`);
+    }
+    if (storyErrors.length === 0) {
+      const diversityErrors = checkStoryDiversityForRelease(pack.storyDiversity, pack.rows, pack.storyQuality!, pack.passiveStory);
+      for (const error of diversityErrors) errors.push(`Puzzle "${pack.id}": ${error}`);
+      if (diversityErrors.length === 0) storyPacks.push(pack);
+    }
     if (boxCountTier === "tutorial") {
       errors.push(`Puzzle "${pack.id}": Tutorial puzzles must not be generator-produced`);
     }
@@ -559,14 +575,8 @@ export function checkReleaseGate(
           `Puzzle "${pack.id}": missing mechanism evidence: ${pack.mechanismEvidenceMissing!.join(", ")}`,
         );
       }
-      if (
-        (pack.classifiedDifficulty === "expert" || pack.classifiedDifficulty === "master") &&
-        ((pack.counterfactualTotal ?? 0) <= 0 || (pack.counterfactualEdges ?? 0) <= 0)
-      ) {
-        errors.push(
-          `Puzzle "${pack.id}": hard-tier mechanism claim lacks counterfactual evidence`,
-        );
-      }
+      // Legacy structural counters are not bounded-search proofs. The current
+      // story policy checks realized mechanisms without penalizing unknown probes.
     }
   }
 
@@ -646,12 +656,32 @@ export function checkReleaseGate(
     modeConcentration,
   };
 
+  // Recompute from verified packs rather than trusting cached catalog summaries.
+  const storyDiversity = summarizeStoryDiversity(storyPacks.map((pack) => ({ id: pack.id, profile: pack.storyDiversity })));
+  for (const ids of storyDiversity.cloneGroups) errors.push(`Label-insensitive layout clones: ${ids.join(", ")}`);
+  if (storyDiversity.measured > 0 && storyDiversity.missingFamilies.length > 0) {
+    warnings.push(`Story coverage gaps: ${storyDiversity.missingFamilies.join(", ")}`);
+  }
+  for (const tier of Object.keys(catalog.tierSummaries)) {
+    const packs = storyPacks.filter((pack) => pack.classifiedDifficulty === tier);
+    const measured = summarizeStoryDiversity(packs.map((pack) => ({ id: pack.id, profile: pack.storyDiversity })));
+    // Review concentration in what would actually ship, not the unfilled target.
+    const limits = storyDiversityLimits(packs.length);
+    if (Object.values(measured.storyCounts).some((count) => count > limits.storyLimit)) {
+      warnings.push(`Tier "${tier}": story concentration exceeds ${limits.storyLimit} per story basket`);
+    }
+    if (Object.values(measured.visualCounts).some((count) => count > limits.visualLimit)) {
+      warnings.push(`Tier "${tier}": visual concentration exceeds ${limits.visualLimit} per wall/floor silhouette`);
+    }
+  }
+
   return {
     passed: errors.length === 0,
     errors,
     warnings,
     tierCoverage,
     diversity,
+    storyDiversity,
     totalPuzzles,
   };
 }
@@ -690,6 +720,12 @@ export function formatReleaseVerdict(verdict: ReleaseGateVerdict): string {
   lines.push(`  Distinct box counts: ${verdict.diversity.distinctBoxCounts}`);
   lines.push(`  Topology concentration: ${(verdict.diversity.topologyConcentration * 100).toFixed(0)}%`);
   lines.push(`  Mode concentration: ${(verdict.diversity.modeConcentration * 100).toFixed(0)}%`);
+  if (verdict.storyDiversity) {
+    lines.push(`  Distinct story baskets: ${Object.keys(verdict.storyDiversity.storyCounts).length}`);
+    lines.push(`  Distinct visual layouts: ${Object.keys(verdict.storyDiversity.visualCounts).length}`);
+    lines.push(`  Story coverage gaps: ${verdict.storyDiversity.missingFamilies.join(", ") || "none"}`);
+    lines.push(`  Label-insensitive clone groups: ${verdict.storyDiversity.cloneGroups.length}`);
+  }
   lines.push("");
 
   // Errors
