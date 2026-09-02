@@ -47,7 +47,7 @@ export function syntheticStoryReport(
   return {
     policyVersion: STORY_QUALITY_POLICY_VERSION, tier,
     requiredStoryFamilies: DEFAULT_STORY_QUALITY_POLICY.minStoryFamilies[tier], measurements,
-    passed: true, violations: [],
+    passed: true, violations: [], familyQualityScore: 1,
     counterfactual: { available: false, necessary: 0, optional: 0, recoverable: 0,
       delayedFalseStarts: 0, unknown: 0, omitted: 0 },
   };
