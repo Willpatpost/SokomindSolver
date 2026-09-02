@@ -129,6 +129,21 @@ export function verifyPromotionBundle(bundle: PromotionBundle, config?: ReleaseG
       if (!pack.storyEvidence || !isDeepStrictEqual(serializedPassive, { ...pack.storyEvidence, puzzleId: "" })) {
         errors.push(`${entry.id}: replayed story landmarks differ from review`);
       }
+      if (pack.counterfactualStory && pack.counterfactualStory.boardHash !== hash) {
+        errors.push(`${entry.id}: counterfactual evidence boardHash does not match puzzle`);
+      }
+      if (pack.storyQuality && pack.storyQuality.measurements.boardHash !== hash) {
+        errors.push(`${entry.id}: recorded story quality boardHash does not match puzzle`);
+      }
+      if (pack.storyQuality && !isDeepStrictEqual(pack.storyQuality.measurements.families, quality.measurements.families)) {
+        errors.push(`${entry.id}: recorded story families differ from replayed families`);
+      }
+      if (pack.storyQuality && pack.storyQuality.measurements.constructionRealized !== quality.measurements.constructionRealized) {
+        errors.push(`${entry.id}: recorded construction realization differs from replayed`);
+      }
+      if (pack.storyQuality && pack.storyQuality.passed !== quality.passed) {
+        errors.push(`${entry.id}: recorded story quality verdict differs from replayed verdict`);
+      }
     } catch (error) {
       errors.push(`${record(entry) ? entry.id : "entry"}: malformed replay evidence (${error instanceof Error ? error.message : String(error)})`);
     }

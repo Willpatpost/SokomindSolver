@@ -119,7 +119,9 @@ export function storyDiversityLimits(target: number, policy = DEFAULT_STORY_DIVE
 }
 
 /** Greedy coverage + farthest-first selection among already qualified puzzles.
- * Limits remain in force for small pools and shortfalls; there is no refill pass.
+ * When the strict pass leaves a shortfall, a backfill pass relaxes story and
+ * visual caps (but not layout-clone exclusions) to prefer filling the target
+ * over discarding qualified candidates.
  */
 export function selectStoryDiverse<T>(
   entries: readonly StorySelectionEntry<T>[], target: number,
@@ -134,6 +136,7 @@ export function selectStoryDiverse<T>(
   const visuals = new Map<string, number>();
   const layouts = new Map<string, string>();
   const covered = new Set<StoryQualityFamily>();
+  const softCapped: StorySelectionEntry<T>[] = [];
   const blocked = (entry: StorySelectionEntry<T>): StorySelectionDecision | undefined => {
     const p = entry.profile;
     if (!p) return { id: entry.id, reason: "missing-story-evidence" };
@@ -144,14 +147,27 @@ export function selectStoryDiverse<T>(
     if (additionalAllowance && !additionalAllowance(entry, selected)) return { id: entry.id, reason: "metadata-cap" };
     return undefined;
   };
+  const selectEntry = (entry: StorySelectionEntry<T>) => {
+    const p = entry.profile!;
+    selected.push(entry);
+    decisions.push({ id: entry.id, reason: "selected" });
+    layouts.set(p.layoutKey, entry.id);
+    stories.set(p.storySignature, (stories.get(p.storySignature) ?? 0) + 1);
+    visuals.set(p.visualKey, (visuals.get(p.visualKey) ?? 0) + 1);
+    p.families.forEach((family) => covered.add(family));
+  };
   while (pending.length > 0) {
     for (let i = pending.length - 1; i >= 0; i--) {
       const reason = blocked(pending[i]);
-      if (reason) { decisions.push(reason); pending.splice(i, 1); }
+      if (reason) {
+        if (reason.reason === "story-cap" || reason.reason === "visual-cap") {
+          softCapped.push(pending[i]);
+        }
+        decisions.push(reason);
+        pending.splice(i, 1);
+      }
     }
     if (pending.length === 0 || selected.length >= target) break;
-    // Start with the best qualified rank. Later choices favor new experiences,
-    // not merely bigger numbers in the same story family.
     let bestIndex = 0;
     let bestScore = -Infinity;
     for (let i = 0; i < pending.length; i++) {
@@ -162,13 +178,24 @@ export function selectStoryDiverse<T>(
       if (score > bestScore) { bestIndex = i; bestScore = score; }
     }
     const [entry] = pending.splice(bestIndex, 1);
-    const p = entry.profile!;
-    selected.push(entry);
-    decisions.push({ id: entry.id, reason: "selected" });
-    layouts.set(p.layoutKey, entry.id);
-    stories.set(p.storySignature, (stories.get(p.storySignature) ?? 0) + 1);
-    visuals.set(p.visualKey, (visuals.get(p.visualKey) ?? 0) + 1);
-    p.families.forEach((family) => covered.add(family));
+    selectEntry(entry);
+  }
+  // Backfill: when the strict pass left a shortfall, relax story/visual caps
+  // but keep layout-clone exclusions. Prefer candidates with the most novel
+  // families among the soft-capped pool.
+  if (selected.length < target && softCapped.length > 0) {
+    const selectedIds = new Set(selected.map((entry) => entry.id));
+    const backfill = softCapped
+      .filter((entry) => !selectedIds.has(entry.id) && !layouts.has(entry.profile!.layoutKey))
+      .sort((a, b) => a.rank - b.rank || compareText(a.id, b.id));
+    for (const entry of backfill) {
+      if (selected.length >= target) break;
+      if (layouts.has(entry.profile!.layoutKey)) continue;
+      const decisionIndex = decisions.findIndex((d) => d.id === entry.id &&
+        (d.reason === "story-cap" || d.reason === "visual-cap"));
+      if (decisionIndex >= 0) decisions.splice(decisionIndex, 1);
+      selectEntry(entry);
+    }
   }
   pending.forEach((entry) => decisions.push({ id: entry.id, reason: "quota" }));
   decisions.sort((a, b) => compareText(a.id, b.id));

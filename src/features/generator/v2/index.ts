@@ -560,10 +560,11 @@ export type {
 
 export {
   assessStoryQuality, assessCandidateQuality, storyQualityViolations, checkStoryQualityForRelease,
-  DEFAULT_STORY_QUALITY_POLICY, STORY_QUALITY_POLICY_VERSION, STORY_QUALITY_FAMILIES,
+  DEFAULT_STORY_QUALITY_POLICY, DEFAULT_FAMILY_WEIGHTS, DEFAULT_REQUIRED_FAMILY_PRESENCE,
+  STORY_QUALITY_POLICY_VERSION, STORY_QUALITY_FAMILIES, STORY_FAMILY_GROUPS,
 } from "./story-quality-policy.ts";
 export type {
-  StoryQualityInput, StoryQualityPolicy, StoryQualityFamily, StoryBoxParticipation,
+  StoryQualityInput, StoryQualityPolicy, StoryQualityFamily, StoryFamilyGroup, StoryBoxParticipation,
   StoryQualityMeasurements, StoryQualityReport, StoryQualityRejectionCode, StoryQualityViolation,
 } from "./story-quality-policy.ts";
 

@@ -384,12 +384,33 @@ function boxBenefitsBetween(
     push.boxId !== reversal.boxId);
   const pushedBetween = new Set(intervening.map((push) => push.boxId));
   const benefited = new Set<number>(reversal.enabledBoxIds.filter((id) => pushedBetween.has(id)));
+
+  const displacedCells = new Set<string>();
+  const displacedBoxPushes = trace.pushes.filter((push) =>
+    push.boxId === reversal.boxId &&
+    push.pushIndex >= reversal.pushIndex &&
+    push.pushIndex <= recoveryPushIndex);
+  for (const push of displacedBoxPushes) {
+    displacedCells.add(cellKey(push.from));
+    displacedCells.add(cellKey(push.to));
+    displacedCells.add(cellKey(push.keeperSupport));
+  }
+
   for (const push of intervening) {
+    if (benefited.has(push.boxId)) continue;
     const box = boxById.get(push.boxId);
     if (!box?.finalGoalId) continue;
     const before = distanceToGoal(distances, box.finalGoalId, push.from);
     const after = distanceToGoal(distances, box.finalGoalId, push.to);
-    if (after < before || push.toGoalMatched) benefited.add(push.boxId);
+    if (after >= before && !push.toGoalMatched) continue;
+    const sharesCell = displacedCells.has(cellKey(push.from)) ||
+      displacedCells.has(cellKey(push.to)) ||
+      displacedCells.has(cellKey(push.keeperSupport));
+    const causallyLinked = sharesCell ||
+      push.enabledBoxIds.includes(reversal.boxId) ||
+      push.disabledBoxIds.includes(reversal.boxId) ||
+      reversal.disabledBoxIds.includes(push.boxId);
+    if (causallyLinked) benefited.add(push.boxId);
   }
   return uniqueSorted([...benefited]);
 }

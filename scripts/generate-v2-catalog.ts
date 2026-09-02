@@ -45,6 +45,8 @@ import {
   formatReviewSummary,
   checkReleaseGate,
   formatReleaseVerdict,
+  summarizePassiveStory,
+  buildStoryDiversityProfile,
   type ReviewCandidatePack,
   CATALOG_GENERATOR_VERSION,
 } from "../src/features/generator/v2/index.ts";
@@ -654,6 +656,21 @@ function buildManifest(
       solversSucceeded: cc?.finalistEval?.solversSucceeded,
       solverAgreement: cc?.finalistEval?.solverAgreement,
       avgExpandedStates: cc?.finalistEval?.avgExpandedStates,
+      ...(() => {
+        const passiveSummary = cc?.candidate.passiveStory
+          ? summarizePassiveStory(cc.candidate.passiveStory) : undefined;
+        const diversity = cc ? buildStoryDiversityProfile(
+          entry.rows, cc.candidate.qualityProfile?.story, passiveSummary,
+        ) : undefined;
+        return {
+          passiveStory: passiveSummary,
+          storyFamilies: cc?.candidate.qualityProfile?.story?.measurements.families,
+          storyQualityPassed: cc?.candidate.qualityProfile?.story?.passed,
+          familyQualityScore: cc?.candidate.qualityProfile?.story?.familyQualityScore,
+          storySignature: diversity?.storySignature,
+          pacing: diversity?.pacing,
+        };
+      })(),
     };
   });
 

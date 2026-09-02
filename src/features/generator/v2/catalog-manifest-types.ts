@@ -9,7 +9,7 @@ import type { StoryAwareTypingVerification, StoryAwareTypingPlan } from "./story
 import type { MechanismConstructionPlan } from "./mechanism-construction.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { CounterfactualStoryProfile } from "./counterfactual-analysis.ts";
-import type { StoryQualityReport } from "./story-quality-policy.ts";
+import type { StoryQualityReport, StoryQualityFamily } from "./story-quality-policy.ts";
 
 export const CATALOG_GENERATOR_VERSION = "4.2.0" as const;
 export const REVIEW_CATALOG_SCHEMA_VERSION = 2 as const;
@@ -48,6 +48,12 @@ export interface GeneratedPuzzleManifestEntry {
   readonly solversSucceeded?: number;
   readonly solverAgreement?: boolean;
   readonly avgExpandedStates?: number;
+  readonly passiveStory?: PassiveStorySummary;
+  readonly storyFamilies?: readonly StoryQualityFamily[];
+  readonly storyQualityPassed?: boolean;
+  readonly familyQualityScore?: number;
+  readonly storySignature?: string;
+  readonly pacing?: string;
 }
 
 export interface GeneratedPuzzleManifest {

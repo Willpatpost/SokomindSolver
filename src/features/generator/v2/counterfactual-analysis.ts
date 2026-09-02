@@ -24,8 +24,8 @@ export const DEFAULT_COUNTERFACTUAL_BUDGET: CounterfactualBudget = Object.freeze
 /** "solved" means the query has a witness; freeze-enabler only asks for a target push. */
 export type CounterfactualOutcome = "solved" | "exhausted" | "unknown";
 export type CounterfactualProbeKind = "alternative-push" | "preserve-goal" | "freeze-enabler";
-export type CounterfactualClassification = "recoverable-alternative" | "delayed-false-start"
-  | "immediate-dead-end" | "dead-end" | "necessary" | "optional" | "unknown";
+export type CounterfactualClassification = "recoverable-alternative" | "reconvergent-detour"
+  | "delayed-false-start" | "immediate-dead-end" | "dead-end" | "necessary" | "optional" | "unknown";
 
 export interface CounterfactualState {
   readonly robot: TracePosition;
@@ -66,6 +66,7 @@ export interface CounterfactualStoryProfile {
   readonly omittedProbes: number;
   readonly expandedStates: number;
   readonly recoverableAlternatives: number;
+  readonly reconvergentDetours: number;
   readonly delayedFalseStarts: number;
   readonly immediateDeadEnds: number;
   readonly necessaryDependencies: number;
@@ -207,6 +208,7 @@ interface SearchResult {
   alternativeBoxContinuationPushes: number;
   continuationWitness: readonly TracePushOption[];
   witness: readonly TracePushOption[];
+  finalState?: CounterfactualState;
 }
 
 function search(
@@ -229,11 +231,13 @@ function search(
     outcome: CounterfactualOutcome,
     stopReason: SearchResult["stopReason"],
     witness: readonly TracePushOption[] = [],
+    finalState?: CounterfactualState,
   ): SearchResult => ({
     outcome, stopReason, expandedStates, visitedStates: seen.size,
     nonDeadContinuationPushes: continuationDepth,
     alternativeBoxContinuationPushes: nodes[deepestNode].alternativeBoxPushes,
     continuationWitness: continuationDepth > 0 ? witnessTo(deepestNode) : [], witness,
+    finalState,
   });
   const stateKey = (state: CounterfactualState) => {
     const reachable = floodKeeperReachable(grid, state.robot, new Set(state.boxes.map(key)));
@@ -275,8 +279,7 @@ function search(
     if (interruption) return result("unknown", interruption);
     const node = nodes[head];
     if (solved(node.state)) {
-      if (probe.kind !== "freeze-enabler") return result("solved", "witness", witnessTo(head));
-      // Gameplay ends at a solved state; a local witness cannot push afterward.
+      if (probe.kind !== "freeze-enabler") return result("solved", "witness", witnessTo(head), node.state);
       continue;
     }
     if (expandedStates >= budget.maxStatesPerProbe) return result("unknown", "state-budget");
@@ -314,10 +317,22 @@ function search(
   return frontierTruncated ? result("unknown", "state-budget") : result("exhausted", "exhausted");
 }
 
-function classification(probe: Probe, result: SearchResult, minDelay: number): CounterfactualClassification {
+function classification(
+  probe: Probe, result: SearchResult, minDelay: number,
+  trace: CanonicalSolutionTrace,
+): CounterfactualClassification {
   if (result.outcome === "unknown") return "unknown";
   if (probe.kind !== "alternative-push") return result.outcome === "solved" ? "optional" : "necessary";
-  if (result.outcome === "solved") return "recoverable-alternative";
+  if (result.outcome === "solved") {
+    if (result.finalState) {
+      const sameAssignment = result.finalState.boxes.every((position, id) => {
+        const original = trace.boxes[id];
+        return original.finalPosition.row === position.row && original.finalPosition.column === position.column;
+      });
+      if (sameAssignment) return "reconvergent-detour";
+    }
+    return "recoverable-alternative";
+  }
   if (result.stopReason === "static-dead-square") return "immediate-dead-end";
   return probe.plausible && result.alternativeBoxContinuationPushes >= minDelay
     ? "delayed-false-start" : "dead-end";
@@ -372,7 +387,7 @@ export function analyzeCounterfactualStory(
   const total = { expanded: 0 };
   const probes = eligible.slice(0, budget.maxProbes).map((probe, index): CounterfactualProbeEvidence => {
     const result = search(grid, trace, probe, distances, budget, total, interrupted);
-    const label = classification(probe, result, budget.minDelayedPushes);
+    const label = classification(probe, result, budget.minDelayedPushes, trace);
     return Object.freeze({
       ...probe, ...result, id: `counterfactual-${index}`, classification: label,
       explanation: explain(probe, result, label),
@@ -386,7 +401,8 @@ export function analyzeCounterfactualStory(
     version: 1, boardHash: trace.boardHash, budget, probes: Object.freeze(probes),
     eligibleProbes: eligible.length, omittedProbes: eligible.length - probes.length,
     expandedStates: total.expanded,
-    recoverableAlternatives: count("recoverable-alternative"), delayedFalseStarts: count("delayed-false-start"),
+    recoverableAlternatives: count("recoverable-alternative"), reconvergentDetours: count("reconvergent-detour"),
+    delayedFalseStarts: count("delayed-false-start"),
     immediateDeadEnds: count("immediate-dead-end"), necessaryDependencies: count("necessary"),
     optionalDependencies: count("optional"), unknownProbes: count("unknown"),
   });

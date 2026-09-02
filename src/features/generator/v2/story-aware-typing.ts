@@ -202,6 +202,7 @@ function buildTargetPlans(
   const allGoals = trace.goals.map((goal) => goal.id);
   const allStrongPairs = strongStoryPairs(trace, story);
   if (allStrongPairs.length === 0) return null;
+  const globalAmbiguityWitnesses = ambiguityWitnesses(trace, story, new Set(allBoxes));
   const targets: StoryAwareTypingTargetPlan[] = [Object.freeze({
     targetId: "global-story",
     mechanismType: "global",
@@ -210,7 +211,7 @@ function buildTargetPlans(
     minTyped: minKind,
     minGeneric: minKind,
     requireStrongInteraction: true,
-    genericWitnesses: Object.freeze([]),
+    genericWitnesses: Object.freeze(globalAmbiguityWitnesses),
     oppositionRequirements: Object.freeze([Object.freeze({
       id: "global-story:causal-or-ordering",
       pairs: allStrongPairs,

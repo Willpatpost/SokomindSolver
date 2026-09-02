@@ -1320,12 +1320,9 @@ async function completeCandidateFromBlueprint(
     return { ok: false, reason: structuralGateResult, solverCalls };
   }
 
-  const counterfactualStory = evalResult.trace
-    ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
-    : undefined;
   const qualityProfile = assessCandidateQuality({
     puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
-    counterfactualStory, construction: rawResult.mechanismConstruction,
+    construction: rawResult.mechanismConstruction,
     constructionRequired: mode === "mechanism", typing: storyAwareTyping,
   }, config.storyQualityPolicy);
   if (!qualityProfile.passed) {
@@ -1334,6 +1331,10 @@ async function completeCandidateFromBlueprint(
       solverCalls, qualityProfile,
     };
   }
+
+  const counterfactualStory = evalResult.trace
+    ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
+    : undefined;
 
   // Construct provenance
   const provGrid = parseRowsToGrid(puzzle.rows);
@@ -2106,13 +2107,9 @@ async function runForgeFlat(
       counterfactualTotal,
     };
 
-    const counterfactualStory = evalResult.trace
-      ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
-      : undefined;
-    if (counterfactualStory) collector.recordCounterfactualStory(counterfactualStory);
     const qualityProfile = assessCandidateQuality({
       puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
-      counterfactualStory, construction: raw.result.mechanismConstruction,
+      construction: raw.result.mechanismConstruction,
       constructionRequired: mode === "mechanism", typing: storyAwareTyping,
     }, config.storyQualityPolicy);
     collector.recordQualityAssessment(seed, qualityProfile);
@@ -2123,6 +2120,12 @@ async function runForgeFlat(
       continue;
     }
     collector.recordQualityPassed();
+
+    const counterfactualStory = evalResult.trace
+      ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
+      : undefined;
+    if (counterfactualStory) collector.recordCounterfactualStory(counterfactualStory);
+
     validCandidates.push({
       puzzle: { ...puzzle, id: `forge-${seed}` },
       provenance,

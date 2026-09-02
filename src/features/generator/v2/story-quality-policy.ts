@@ -10,9 +10,11 @@ import type { CanonicalSolutionTrace } from "./solution-trace.ts";
 import { verifyStoryAwareTyping, type StoryAwareTypingPlan } from "./story-aware-typing.ts";
 import { strongStoryPairs } from "./story-interaction-graph.ts";
 import {
-  DEFAULT_STORY_QUALITY_POLICY, STORY_QUALITY_FAMILIES, STORY_QUALITY_POLICY_VERSION,
+  DEFAULT_STORY_QUALITY_POLICY, DEFAULT_FAMILY_WEIGHTS, DEFAULT_REQUIRED_FAMILY_PRESENCE,
+  STORY_QUALITY_FAMILIES, STORY_QUALITY_POLICY_VERSION, STORY_FAMILY_GROUPS,
   type StoryQualityPolicy, type StoryQualityFamily, type StoryQualityMeasurements,
-  type StoryQualityReport, type StoryQualityViolation, type StoryQualityRejectionCode, type StoryBoxParticipation,
+  type StoryQualityReport, type StoryQualityViolation, type StoryQualityRejectionCode,
+  type StoryBoxParticipation,
 } from "./story-quality-types.ts";
 import { isBoxChar } from "./tile-semantics.ts";
 
@@ -35,6 +37,33 @@ function validatePolicy(policy: StoryQualityPolicy): void {
       throw new Error(`Invalid story quality policy for ${tier}`);
     }
   }
+  if (policy.familyWeights) {
+    for (const family of STORY_QUALITY_FAMILIES) {
+      const weight = policy.familyWeights[family];
+      if (!Number.isFinite(weight) || weight < 0) {
+        throw new Error(`Invalid family weight for ${family}`);
+      }
+    }
+  }
+  if (policy.requiredFamilyPresence) {
+    const validGroups: readonly string[] = Object.keys(STORY_FAMILY_GROUPS);
+    for (const tier of Object.keys(DEFAULT_STORY_QUALITY_POLICY.minStoryFamilies) as Difficulty[]) {
+      const groups = policy.requiredFamilyPresence[tier];
+      if (!Array.isArray(groups) || groups.some((group) => !validGroups.includes(group))) {
+        throw new Error(`Invalid required family presence for ${tier}`);
+      }
+    }
+  }
+}
+
+function computeFamilyQualityScore(
+  families: readonly StoryQualityFamily[],
+  weights: Readonly<Record<StoryQualityFamily, number>>,
+): number {
+  const maxScore = STORY_QUALITY_FAMILIES.reduce((sum, family) => sum + weights[family], 0);
+  if (maxScore === 0) return 0;
+  const score = families.reduce((sum, family) => sum + weights[family], 0);
+  return score / maxScore;
 }
 
 /** Shared rule implementation for live evaluation and release-time rechecking. */
@@ -64,6 +93,13 @@ export function storyQualityViolations(
   const familyCount = new Set(m.families).size;
   if (familyCount < policy.minStoryFamilies[tier]) {
     reject("story-feature-variety", `${tier} needs ${policy.minStoryFamilies[tier]} distinct story families; observed ${familyCount}.`);
+  }
+  const requiredGroups = (policy.requiredFamilyPresence ?? DEFAULT_REQUIRED_FAMILY_PRESENCE)[tier];
+  const familySet = new Set(m.families);
+  for (const group of requiredGroups) {
+    if (!STORY_FAMILY_GROUPS[group].some((family) => familySet.has(family))) {
+      reject("story-family-progression", `${tier} requires at least one ${group} family (${STORY_FAMILY_GROUPS[group].join(", ")}).`);
+    }
   }
   if (!m.constructionVerified || (m.constructionRequired && m.constructionTargets === 0) ||
     m.constructionRealized !== m.constructionTargets || m.missingConstructionTargets.length > 0) {
@@ -137,10 +173,12 @@ export function assessStoryQuality(
   const violations = storyQualityViolations(measurements, policy);
   const cf = input.counterfactualStory?.boardHash === hash ? input.counterfactualStory : undefined;
   const tier = classifyDifficultyByBoxCount(boxCount);
+  const weights = policy.familyWeights ?? DEFAULT_FAMILY_WEIGHTS;
+  const familyQualityScore = computeFamilyQualityScore(measurements.families, weights);
   return Object.freeze({
     policyVersion: STORY_QUALITY_POLICY_VERSION, tier,
     requiredStoryFamilies: policy.minStoryFamilies[tier], measurements,
-    passed: violations.length === 0, violations,
+    passed: violations.length === 0, violations, familyQualityScore,
     counterfactual: Object.freeze({
       available: cf !== undefined, necessary: cf?.necessaryDependencies ?? 0,
       optional: cf?.optionalDependencies ?? 0, recoverable: cf?.recoverableAlternatives ?? 0,

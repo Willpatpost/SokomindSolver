@@ -315,14 +315,16 @@ function evidenceForKind(
       result.push(reference(kind, index, boxes));
     });
   } else if (kind === "multi-chain-merge") {
+    const mergeRooms = new Set<string>();
     story.goalRoomPacking.evidence.forEach((item, index) => {
       const placements = item.placements.filter((placement) => relevantGoals.has(placement.goalId));
       if (!placements.some((deeper) => placements.some((shallower) =>
         deeper.depthFromEntrance > shallower.depthFromEntrance &&
         deeper.completionPushIndex < shallower.completionPushIndex))) return;
+      mergeRooms.add(item.roomId);
       result.push(reference(kind, index, placements.map((placement) => placement.boxId), placements.map((placement) => placement.goalId), placements.map((placement) => placement.completionPushIndex), [item.roomId]));
     });
-    if (result.length < 2) result.length = 0;
+    if (result.length < 2 || mergeRooms.size > result.length) result.length = 0;
   } else {
     strongStoryPairs(trace, story).forEach((pair, index) => {
       if (!pair.every((boxId) => relevantBoxes.has(boxId)) ||
@@ -401,13 +403,17 @@ export function verifyMechanismConstruction(
     (locallyRequired.length > 0 && locallyRequired.every((result) =>
       result.observedEvidence.includes("cross-type-interaction")));
   const realizedTargetCount = targetResults.filter((result) => result.realized).length;
+  const realizedIds = new Set(targetResults.filter((result) => result.realized).map((result) => result.targetId));
+  const dependenciesSatisfied = construction.targets.every((target) =>
+    target.dependsOnTargetIds.every((depId) => realizedIds.has(depId)));
 
   return Object.freeze({
     passed:
       targetResults.length > 0 &&
       realizedTargetCount === targetResults.length &&
       boxKindMinimumsSatisfied &&
-      crossTypeInteractionSatisfied,
+      crossTypeInteractionSatisfied &&
+      dependenciesSatisfied,
     targetCount: targetResults.length,
     realizedTargetCount,
     genericBoxCount,
