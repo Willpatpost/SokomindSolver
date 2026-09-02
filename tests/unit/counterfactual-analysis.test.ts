@@ -41,7 +41,7 @@ test("counterfactual story finds recovery when the same corridor has a bypass", 
   const probe = profile.probes.find((item) => item.kind === "alternative-push" &&
     item.checkpointPushIndex === 0 && item.boxId === 0 && item.alternative?.direction === "right");
   assert.ok(probe);
-  assert.equal(probe.classification, "recoverable-alternative");
+  assert.equal(probe.classification, "reconvergent-detour");
   assert.equal(probe.outcome, "solved");
   assert.ok(probe.witness.length > 1);
 });

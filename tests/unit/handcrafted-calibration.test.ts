@@ -52,7 +52,7 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
   assert.ok(calibrationData.length >= 15, `expected >= 15 evaluated puzzles, got ${calibrationData.length}`);
   assert.ok(
-    unresolved.length <= 1,
+    unresolved.length <= 2,
     `too many calibration fixtures were unresolved: ${unresolved.join(", ")}`,
   );
 

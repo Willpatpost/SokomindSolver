@@ -203,6 +203,13 @@ function buildTargetPlans(
   const allStrongPairs = strongStoryPairs(trace, story);
   if (allStrongPairs.length === 0) return null;
   const globalAmbiguityWitnesses = ambiguityWitnesses(trace, story, new Set(allBoxes));
+  const witnessesApplicable = allBoxes.length >= minKind + 2;
+  const oppositionBoxes = new Set(allStrongPairs.flat());
+  const compatibleWitnesses = witnessesApplicable
+    ? globalAmbiguityWitnesses.filter((witness) =>
+      witness.alternativeBoxIndices.some((alt) =>
+        !oppositionBoxes.has(witness.boxIndex) || !oppositionBoxes.has(alt)))
+    : [];
   const targets: StoryAwareTypingTargetPlan[] = [Object.freeze({
     targetId: "global-story",
     mechanismType: "global",
@@ -211,7 +218,7 @@ function buildTargetPlans(
     minTyped: minKind,
     minGeneric: minKind,
     requireStrongInteraction: true,
-    genericWitnesses: Object.freeze(globalAmbiguityWitnesses),
+    genericWitnesses: Object.freeze(compatibleWitnesses),
     oppositionRequirements: Object.freeze([Object.freeze({
       id: "global-story:causal-or-ordering",
       pairs: allStrongPairs,

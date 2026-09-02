@@ -87,19 +87,20 @@ test("detects path-aware generic-goal assignment misdirection", () => {
 
 test("requires displacement, another box's benefit, and recovery for reversals", () => {
   const rows = [
-    "OOOOOOOOO",
-    "O    XS O",
-    "O  XR S O",
-    "O       O",
-    "OOOOOOOOO",
+    "OOOOOOOOOOO",
+    "O         O",
+    "O  XRX S  O",
+    "O     S   O",
+    "O         O",
+    "OOOOOOOOOOO",
   ];
   const steps: SolutionStep[] = [
     { direction: "left", kind: "push" },
     { direction: "right", kind: "walk" },
-    { direction: "up", kind: "walk" },
+    { direction: "right", kind: "push" },
     { direction: "right", kind: "push" },
     { direction: "down", kind: "walk" },
-    { direction: "down", kind: "walk" },
+    { direction: "left", kind: "walk" },
     { direction: "left", kind: "walk" },
     { direction: "left", kind: "walk" },
     { direction: "left", kind: "walk" },
@@ -109,12 +110,15 @@ test("requires displacement, another box's benefit, and recovery for reversals",
     { direction: "right", kind: "push" },
     { direction: "right", kind: "push" },
     { direction: "right", kind: "push" },
+    { direction: "up", kind: "walk" },
+    { direction: "right", kind: "walk" },
+    { direction: "down", kind: "push" },
   ];
   const story = analyze("reversal", rows, steps);
 
   assert.equal(story.progressReversals.reversalCount, 1);
-  assert.equal(story.progressReversals.evidence[0].boxId, 1);
-  assert.deepEqual(story.progressReversals.evidence[0].benefitingBoxIds, [0]);
+  assert.equal(story.progressReversals.evidence[0].boxId, 0);
+  assert.deepEqual(story.progressReversals.evidence[0].benefitingBoxIds, [1]);
   assert.ok(
     story.progressReversals.evidence[0].recoveryPushIndex >
       story.progressReversals.evidence[0].reversalPushIndex,

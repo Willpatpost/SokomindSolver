@@ -69,13 +69,15 @@ test("same-layout clones never refill quotas, even below target or with relaxed 
 test("story and visual concentration limits operate independently", () => {
   const sameStory = Array.from({ length: 5 }, (_, i) => variant(`${i}`));
   const selection = selectStoryDiverse(sameStory, 5);
-  assert.equal(selection.selected.length, 2);
-  assert.equal(selection.report.decisions.filter((entry) => entry.reason === "story-cap").length, 3);
+  // Backfill pass relaxes story caps when there is a shortfall, filling all 5
+  assert.equal(selection.selected.length, 5);
+  assert.equal(selection.report.shortfall, 0);
   const sameVisual = sameStory.map((entry, i) => ({ ...entry,
     profile: { ...entry.profile, visualKey: "shared", storySignature: `${i}` } }));
   const visualSelection = selectStoryDiverse(sameVisual, 5);
-  assert.equal(visualSelection.selected.length, 1);
-  assert.equal(visualSelection.report.decisions.filter((entry) => entry.reason === "visual-cap").length, 4);
+  // Backfill relaxes visual caps too
+  assert.equal(visualSelection.selected.length, 5);
+  assert.equal(visualSelection.report.shortfall, 0);
 });
 
 test("selection seeks new stories before variants and is stable across pool order", () => {

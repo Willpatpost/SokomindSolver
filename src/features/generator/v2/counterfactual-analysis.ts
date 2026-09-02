@@ -237,7 +237,7 @@ function search(
     nonDeadContinuationPushes: continuationDepth,
     alternativeBoxContinuationPushes: nodes[deepestNode].alternativeBoxPushes,
     continuationWitness: continuationDepth > 0 ? witnessTo(deepestNode) : [], witness,
-    finalState,
+    ...(finalState !== undefined && { finalState }),
   });
   const stateKey = (state: CounterfactualState) => {
     const reachable = floodKeeperReachable(grid, state.robot, new Set(state.boxes.map(key)));

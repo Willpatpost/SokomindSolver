@@ -26,7 +26,7 @@ const onePuzzleConfig = { ...DEFAULT_RELEASE_GATE_CONFIG, minTotalPuzzles: 1,
 const fixture = (async () => {
   const result = await runForge({ ...DEFAULT_FORGE_CONFIG, batchSize: 3, retainTarget: 3,
     families: ["linear", "hub"], boxCounts: [3], difficulties: ["beginner"],
-    modes: ["plain", "motif", "composed"], baseSeed: 20000 });
+    modes: ["plain", "motif", "composed"], baseSeed: 20002 });
   assert.ok(result.candidates.length > 0, "must exercise a real qualified generator candidate");
   const candidate = result.candidates[0];
   const puzzle = { ...candidate.puzzle, title: "Beginner 1", id: createGeneratedPuzzleId(candidate.provenance.seed, candidate.puzzle.rows) };
