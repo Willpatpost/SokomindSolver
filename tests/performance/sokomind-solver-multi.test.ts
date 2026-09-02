@@ -59,8 +59,8 @@ const PUZZLE_CASES: readonly PuzzleCase[] = [
     maxDepth: 300,
   },
   {
-    id: "box-7x7",
-    label: "advanced (box-7x7)",
+    id: "adv-gallery",
+    label: "advanced (adv-gallery)",
     maxElapsedMs: 30_000,
     maxVisited: 4_000,
     transpositionLimit: 40_000,
