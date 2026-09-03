@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { TopologyFamily, GeometryProfile, ReverseSearchProfile, FunctionalBlueprint, SolvedBlueprint } from "./blueprint-types.ts";
+import { runWorkerPool, getForgePoolSize } from "./forge-pool.ts";
 import {
   EXPERT_SEARCH_PROFILE,
   MASTER_SEARCH_PROFILE,
@@ -949,7 +952,7 @@ export function blueprintStructuralScore(bc: BlueprintCandidate): number {
  * expensive stages: reverse search, validation, tightening, typing, evaluation.
  * This is Stage C-E of the true funnel.
  */
-async function completeCandidateFromBlueprint(
+export async function completeCandidateFromBlueprint(
   bc: BlueprintCandidate,
   config: ForgeConfig,
   forcedReverseState?: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number },
@@ -2315,10 +2318,40 @@ async function runForgeFunnel(
 
   // ---- Stage C: Reverse generation + full candidate construction (expensive) ----
   // Only structural survivors proceed to the expensive stages.
+  // Dispatch across worker threads for true multi-core parallelism.
   const completedCandidates: ForgeCandidate[] = [];
 
-  for (const bc of stageB_survivors) {
-    const completion = await completeCandidateFromBlueprint(bc, config);
+  type CompletionResult =
+    | { ok: true; candidate: ForgeCandidate; solverCalls: number; rankedCandidates?: readonly ArchiveCandidate[] }
+    | { ok: false; reason: ForgeRejectionReason; solverCalls: number; qualityProfile?: PuzzleQualityProfile };
+
+  const concurrency = getForgePoolSize();
+  const useWorkers = concurrency > 1 && stageB_survivors.length > 1;
+
+  let primaryResults: { bc: BlueprintCandidate; completion: CompletionResult }[];
+
+  if (useWorkers) {
+    const workerPath = join(dirname(fileURLToPath(import.meta.url)), "forge-worker.ts");
+    const rawResults = await runWorkerPool<BlueprintCandidate, CompletionResult>(
+      workerPath,
+      stageB_survivors,
+      config,
+      concurrency,
+    );
+    primaryResults = stageB_survivors.map((bc, i) => ({ bc, completion: rawResults[i] }));
+  } else {
+    primaryResults = [];
+    for (const bc of stageB_survivors) {
+      const completion = await completeCandidateFromBlueprint(bc, config);
+      primaryResults.push({ bc, completion });
+    }
+  }
+
+  // Collect secondary tasks from ranked candidates of successful primaries
+  interface SecondaryTask { bc: BlueprintCandidate; forced: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number }; bestFp: string }
+  const secondaryTasks: SecondaryTask[] = [];
+
+  for (const { bc, completion } of primaryResults) {
     totalSolverCalls += completion.solverCalls;
 
     if (!completion.ok) {
@@ -2358,7 +2391,6 @@ async function runForgeFunnel(
 
     completedCandidates.push(completion.candidate);
 
-    // Try additional ranked candidates from the same blueprint's reverse search
     if (completion.rankedCandidates && completion.rankedCandidates.length > 0) {
       const bestBpKey = JSON.stringify(completion.rankedCandidates[0]?.candidate.boxPositions);
       const bestFp = completion.candidate.puzzle.rows.join("");
@@ -2366,24 +2398,55 @@ async function runForgeFunnel(
       for (let ri = 0; ri < maxExtra; ri++) {
         const rc = completion.rankedCandidates[ri];
         if (JSON.stringify(rc.candidate.boxPositions) === bestBpKey) continue;
-        const extra = await completeCandidateFromBlueprint(bc, config, {
-          boxPositions: rc.candidate.boxPositions,
-          robotPosition: rc.candidate.robotPosition,
-          depth: rc.candidate.depth,
+        secondaryTasks.push({
+          bc,
+          forced: { boxPositions: rc.candidate.boxPositions, robotPosition: rc.candidate.robotPosition, depth: rc.candidate.depth },
+          bestFp,
         });
-        totalSolverCalls += extra.solverCalls;
-        const extraQuality = extra.ok ? extra.candidate.qualityProfile : extra.qualityProfile;
-        if (extraQuality) collector.recordQualityAssessment(bc.seed, extraQuality);
-        if (extra.ok) {
-          const extraFp = extra.candidate.puzzle.rows.join("");
-          if (extraFp !== bestFp) {
-            completedCandidates.push(extra.candidate);
-            if (extra.candidate.passiveStory) {
-              collector.recordPassiveStory(extra.candidate.passiveStory);
-            }
-            if (extra.candidate.counterfactualStory) {
-              collector.recordCounterfactualStory(extra.candidate.counterfactualStory);
-            }
+      }
+    }
+  }
+
+  // Process secondary ranked candidates (also in parallel when possible)
+  if (secondaryTasks.length > 0) {
+    let secondaryResults: CompletionResult[];
+    if (useWorkers && secondaryTasks.length > 1) {
+      const workerPath = join(dirname(fileURLToPath(import.meta.url)), "forge-worker.ts");
+      const payloads = secondaryTasks.map((t) => ({
+        blueprint: t.bc,
+        forcedReverseState: t.forced,
+      }));
+      secondaryResults = await runWorkerPool<
+        { blueprint: BlueprintCandidate; forcedReverseState: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number } },
+        CompletionResult
+      >(
+        workerPath,
+        payloads,
+        config,
+        concurrency,
+      );
+    } else {
+      secondaryResults = [];
+      for (const t of secondaryTasks) {
+        secondaryResults.push(await completeCandidateFromBlueprint(t.bc, config, t.forced));
+      }
+    }
+
+    for (let si = 0; si < secondaryTasks.length; si++) {
+      const t = secondaryTasks[si];
+      const extra = secondaryResults[si];
+      totalSolverCalls += extra.solverCalls;
+      const extraQuality = extra.ok ? extra.candidate.qualityProfile : extra.qualityProfile;
+      if (extraQuality) collector.recordQualityAssessment(t.bc.seed, extraQuality);
+      if (extra.ok) {
+        const extraFp = extra.candidate.puzzle.rows.join("");
+        if (extraFp !== t.bestFp) {
+          completedCandidates.push(extra.candidate);
+          if (extra.candidate.passiveStory) {
+            collector.recordPassiveStory(extra.candidate.passiveStory);
+          }
+          if (extra.candidate.counterfactualStory) {
+            collector.recordCounterfactualStory(extra.candidate.counterfactualStory);
           }
         }
       }
@@ -2427,18 +2490,40 @@ async function runForgeFunnel(
   const v4Policy = config.v4EvaluatorPolicy ?? DEFAULT_V4_POLICY;
   type ScoredEntry = { c: ForgeCandidate; deepScore: number; finalist: FinalistEvaluationV4; objectives: CurationObjectives };
   const finalistEvaluated: ScoredEntry[] = [];
-  for (const c of stageE_survivors) {
-    const finalist = await evaluateFinalistV4(c.puzzle, v4Policy, c.solutionSteps);
-    const objectives = computeCurationObjectives(
-      c.evaluation,
-      finalist,
-      c.provenance.dependencyRealizationRate,
-    );
-    const deepScore = objectives.interaction + objectives.dependency +
-      objectives.decisionQuality + objectives.structuralRichness +
-      objectives.solverChallenge - objectives.tedium * 3;
 
-    finalistEvaluated.push({ c, deepScore, finalist, objectives });
+  type FinalistResult = { finalist: FinalistEvaluationV4; objectives: CurationObjectives; deepScore: number };
+
+  if (useWorkers && stageE_survivors.length > 1) {
+    const finalistWorkerPath = join(dirname(fileURLToPath(import.meta.url)), "finalist-worker.ts");
+    const payloads = stageE_survivors.map((c) => ({
+      puzzle: c.puzzle,
+      witnessSteps: c.solutionSteps,
+      evaluation: c.evaluation,
+      dependencyRealizationRate: c.provenance.dependencyRealizationRate,
+    }));
+    const rawResults = await runWorkerPool<typeof payloads[number], FinalistResult>(
+      finalistWorkerPath,
+      payloads,
+      v4Policy,
+      concurrency,
+    );
+    for (let i = 0; i < stageE_survivors.length; i++) {
+      finalistEvaluated.push({ c: stageE_survivors[i], ...rawResults[i] });
+    }
+  } else {
+    for (const c of stageE_survivors) {
+      const finalist = await evaluateFinalistV4(c.puzzle, v4Policy, c.solutionSteps);
+      const objectives = computeCurationObjectives(
+        c.evaluation,
+        finalist,
+        c.provenance.dependencyRealizationRate,
+      );
+      const deepScore = objectives.interaction + objectives.dependency +
+        objectives.decisionQuality + objectives.structuralRichness +
+        objectives.solverChallenge - objectives.tedium * 3;
+
+      finalistEvaluated.push({ c, deepScore, finalist, objectives });
+    }
   }
 
   // ---- Stage G: Hard quality qualification ----
