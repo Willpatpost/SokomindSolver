@@ -170,7 +170,7 @@ export async function evaluateFinalists(
 
 export function computeCurationObjectives(
   ev: import("./puzzle-evaluator.ts").PuzzleEvaluationVector,
-  finalist: FinalistEvaluation,
+  finalist: Pick<FinalistEvaluation, "avgExpandedStates">,
   dependencyRealizationRate?: number,
 ): CurationObjectives {
   const interaction =

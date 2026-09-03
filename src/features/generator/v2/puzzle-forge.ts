@@ -180,7 +180,7 @@ export interface ForgeConfig {
   readonly tierTighteningPolicies?: Readonly<Record<string, TierTighteningPolicy>>;
   readonly gates: ForgeAcceptanceGates;
   /** Legacy metric retained for config compatibility; story-aware curation replaces it. */
-  readonly diversityMinDistance: number;
+  readonly diversityMinDistance?: number;
   readonly baseSeed: number;
   readonly typingPolicy: BoxTypingPolicy;
   readonly geometryProfile?: GeometryProfile;
@@ -259,6 +259,33 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   },
 };
 
+export const ADVANCED_FORGE_PRESET: Partial<ForgeConfig> = {
+  boxCounts: [10, 11, 12, 13],
+  boardWidth: 18,
+  boardHeight: 18,
+  modes: ["mechanism", "motif", "composed"],
+  geometryProfile: {
+    boardWidthRange: [14, 18],
+    boardHeightRange: [14, 18],
+    minRooms: 2,
+    maxRooms: 5,
+    minRoomSize: 3,
+    maxRoomSize: 6,
+    passageWidths: [1, 2],
+    minPlayableFloor: 40,
+    maxPlayableFloor: 120,
+    minFloorCoverage: 0.20,
+    minRegions: 1,
+    minChokepoints: 1,
+  },
+  gates: {
+    ...DEFAULT_FORGE_GATES,
+    minSolutionPushes: 10,
+    maxBoxIndependenceRatio: 0.80,
+    minSolverExpandedStates: 20,
+  },
+};
+
 export const EXPERT_FORGE_PRESET: Partial<ForgeConfig> = {
   boxCounts: [14, 15, 16, 17],
   boardWidth: 22,
@@ -320,6 +347,7 @@ export const MASTER_FORGE_PRESET: Partial<ForgeConfig> = {
 export function getForgePreset(difficulty: Difficulty): Partial<ForgeConfig> {
   if (difficulty === "master") return MASTER_FORGE_PRESET;
   if (difficulty === "expert") return EXPERT_FORGE_PRESET;
+  if (difficulty === "advanced") return ADVANCED_FORGE_PRESET;
   return {};
 }
 
@@ -529,253 +557,6 @@ function sampleDimension(
   return min + Math.floor(rng() * (max - min + 1));
 }
 
-async function generateRawCandidate(
-  config: ForgeConfig,
-  seed: number,
-  family: TopologyFamily,
-  boxCount: number,
-  mode: ForgeGenerationMode,
-  difficulty: Difficulty,
-): Promise<
-  | { ok: true; result: RawGenResult }
-  | { ok: false; reason: ForgeRejectionReason }
-> {
-  const gp = config.geometryProfile;
-
-  let boardWidth = config.boardWidth;
-  let boardHeight = config.boardHeight;
-  let bpMinRooms = DEFAULT_BLUEPRINT_PARAMS.minRooms;
-  let bpMaxRooms = DEFAULT_BLUEPRINT_PARAMS.maxRooms;
-  let bpMinRoomSize = DEFAULT_BLUEPRINT_PARAMS.minRoomSize;
-  let bpMaxRoomSize = DEFAULT_BLUEPRINT_PARAMS.maxRoomSize;
-  let passageWidths: readonly (1 | 2)[] | undefined;
-
-  if (gp) {
-    const dimRng = createRng(seed);
-    boardWidth = sampleDimension(gp.boardWidthRange, dimRng);
-    boardHeight = sampleDimension(gp.boardHeightRange, dimRng);
-    bpMinRooms = gp.minRooms;
-    bpMaxRooms = gp.maxRooms;
-    bpMinRoomSize = gp.minRoomSize;
-    bpMaxRoomSize = gp.maxRoomSize;
-    passageWidths = gp.passageWidths;
-  }
-
-  const bp = generateBlueprintWithRetry(
-    {
-      ...DEFAULT_BLUEPRINT_PARAMS,
-      seed,
-      family,
-      boardWidth,
-      boardHeight,
-      minRooms: bpMinRooms,
-      maxRooms: bpMaxRooms,
-      minRoomSize: bpMinRoomSize,
-      maxRoomSize: bpMaxRoomSize,
-      passageWidths,
-    },
-    config.blueprintRetries,
-  );
-  if (!bp) return { ok: false, reason: "blueprint-failed" };
-
-  if (gp) {
-    const bpGrid = rasterizeBlueprint(bp);
-    const geoRejection = validateBlueprintGeometry(bp, bpGrid, gp);
-    if (geoRejection) return { ok: false, reason: geoRejection };
-  }
-
-  const fb = assignRoomRoles(bp, seed, boxCount);
-
-  if (mode === "composed") {
-    const result = await generateComposedPuzzle(fb, {
-      ...DEFAULT_COMPOSITION_PARAMS,
-      seed,
-      boxCount,
-      beamParams: {
-        ...DEFAULT_BEAM_PARAMS,
-        seed,
-        ...config.beamParams,
-      },
-    });
-    if (!result) return { ok: false, reason: "composition-failed" };
-    return {
-      ok: true,
-      result: {
-        puzzle: {
-          ...result.puzzle,
-          id: `forge-${seed}`,
-          difficulty,
-        },
-        dag: result.dag,
-        composedResult: result,
-        compositionType: result.dag.compositionId,
-        dependencyRealizationRate: result.realization.realizationRate,
-      },
-    };
-  }
-
-  if (mode === "motif") {
-    const motifChoice =
-      config.motifTypes[seed % config.motifTypes.length];
-    const result = await generateVerifiedMotifPuzzle(fb, {
-      seed,
-      boxCount,
-      motif: motifChoice,
-      beamParams: {
-        ...DEFAULT_BEAM_PARAMS,
-        seed,
-        ...config.beamParams,
-      },
-    });
-    if (!result) return { ok: false, reason: "motif-failed" };
-    return {
-      ok: true,
-      result: {
-        puzzle: { ...result.puzzle, id: `forge-${seed}`, difficulty },
-        hints: result.hints,
-        motifType: result.motif,
-      },
-    };
-  }
-
-  if (mode === "mechanism") {
-    const tier = config.mechanismTier ?? difficulty;
-    const isHardTier = tier === "advanced" || tier === "expert" || tier === "master";
-
-    let activeBp = fb;
-    let preSelected: MechanismType[] | undefined;
-
-    if (isHardTier) {
-      preSelected = selectTargetMechanisms(tier, boxCount, seed);
-      if (preSelected.length > 0) {
-        const geoReqs = deriveGeometryRequirements(preSelected);
-        const baseParams = {
-          ...DEFAULT_BLUEPRINT_PARAMS,
-          seed,
-          family,
-          boardWidth: config.boardWidth,
-          boardHeight: config.boardHeight,
-        };
-        const constrained = constrainBlueprintParams(baseParams, geoReqs, seed);
-        const constrainedBp = generateBlueprintWithRetry(constrained, config.blueprintRetries);
-        if (constrainedBp) {
-          activeBp = assignRoomRoles(constrainedBp, seed, boxCount);
-        }
-      }
-    }
-
-    const plan = createMechanismPlan(activeBp, tier, boxCount, seed, preSelected);
-    if (!plan) return { ok: false, reason: "composition-failed" };
-
-    const placement = placeGoalsFromPlan(activeBp, plan);
-    if (!placement) return { ok: false, reason: "goal-placement-failed" };
-    const mechanismConstruction = buildMechanismConstructionPlan(placement);
-
-    const template = toSolvedTemplate(placement.solved);
-
-    let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-
-    const searchProfile = resolveSearchProfile(config, difficulty);
-    if (searchProfile) {
-      const scoringCtx = buildScoringContext(placement.solved.blueprint, placement.solved.grid, placement.solved.goals);
-      const mechCtx = buildMechanismReverseContext(plan, scoringCtx);
-      const v4Result = reverseBeamSearchV4(placement.solved, seed, searchProfile, mechCtx);
-      if (v4Result.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty" };
-      }
-      bestCandidate = v4Result.best;
-    } else {
-      const beamParams: BeamSearchParams = {
-        ...DEFAULT_BEAM_PARAMS,
-        seed,
-        ...config.beamParams,
-      };
-      const beam = reverseBeamSearch(placement.solved, beamParams);
-      if (beam.best.depth === 0) {
-        return { ok: false, reason: "beam-search-empty" };
-      }
-      bestCandidate = beam.best;
-    }
-
-    const scrambled = {
-      template,
-      boxPositions: bestCandidate.boxPositions as Array<{ row: number; column: number }>,
-      robotPosition: bestCandidate.robotPosition,
-      reversePulls: bestCandidate.depth,
-    };
-    const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
-    const validation = validatePuzzle(puzzle);
-    if (!validation.valid) {
-      return { ok: false, reason: "validation-failed" };
-    }
-
-    return {
-      ok: true,
-      result: {
-        puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
-        dag: placement.dag,
-        compositionType: placement.dag.compositionId,
-        mechanismTypes: plan.mechanisms.map((m) => m.type),
-        mechanismPlan: plan,
-        mechanismConstruction,
-      },
-    };
-  }
-
-  const solved = placeGoals(fb, {
-    ...DEFAULT_GOAL_PARAMS,
-    seed,
-    boxCount,
-  });
-  if (!solved) return { ok: false, reason: "goal-placement-failed" };
-
-  const template = toSolvedTemplate(solved);
-
-  let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-
-  const searchProfile2 = resolveSearchProfile(config, difficulty);
-  if (searchProfile2) {
-    const v4Result = reverseBeamSearchV4(solved, seed, searchProfile2);
-    if (v4Result.best.depth === 0) {
-      return { ok: false, reason: "beam-search-empty" };
-    }
-    bestCandidate = v4Result.best;
-  } else {
-    const beamParams: BeamSearchParams = {
-      ...DEFAULT_BEAM_PARAMS,
-      seed,
-      ...config.beamParams,
-    };
-    const beam = reverseBeamSearch(solved, beamParams);
-    if (beam.best.depth === 0) {
-      return { ok: false, reason: "beam-search-empty" };
-    }
-    bestCandidate = beam.best;
-  }
-
-  const scrambled = {
-    template,
-    boxPositions: bestCandidate.boxPositions as Array<{
-      row: number;
-      column: number;
-    }>,
-    robotPosition: bestCandidate.robotPosition,
-    reversePulls: bestCandidate.depth,
-  };
-  const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
-  const validation = validatePuzzle(puzzle);
-  if (!validation.valid) {
-    return { ok: false, reason: "validation-failed" };
-  }
-
-  return {
-    ok: true,
-    result: {
-      puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Cheap blueprint generation — Stage A of true funnel (no solver)
 // ---------------------------------------------------------------------------
@@ -947,6 +728,63 @@ export function blueprintStructuralScore(bc: BlueprintCandidate): number {
   return score;
 }
 
+interface ReverseSearchAndBuildResult {
+  puzzle: PuzzleDefinition;
+  rankedCandidates?: readonly ArchiveCandidate[];
+}
+
+function runReverseSearchAndBuild(
+  solved: SolvedBlueprint,
+  config: ForgeConfig,
+  difficulty: Difficulty,
+  seed: number,
+  mechanismPlan?: MechanismPlan,
+  forcedReverseState?: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number },
+): ReverseSearchAndBuildResult | { failed: ForgeRejectionReason } {
+  const template = toSolvedTemplate(solved);
+
+  let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
+  let rankedCandidates: readonly ArchiveCandidate[] | undefined;
+
+  if (forcedReverseState) {
+    bestCandidate = forcedReverseState;
+  } else {
+    const searchProfile = resolveSearchProfile(config, difficulty);
+    if (searchProfile) {
+      let mechCtx: MechanismReverseContext | undefined;
+      if (mechanismPlan) {
+        const scoringCtx = buildScoringContext(solved.blueprint, solved.grid, solved.goals);
+        mechCtx = buildMechanismReverseContext(mechanismPlan, scoringCtx);
+      }
+      const v4Result = reverseBeamSearchV4(solved, seed, searchProfile, mechCtx);
+      if (v4Result.best.depth === 0) return { failed: "beam-search-empty" };
+      bestCandidate = v4Result.best;
+      rankedCandidates = v4Result.rankedCandidates;
+    } else {
+      const beamParams: BeamSearchParams = {
+        ...DEFAULT_BEAM_PARAMS,
+        seed,
+        ...config.beamParams,
+      };
+      const beam = reverseBeamSearch(solved, beamParams);
+      if (beam.best.depth === 0) return { failed: "beam-search-empty" };
+      bestCandidate = beam.best;
+    }
+  }
+
+  const scrambled = {
+    template,
+    boxPositions: bestCandidate.boxPositions as Array<{ row: number; column: number }>,
+    robotPosition: bestCandidate.robotPosition,
+    reversePulls: bestCandidate.depth,
+  };
+  const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
+  const validation = validatePuzzle(puzzle);
+  if (!validation.valid) return { failed: "validation-failed" };
+
+  return { puzzle: { ...puzzle, id: `forge-${seed}`, difficulty }, rankedCandidates };
+}
+
 /**
  * Complete a BlueprintCandidate into a full ForgeCandidate by running the
  * expensive stages: reverse search, validation, tightening, typing, evaluation.
@@ -1004,111 +842,28 @@ export async function completeCandidateFromBlueprint(
       hints: result.hints,
       motifType: result.motif,
     };
-  } else if (mode === "mechanism" && bc.solvedBlueprint) {
-    const template = toSolvedTemplate(bc.solvedBlueprint);
-
-    let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-    let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
-    if (forcedReverseState) {
-      bestCandidate = forcedReverseState;
-    } else {
-      const mechSearchProfile = resolveSearchProfile(config, difficulty);
-      if (mechSearchProfile) {
-        let mechCtx: MechanismReverseContext | undefined;
-        if (bc.mechanismPlan) {
-          const scoringCtx = buildScoringContext(bc.solvedBlueprint.blueprint, bc.solvedBlueprint.grid, bc.solvedBlueprint.goals);
-          mechCtx = buildMechanismReverseContext(bc.mechanismPlan, scoringCtx);
-        }
-        const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, mechSearchProfile, mechCtx);
-        if (v4Result.best.depth === 0) {
-          return { ok: false, reason: "beam-search-empty", solverCalls };
-        }
-        bestCandidate = v4Result.best;
-        v4RankedCandidates = v4Result.rankedCandidates;
-      } else {
-        const beamParams: BeamSearchParams = {
-          ...DEFAULT_BEAM_PARAMS,
-          seed,
-          ...config.beamParams,
-        };
-        const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
-        if (beam.best.depth === 0) {
-          return { ok: false, reason: "beam-search-empty", solverCalls };
-        }
-        bestCandidate = beam.best;
-      }
-    }
-
-    const scrambled = {
-      template,
-      boxPositions: bestCandidate.boxPositions as Array<{ row: number; column: number }>,
-      robotPosition: bestCandidate.robotPosition,
-      reversePulls: bestCandidate.depth,
-    };
-    const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
-    const validation = validatePuzzle(puzzle);
-    if (!validation.valid) {
-      return { ok: false, reason: "validation-failed", solverCalls };
-    }
-
-    rawResult = {
-      puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
-      dag: bc.dag,
-      compositionType: bc.compositionType,
-      mechanismTypes: bc.mechanismTypes,
-      mechanismPlan: bc.mechanismPlan,
-      mechanismConstruction: bc.mechanismConstruction,
-    };
-    v4RankedCandidatesOut = v4RankedCandidates;
   } else if (bc.solvedBlueprint) {
-    // plain mode
-    const template = toSolvedTemplate(bc.solvedBlueprint);
-
-    let bestCandidate: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number };
-    let v4RankedCandidates: readonly ArchiveCandidate[] | undefined;
-    if (forcedReverseState) {
-      bestCandidate = forcedReverseState;
-    } else {
-      const plainSearchProfile = resolveSearchProfile(config, difficulty);
-      if (plainSearchProfile) {
-        const v4Result = reverseBeamSearchV4(bc.solvedBlueprint, seed, plainSearchProfile);
-        if (v4Result.best.depth === 0) {
-          return { ok: false, reason: "beam-search-empty", solverCalls };
-        }
-        bestCandidate = v4Result.best;
-        v4RankedCandidates = v4Result.rankedCandidates;
-      } else {
-        const beamParams: BeamSearchParams = {
-          ...DEFAULT_BEAM_PARAMS,
-          seed,
-          ...config.beamParams,
-        };
-        const beam = reverseBeamSearch(bc.solvedBlueprint, beamParams);
-        if (beam.best.depth === 0) {
-          return { ok: false, reason: "beam-search-empty", solverCalls };
-        }
-        bestCandidate = beam.best;
-      }
+    const reverseResult = runReverseSearchAndBuild(
+      bc.solvedBlueprint, config, difficulty, seed,
+      mode === "mechanism" ? bc.mechanismPlan : undefined,
+      forcedReverseState,
+    );
+    if ("failed" in reverseResult) {
+      return { ok: false, reason: reverseResult.failed, solverCalls };
     }
 
-    const scrambled = {
-      template,
-      boxPositions: bestCandidate.boxPositions as Array<{ row: number; column: number }>,
-      robotPosition: bestCandidate.robotPosition,
-      reversePulls: bestCandidate.depth,
-    };
-    const puzzle = buildPuzzleFromScramble(scrambled, difficulty);
-    const validation = validatePuzzle(puzzle);
-    if (!validation.valid) {
-      return { ok: false, reason: "validation-failed", solverCalls };
-    }
-
-    rawResult = {
-      puzzle: { ...puzzle, id: `forge-${seed}`, difficulty },
-    };
-    v4RankedCandidatesOut = v4RankedCandidates;
+    rawResult = mode === "mechanism"
+      ? {
+          puzzle: reverseResult.puzzle,
+          dag: bc.dag,
+          compositionType: bc.compositionType,
+          mechanismTypes: bc.mechanismTypes,
+          mechanismPlan: bc.mechanismPlan,
+          mechanismConstruction: bc.mechanismConstruction,
+        }
+      : { puzzle: reverseResult.puzzle };
+    v4RankedCandidatesOut = reverseResult.rankedCandidates;
   } else {
-    // Should not happen — composed/motif modes handled above
     return { ok: false, reason: "blueprint-failed", solverCalls };
   }
 
@@ -1141,8 +896,11 @@ export async function completeCandidateFromBlueprint(
     }
   }
 
+  const finalGrid = parseRowsToGrid(puzzle.rows);
+  const finalMetrics = analyzeGrid(finalGrid);
+
   if (config.geometryProfile) {
-    const geoResult = validateFinalGeometry(puzzle.rows, config.geometryProfile);
+    const geoResult = validateFinalGeometryFromMetrics(finalMetrics, config.geometryProfile);
     if (geoResult) {
       return { ok: false, reason: geoResult, solverCalls };
     }
@@ -1336,12 +1094,8 @@ export async function completeCandidateFromBlueprint(
   }
 
   const counterfactualStory = evalResult.trace
-    ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
+    ? analyzeCounterfactualStory(finalGrid, evalResult.trace, config.counterfactualBudget)
     : undefined;
-
-  // Construct provenance
-  const provGrid = parseRowsToGrid(puzzle.rows);
-  const provMetrics = analyzeGrid(provGrid);
 
   const provenance: ForgeProvenance = {
     seed, family, boxCount, mode,
@@ -1353,8 +1107,8 @@ export async function completeCandidateFromBlueprint(
     dependencyRealizationRate: depRate,
     dependencyEdges: depEdges,
     dependencyRealized: depRealized,
-    playableFloor: provMetrics.totalFloor,
-    floorCoverage: provMetrics.floorUtilization,
+    playableFloor: finalMetrics.totalFloor,
+    floorCoverage: finalMetrics.floorUtilization,
     tighteningProtectedCells, preTighteningFloor, postTighteningFloor,
     mechanismTypes: rawResult.mechanismTypes,
     mechanismCount: rawResult.mechanismTypes?.length,
@@ -1497,10 +1251,10 @@ export function validateBlueprintGeometry(
   gp: GeometryProfile,
 ): ForgeRejectionReason | null {
   if (blueprint.boardWidth < gp.boardWidthRange[0] || blueprint.boardWidth > gp.boardWidthRange[1]) {
-    return "geometry-room-count";
+    return "gate-geometry";
   }
   if (blueprint.boardHeight < gp.boardHeightRange[0] || blueprint.boardHeight > gp.boardHeightRange[1]) {
-    return "geometry-room-count";
+    return "gate-geometry";
   }
   if (blueprint.rooms.length < gp.minRooms || blueprint.rooms.length > gp.maxRooms) {
     return "geometry-room-count";
@@ -1553,6 +1307,18 @@ export function validateFinalGeometry(
   return null;
 }
 
+function validateFinalGeometryFromMetrics(
+  metrics: StructuralMetrics,
+  gp: GeometryProfile,
+): ForgeRejectionReason | null {
+  if (metrics.totalFloor < gp.minPlayableFloor) return "geometry-floor-min";
+  if (gp.maxPlayableFloor !== undefined && metrics.totalFloor > gp.maxPlayableFloor) return "geometry-floor-max";
+  if (metrics.floorUtilization < gp.minFloorCoverage) return "geometry-coverage";
+  if (metrics.regionCount < gp.minRegions) return "geometry-regions";
+  if (metrics.chokepointCount < gp.minChokepoints) return "geometry-chokepoints";
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // V4 structural fingerprint for curation diversity
 // ---------------------------------------------------------------------------
@@ -1601,13 +1367,19 @@ export function curateForgeCandidates(
   quotas?: DiversityQuotas,
   policy?: StoryDiversityPolicy,
 ): { candidates: readonly ForgeCandidate[]; report: StorySelectionReport } {
+  const fpCache = new Map<ForgeCandidate, string>();
+  const fp = (c: ForgeCandidate): string => {
+    let v = fpCache.get(c);
+    if (v === undefined) { v = buildV4Fingerprint(c); fpCache.set(c, v); }
+    return v;
+  };
   const entries = candidates.map((c) => ({
     item: c,
     objectives: c.curationObjectives ?? computeCurationObjectives(
-      c.evaluation, { avgExpandedStates: c.evaluation.solverExpandedStates } as FinalistEvaluation,
+      c.evaluation, { avgExpandedStates: c.evaluation.solverExpandedStates },
       c.provenance.dependencyRealizationRate,
     ),
-    structuralFingerprint: buildV4Fingerprint(c),
+    structuralFingerprint: fp(c),
     storyDiversity: c.qualityProfile?.passed ? buildStoryDiversityProfile(
       c.puzzle.rows, c.qualityProfile.story,
       c.passiveStory?.boardHash === boardHash(c.puzzle.rows) ? summarizePassiveStory(c.passiveStory) : undefined,
@@ -1620,8 +1392,8 @@ export function curateForgeCandidates(
   const result = selectStoryDiverse(ranked.map((entry, rank) => ({
     item: entry.item, id: entry.item.puzzle.id, profile: entry.storyDiversity, rank,
   })), target, policy, (entry, selected) => diversityQuotaAllows(
-    { structuralFingerprint: buildV4Fingerprint(entry.item) },
-    selected.map((other) => ({ structuralFingerprint: buildV4Fingerprint(other.item) })), quotas,
+    { structuralFingerprint: fp(entry.item) },
+    selected.map((other) => ({ structuralFingerprint: fp(other.item) })), quotas,
   ));
   return { candidates: result.selected.map((entry) => entry.item), report: result.report };
 }
@@ -1690,6 +1462,7 @@ function inferStagesFromRejection(reason: ForgeRejectionReason): {
     case "geometry-regions":
     case "geometry-chokepoints":
     case "geometry-room-count":
+    case "gate-geometry":
       return { blueprint: false, mechanism: false, goalPlacement: false, reverse: false, validation: false };
     case "composition-failed":
     case "motif-failed":
@@ -1729,425 +1502,65 @@ async function runForgeFlat(
 
     collector.recordAttempt();
 
-    const raw = await generateRawCandidate(
-      config,
-      seed,
-      family,
-      boxCount,
-      mode,
-      difficulty,
-    );
-
-    if (!raw.ok) {
-      rejections.push({ seed, reason: raw.reason });
-      const stages = inferStagesFromRejection(raw.reason);
+    const bpResult = generateBlueprintCandidate(config, seed, family, boxCount, mode, difficulty);
+    if (!bpResult.ok) {
+      rejections.push({ seed, reason: bpResult.reason });
+      const stages = inferStagesFromRejection(bpResult.reason);
       if (stages.blueprint) collector.recordBlueprintSuccess();
       if (stages.mechanism) collector.recordMechanismPlanSuccess();
       if (stages.goalPlacement) collector.recordGoalPlacementSuccess();
-      if (stages.reverse) collector.recordReverseSearchSuccess();
-      if (stages.validation) collector.recordPuzzleValidationSuccess();
       collector.recordRejection({
-        reason: raw.reason, tier: difficulty, family, mode,
+        reason: bpResult.reason, tier: difficulty, family, mode,
         requestedBoxCount: boxCount,
       });
       continue;
     }
 
     collector.recordBlueprintSuccess();
-    collector.recordMechanismPlanSuccess();
-    collector.recordGoalPlacementSuccess();
+    if (bpResult.candidate.mechanismPlan) collector.recordMechanismPlanSuccess();
+    if (bpResult.candidate.solvedBlueprint) collector.recordGoalPlacementSuccess();
+
+    const completion = await completeCandidateFromBlueprint(bpResult.candidate, config);
+    if (!completion.ok) {
+      if (completion.qualityProfile) collector.recordQualityAssessment(seed, completion.qualityProfile);
+      rejections.push({ seed, reason: completion.reason });
+      const stages = inferStagesFromRejection(completion.reason);
+      if (stages.reverse) collector.recordReverseSearchSuccess();
+      if (stages.validation) collector.recordPuzzleValidationSuccess();
+      collector.recordRejection({
+        reason: completion.reason, tier: difficulty, family, mode,
+        requestedBoxCount: boxCount,
+      });
+      continue;
+    }
+
     collector.recordReverseSearchSuccess();
     collector.recordPuzzleValidationSuccess();
-
-    let puzzle = raw.result.puzzle;
-    let tighteningResult: TighteningResult | undefined;
-    let cellsRemoved = 0;
-    let tighteningProtectedCells: number | undefined;
-    let preTighteningFloor: number | undefined;
-    let postTighteningFloor: number | undefined;
-
-    // Step 1: Tighten puzzle geometry with tier-aware policy
-    {
-      const puzzleGrid = parseRowsToGrid(puzzle.rows);
-      const preservation = buildPreservationContext(puzzleGrid);
-      const tierPolicies = config.tierTighteningPolicies ?? DEFAULT_TIER_TIGHTENING_POLICIES;
-      const tierPolicy = tierPolicies[difficulty];
-      preTighteningFloor = analyzeGrid(puzzleGrid).totalFloor;
-
-      const tResult = await tightenPuzzle(puzzle, config.tighteningParams, preservation, tierPolicy);
-      if (tResult && tResult.cellsRemoved > 0) {
-        puzzle = tResult.tightened;
-        tighteningResult = tResult;
-        cellsRemoved = tResult.cellsRemoved;
-      }
-      if (tResult) {
-        tighteningProtectedCells = tResult.protectedCellCount;
-        postTighteningFloor = tResult.metrics.after.totalFloor;
-      } else {
-        postTighteningFloor = preTighteningFloor;
-      }
-    }
-
-    if (config.geometryProfile) {
-      const geoResult = validateFinalGeometry(puzzle.rows, config.geometryProfile);
-      if (geoResult) {
-        rejections.push({ seed, reason: geoResult });
-        collector.recordRejection({
-          reason: geoResult, tier: difficulty, family, mode,
-          requestedBoxCount: boxCount,
-        });
-        continue;
-      }
-    }
-
-    // Step 2: Determine typing mode
-    const modeIndex = seed % config.typingPolicy.modes.length;
-    const requestedTypingMode = config.typingPolicy.modes[modeIndex];
-    const typingMode = resolveBoxTypingMode(requestedTypingMode, boxCount);
-
-    // Step 3: If not generic, do preliminary solve for box-goal pairing steps
-    let pairingSteps: readonly SolutionStep[] | null = null;
-    let prelimMoves = 0;
-    let prelimPushes = 0;
-
-    if (typingMode !== "generic" && boxCount >= 2) {
-      const prelimResult = await evaluatePuzzleWithSteps(puzzle);
-      if (!prelimResult.vector.solved || !prelimResult.steps) {
-        rejections.push({ seed, reason: "unsolvable" });
-        collector.recordRejection({
-          reason: "unsolvable", tier: difficulty, family, mode,
-          requestedBoxCount: boxCount,
-        });
-        continue;
-      }
-      collector.recordInitialSolveSuccess();
-      pairingSteps = prelimResult.steps;
-      prelimMoves = prelimResult.vector.solutionMoves;
-      prelimPushes = prelimResult.vector.solutionPushes;
-    }
-
-    // Step 4: Apply typing transformation
-    let puzzleChanged = false;
-    let storyAwareTyping: StoryAwareTypingPlan | undefined;
-    if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
-      const solution = {
-        steps: pairingSteps,
-        moves: prelimMoves,
-        pushes: prelimPushes,
-        objective: { kind: "moves" as const },
-        objectiveScore: prelimMoves,
-        optimality: "unknown" as const,
-      };
-      const labelRng = (() => {
-        let s = (seed * 2654435761 + 999983) | 0;
-        return () => { s = (s * 1103515245 + 12345) | 0; return (s >>> 0) / 0x100000000; };
-      })();
-
-      let candidatePuzzle: PuzzleDefinition;
-      if (typingMode === "typed") {
-        candidatePuzzle = assignLabels(puzzle, solution, labelRng);
-      } else {
-        // hybrid: pick a typed fraction within the configured range
-        const range =
-          config.typingPolicy.hybridTypedFractionMax -
-          config.typingPolicy.hybridTypedFractionMin;
-        const typedFraction =
-          config.typingPolicy.hybridTypedFractionMin + labelRng() * range;
-        const typingResult = applyStoryAwareTyping(
-          puzzle,
-          solution,
-          labelRng,
-          typedFraction,
-          raw.result.mechanismConstruction,
-        );
-        if (!typingResult) {
-          rejections.push({ seed, reason: "story-typing-failed" });
-          collector.recordRejection({
-            reason: "story-typing-failed", tier: difficulty, family, mode,
-            requestedBoxCount: boxCount,
-          });
-          continue;
-        }
-        candidatePuzzle = typingResult.puzzle;
-        storyAwareTyping = typingResult.plan;
-      }
-
-      if (candidatePuzzle !== puzzle) {
-        const labelValidation = validatePuzzle(candidatePuzzle);
-        if (labelValidation.valid) {
-          puzzle = candidatePuzzle;
-          puzzleChanged = true;
-        }
-      }
-    }
-
-    // Step 5: If typed puzzle changed, replay-validate the solution
-    if (puzzleChanged && pairingSteps) {
-      let session = createSession(puzzle);
-      let replayOk = true;
-      for (const step of pairingSteps) {
-        const next = move(session, step.direction);
-        if (next === session) {
-          replayOk = false;
-          break;
-        }
-        session = next;
-      }
-      if (!replayOk || !session.solved) {
-        rejections.push({ seed, reason: "replay-validation-failed" });
-        collector.recordRejection({
-          reason: "replay-validation-failed", tier: difficulty, family, mode,
-          requestedBoxCount: boxCount,
-        });
-        continue;
-      }
-    }
-
-    // Step 6: Final evaluation on the post-typing puzzle
-    const evalResult = await evaluatePuzzleWithSteps(puzzle);
-    const ev = evalResult.vector;
-    if (!ev.solved) {
-      rejections.push({ seed, reason: "unsolvable" });
-      collector.recordRejection({
-        reason: "unsolvable", tier: difficulty, family, mode,
-        requestedBoxCount: boxCount,
-      });
-      continue;
-    }
     collector.recordInitialSolveSuccess();
-    if (evalResult.passiveStory) collector.recordPassiveStory(evalResult.passiveStory);
-
-    const mechanismConstructionVerification =
-      raw.result.mechanismConstruction && evalResult.trace && evalResult.passiveStory
-        ? verifyMechanismConstruction(
-            raw.result.mechanismConstruction,
-            evalResult.trace,
-            evalResult.passiveStory,
-          )
-        : undefined;
-    const storyAwareTypingVerification =
-      storyAwareTyping && evalResult.trace && evalResult.passiveStory
-        ? verifyStoryAwareTyping(storyAwareTyping, evalResult.trace, evalResult.passiveStory)
-        : undefined;
-    if (storyAwareTyping && !storyAwareTypingVerification?.passed) {
-      rejections.push({ seed, reason: "story-typing-failed" });
-      collector.recordRejection({
-        reason: "story-typing-failed", tier: difficulty, family, mode,
-        requestedBoxCount: boxCount,
-      });
-      continue;
-    }
-
-    const boxGoalCounts = countBoxesAndGoals(puzzle.rows);
-    const genericBoxCount = boxGoalCounts.generic;
-    const typedBoxCount = boxGoalCounts.typed;
-    const actualBoxes = boxGoalCounts.boxes;
-    if (actualBoxes !== boxCount || genericBoxCount + typedBoxCount !== actualBoxes) {
-      rejections.push({ seed, reason: "validation-failed" });
-      collector.recordRejection({
-        reason: "validation-failed", tier: difficulty, family, mode,
-        requestedBoxCount: boxCount, actualBoxCount: actualBoxes,
-      });
-      collector.recordBoxScale({
-        requestedBoxes: boxCount,
-        actualBoxes,
-        goalCount: boxGoalCounts.goals,
-        genericBoxes: genericBoxCount,
-        typedBoxes: typedBoxCount,
-        difference: actualBoxes - boxCount,
-      });
-      continue;
-    }
-
-    // Step 7: Re-verify dependencies if DAG exists
-    let depRate = raw.result.dependencyRealizationRate;
-    let depEdges = raw.result.composedResult?.realization.totalEdges;
-    let depRealized = raw.result.composedResult?.realization.realizedEdges;
-
-    let mechanismEvidencePassed: boolean | undefined;
-    let mechanismEvidenceMissing: string[] | undefined;
-    let counterfactualEdges: number | undefined;
-    let counterfactualTotal: number | undefined;
-
-    if (raw.result.dag && evalResult.steps) {
-      const reVerification = verifyDependenciesWithEvidence(
-        raw.result.dag,
-        puzzle,
-        evalResult.steps,
-      );
-      depRate = reVerification.realizationRate;
-      depEdges = reVerification.totalEdges;
-      depRealized = reVerification.realizedEdges;
-
-      if (raw.result.mechanismPlan) {
-        const mechResults = verifyMechanismEvidence(raw.result.mechanismPlan, reVerification);
-        mechanismEvidencePassed = mechResults.every((r) => r.passed);
-        mechanismEvidenceMissing = mechResults
-          .filter((r) => !r.passed)
-          .flatMap((r) => r.missingEvidence);
-
-        const requireEvidence = difficulty !== "tutorial" && difficulty !== "beginner";
-        if (requireEvidence && !mechanismEvidencePassed) {
-          rejections.push({ seed, reason: "mechanism-evidence-missing" });
-          collector.recordRejection({
-            reason: "mechanism-evidence-missing", tier: difficulty, family, mode,
-            requestedBoxCount: boxCount,
-          });
-          continue;
-        }
-
-        const isHardTier = difficulty === "expert" || difficulty === "master";
-        if (isHardTier && mechanismEvidencePassed) {
-          const cfResult = verifyDependenciesCounterfactual(
-            raw.result.dag, puzzle, evalResult.steps,
-          );
-          counterfactualTotal = cfResult.totalEdges;
-          counterfactualEdges = cfResult.edgeDetails.filter(
-            (d) => d.confidence === "counterfactual" || d.confidence === "proven",
-          ).length;
-          depRate = cfResult.realizationRate;
-          depEdges = cfResult.totalEdges;
-          depRealized = cfResult.realizedEdges;
-
-          // Invariant F: Expert/Master mechanisms must have at least one edge
-          // above "observed" confidence
-          const edgesAboveObserved = cfResult.edgeDetails.filter(
-            (d) => d.realized && (d.confidence === "structural" || d.confidence === "counterfactual" || d.confidence === "proven"),
-          ).length;
-          if (cfResult.totalEdges > 0 && edgesAboveObserved === 0) {
-            rejections.push({ seed, reason: "mechanism-counterfactual-failed" });
-            collector.recordRejection({
-              reason: "mechanism-counterfactual-failed", tier: difficulty, family, mode,
-              requestedBoxCount: boxCount,
-            });
-            continue;
-          }
-        }
-      }
-    }
-
-    // Step 8: Apply gates using final evaluation
-    const gateResult = applyGates(
-      ev,
-      config.gates,
-      depRate,
-      genericBoxCount,
-      typedBoxCount,
-    );
-    if (gateResult) {
-      rejections.push({ seed, reason: gateResult });
-      collector.recordRejection({
-        reason: gateResult, tier: difficulty, family, mode,
-        requestedBoxCount: boxCount,
-      });
-      continue;
-    }
-
-    // Step 8b: Apply structural gates (geometry profile)
-    const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
-    if (structuralGateResult) {
-      rejections.push({ seed, reason: structuralGateResult });
-      collector.recordRejection({
-        reason: structuralGateResult, tier: difficulty, family, mode,
-        requestedBoxCount: boxCount,
-      });
-      continue;
-    }
-
     collector.recordGatePassed();
+    collector.recordQualityAssessment(seed, completion.candidate.qualityProfile!);
+    collector.recordQualityPassed();
+    if (completion.candidate.passiveStory) {
+      collector.recordPassiveStory(completion.candidate.passiveStory);
+    }
+    if (completion.candidate.counterfactualStory) {
+      collector.recordCounterfactualStory(completion.candidate.counterfactualStory);
+    }
 
-    // Step 9: Count generic/typed boxes in final puzzle + box scale diagnostics
+    const boxGoalCounts = countBoxesAndGoals(completion.candidate.puzzle.rows);
     collector.recordBoxScale({
       requestedBoxes: boxCount,
-      actualBoxes,
+      actualBoxes: boxGoalCounts.boxes,
       goalCount: boxGoalCounts.goals,
-      genericBoxes: genericBoxCount,
-      typedBoxes: typedBoxCount,
-      difference: actualBoxes - boxCount,
+      genericBoxes: boxGoalCounts.generic,
+      typedBoxes: boxGoalCounts.typed,
+      difference: boxGoalCounts.boxes - boxCount,
     });
 
-    // Step 10: Construct provenance with all final data
-    const provGrid = parseRowsToGrid(puzzle.rows);
-    const provMetrics = analyzeGrid(provGrid);
-
-    const provenance: ForgeProvenance = {
-      seed,
-      family,
-      boxCount,
-      mode,
-      motifType: raw.result.motifType,
-      compositionType: raw.result.compositionType,
-      difficulty,
-      tightened: cellsRemoved > 0,
-      cellsRemoved,
-      typingMode,
-      genericBoxCount,
-      typedBoxCount,
-      dependencyRealizationRate: depRate,
-      dependencyEdges: depEdges,
-      dependencyRealized: depRealized,
-      playableFloor: provMetrics.totalFloor,
-      floorCoverage: provMetrics.floorUtilization,
-      tighteningProtectedCells,
-      preTighteningFloor,
-      postTighteningFloor,
-      mechanismTypes: raw.result.mechanismTypes,
-      mechanismCount: raw.result.mechanismTypes?.length,
-      mechanismEvidencePassed,
-      mechanismEvidenceMissing,
-      mechanismConstructionTargets: mechanismConstructionVerification?.targetCount,
-      mechanismConstructionRealized: mechanismConstructionVerification?.realizedTargetCount,
-      mechanismConstructionPassed: mechanismConstructionVerification?.passed,
-      mechanismConstructionMissing: mechanismConstructionVerification?.targetResults
-        .flatMap((result) => result.missingEvidence.map((kind) => `${result.targetId}:${kind}`)),
-      storyAwareTypingTargets: storyAwareTypingVerification?.targetCount,
-      storyAwareTypingRealized: storyAwareTypingVerification?.realizedTargetCount,
-      storyAwareTypingPassed: storyAwareTypingVerification?.passed,
-      storyAwareTypingMissing: storyAwareTypingVerification?.targets
-        .filter((target) => !target.passed)
-        .map((target) => target.targetId),
-      counterfactualEdges,
-      counterfactualTotal,
-    };
-
-    const qualityProfile = assessCandidateQuality({
-      puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
-      construction: raw.result.mechanismConstruction,
-      constructionRequired: mode === "mechanism", typing: storyAwareTyping,
-    }, config.storyQualityPolicy);
-    collector.recordQualityAssessment(seed, qualityProfile);
-    if (!qualityProfile.passed) {
-      const reason = qualityProfile.story?.violations[0]?.code ?? "quality-gate-failed";
-      rejections.push({ seed, reason });
-      collector.recordRejection({ reason, tier: difficulty, family, mode, requestedBoxCount: boxCount });
-      continue;
-    }
-    collector.recordQualityPassed();
-
-    const counterfactualStory = evalResult.trace
-      ? analyzeCounterfactualStory(parseRowsToGrid(puzzle.rows), evalResult.trace, config.counterfactualBudget)
-      : undefined;
-    if (counterfactualStory) collector.recordCounterfactualStory(counterfactualStory);
-
-    validCandidates.push({
-      puzzle: { ...puzzle, id: `forge-${seed}` },
-      provenance,
-      evaluation: ev,
-      solutionSteps: evalResult.steps ?? undefined,
-      passiveStory: evalResult.passiveStory ?? undefined,
-      counterfactualStory,
-      qualityProfile,
-      mechanismConstruction: raw.result.mechanismConstruction,
-      mechanismConstructionVerification,
-      storyAwareTyping,
-      storyAwareTypingVerification,
-      tighteningResult,
-      dag: raw.result.dag,
-      hints: raw.result.hints,
-    });
+    validCandidates.push(completion.candidate);
   }
 
-  const seen = new Map<string, { candidate: ForgeCandidate; index: number }>();
+  const seen = new Map<string, { candidate: ForgeCandidate; score: number; index: number }>();
   const dedupedCandidates: ForgeCandidate[] = [];
   let exactDuplicatesRejected = 0;
 
@@ -2156,16 +1569,15 @@ async function runForgeFlat(
     const hash = boardHash(c.puzzle.rows);
     const existing = seen.get(hash);
     if (existing) {
-      const existingScore = paretoScore(existing.candidate);
       const currentScore = paretoScore(c);
-      if (currentScore > existingScore) {
+      if (currentScore > existing.score) {
         dedupedCandidates[existing.index] = c;
-        seen.set(hash, { candidate: c, index: existing.index });
+        seen.set(hash, { candidate: c, score: currentScore, index: existing.index });
       }
       rejections.push({ seed: c.provenance.seed, reason: "duplicate-exact" });
       exactDuplicatesRejected++;
     } else {
-      seen.set(hash, { candidate: c, index: dedupedCandidates.length });
+      seen.set(hash, { candidate: c, score: paretoScore(c), index: dedupedCandidates.length });
       dedupedCandidates.push(c);
     }
   }
@@ -2271,8 +1683,11 @@ async function runForgeFunnel(
   const schedule = createForgeSchedule(combinations, budgets.rawAttemptBudget, config.baseSeed);
 
   const blueprintCandidates: BlueprintCandidate[] = [];
+  const stageA_saturation = 3 * budgets.preScreenRetain;
 
   for (let i = 0; i < schedule.length; i++) {
+    if (blueprintCandidates.length >= stageA_saturation) break;
+
     const { seed, combination } = schedule[i];
     const { family, boxCount, mode } = combination;
     const difficulty = classifyDifficultyByBoxCount(boxCount);
@@ -2302,15 +1717,42 @@ async function runForgeFunnel(
 
   const stageA_count = blueprintCandidates.length;
 
-  // ---- Stage B: Structural pre-screening (cheap, no solver) ----
+  // ---- Stage B: Structural pre-screening with diversity preservation ----
   const structuralScored = blueprintCandidates.map((bc) => ({
     bc,
     score: blueprintStructuralScore(bc),
   }));
   structuralScored.sort((a, b) => b.score - a.score);
-  const stageB_survivors = structuralScored
-    .slice(0, budgets.preScreenRetain)
-    .map((s) => s.bc);
+
+  let stageB_survivors: BlueprintCandidate[];
+  if (structuralScored.length <= budgets.preScreenRetain) {
+    stageB_survivors = structuralScored.map((s) => s.bc);
+  } else {
+    const buckets = new Map<string, typeof structuralScored>();
+    for (const entry of structuralScored) {
+      const key = `${entry.bc.family}:${entry.bc.mode}`;
+      let bucket = buckets.get(key);
+      if (!bucket) { bucket = []; buckets.set(key, bucket); }
+      bucket.push(entry);
+    }
+
+    const selected = new Set<typeof structuralScored[0]>();
+    const perBucket = Math.floor(budgets.preScreenRetain / buckets.size);
+    for (const bucket of buckets.values()) {
+      const take = Math.min(perBucket, bucket.length);
+      for (let j = 0; j < take; j++) selected.add(bucket[j]);
+    }
+
+    const remaining = budgets.preScreenRetain - selected.size;
+    if (remaining > 0) {
+      for (const entry of structuralScored) {
+        if (selected.size >= budgets.preScreenRetain) break;
+        if (!selected.has(entry)) selected.add(entry);
+      }
+    }
+
+    stageB_survivors = [...selected].map((s) => s.bc);
+  }
 
   const stageB_count = stageB_survivors.length;
   // Candidates filtered out here avoid expensive solver calls
@@ -2454,7 +1896,7 @@ async function runForgeFunnel(
   }
 
   // Dedup
-  const seen = new Map<string, { candidate: ForgeCandidate; index: number }>();
+  const seen = new Map<string, { candidate: ForgeCandidate; score: number; index: number }>();
   const dedupedCandidates: ForgeCandidate[] = [];
   let exactDuplicatesRejected = 0;
 
@@ -2463,16 +1905,15 @@ async function runForgeFunnel(
     const hash = boardHash(c.puzzle.rows);
     const existing = seen.get(hash);
     if (existing) {
-      const existingScore = paretoScore(existing.candidate);
       const currentScore = paretoScore(c);
-      if (currentScore > existingScore) {
+      if (currentScore > existing.score) {
         dedupedCandidates[existing.index] = c;
-        seen.set(hash, { candidate: c, index: existing.index });
+        seen.set(hash, { candidate: c, score: currentScore, index: existing.index });
       }
       rejections.push({ seed: c.provenance.seed, reason: "duplicate-exact" });
       exactDuplicatesRejected++;
     } else {
-      seen.set(hash, { candidate: c, index: dedupedCandidates.length });
+      seen.set(hash, { candidate: c, score: paretoScore(c), index: dedupedCandidates.length });
       dedupedCandidates.push(c);
     }
   }
@@ -2526,25 +1967,12 @@ async function runForgeFunnel(
     }
   }
 
-  // ---- Stage G: Hard quality qualification ----
-  const qualityPassed: ScoredEntry[] = [];
-  for (const entry of finalistEvaluated) {
-    // The same final-board quality gate already ran during candidate completion.
-    // Never replace it with a legacy vector-only assessment here.
-    const qualityProfile = entry.c.qualityProfile;
-    if (!qualityProfile?.passed || !qualityProfile.story?.passed) {
-      rejections.push({ seed: entry.c.provenance.seed, reason: "quality-gate-failed" });
-      collector.recordRejection({
-        reason: "quality-gate-failed",
-        tier: entry.c.provenance.difficulty,
-        family: entry.c.provenance.family,
-        mode: entry.c.provenance.mode,
-        requestedBoxCount: entry.c.provenance.boxCount,
-      });
-      continue;
-    }
+  // ---- Stage G: Quality pass-through ----
+  // Quality gate already ran in completeCandidateFromBlueprint (line ~1331).
+  // All candidates here have qualityProfile.passed === true.
+  const qualityPassed = finalistEvaluated;
+  for (let qi = 0; qi < qualityPassed.length; qi++) {
     collector.recordQualityPassed();
-    qualityPassed.push({ ...entry, c: { ...entry.c, qualityProfile } });
   }
 
   // ---- Stage H: Difficulty qualification ----
