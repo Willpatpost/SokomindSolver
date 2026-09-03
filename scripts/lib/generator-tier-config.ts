@@ -40,7 +40,7 @@ const GEOMETRY_PROFILES: Record<Difficulty, GeometryProfile> = {
     maxRoomSize: 5,
     passageWidths: [1],
     minPlayableFloor: 15,
-    maxPlayableFloor: 50,
+    maxPlayableFloor: 70,
     minFloorCoverage: 0.08,
     minRegions: 1,
     minChokepoints: 0,
@@ -168,7 +168,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       ...DEFAULT_FORGE_CONFIG,
       batchSize: 200,
       retainTarget: 20,
-      families: ["linear", "hub", "loop"] as TopologyFamily[],
+      families: ["linear"] as TopologyFamily[],
       boxCounts: [3, 4, 5, 6],
       difficulties: ["beginner"],
       modes: ["plain", "motif"] as ForgeGenerationMode[],
@@ -176,6 +176,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       boardHeight: 12,
       beamParams: { maxDepth: 40 },
       baseSeed: 310000,
+      goalPlacementAttempts: 3,
       geometryProfile: GEOMETRY_PROFILES.beginner,
       reverseSearchProfile: SEARCH_PROFILES.beginner,
       gates: {
@@ -205,6 +206,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       reverseSearchProfile: SEARCH_PROFILES.intermediate,
       mechanismTier: "intermediate",
       scalableRecipes: true,
+      goalPlacementAttempts: 3,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 6,
@@ -234,6 +236,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       reverseSearchProfile: SEARCH_PROFILES.advanced,
       mechanismTier: "advanced",
       scalableRecipes: true,
+      goalPlacementAttempts: 4,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 10,
@@ -263,6 +266,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       reverseSearchProfile: SEARCH_PROFILES.expert,
       mechanismTier: "expert",
       scalableRecipes: true,
+      goalPlacementAttempts: 5,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 15,
@@ -293,6 +297,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       reverseSearchProfile: SEARCH_PROFILES.master,
       mechanismTier: "master",
       scalableRecipes: true,
+      goalPlacementAttempts: 5,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 20,
