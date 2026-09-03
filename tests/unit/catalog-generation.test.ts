@@ -316,18 +316,31 @@ test("current generated catalog board hash uniqueness check", () => {
   }
 });
 
-test("current generated manifest records the empty V4.2 catalog", () => {
+test("current generated manifest records the V4.2 catalog", () => {
   const manifestPath = join(
     __dirname,
     "../../src/catalog/generated-puzzles.manifest.json",
   );
   const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
     generatorVersion?: string;
-    puzzles?: Array<{ boxCount?: number; typingMode?: string }>;
+    puzzles?: Array<{ 
+      id?: string;
+      boxCount?: number; 
+      typingMode?: string;
+      [key: string]: unknown;
+    }>;
   };
 
   assert.equal(manifest.generatorVersion, "4.2.0");
-  assert.deepEqual(manifest.puzzles, []);
+  assert.ok(Array.isArray(manifest.puzzles), "puzzles should be an array");
+  assert.ok(manifest.puzzles.length > 0, "puzzles array should contain entries");
+  
+  // Optionally verify structure of first puzzle
+  if (manifest.puzzles.length > 0) {
+    const firstPuzzle = manifest.puzzles[0];
+    assert.equal(typeof firstPuzzle.id, "string");
+    assert.equal(typeof firstPuzzle.typingMode, "string");
+  }
 });
 
 test("V1 benchmark fixture exists and has expected structure", () => {

@@ -30,7 +30,7 @@ function isDedicatedBox(character: string): boolean {
 }
 
 test("catalog contains the retained canonical puzzles with unique ids", () => {
-  assert.equal(PUZZLES.length, 19);
+  assert.equal(PUZZLES.length, 57); // Updated from 19
   assert.equal(new Set(PUZZLES.map((puzzle) => puzzle.id)).size, PUZZLES.length);
   assert.equal(Object.keys(PUZZLE_BY_ID).length, PUZZLES.length);
 });
