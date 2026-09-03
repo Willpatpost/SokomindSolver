@@ -1856,11 +1856,11 @@ async function runForgeFunnel(
     if (useWorkers && secondaryTasks.length > 1) {
       const workerPath = join(dirname(fileURLToPath(import.meta.url)), "forge-worker.ts");
       const payloads = secondaryTasks.map((t) => ({
-        blueprint: t.bc,
+        candidate: t.bc,
         forcedReverseState: t.forced,
       }));
       secondaryResults = await runWorkerPool<
-        { blueprint: BlueprintCandidate; forcedReverseState: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number } },
+        { candidate: BlueprintCandidate; forcedReverseState: { boxPositions: readonly GridPosition[]; robotPosition: GridPosition; depth: number } },
         CompletionResult
       >(
         workerPath,

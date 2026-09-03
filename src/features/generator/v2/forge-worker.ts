@@ -11,10 +11,10 @@ parentPort!.on("message", async (msg: { type: string; index: number; payload: un
   }
   if (msg.type === "task") {
     const p = msg.payload as {
-      blueprint?: unknown;
+      candidate?: unknown;
       forcedReverseState?: unknown;
     };
-    const bc = p.blueprint ?? msg.payload;
+    const bc = p.candidate ?? msg.payload;
     const forced = p.forcedReverseState as
       | { boxPositions: readonly { row: number; column: number }[]; robotPosition: { row: number; column: number }; depth: number }
       | undefined;
