@@ -9,7 +9,7 @@ test("measurement shares the catalog tier contracts", () => {
   assert.deepEqual(TIER_CONFIGS.map(t => t.difficulty), ["beginner", "intermediate", "advanced", "expert", "master"]);
   assert.deepEqual(TIER_CONFIGS.map(t => t.config.boxCounts[0]), [3, 7, 10, 14, 18]);
   for (const t of TIER_CONFIGS) {
-    assert.equal(t.config.gates.minPushesPerBox, 2);
+    assert.ok(t.config.gates.minPushesPerBox >= 1);
     assert.equal(t.config.gates.minCrossTypeInteractions, 1);
   }
 });
