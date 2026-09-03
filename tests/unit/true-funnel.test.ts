@@ -123,7 +123,7 @@ describe("true funnel refactor", () => {
   // 3. Solver calls are fewer than raw attempts
   // ---------------------------------------------------------------------------
 
-  it("solver calls are fewer than raw attempts (reduction measured)", async () => {
+  it("solver telemetry counts mutation probes and measures structural screening separately", async () => {
     const config: ForgeConfig = {
       ...FUNNEL_CONFIG,
       funnelBudgets: {
@@ -139,10 +139,11 @@ describe("true funnel refactor", () => {
     assert.ok(result.funnelStats, "must have funnelStats");
     const scr = result.funnelStats!.solverCallReduction!;
 
-    // Solver calls should be <= structural survivors (only survivors get solver calls)
+    // A surviving blueprint may run many mutation probes and archived variants.
+    // The old two-solves-per-blueprint estimate hid most of the actual work.
     assert.ok(
-      scr.solverCallsMade <= scr.structuralSurvivors * 2 + 1,
-      `solverCallsMade (${scr.solverCallsMade}) should be bounded by structural survivors (${scr.structuralSurvivors})`,
+      scr.solverCallsMade > scr.structuralSurvivors,
+      "This workload must exercise repeated solver probes, not report a capped estimate",
     );
 
     assert.equal(

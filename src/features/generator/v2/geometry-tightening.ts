@@ -1,11 +1,11 @@
 import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import { validatePuzzle } from "../../../core/puzzle.ts";
-import { createSession } from "../../../core/game-session.ts";
 import { classicGreedySolver } from "../../../solver/implementations/classic-solvers.ts";
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { isBoxChar, isGoalChar, isRobotChar, isWallChar, WALL_CHAR } from "./tile-semantics.ts";
+import { solveWithEvidence, witnessedResult, type GenerationEvidence } from "./generation-evidence.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -166,12 +166,14 @@ export async function tightenPuzzle(
   params: TighteningParams = DEFAULT_TIGHTENING_PARAMS,
   preservation?: TighteningPreservationContext,
   tierPolicy?: TierTighteningPolicy,
+  evidence?: GenerationEvidence,
+  witness?: readonly SolutionStep[],
 ): Promise<TighteningResult | null> {
   const start = performance.now();
 
   // If tier policy is provided and disabled, return a no-op result immediately
   if (tierPolicy && !tierPolicy.enabled) {
-    const baseline = await solvAndMeasure(puzzle, params);
+    const baseline = await solvAndMeasure(puzzle, params, evidence, witness);
     if (!baseline) return null;
     return {
       original: puzzle,
@@ -196,7 +198,7 @@ export async function tightenPuzzle(
       }
     : params;
 
-  const baseline = await solvAndMeasure(puzzle, effectiveParams);
+  const baseline = await solvAndMeasure(puzzle, effectiveParams, evidence, witness);
   if (!baseline) return null;
 
   const grid = puzzle.rows.map((r) => [...r]);
@@ -282,7 +284,7 @@ export async function tightenPuzzle(
       }
     }
 
-    const solveResult = await solvAndMeasure(mutatedPuzzle, effectiveParams);
+    const solveResult = await solvAndMeasure(mutatedPuzzle, effectiveParams, evidence, witness);
     if (!solveResult) {
       grid[row][col] = original;
       rejected++;
@@ -610,24 +612,13 @@ interface SolveResult {
 async function solvAndMeasure(
   puzzle: PuzzleDefinition,
   params: TighteningParams,
+  evidence?: GenerationEvidence,
+  witness?: readonly SolutionStep[],
 ): Promise<SolveResult | null> {
-  const session = createSession(puzzle);
-  const request = {
-    board: session.board,
-    snapshot: session.snapshot,
-    objective: { kind: "moves" as const },
-    limits: {
-      maxElapsedMs: params.solverLimitMs,
-      maxExpandedStates: params.solverLimitStates,
-    },
-  };
-  const context = {
-    signal: new AbortController().signal,
-    reportProgress: () => {},
-    now: () => performance.now(),
-  };
-
-  const result = await classicGreedySolver.solve(request, context);
+  const attempted = await solveWithEvidence(puzzle, classicGreedySolver, {
+    maxElapsedMs: params.solverLimitMs, maxExpandedStates: params.solverLimitStates,
+  }, undefined, evidence);
+  const result = witnessedResult(puzzle, witness, attempted, evidence);
   if (result.status !== "solved") return null;
 
   const steps = result.solution.steps as SolutionStep[];

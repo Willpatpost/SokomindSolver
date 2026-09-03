@@ -547,6 +547,7 @@ export type {
 
 export { WALL_CHAR } from "./tile-semantics.ts";
 export { curateForgeCandidates } from "./puzzle-forge.ts";
+export type { ForgeExecutionOptions, ForgeProgress, ForgePerformance } from "./puzzle-forge.ts";
 export {
   STORY_DIVERSITY_VERSION, DEFAULT_STORY_DIVERSITY_POLICY, storyLayoutKeys,
   buildStoryDiversityProfile, storyDiversityDistance, selectStoryDiverse,

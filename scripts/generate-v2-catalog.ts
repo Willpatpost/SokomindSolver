@@ -11,7 +11,6 @@ import {
   summarizeForgeRun,
   forgeRunReport,
   forgeCandidateToAscii,
-  evaluatePuzzles,
   summarizePopulation,
   createGeneratedPuzzleId,
   boardHash,
@@ -51,6 +50,16 @@ import {
   CATALOG_GENERATOR_VERSION,
 } from "../src/features/generator/v2/index.ts";
 
+import { ForgeWorkerPool, getForgePoolSize } from "../src/features/generator/v2/forge-pool.ts";
+import type { ForgeProgress } from "../src/features/generator/v2/puzzle-forge.ts";
+
+function reportForgeProgress(p: ForgeProgress): void {
+  console.log(`    [${p.phase}] ${p.pool.active}/${p.pool.workers} active, ${p.pool.queued} queued | ` +
+    `${p.attempts} attempts, ${p.qualified} qualified, ${p.rejected} rejected | ` +
+    `${p.attemptsPerSecond.toFixed(1)} attempts/s, ${p.qualifiedPerMinute.toFixed(1)} qualified/min | ` +
+    `RSS peak ${p.pool.peakRssMb.toFixed(0)} MB`);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CATALOG_PATH = join(__dirname, "../src/catalog/generated-puzzles.json");
 const MANIFEST_PATH = join(__dirname, "../src/catalog/generated-puzzles.manifest.json");
@@ -87,6 +96,11 @@ const attemptBudget = integerFlag("--attempts", 1, 10000);
 const targetOverride = integerFlag("--target", 1, 1000);
 const seedOffset = integerFlag("--seed-offset", 0, 1000000000) ?? 0;
 const skipBenchmark = process.argv.includes("--skip-benchmark");
+const requestedWorkers = integerFlag("--workers", 1, 64);
+const reverseVariants = integerFlag("--reverse-candidates", 1, 32) ?? 8;
+const memoryBudgetMb = integerFlag("--memory-mb", 1024, 262144);
+const generationAbort = new AbortController();
+let catalogPool: ForgeWorkerPool | undefined;
 const SEED_WINDOW_SIZE = 10000;
 // Optimality proofs are not part of the current catalog contract.
 const CATALOG_EVALUATOR_POLICY = { ...DEFAULT_V4_POLICY, proofMaxBoxes: 0 };
@@ -812,10 +826,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const workers = Math.min(requestedWorkers ?? getForgePoolSize(), memoryBudgetMb ? Math.max(1, Math.floor(memoryBudgetMb / 1024)) : 64);
+  catalogPool = new ForgeWorkerPool(undefined, undefined, workers, generationAbort.signal, memoryBudgetMb);
+  process.once("SIGINT", () => generationAbort.abort());
+  console.log(`    Worker pool: ${workers} | reverse candidates/blueprint: ${reverseVariants}`);
+
   const activeTierConfigs = selectedTierConfigs.map(({ difficulty, config: base }) => {
     const target = targetOverride ?? base.retainTarget;
     const budgets = qualityPreset ? QUALITY_PRESETS[qualityPreset] : base.funnelBudgets;
     const config: ForgeConfig = { ...base, baseSeed: base.baseSeed + seedOffset, retainTarget: target,
+      reverseCandidatesPerBlueprint: reverseVariants, reuseEvidence: true, goalPlacementAttempts: 3,
       v4EvaluatorPolicy: CATALOG_EVALUATOR_POLICY,
       batchSize: attemptBudget ?? base.batchSize,
       funnelBudgets: budgets ? { ...budgets, rawAttemptBudget: attemptBudget ?? budgets.rawAttemptBudget,
@@ -827,7 +847,7 @@ async function main(): Promise<void> {
     mkdirSync(join(REVIEW_DIR, "runs"), { recursive: true });
     writeFileSync(join(REVIEW_DIR, "generation-plan.json"), JSON.stringify({
       startedAt: new Date().toISOString(), generatorVersion: CATALOG_GENERATOR_VERSION,
-      maxSeedWindows, seedOffset, skipBenchmark, tiers: activeTierConfigs,
+      maxSeedWindows, seedOffset, skipBenchmark, workers, memoryBudgetMb, tiers: activeTierConfigs,
     }, null, 2) + "\n", { flag: "wx" });
   }
 
@@ -849,7 +869,7 @@ async function main(): Promise<void> {
       ? `raw=${config.funnelBudgets.rawAttemptBudget}, quota=${config.funnelBudgets.catalogQuota}`
       : `batch=${config.batchSize}, target=${config.retainTarget}`;
     console.log(`\n    [forge] ${difficulty} tier (${budgetLabel})...`);
-    const result = await runForge(config);
+    const result = await runForge(config, { pool: catalogPool, onProgress: reportForgeProgress });
     if (!dryRun) writeFileSync(join(REVIEW_DIR, "runs", `${difficulty}-initial.json`), JSON.stringify(result, null, 2) + "\n", { flag: "wx" });
     if (result.storySelection) curationReports[`${difficulty}/initial-forge`] = result.storySelection;
     const report = forgeRunReport(result);
@@ -927,7 +947,7 @@ async function main(): Promise<void> {
         funnelBudgets: config.funnelBudgets ? { ...config.funnelBudgets, catalogQuota: shortfall + 5,
           deepRetain: Math.max(config.funnelBudgets.deepRetain, shortfall + 5) } : undefined,
       };
-      const retryResult = await runForge(retryConfig);
+      const retryResult = await runForge(retryConfig, { pool: catalogPool, onProgress: reportForgeProgress });
       if (!dryRun) writeFileSync(join(REVIEW_DIR, "runs", `${difficulty}-retry-${window}.json`), JSON.stringify(retryResult, null, 2) + "\n", { flag: "wx" });
       if (retryResult.storySelection) curationReports[`${difficulty}/retry-${window}`] = retryResult.storySelection;
 
@@ -1075,7 +1095,8 @@ async function main(): Promise<void> {
     }
 
     if (handcraftedPuzzles.length > 0 && v2Evals.length > 0) {
-      const handcraftedEvals = await evaluatePuzzles(handcraftedPuzzles);
+      const handcraftedEvals = await catalogPool!.map(handcraftedPuzzles,
+        (puzzle) => catalogPool!.submit<PuzzleEvaluationVector>({ kind: "evaluate", puzzle }, "benchmark"));
       const handcraftedSummary = summarizePopulation(handcraftedEvals);
       const v2Summary = summarizePopulation(v2Evals);
       benchmarkReport = comparisonReport(handcraftedSummary, v2Summary);
@@ -1275,5 +1296,5 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
-});
+  process.exitCode = generationAbort.signal.aborted ? 130 : 1;
+}).finally(async () => { await catalogPool?.close(); });

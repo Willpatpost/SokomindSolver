@@ -27,6 +27,9 @@ behavior belongs in `docs/solver-v2-progress.md` and
 
 ## Runtime ownership
 
+For offline puzzle generation, worker controls, evidence reuse, and measured
+CPU scaling, see [Generator performance](generator-performance.md).
+
 | Concern | Authoritative owner | Important entry points |
 |---|---|---|
 | App composition | `src/main.tsx`, `src/App.tsx`, `src/AppShell.tsx` | provider order, global recovery, lazy routes |

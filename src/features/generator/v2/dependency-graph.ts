@@ -35,6 +35,7 @@ import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { PuzzleDefinition } from "../../../core/model.ts";
 import type { GridPosition } from "../generator-types.ts";
 import { verifyDependenciesWithEvidence, collectPassageCells } from "./dependency-verification.ts";
+import { witnessFromPullHistory } from "./generation-evidence.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,6 +126,7 @@ export interface EdgeRealizationDetail {
 }
 
 export interface ComposedPuzzleResult {
+  readonly solutionSteps?: readonly SolutionStep[];
   readonly puzzle: PuzzleDefinition;
   readonly dag: DependencyDAG;
   readonly realization: DependencyRealizationResult;
@@ -882,6 +884,7 @@ export function verifyDependencies(
 export async function generateComposedPuzzle(
   blueprint: FunctionalBlueprint,
   params: CompositionParams,
+  onSolverCall?: () => void,
 ): Promise<ComposedPuzzleResult | null> {
   const maxRetries = params.maxRetries ?? 5;
   const beamParams = params.beamParams ?? {
@@ -938,6 +941,7 @@ export async function generateComposedPuzzle(
     const validation = validatePuzzle(puzzle);
     if (!validation.valid) continue;
 
+    onSolverCall?.();
     const solveResult = await solvePuzzleForVerification(puzzle);
     if (!solveResult) continue;
 
@@ -958,6 +962,7 @@ export async function generateComposedPuzzle(
       solved,
       goalStyle,
       retries: retry,
+      solutionSteps: solveResult.steps,
     };
   }
 
@@ -999,6 +1004,7 @@ export async function generateVerifiedMotifPuzzle(
   },
 ): Promise<{
   puzzle: PuzzleDefinition;
+  witness?: readonly SolutionStep[];
   hints: readonly DependencyHint[];
   motif: MotifType;
 } | null> {
@@ -1037,5 +1043,6 @@ export async function generateVerifiedMotifPuzzle(
     puzzle: { ...puzzle, id: `motif-${result.motif}-${params.seed}` },
     hints: result.hints,
     motif: result.motif,
+    witness: witnessFromPullHistory(puzzle, beam.best.pullHistory),
   };
 }

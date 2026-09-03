@@ -1,6 +1,5 @@
 import type { PuzzleDefinition } from "../../../core/model.ts";
 import type { SolverResult, SolverRunMetrics, SolutionStep } from "../../../solver/contracts.ts";
-import { createSession } from "../../../core/game-session.ts";
 import {
   classicGreedySolver,
   classicAStarSolver,
@@ -20,6 +19,7 @@ import {
   type PassiveStoryProfile,
 } from "./passive-story-analysis.ts";
 import { isBoxChar, isGoalChar, isRobotChar, isWallChar } from "./tile-semantics.ts";
+import { solveWithEvidence, witnessedResult, type GenerationEvidence } from "./generation-evidence.ts";
 
 // ---------------------------------------------------------------------------
 // Evaluation vector — all raw metrics, no premature aggregation
@@ -140,29 +140,21 @@ export interface PuzzleEvaluationResult {
 export async function evaluatePuzzleWithSteps(
   puzzle: PuzzleDefinition,
   signal?: AbortSignal,
+  evidence?: GenerationEvidence,
+  witness?: readonly SolutionStep[],
 ): Promise<PuzzleEvaluationResult> {
-  const session = createSession(puzzle);
   const grid = puzzle.rows.map((r) => [...r]);
 
   const structMetrics = analyzeGrid(grid);
 
-  const request = {
-    board: session.board,
-    snapshot: session.snapshot,
-    objective: { kind: "moves" as const },
-    limits: { maxElapsedMs: 15_000, maxExpandedStates: 2_000_000 },
-  };
-  const context = {
-    signal: signal ?? new AbortController().signal,
-    reportProgress: () => {},
-    now: () => performance.now(),
-  };
-
-  let result: SolverResult = await classicGreedySolver.solve(request, context);
+  const limits = { maxElapsedMs: 15_000, maxExpandedStates: 2_000_000 };
+  let result: SolverResult = await solveWithEvidence(puzzle, classicGreedySolver, limits, signal, evidence);
 
   if (result.status !== "solved") {
-    result = await classicAStarSolver.solve(request, context);
+    result = await solveWithEvidence(puzzle, classicAStarSolver, limits, signal, evidence);
   }
+
+  result = witnessedResult(puzzle, witness, result, evidence);
 
   if (result.status !== "solved") {
     return {
