@@ -1093,8 +1093,9 @@ export async function completeCandidateFromBlueprint(
     };
   }
 
+  const counterfactualGrid = puzzleChanged ? parseRowsToGrid(puzzle.rows) : finalGrid;
   const counterfactualStory = evalResult.trace
-    ? analyzeCounterfactualStory(finalGrid, evalResult.trace, config.counterfactualBudget)
+    ? analyzeCounterfactualStory(counterfactualGrid, evalResult.trace, config.counterfactualBudget)
     : undefined;
 
   const provenance: ForgeProvenance = {
