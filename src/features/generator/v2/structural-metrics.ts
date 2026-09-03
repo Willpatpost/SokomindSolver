@@ -138,7 +138,9 @@ export function analyzeGrid(grid: readonly (readonly string[])[]): StructuralMet
 
   const openAreaRatio = computeOpenAreaRatio(floorCells, neighborCache);
 
-  const regionSizes = regions.map((r) => r.size);
+  const regionSizes = regions.length > 0
+    ? regions.map((r) => r.size)
+    : totalFloor > 0 ? [totalFloor] : [];
   const largestRegionSize = regionSizes.length > 0 ? Math.max(...regionSizes) : 0;
   const largestRegionRatio = totalFloor > 0 ? largestRegionSize / totalFloor : 0;
   const terminalRegionCount = regions.filter((r) => r.isTerminal).length;
@@ -155,7 +157,7 @@ export function analyzeGrid(grid: readonly (readonly string[])[]): StructuralMet
     articulationPoints: articulations,
     articulationCount: articulations.size,
     regions,
-    regionCount: regions.length,
+    regionCount: regions.length > 0 ? regions.length : totalFloor > 0 ? 1 : 0,
     regionSizes,
     largestRegionSize,
     largestRegionRatio,

@@ -112,7 +112,7 @@ test("region count reflects board structure", () => {
     "Region count should be non-negative",
   );
 
-  // A single open room has no articulation points -> 0 regions by definition
+  // A single open room has no articulation points -> 1 region (the whole floor)
   const singleRoom = [
     "OOOOOO",
     "O    O",
@@ -124,8 +124,8 @@ test("region count reflects board structure", () => {
   const singleMetrics = analyzeGrid(singleGrid);
   assert.equal(
     singleMetrics.regionCount,
-    0,
-    "Single open room with no chokepoints has 0 detected regions",
+    1,
+    "Single open room with no chokepoints has 1 region (the whole floor)",
   );
 });
 
