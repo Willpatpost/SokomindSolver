@@ -464,6 +464,7 @@ export type ForgeRejectionReason =
   | "geometry-room-count"
   | "motif-failed"
   | "composition-failed"
+  | "mechanism-plan-failed"
   | "replay-validation-failed"
   | "story-typing-failed"
   | "duplicate-exact"
@@ -682,7 +683,7 @@ export function generateBlueprintCandidate(
       plan = createMechanismPlan(activeBp, tier, boxCount, goalPlacementSeed, preSelected);
       placement = plan ? placeGoalsFromPlan(activeBp, plan) : null;
     }
-    if (!plan) return { ok: false, reason: "composition-failed" };
+    if (!plan) return { ok: false, reason: "mechanism-plan-failed" };
     if (!placement) return { ok: false, reason: "goal-placement-failed" };
     const mechanismConstruction = buildMechanismConstructionPlan(placement);
 
@@ -1637,6 +1638,7 @@ function inferStagesFromRejection(reason: ForgeRejectionReason): {
       return { blueprint: false, mechanism: false, goalPlacement: false, reverse: false, validation: false };
     case "composition-failed":
     case "motif-failed":
+    case "mechanism-plan-failed":
       return { blueprint: true, mechanism: false, goalPlacement: false, reverse: false, validation: false };
     case "goal-placement-failed":
       return { blueprint: true, mechanism: true, goalPlacement: false, reverse: false, validation: false };

@@ -204,6 +204,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       geometryProfile: GEOMETRY_PROFILES.intermediate,
       reverseSearchProfile: SEARCH_PROFILES.intermediate,
       mechanismTier: "intermediate",
+      scalableRecipes: true,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 6,
@@ -232,6 +233,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       geometryProfile: GEOMETRY_PROFILES.advanced,
       reverseSearchProfile: SEARCH_PROFILES.advanced,
       mechanismTier: "advanced",
+      scalableRecipes: true,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 10,
@@ -260,6 +262,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       geometryProfile: GEOMETRY_PROFILES.expert,
       reverseSearchProfile: SEARCH_PROFILES.expert,
       mechanismTier: "expert",
+      scalableRecipes: true,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 15,
@@ -289,6 +292,7 @@ export const TIER_CONFIGS: readonly TierConfig[] = [
       geometryProfile: GEOMETRY_PROFILES.master,
       reverseSearchProfile: SEARCH_PROFILES.master,
       mechanismTier: "master",
+      scalableRecipes: true,
       gates: {
         ...DEFAULT_FORGE_GATES,
         minSolutionPushes: 20,
