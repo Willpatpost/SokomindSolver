@@ -61,8 +61,8 @@ test("resize clamps to min/max", () => {
   assert.equal(state.width, 3);
   assert.equal(state.height, 3);
   state = editorReducer(state, { type: "resize", width: 50, height: 50 });
-  assert.equal(state.width, 20);
-  assert.equal(state.height, 20);
+  assert.equal(state.width, MAX_SIZE);
+  assert.equal(state.height, MAX_SIZE);
 });
 
 test("clear fills all cells with walls", () => {
@@ -146,9 +146,9 @@ test("supports a matching Z typed box and goal through core validation", () => {
 // Boundary conditions
 // ---------------------------------------------------------------------------
 
-test("MIN_SIZE is 3 and MAX_SIZE is 20", () => {
+test("MIN_SIZE is 3 and MAX_SIZE supports 26-cell Master catalog boards", () => {
   assert.equal(MIN_SIZE, 3);
-  assert.equal(MAX_SIZE, 20);
+  assert.equal(MAX_SIZE, 26);
 });
 
 test("creating a board at exactly MIN_SIZE x MIN_SIZE", () => {

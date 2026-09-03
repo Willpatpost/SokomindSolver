@@ -513,6 +513,11 @@ export function EditorPage({ customData }: EditorPageProps) {
             <span>
               Your saved draft “{savedDraftTitle}” is unchanged.
             </span>
+            {!activePlaytest ? (
+              <button ref={testButtonRef} type="button" disabled={!isValid} onClick={handleTest}>
+                Play shared puzzle
+              </button>
+            ) : null}
             <button type="button" onClick={handleImportShared}>
               Import into editor
             </button>

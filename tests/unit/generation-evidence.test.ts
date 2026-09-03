@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { GenerationEvidence, replayWitness, solveWithEvidence, witnessedResult } from "../../src/features/generator/v2/generation-evidence.ts";
+import { GenerationEvidence, replayWitness, solveWithEvidence, witnessedResult, verifiedWitnessResult } from "../../src/features/generator/v2/generation-evidence.ts";
+import { tightenPuzzle, DEFAULT_TIGHTENING_PARAMS } from "../../src/features/generator/v2/geometry-tightening.ts";
 import { runForge, type ForgeConfig } from "../../src/features/generator/v2/puzzle-forge.ts";
 import { classicGreedySolver } from "../../src/solver/implementations/classic-solvers.ts";
 import type { SolverAdapter, SolverResult, SolutionStep } from "../../src/solver/contracts.ts";
@@ -58,4 +59,40 @@ test("real generation reuses solves without changing qualified boards, routes, o
   assert.deepEqual(cached.candidates[0].qualityProfile, uncached.candidates[0].qualityProfile);
   assert.ok(cached.performance!.evidenceCacheHits > 0);
   assert.ok(cached.performance!.solverCalls < uncached.performance!.solverCalls);
+});
+
+test("witness-first refinement performs no search and never invents solver effort", async () => {
+  const evidence = new GenerationEvidence(true, true);
+  const result = verifiedWitnessResult(puzzle, steps, evidence);
+  assert.ok(result);
+  assert.equal(result.solution.optimality, "unknown");
+  assert.equal(result.metrics.expandedStates, undefined);
+  assert.equal(verifiedWitnessResult(puzzle, steps.slice(1)), undefined);
+  const tightened = await tightenPuzzle(puzzle, DEFAULT_TIGHTENING_PARAMS, undefined, undefined, evidence, steps);
+  assert.ok(tightened);
+  assert.ok(replayWitness(tightened.tightened, steps));
+  assert.equal(evidence.solverCalls, 0);
+  assert.ok(evidence.witnessVerifications > 1);
+});
+
+test("all candidate probes share a finite search budget, including uncached calls", async () => {
+  const evidence = new GenerationEvidence(false, true, {
+    maxCalls: 2, maxElapsedMs: 10000, maxExpandedStates: 30, probeExpandedStates: 20, probeElapsedMs: 1000,
+  });
+  const limits: number[] = [];
+  const solver: SolverAdapter = { metadata: classicGreedySolver.metadata, solve: async request => {
+    const expanded = request.limits!.maxExpandedStates!;
+    limits.push(expanded);
+    return { status: "unsolved", reason: "limit-reached", metrics: { elapsedMs: 1, expandedStates: expanded } };
+  } };
+  await solveWithEvidence(puzzle, solver, {}, undefined, evidence);
+  await solveWithEvidence(puzzle, solver, {}, undefined, evidence);
+  const exhausted = await solveWithEvidence(puzzle, solver, {}, undefined, evidence);
+  assert.deepEqual(limits, [20, 10]);
+  assert.equal(evidence.solverCalls, 2);
+  assert.equal(evidence.expandedStates, 30);
+  assert.equal(evidence.budgetExhaustions, 1);
+  assert.equal(exhausted.status, "unsolved");
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(solveWithEvidence(puzzle, solver, {}, abort.signal, evidence));
 });

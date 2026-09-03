@@ -7,12 +7,14 @@ import type {
   GoalStyle,
   PassageEdge,
   SolvedBlueprint,
+  ReverseSearchProfile,
 } from "./blueprint-types.ts";
 import {
   collectRoomFloorCells,
   chooseRobotPosition,
   findDoorways,
   selectGoals,
+  extendGoalSet,
   type RoomFloorCell,
 } from "./goal-placement.ts";
 import {
@@ -22,6 +24,8 @@ import {
 } from "./motifs.ts";
 import {
   reverseBeamSearch,
+  reverseBeamSearchV4,
+  type ArchiveCandidate,
   replayForwardSolution,
   type BeamSearchParams,
   DEFAULT_BEAM_PARAMS,
@@ -88,6 +92,8 @@ export const COMPOSITION_TYPES: readonly CompositionType[] = [
 ];
 
 export interface CompositionParams {
+  readonly searchProfile?: ReverseSearchProfile;
+  readonly scalable?: boolean;
   readonly seed: number;
   readonly boxCount: number;
   readonly composition: CompositionType | "auto";
@@ -126,6 +132,7 @@ export interface EdgeRealizationDetail {
 }
 
 export interface ComposedPuzzleResult {
+  readonly rankedCandidates?: readonly ArchiveCandidate[];
   readonly solutionSteps?: readonly SolutionStep[];
   readonly puzzle: PuzzleDefinition;
   readonly dag: DependencyDAG;
@@ -885,6 +892,7 @@ export async function generateComposedPuzzle(
   blueprint: FunctionalBlueprint,
   params: CompositionParams,
   onSolverCall?: () => void,
+  witnessFirst = false,
 ): Promise<ComposedPuzzleResult | null> {
   const maxRetries = params.maxRetries ?? 5;
   const beamParams = params.beamParams ?? {
@@ -895,10 +903,19 @@ export async function generateComposedPuzzle(
 
   for (let retry = 0; retry < maxRetries; retry++) {
     const adjustedSeed = params.seed + retry * 7919;
-    const compositionResult = composeMotifs(blueprint, {
+    let compositionResult = composeMotifs(blueprint, {
       ...params,
       seed: adjustedSeed,
     });
+    if (!compositionResult && params.scalable && params.boxCount > 4) {
+      const anchor = composeMotifs(blueprint, { ...params, seed: adjustedSeed, boxCount: 4 });
+      const goals = anchor && extendGoalSet(blueprint, rasterizeBlueprint(blueprint), anchor.goals, params.boxCount, adjustedSeed);
+      if (anchor && goals) compositionResult = { ...anchor, goals, dag: { ...anchor.dag,
+        nodes: [...anchor.dag.nodes, ...goals.slice(anchor.goals.length).map((goal, i) => ({
+          id: anchor.dag.nodes.length + i, goalIndex: anchor.goals.length + i, goalId: goal.goalId,
+          roomId: goal.roomId, role: "shared-transport",
+        }))] } };
+    }
     if (!compositionResult) continue;
 
     const { goals, dag, goalStyle } = compositionResult;
@@ -919,7 +936,7 @@ export async function generateComposedPuzzle(
     };
 
     const template = toSolvedTemplate(solved);
-    const beam = reverseBeamSearch(solved, {
+    const beam = params.searchProfile ? reverseBeamSearchV4(solved, adjustedSeed, params.searchProfile) : reverseBeamSearch(solved, {
       ...beamParams,
       seed: adjustedSeed,
     });
@@ -941,8 +958,9 @@ export async function generateComposedPuzzle(
     const validation = validatePuzzle(puzzle);
     if (!validation.valid) continue;
 
-    onSolverCall?.();
-    const solveResult = await solvePuzzleForVerification(puzzle);
+    const witness = witnessFirst ? witnessFromPullHistory(puzzle, beam.best.pullHistory) : undefined;
+    if (!witness) onSolverCall?.();
+    const solveResult = witness ? { steps: [...witness] } : await solvePuzzleForVerification(puzzle);
     if (!solveResult) continue;
 
     const pCells = collectPassageCells(blueprint.passages);
@@ -963,6 +981,7 @@ export async function generateComposedPuzzle(
       goalStyle,
       retries: retry,
       solutionSteps: solveResult.steps,
+      rankedCandidates: "rankedCandidates" in beam ? beam.rankedCandidates : undefined,
     };
   }
 
@@ -1001,10 +1020,14 @@ export async function generateVerifiedMotifPuzzle(
     boxCount: number;
     motif: MotifType | "auto";
     beamParams?: BeamSearchParams;
+    searchProfile?: ReverseSearchProfile;
+    scalable?: boolean;
   },
 ): Promise<{
   puzzle: PuzzleDefinition;
   witness?: readonly SolutionStep[];
+  solved?: SolvedBlueprint;
+  rankedCandidates?: readonly ArchiveCandidate[];
   hints: readonly DependencyHint[];
   motif: MotifType;
 } | null> {
@@ -1012,6 +1035,7 @@ export async function generateVerifiedMotifPuzzle(
     seed: params.seed,
     boxCount: params.boxCount,
     motif: params.motif,
+    scalable: params.scalable,
   });
   if (!result) return null;
 
@@ -1022,7 +1046,7 @@ export async function generateVerifiedMotifPuzzle(
   };
 
   const template = toSolvedTemplate(result.solved);
-  const beam = reverseBeamSearch(result.solved, beamParams);
+  const beam = params.searchProfile ? reverseBeamSearchV4(result.solved, params.seed, params.searchProfile) : reverseBeamSearch(result.solved, beamParams);
   if (beam.best.depth === 0) return null;
 
   const scrambled = {
@@ -1044,5 +1068,7 @@ export async function generateVerifiedMotifPuzzle(
     hints: result.hints,
     motif: result.motif,
     witness: witnessFromPullHistory(puzzle, beam.best.pullHistory),
+    solved: result.solved,
+    rankedCandidates: "rankedCandidates" in beam ? beam.rankedCandidates : undefined,
   };
 }

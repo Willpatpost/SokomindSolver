@@ -3,7 +3,7 @@ import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { TopologyFamily, GeometryProfile, ReverseSearchProfile, FunctionalBlueprint, SolvedBlueprint } from "./blueprint-types.ts";
 import { ForgeWorkerPool, getForgePoolSize, type PoolStats } from "./forge-pool.ts";
 import { GenerationEvidence, witnessFromPullHistory } from "./generation-evidence.ts";
-import type { ForgeTask } from "./forge-protocol.ts";
+import type { FinalistTaskPayload } from "./finalist-worker.ts";
 import {
   EXPERT_SEARCH_PROFILE,
   MASTER_SEARCH_PROFILE,
@@ -168,6 +168,11 @@ export interface ForgeConfig {
   readonly reverseCandidatesPerBlueprint?: number;
   /** Preserve regression configurations while allowing catalog generation to reuse evidence. */
   readonly reuseEvidence?: boolean;
+  /** Replay construction routes for refinement, with bounded independent quality probes. */
+  readonly witnessFirst?: boolean;
+  readonly participationSearch?: boolean;
+  readonly scalableRecipes?: boolean;
+  readonly evaluationSearchBudget?: import("./generation-evidence.ts").GenerationSearchBudget;
   /** Bounded retries of goal placement on the same geometry, without weaker gates. */
   readonly goalPlacementAttempts?: number;
   readonly batchSize: number;
@@ -546,12 +551,13 @@ export interface ForgeSummary {
 // ---------------------------------------------------------------------------
 
 interface RawGenResult {
+  readonly solved?: SolvedBlueprint;
   readonly witness?: readonly SolutionStep[];
   readonly generationSolverCalls?: number;
   readonly puzzle: PuzzleDefinition;
   readonly dag?: DependencyDAG;
   readonly hints?: readonly DependencyHint[];
-  readonly composedResult?: ComposedPuzzleResult;
+  readonly composedResult?: Pick<ComposedPuzzleResult, "realization">;
   readonly motifType?: MotifType;
   readonly compositionType?: string;
   readonly dependencyRealizationRate?: number;
@@ -788,9 +794,14 @@ function runReverseSearchAndBuild(
         const scoringCtx = buildScoringContext(solved.blueprint, solved.grid, solved.goals);
         mechCtx = buildMechanismReverseContext(mechanismPlan, scoringCtx);
       }
-      const v4Result = reverseBeamSearchV4(solved, seed, searchProfile, mechCtx);
+      const v4Result = reverseBeamSearchV4(solved, seed, config.participationSearch
+        ? { ...searchProfile, participationWeight: 30 } : searchProfile, mechCtx);
       if (v4Result.best.depth === 0) return { failed: "beam-search-empty" };
-      bestCandidate = v4Result.best;
+      bestCandidate = config.participationSearch
+        ? [v4Result.best, ...v4Result.rankedCandidates.map(c => c.candidate)].find(c => {
+          const p = buildPuzzleFromScramble({ template, boxPositions: [...c.boxPositions], robotPosition: c.robotPosition, reversePulls: c.depth }, difficulty);
+          return validatePuzzle(p).valid;
+        }) ?? v4Result.best : v4Result.best;
       rankedCandidates = v4Result.rankedCandidates;
     } else {
       const beamParams: BeamSearchParams = {
@@ -830,9 +841,17 @@ export interface ReverseStart {
   readonly pullHistory?: readonly PullRecord[];
 }
 
-export type CompletionResult =
+export type ForgeTask =
+  | { kind: "blueprint"; config: ForgeConfig; entry: import("./forge-sampling.ts").ForgeScheduleEntry }
+  | { kind: "reverse"; config: ForgeConfig; blueprint: BlueprintCandidate }
+  | { kind: "complete"; config: ForgeConfig; blueprint: BlueprintCandidate; forcedReverseState?: ReverseStart; prepared?: RawGenerationResult }
+  | { kind: "finalist"; policy: V4EvaluatorPolicy; payload: FinalistTaskPayload }
+  | { kind: "evaluate"; puzzle: PuzzleDefinition };
+
+export type CompletionResult = (
   | { ok: true; candidate: ForgeCandidate; solverCalls: number; cacheHits?: number; witnessFallbacks?: number; rankedCandidates?: readonly ArchiveCandidate[] }
-  | { ok: false; reason: ForgeRejectionReason; solverCalls: number; cacheHits?: number; witnessFallbacks?: number; qualityProfile?: PuzzleQualityProfile };
+  | { ok: false; reason: ForgeRejectionReason; solverCalls: number; cacheHits?: number; witnessFallbacks?: number; qualityProfile?: PuzzleQualityProfile }
+) & { readonly evaluationWork?: import("./generation-evidence.ts").GenerationWork };
 
 export type RawGenerationResult =
   | { ok: true; raw: RawGenResult; rankedCandidates?: readonly ArchiveCandidate[] }
@@ -848,31 +867,40 @@ export async function generateRawCandidate(bc: BlueprintCandidate, config: Forge
   let v4RankedCandidatesOut: readonly ArchiveCandidate[] | undefined;
 
   if (mode === "composed") {
+    const profile = config.scalableRecipes ? resolveSearchProfile(config, difficulty) : undefined;
     const result = await generateComposedPuzzle(bc.blueprint, {
       ...DEFAULT_COMPOSITION_PARAMS,
       seed,
       boxCount,
+      scalable: config.scalableRecipes,
+      maxRetries: config.scalableRecipes ? 2 : DEFAULT_COMPOSITION_PARAMS.maxRetries,
+      searchProfile: profile ? { ...profile, participationWeight: config.participationSearch ? 30 : undefined } : undefined,
       beamParams: {
         ...DEFAULT_BEAM_PARAMS,
         seed,
         ...config.beamParams,
       },
-    }, () => { solverCalls++; });
+    }, () => { solverCalls++; }, config.witnessFirst);
     if (!result) return { ok: false, reason: "composition-failed", solverCalls };
     rawResult = {
       puzzle: { ...result.puzzle, id: `forge-${seed}`, difficulty },
       dag: result.dag,
-      composedResult: result,
+      composedResult: { realization: result.realization },
       witness: result.solutionSteps,
       compositionType: result.dag.compositionId,
       dependencyRealizationRate: result.realization.realizationRate,
+      solved: result.solved,
     };
+    v4RankedCandidatesOut = result.rankedCandidates;
   } else if (mode === "motif") {
+    const profile = config.scalableRecipes ? resolveSearchProfile(config, difficulty) : undefined;
     const motifChoice = config.motifTypes[seed % config.motifTypes.length];
     const result = await generateVerifiedMotifPuzzle(bc.blueprint, {
       seed,
       boxCount,
       motif: motifChoice,
+      scalable: config.scalableRecipes,
+      searchProfile: profile ? { ...profile, participationWeight: config.participationSearch ? 30 : undefined } : undefined,
       beamParams: {
         ...DEFAULT_BEAM_PARAMS,
         seed,
@@ -885,7 +913,9 @@ export async function generateRawCandidate(bc: BlueprintCandidate, config: Forge
       hints: result.hints,
       motifType: result.motif,
       witness: result.witness,
+      solved: result.solved,
     };
+    v4RankedCandidatesOut = result.rankedCandidates;
   } else if (bc.solvedBlueprint) {
     const reverseResult = runReverseSearchAndBuild(
       bc.solvedBlueprint, config, difficulty, seed,
@@ -913,16 +943,23 @@ export async function generateRawCandidate(bc: BlueprintCandidate, config: Forge
   }
 
 
-  return { ok: true, raw: { ...rawResult, generationSolverCalls: solverCalls }, rankedCandidates: v4RankedCandidatesOut };
+  return { ok: true, raw: { ...rawResult, solved: rawResult.solved ?? bc.solvedBlueprint,
+    generationSolverCalls: solverCalls }, rankedCandidates: v4RankedCandidatesOut };
 }
 
 export async function completeCandidateFromBlueprint(bc: BlueprintCandidate, config: ForgeConfig,
   forcedReverseState?: ReverseStart, prepared?: RawGenerationResult): Promise<CompletionResult> {
-  const raw = prepared ?? await generateRawCandidate(bc, config, forcedReverseState);
+  let raw = prepared ?? await generateRawCandidate(bc, config, forcedReverseState);
   if (!raw.ok) return raw;
-  const evidence = new GenerationEvidence(config.reuseEvidence !== false);
+  if (prepared && forcedReverseState && raw.raw.solved) {
+    const alternate = runReverseSearchAndBuild(raw.raw.solved, config, bc.difficulty, bc.seed, undefined, forcedReverseState);
+    if ("failed" in alternate) return { ok: false, reason: alternate.failed, solverCalls: 0 };
+    raw = { ok: true, raw: { ...raw.raw, puzzle: alternate.puzzle, witness: alternate.witness, generationSolverCalls: 0 } };
+  }
+  const evidence = new GenerationEvidence(config.reuseEvidence !== false, config.witnessFirst, config.evaluationSearchBudget);
   const result = await finishCandidate(bc, config, raw.raw, evidence);
   return { ...result, solverCalls: evidence.solverCalls + (raw.raw.generationSolverCalls ?? 0),
+    evaluationWork: evidence.work(),
     cacheHits: evidence?.cacheHits ?? 0, witnessFallbacks: evidence?.witnessFallbacks ?? 0,
     ...(raw.rankedCandidates ? { rankedCandidates: raw.rankedCandidates } : {}) };
 }
@@ -932,6 +969,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   const { seed, family, boxCount, mode, difficulty } = bc;
   let solverCalls = 0;
   // --- Stage D+E: Tightening, typing, full evaluation, gates ---
+  evidence?.mark("tightening");
   let puzzle = rawResult.puzzle;
   let tighteningResult: TighteningResult | undefined;
   let cellsRemoved = 0;
@@ -943,7 +981,12 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     const puzzleGrid = parseRowsToGrid(puzzle.rows);
     const preservation = buildPreservationContext(puzzleGrid);
     const tierPolicies = config.tierTighteningPolicies ?? DEFAULT_TIER_TIGHTENING_POLICIES;
-    const tierPolicy = tierPolicies[difficulty];
+    const basePolicy = tierPolicies[difficulty];
+    const tierPolicy = basePolicy && config.witnessFirst ? { ...basePolicy,
+      minPlayableFloor: Math.max(basePolicy.minPlayableFloor, config.geometryProfile?.minPlayableFloor ?? 0),
+      minFloorCoverage: config.geometryProfile?.minFloorCoverage ?? basePolicy.minFloorCoverage,
+      targetSolutionFloorCoverage: basePolicy.maxFloorPerBox ? 0.65 : basePolicy.targetSolutionFloorCoverage,
+    } : basePolicy;
     preTighteningFloor = analyzeGrid(puzzleGrid).totalFloor;
 
     const tResult = await tightenPuzzle(puzzle, config.tighteningParams, preservation, tierPolicy, evidence, rawResult.witness);
@@ -961,6 +1004,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   }
 
   const finalGrid = parseRowsToGrid(puzzle.rows);
+  evidence?.mark("geometry-checks");
   const finalMetrics = analyzeGrid(finalGrid);
 
   if (config.geometryProfile) {
@@ -979,6 +1023,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   let prelimPushes = 0;
 
   if (typingMode !== "generic" && boxCount >= 2) {
+    evidence?.mark("generic-probe");
     solverCalls++;
     const prelimResult = await evaluatePuzzleWithSteps(puzzle, undefined, evidence, rawResult.witness);
     if (!prelimResult.vector.solved || !prelimResult.steps) {
@@ -992,6 +1037,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   let puzzleChanged = false;
   let storyAwareTyping: StoryAwareTypingPlan | undefined;
   if (typingMode !== "generic" && boxCount >= 2 && pairingSteps) {
+    evidence?.mark("typing");
     const solution = {
       steps: pairingSteps,
       moves: prelimMoves,
@@ -1046,6 +1092,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   }
 
   // Full evaluation (solver call)
+  evidence?.mark("typed-probe");
   solverCalls++;
   const evalResult = await evaluatePuzzleWithSteps(puzzle, undefined, evidence, pairingSteps ?? rawResult.witness);
   const ev = evalResult.vector;
@@ -1053,6 +1100,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     return { ok: false, reason: "unsolvable", solverCalls };
   }
 
+  evidence?.mark("mechanism-verification");
   const mechanismConstructionVerification =
     rawResult.mechanismConstruction && evalResult.trace && evalResult.passiveStory
       ? verifyMechanismConstruction(
@@ -1129,6 +1177,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   }
 
   // Apply gates
+  evidence?.mark("quality");
   const gateResult = applyGates(
     ev,
     config.gates,
@@ -1158,6 +1207,7 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
   }
 
   const counterfactualGrid = puzzleChanged ? parseRowsToGrid(puzzle.rows) : finalGrid;
+  evidence?.mark("counterfactual");
   const counterfactualStory = evalResult.trace
     ? analyzeCounterfactualStory(counterfactualGrid, evalResult.trace, config.counterfactualBudget)
     : undefined;
@@ -1497,6 +1547,24 @@ export interface ForgeExecutionOptions {
   readonly workers?: number;
   readonly signal?: AbortSignal;
   readonly onProgress?: (progress: ForgeProgress) => void;
+  readonly onCheckpoint?: (checkpoint: ForgeCheckpoint) => void;
+}
+
+/** Completed task evidence; qualification is not final curation or release approval. */
+export interface ForgeCheckpoint {
+  readonly stage: "blueprint" | "reverse" | "complete";
+  readonly seed: number;
+  readonly family: TopologyFamily;
+  readonly mode: ForgeGenerationMode;
+  readonly boxCount: number;
+  readonly variant: number;
+  /** Includes time waiting for a worker, not CPU time. */
+  readonly queueAndTaskMs: number;
+  readonly ok: boolean;
+  readonly reason?: ForgeRejectionReason;
+  readonly candidate?: ForgeCandidate;
+  readonly solverCalls?: number;
+  readonly evaluationWork?: import("./generation-evidence.ts").GenerationWork;
 }
 
 export interface ForgeProgress {
@@ -1532,7 +1600,7 @@ export async function runForge(config: ForgeConfig = DEFAULT_FORGE_CONFIG,
     config.goalPlacementAttempts < 1 || config.goalPlacementAttempts > 16)) throw new Error("Goal placement attempts must be in [1, 16]");
   const attempts = config.funnelBudgets?.rawAttemptBudget ?? config.batchSize;
   const pool = options.pool ?? new ForgeWorkerPool(undefined, undefined,
-    Math.min(options.workers ?? getForgePoolSize(), Math.max(1, attempts)), options.signal);
+    Math.min(options.workers ?? getForgePoolSize(), Math.max(1, attempts * variants)), options.signal);
   const abort = () => pool.cancel();
   options.signal?.addEventListener("abort", abort, { once: true });
   try { return await runForgePipeline(config, pool, options, variants); }
@@ -1607,12 +1675,14 @@ type BlueprintResult = ReturnType<typeof generateBlueprintCandidate>;
 type FinalistResult = { finalist: FinalistEvaluationV4; objectives: CurationObjectives; deepScore: number };
 
 export function reverseAlternatives(bc: BlueprintCandidate, generated: RawGenerationResult, limit: number): ReverseStart[] {
-  if (!generated.ok || !bc.solvedBlueprint || limit <= 1) return [];
+  if (!generated.ok || limit <= 1) return [];
+  const solved = generated.raw.solved ?? bc.solvedBlueprint;
+  if (!solved) return [];
   const seen = new Set([boardHash(generated.raw.puzzle.rows)]);
   const alternatives: ReverseStart[] = [];
   for (const entry of generated.rankedCandidates ?? []) {
     const candidate = entry.candidate;
-    const puzzle = buildPuzzleFromScramble({ template: toSolvedTemplate(bc.solvedBlueprint),
+    const puzzle = buildPuzzleFromScramble({ template: toSolvedTemplate(solved),
       boxPositions: [...candidate.boxPositions], robotPosition: candidate.robotPosition, reversePulls: candidate.depth }, bc.difficulty);
     const hash = boardHash(puzzle.rows);
     if (seen.has(hash)) continue;
@@ -1626,6 +1696,7 @@ export function reverseAlternatives(bc: BlueprintCandidate, generated: RawGenera
 /** A bounded ready queue overlaps reverse search with candidate qualification. */
 async function streamCompletions(blueprints: readonly BlueprintCandidate[], config: ForgeConfig,
   pool: ForgeWorkerPool, variants: number, onResult: (result: CompletionResult, evaluated: boolean) => void,
+  onCheckpoint?: ForgeExecutionOptions["onCheckpoint"],
 ): Promise<{ bc: BlueprintCandidate; completion: CompletionResult }[]> {
   type Job = { kind: "reverse" | "complete"; index: number; variant: number; bc: BlueprintCandidate;
     forcedReverseState?: ReverseStart; prepared?: RawGenerationResult };
@@ -1644,18 +1715,25 @@ async function streamCompletions(blueprints: readonly BlueprintCandidate[], conf
       while (queue.length > 0 && active < pool.concurrency * 2) {
         const job = queue.shift()!;
         active++;
+        const submitted = performance.now();
         const payload = job.kind === "reverse"
           ? { kind: "reverse" as const, config, blueprint: job.bc }
           : { kind: "complete" as const, config, blueprint: job.bc, prepared: job.prepared, forcedReverseState: job.forcedReverseState };
         pool.submit<RawGenerationResult | CompletionResult>(payload satisfies ForgeTask, job.kind).then((value) => {
           if (failed) return;
+          onCheckpoint?.({ stage: job.kind, seed: job.bc.seed, family: job.bc.family, mode: job.bc.mode,
+            boxCount: job.bc.boxCount, variant: job.variant, queueAndTaskMs: performance.now() - submitted,
+            ok: value.ok, ...(!value.ok ? { reason: value.reason } : {}),
+            ...("candidate" in value ? { candidate: value.candidate } : {}),
+            ...("solverCalls" in value ? { solverCalls: value.solverCalls } : {}),
+            ...("evaluationWork" in value ? { evaluationWork: value.evaluationWork } : {}) });
           if (job.kind === "reverse" && value.ok && "raw" in value) {
             const alternatives = reverseAlternatives(job.bc, value, variants);
             // No qualification result is required before any alternate becomes eligible.
             queue.unshift(
               { ...job, kind: "complete", prepared: { ok: true, raw: value.raw } },
               ...alternatives.map((forcedReverseState, i): Job => ({ ...job, kind: "complete",
-                variant: i + 1, forcedReverseState })),
+                variant: i + 1, forcedReverseState, prepared: { ok: true, raw: value.raw } })),
             );
           } else {
             const completion = value as CompletionResult;
@@ -1707,8 +1785,12 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
     const budgets = config.funnelBudgets;
     const schedule = createForgeSchedule(enumerateForgeCombinations(config), budgets?.rawAttemptBudget ?? config.batchSize, config.baseSeed);
     const blueprints = await pool.map(schedule, async (entry) => {
+      const submitted = performance.now();
       const result = await pool.submit<BlueprintResult>({ kind: "blueprint", config, entry } satisfies ForgeTask, "blueprint");
       attempted++; if (!result.ok) rejected++;
+      options.onCheckpoint?.({ stage: "blueprint", seed: entry.seed, ...entry.combination, variant: 0,
+        queueAndTaskMs: performance.now() - submitted, ok: result.ok,
+        ...(!result.ok ? { reason: result.reason } : {}) });
       return result;
     });
     const blueprintCandidates: BlueprintCandidate[] = [];
@@ -1752,7 +1834,7 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
       solverCalls += completion.solverCalls;
       evidenceCacheHits += completion.cacheHits ?? 0;
       witnessFallbacks += completion.witnessFallbacks ?? 0;
-    });
+    }, options.onCheckpoint);
     const completedCandidates: ForgeCandidate[] = [];
     for (const { bc, completion } of completions) {
       if (!completion.ok) {

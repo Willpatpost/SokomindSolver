@@ -1,5 +1,8 @@
 # Generator CPU usage and throughput
 
+For the ordered all-tier implementation and measurement harness, see
+[All-tier generator progress](generator-all-tier-progress.md).
+
 The terminal catalog generator uses one reusable Node worker pool across tiers
 and retry windows. Beginner uses the pool too. Blueprint generation and
 finalist evaluation run in parallel; reverse construction feeds qualification

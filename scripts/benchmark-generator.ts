@@ -3,6 +3,9 @@ import { availableParallelism, cpus, totalmem } from "node:os";
 import { runForge, type ForgeConfig, type ForgeRunResult } from "../src/features/generator/v2/puzzle-forge.ts";
 import { DEFAULT_V4_POLICY } from "../src/features/generator/v2/solver-bottleneck.ts";
 import { replayWitness } from "../src/features/generator/v2/generation-evidence.ts";
+import { TIER_CONFIGS, CATALOG_FINALIST_POLICIES } from "./lib/generator-tier-config.ts";
+import { createHash } from "node:crypto";
+import { STRICT_STORY_DIVERSITY_POLICY } from "../src/features/generator/v2/story-diversity.ts";
 
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -22,15 +25,27 @@ const workers = (flag("--workers")?.split(",").map(Number) ??
   [...new Set([1, 4, 8, 12, Math.max(1, availableParallelism() - 1)].filter((n) => n <= availableParallelism()))]);
 if (workers.length === 0 || workers.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 64)) throw new Error("--workers requires a comma-separated list in [1, 64]");
 const fixture = JSON.parse(readFileSync(new URL("../tests/fixtures/generator/generated-quality-samples.json", import.meta.url), "utf8"));
-const config: ForgeConfig = { ...fixture.config, batchSize: attempts, retainTarget: attempts,
-  baseSeed: 310000, boxCounts: [3], reverseCandidatesPerBlueprint: integer("--reverse-candidates", 4, 32),
+const tier = flag("--tier");
+const preset = TIER_CONFIGS.find(t => t.difficulty === tier);
+if (tier && !preset) throw new Error("Unknown catalog tier");
+const evaluation = flag("--evaluation") ?? "balanced";
+if (evaluation !== "balanced" && evaluation !== "deep") throw new Error("--evaluation must be balanced or deep");
+const seedOffset = Number(flag("--seed-offset") ?? 0);
+if (!Number.isSafeInteger(seedOffset) || seedOffset < 0 || seedOffset > 1000000000) throw new Error("Invalid seed offset");
+const base = preset?.config ?? { ...fixture.config, baseSeed: 310000, boxCounts: [3] };
+const config: ForgeConfig = { ...base, batchSize: attempts, retainTarget: attempts,
+  baseSeed: base.baseSeed + seedOffset, reverseCandidatesPerBlueprint: integer("--reverse-candidates", 4, 32),
   reuseEvidence: !process.argv.includes("--no-evidence-cache"), goalPlacementAttempts: 3,
-  v4EvaluatorPolicy: { ...DEFAULT_V4_POLICY, proofMaxBoxes: 0 } };
+  ...(preset ? { witnessFirst: true, participationSearch: true, scalableRecipes: true,
+    storyDiversityPolicy: STRICT_STORY_DIVERSITY_POLICY,
+    funnelBudgets: base.funnelBudgets ? { ...base.funnelBudgets, rawAttemptBudget: attempts,
+      finalistRetain: attempts, deepRetain: attempts, catalogQuota: attempts } : undefined } : {}),
+  v4EvaluatorPolicy: preset ? CATALOG_FINALIST_POLICIES[evaluation] : { ...DEFAULT_V4_POLICY, proofMaxBoxes: 0 } };
 const abort = new AbortController();
 process.once("SIGINT", () => abort.abort());
 
 function signature(result: ForgeRunResult): string {
-  return JSON.stringify({ retained: result.candidates.map((c) => ({ rows: c.puzzle.rows, steps: c.solutionSteps,
+  return JSON.stringify({ retained: result.candidates.map((c) => ({ id: c.puzzle.id, rows: c.puzzle.rows, steps: c.solutionSteps,
     quality: c.qualityProfile, classification: c.puzzle.difficulty })), rejections: result.rejections });
 }
 const median = (values: number[]) => {
@@ -40,7 +55,7 @@ const median = (values: number[]) => {
 
 async function main(): Promise<void> {
   console.log(`CPU: ${cpus()[0]?.model.trim()} | ${availableParallelism()} available threads | ${(totalmem() / 2 ** 30).toFixed(1)} GiB`);
-  console.log(`Fixed Beginner workload: ${attempts} seeds, ${config.reverseCandidatesPerBlueprint} reverse candidates, ${repeats} repeats. Includes quality and finalist gates.`);
+  console.log(`Fixed ${tier ?? "Beginner calibration"} workload: ${attempts} seeds, ${config.reverseCandidatesPerBlueprint} reverse candidates, ${repeats} repeats. Includes quality and finalist gates.`);
   // Warm the host and validate the frozen positive sample before comparing speeds.
   const warm = await runForge({ ...fixture.config, baseSeed: 310049, boxCounts: [3] }, { workers: 1, signal: abort.signal });
   if (warm.candidates.length !== 1) throw new Error("Positive calibration sample failed");
@@ -58,9 +73,16 @@ async function main(): Promise<void> {
       for (const c of result.candidates) if (!c.solutionSteps || !replayWitness(c.puzzle, c.solutionSteps)) throw new Error(`Invalid witness: ${c.puzzle.id}`);
       const current = signature(result);
       baseline ??= current;
+      const reference = JSON.parse(baseline), actual = JSON.parse(current);
+      const canonical = (entries: { id: string }[]) => JSON.stringify([...entries].sort((a, b) => a.id.localeCompare(b.id)));
+      const comparison = { sameCandidateContent: canonical(reference.retained) === canonical(actual.retained),
+        sameOrder: JSON.stringify(reference.retained.map((c: { id: string }) => c.id)) === JSON.stringify(actual.retained.map((c: { id: string }) => c.id)),
+        sameRejections: JSON.stringify(reference.rejections) === JSON.stringify(actual.rejections) };
       runs.push({ elapsedMs: result.elapsedMs, qualified: result.totalValid, retained: result.totalRetained,
-        identicalResults: current === baseline, performance: result.performance!, rejections: result.rejectionCounts });
+        identicalResults: current === baseline, comparison, signatureSha256: createHash("sha256").update(current).digest("hex"),
+        evidence: actual, performance: result.performance!, rejections: result.rejectionCounts });
       console.log(`  ${count} workers, run ${repeat + 1}: ${(result.elapsedMs / 1000).toFixed(2)}s, ${result.totalValid} qualified, ${result.totalRetained} retained, matching=${current === baseline}`);
+      if (current !== baseline) console.log(`    Equivalence diagnostics: ${JSON.stringify(comparison)}`);
     }
     measurements.push({ workers: count, medianMs: median(runs.map((r) => r.elapsedMs)),
       qualifiedPerMinute: median(runs.map((r) => r.qualified * 60000 / r.elapsedMs)),
@@ -70,14 +92,14 @@ async function main(): Promise<void> {
   }
   const eligible = measurements.filter((m) => m.identicalResults && m.qualifiedPerMinute > 0);
   eligible.sort((a, b) => b.qualifiedPerMinute - a.qualifiedPerMinute);
-  const recommendedWorkers = eligible[0]?.workers;
+  const recommendedWorkers = measurements.every(m => m.identicalResults) ? eligible[0]?.workers : undefined;
   console.table(measurements.map((m) => ({ workers: m.workers, medianMs: m.medianMs,
     qualifiedPerMinute: m.qualifiedPerMinute, averageBusyCores: m.averageBusyCores,
     peakRssMb: m.peakRssMb, identicalResults: m.identicalResults })));
   console.log(recommendedWorkers ? `Recommended for this workload: --workers ${recommendedWorkers}` : "No positive, equivalent results: no concurrency recommendation.");
   const output = flag("--output");
   if (output) writeFileSync(output, JSON.stringify({ cpu: cpus()[0]?.model.trim(), config, repeats, measurements,
-    recommendedWorkers, limitation: "Beginner calibration workload; larger tiers may have different memory and scaling behavior." }, null, 2) + "\n", { flag: "wx" });
+    recommendedWorkers, limitation: `Only this ${tier ?? "Beginner calibration"} workload was tested; other tiers, seeds, and budgets can scale differently.` }, null, 2) + "\n", { flag: "wx" });
   if (measurements.some((m) => !m.identicalResults)) process.exitCode = 1;
 }
 

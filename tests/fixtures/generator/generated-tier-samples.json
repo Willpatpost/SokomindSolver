@@ -1,0 +1,6086 @@
+{
+  "schemaVersion": 1,
+  "limitation": "Generated automated-quality examples, not human-playtested or optimal routes.",
+  "samples": [
+    {
+      "sourceConfig": {
+        "batchSize": 64,
+        "retainTarget": 64,
+        "families": [
+          "linear",
+          "hub",
+          "loop"
+        ],
+        "boxCounts": [
+          3,
+          4,
+          5,
+          6
+        ],
+        "difficulties": [
+          "beginner"
+        ],
+        "modes": [
+          "plain",
+          "motif"
+        ],
+        "motifTypes": [
+          "auto"
+        ],
+        "compositionTypes": [
+          "auto"
+        ],
+        "boardWidth": 12,
+        "boardHeight": 12,
+        "blueprintRetries": 30,
+        "beamParams": {
+          "maxDepth": 40
+        },
+        "tighteningParams": {
+          "maxMutationsPerPass": 200,
+          "maxAccepted": 80,
+          "solverLimitMs": 10000,
+          "solverLimitStates": 1500000
+        },
+        "gates": {
+          "minSolutionPushes": 4,
+          "maxUnusedFloorRatio": 0.85,
+          "maxEmptyWalkRatio": 0.8,
+          "maxLongestWalkStreak": 25,
+          "maxRepetitivePushRatio": 0.85,
+          "maxBoxIndependenceRatio": 0.9,
+          "minDependencyRealizationRate": 0.3,
+          "maxMovesPerPush": 5,
+          "minSolverExpandedStates": 3,
+          "minGenericBoxCount": 1,
+          "minTypedBoxCount": 1,
+          "minPushesPerBox": 2,
+          "minCrossTypeInteractions": 1,
+          "minPlayableFloor": 15
+        },
+        "diversityMinDistance": 2,
+        "baseSeed": 310000,
+        "typingPolicy": {
+          "modes": [
+            "hybrid"
+          ],
+          "hybridTypedFractionMin": 0.3,
+          "hybridTypedFractionMax": 0.7
+        },
+        "geometryProfile": {
+          "boardWidthRange": [
+            10,
+            14
+          ],
+          "boardHeightRange": [
+            10,
+            14
+          ],
+          "minRooms": 1,
+          "maxRooms": 4,
+          "minRoomSize": 3,
+          "maxRoomSize": 5,
+          "passageWidths": [
+            1
+          ],
+          "minPlayableFloor": 15,
+          "maxPlayableFloor": 50,
+          "minFloorCoverage": 0.08,
+          "minRegions": 1,
+          "minChokepoints": 0
+        },
+        "reverseSearchProfile": {
+          "beamWidth": 6,
+          "maxDepth": 40,
+          "restartCount": 1,
+          "diverseArchiveSize": 8,
+          "diversityRadius": 2,
+          "stochasticTieBreaking": true,
+          "antiImmediateUndo": true
+        },
+        "reverseCandidatesPerBlueprint": 4,
+        "reuseEvidence": true,
+        "goalPlacementAttempts": 3,
+        "witnessFirst": true,
+        "v4EvaluatorPolicy": {
+          "witnessTimeoutMs": 1000,
+          "fastProbeMaxElapsedMs": 5000,
+          "fastProbeMaxStates": 500000,
+          "exactEvidenceMaxElapsedMs": 15000,
+          "exactEvidenceMaxStates": 2000000,
+          "proofMaxElapsedMs": 30000,
+          "proofMaxStates": 5000000,
+          "proofMaxBoxes": 0,
+          "proofMaxFloor": 200,
+          "requireOptimalProof": false
+        }
+      },
+      "puzzle": {
+        "id": "forge-310006-0aae703e",
+        "title": "Generated Puzzle",
+        "difficulty": "beginner",
+        "boxes": 3,
+        "rows": [
+          "OOOOOOOOOOOO",
+          "OOOOOOOOOOOO",
+          "OOOOOOOOOOOO",
+          "OO       OOO",
+          "OOO  OO XROO",
+          "OOOOOOO XAOO",
+          "OOOOOOO   OO",
+          "OOOOOOOSSaOO",
+          "OOOOOOOOOOOO",
+          "OOOOOOOOOOOO"
+        ]
+      },
+      "seed": 310006,
+      "family": "linear",
+      "mode": "motif",
+      "evaluation": {
+        "solverExpandedStates": 9,
+        "solverGeneratedStates": 29,
+        "solverElapsedMs": 1.1517000000000053,
+        "solverPeakFrontier": 7,
+        "solverDeadlockPrunes": 10,
+        "solverDuplicateStates": 3,
+        "solutionMoves": 14,
+        "solutionPushes": 8,
+        "solutionWalks": 6,
+        "pushRatio": 0.5714285714285714,
+        "boxCount": 3,
+        "avgLegalPushes": 1.25,
+        "maxLegalPushes": 2,
+        "singleChoiceRatio": 0.75,
+        "highBranchCount": 0,
+        "avgReachablePushes": 3.25,
+        "maxReachablePushes": 6,
+        "reachableSingleChoiceRatio": 0.125,
+        "reachableHighBranchCount": 3,
+        "reachableForcedPushRatio": 0.125,
+        "boxIndependenceRatio": 0.5714285714285714,
+        "boxInteractionEvents": 3,
+        "pushesPerBox": 2.6666666666666665,
+        "pushSwitchRatio": 0.5714285714285714,
+        "sharedRouteCells": 0,
+        "sharedSupportCells": 1,
+        "sharedChokepointUses": 0,
+        "causalEnableCount": 5,
+        "causalDisableCount": 0,
+        "crossTypeSharedRouteCells": 0,
+        "crossTypeSharedSupportCells": 1,
+        "crossTypeSharedChokepoints": 0,
+        "crossTypeCausalEnableCount": 3,
+        "crossTypeCausalDisableCount": 0,
+        "minPushesPerBox": 2,
+        "inactiveBoxCount": 0,
+        "onePushBoxCount": 0,
+        "roomCrossingsInSolution": 0,
+        "deadlockDensity": 1.1111111111111112,
+        "articulationPoints": 5,
+        "regionCount": 2,
+        "tunnelCells": 2,
+        "chokepoints": 2,
+        "floorUtilization": 0.175,
+        "openAreaRatio": 0.14285714285714285,
+        "emptyWalkRatio": 0.42857142857142855,
+        "longestWalkStreak": 4,
+        "forcedPushRatio": 0.75,
+        "repetitivePushRatio": 0.7142857142857143,
+        "unusedFloorRatio": 0.6666666666666666,
+        "movesPerPush": 1.75,
+        "solutionFloorCoverage": 0.6666666666666666,
+        "solutionUnusedFloorRatio": 0.33333333333333337,
+        "nonMonotonicBoxMoves": 0,
+        "nonMonotonicBoxCount": 0,
+        "stagingOperations": 0,
+        "temporaryGoalVacancies": 0,
+        "boxSwitchRate": 0.42857142857142855,
+        "distinctBoxesMoved": 3,
+        "multiMoveBoxCount": 1,
+        "maxBoxEpisodes": 2,
+        "estimatedDependencyDepth": 3,
+        "goalOrderConstraints": 3,
+        "criticalMoveCount": 0,
+        "criticalMoveRatio": 0,
+        "boardWidth": 12,
+        "boardHeight": 10,
+        "totalFloor": 21,
+        "solved": true
+      },
+      "typing": {
+        "boardHash": "0aae703e",
+        "boxGoalIds": [
+          "goal-0",
+          "goal-1",
+          "goal-2"
+        ],
+        "hybridPlan": {
+          "typedBoxIndices": {},
+          "genericBoxIndices": {},
+          "typedCount": 1,
+          "genericCount": 2,
+          "minPerKind": 1,
+          "interactionCutWeight": 2008,
+          "interactionEdges": [
+            {
+              "boxA": 0,
+              "boxB": 1,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 2,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 2,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            }
+          ],
+          "constraintResults": [
+            {
+              "id": "global-story",
+              "boxIndices": [
+                0,
+                1,
+                2
+              ],
+              "typedCount": 1,
+              "genericCount": 2,
+              "classMinimumsSatisfied": true,
+              "interactionCutSatisfied": true,
+              "genericWitnessSatisfied": true,
+              "oppositionSatisfied": true,
+              "satisfied": true
+            }
+          ]
+        },
+        "targets": [
+          {
+            "targetId": "global-story",
+            "mechanismType": "global",
+            "goalIds": [
+              "goal-0",
+              "goal-1",
+              "goal-2"
+            ],
+            "boxIds": [
+              0,
+              1,
+              2
+            ],
+            "minTyped": 1,
+            "minGeneric": 1,
+            "requireStrongInteraction": true,
+            "genericWitnesses": [],
+            "oppositionRequirements": [
+              {
+                "id": "global-story:causal-or-ordering",
+                "pairs": [
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "witness": "DDuuLDDuuulDDD",
+      "expectedFamilies": [
+        "assignment-misdirection",
+        "ordered-packing",
+        "shared-support",
+        "causal-dependency"
+      ]
+    },
+    {
+      "sourceConfig": {
+        "batchSize": 64,
+        "retainTarget": 64,
+        "families": [
+          "linear",
+          "hub",
+          "loop",
+          "branch"
+        ],
+        "boxCounts": [
+          7,
+          8,
+          9
+        ],
+        "difficulties": [
+          "intermediate"
+        ],
+        "modes": [
+          "plain",
+          "motif",
+          "composed",
+          "mechanism"
+        ],
+        "motifTypes": [
+          "auto"
+        ],
+        "compositionTypes": [
+          "auto"
+        ],
+        "boardWidth": 14,
+        "boardHeight": 14,
+        "blueprintRetries": 30,
+        "beamParams": {
+          "maxDepth": 70
+        },
+        "tighteningParams": {
+          "maxMutationsPerPass": 200,
+          "maxAccepted": 80,
+          "solverLimitMs": 10000,
+          "solverLimitStates": 1500000
+        },
+        "gates": {
+          "minSolutionPushes": 6,
+          "maxUnusedFloorRatio": 0.85,
+          "maxEmptyWalkRatio": 0.8,
+          "maxLongestWalkStreak": 25,
+          "maxRepetitivePushRatio": 0.85,
+          "maxBoxIndependenceRatio": 0.9,
+          "minDependencyRealizationRate": 0.3,
+          "maxMovesPerPush": 6,
+          "minSolverExpandedStates": 5,
+          "minGenericBoxCount": 2,
+          "minTypedBoxCount": 2,
+          "minPushesPerBox": 2,
+          "minCrossTypeInteractions": 1,
+          "minPlayableFloor": 35
+        },
+        "diversityMinDistance": 2,
+        "baseSeed": 320000,
+        "typingPolicy": {
+          "modes": [
+            "hybrid"
+          ],
+          "hybridTypedFractionMin": 0.3,
+          "hybridTypedFractionMax": 0.7
+        },
+        "funnelBudgets": {
+          "rawAttemptBudget": 64,
+          "preScreenRetain": 80,
+          "finalistRetain": 64,
+          "deepRetain": 64,
+          "catalogQuota": 64
+        },
+        "geometryProfile": {
+          "boardWidthRange": [
+            12,
+            16
+          ],
+          "boardHeightRange": [
+            12,
+            16
+          ],
+          "minRooms": 2,
+          "maxRooms": 5,
+          "minRoomSize": 3,
+          "maxRoomSize": 6,
+          "passageWidths": [
+            1,
+            2
+          ],
+          "minPlayableFloor": 35,
+          "maxPlayableFloor": 90,
+          "minFloorCoverage": 0.1,
+          "minRegions": 1,
+          "minChokepoints": 0
+        },
+        "reverseSearchProfile": {
+          "beamWidth": 10,
+          "maxDepth": 70,
+          "restartCount": 2,
+          "diverseArchiveSize": 16,
+          "diversityRadius": 2,
+          "stochasticTieBreaking": true,
+          "antiImmediateUndo": true
+        },
+        "mechanismTier": "intermediate",
+        "reverseCandidatesPerBlueprint": 4,
+        "reuseEvidence": true,
+        "goalPlacementAttempts": 3,
+        "witnessFirst": true,
+        "v4EvaluatorPolicy": {
+          "witnessTimeoutMs": 1000,
+          "fastProbeMaxElapsedMs": 5000,
+          "fastProbeMaxStates": 500000,
+          "exactEvidenceMaxElapsedMs": 15000,
+          "exactEvidenceMaxStates": 2000000,
+          "proofMaxElapsedMs": 30000,
+          "proofMaxStates": 5000000,
+          "proofMaxBoxes": 0,
+          "proofMaxFloor": 200,
+          "requireOptimalProof": false
+        }
+      },
+      "puzzle": {
+        "id": "forge-320022-1cddf6c3",
+        "title": "Generated Puzzle",
+        "difficulty": "intermediate",
+        "boxes": 7,
+        "rows": [
+          "OOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOO",
+          "OOa   OOOOOOOOOO",
+          "OOe          OOO",
+          "OOS XDOOO    OOO",
+          "OOc   OOOOO OOOO",
+          "OOS E OOOOO OOOO",
+          "OOb BdOOOOO OOOO",
+          "OOOOOOOOOOOXA OO",
+          "OOOOOOOOOO RC OO",
+          "OOOOOOOOOOO   OO",
+          "OOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOO"
+        ]
+      },
+      "seed": 320022,
+      "family": "branch",
+      "mode": "plain",
+      "evaluation": {
+        "solverExpandedStates": 2000,
+        "solverGeneratedStates": 10157,
+        "solverElapsedMs": 53.55069999999978,
+        "solverPeakFrontier": 192,
+        "solverDeadlockPrunes": 5303,
+        "solverDuplicateStates": 2701,
+        "solutionMoves": 180,
+        "solutionPushes": 67,
+        "solutionWalks": 113,
+        "pushRatio": 0.37222222222222223,
+        "boxCount": 7,
+        "avgLegalPushes": 1.1492537313432836,
+        "maxLegalPushes": 3,
+        "singleChoiceRatio": 0.8656716417910447,
+        "highBranchCount": 0,
+        "avgReachablePushes": 7.298507462686567,
+        "maxReachablePushes": 16,
+        "reachableSingleChoiceRatio": 0.1791044776119403,
+        "reachableHighBranchCount": 42,
+        "reachableForcedPushRatio": 0.1791044776119403,
+        "boxIndependenceRatio": 0.7575757575757576,
+        "boxInteractionEvents": 16,
+        "pushesPerBox": 9.571428571428571,
+        "pushSwitchRatio": 0.7575757575757576,
+        "sharedRouteCells": 19,
+        "sharedSupportCells": 18,
+        "sharedChokepointUses": 6,
+        "causalEnableCount": 84,
+        "causalDisableCount": 76,
+        "crossTypeSharedRouteCells": 19,
+        "crossTypeSharedSupportCells": 17,
+        "crossTypeSharedChokepoints": 6,
+        "crossTypeCausalEnableCount": 42,
+        "crossTypeCausalDisableCount": 35,
+        "minPushesPerBox": 2,
+        "inactiveBoxCount": 0,
+        "onePushBoxCount": 0,
+        "roomCrossingsInSolution": 3,
+        "deadlockDensity": 2.6515,
+        "articulationPoints": 11,
+        "regionCount": 2,
+        "tunnelCells": 6,
+        "chokepoints": 6,
+        "floorUtilization": 0.23076923076923078,
+        "openAreaRatio": 0.25,
+        "emptyWalkRatio": 0.6277777777777778,
+        "longestWalkStreak": 18,
+        "forcedPushRatio": 0.8656716417910447,
+        "repetitivePushRatio": 0.6818181818181818,
+        "unusedFloorRatio": 0.6875,
+        "movesPerPush": 2.6865671641791047,
+        "solutionFloorCoverage": 0.9791666666666666,
+        "solutionUnusedFloorRatio": 0.02083333333333337,
+        "nonMonotonicBoxMoves": 9,
+        "nonMonotonicBoxCount": 3,
+        "stagingOperations": 9,
+        "temporaryGoalVacancies": 0,
+        "boxSwitchRate": 0.24242424242424243,
+        "distinctBoxesMoved": 7,
+        "multiMoveBoxCount": 6,
+        "maxBoxEpisodes": 4,
+        "estimatedDependencyDepth": 11.5,
+        "goalOrderConstraints": 21,
+        "criticalMoveCount": 0,
+        "criticalMoveRatio": 0,
+        "boardWidth": 16,
+        "boardHeight": 13,
+        "totalFloor": 48,
+        "solved": true
+      },
+      "typing": {
+        "boardHash": "1cddf6c3",
+        "boxGoalIds": [
+          "goal-2",
+          "goal-6",
+          "goal-1",
+          "goal-5",
+          "goal-4",
+          "goal-0",
+          "goal-3"
+        ],
+        "hybridPlan": {
+          "typedBoxIndices": {},
+          "genericBoxIndices": {},
+          "typedCount": 5,
+          "genericCount": 2,
+          "minPerKind": 2,
+          "interactionCutWeight": 10074,
+          "interactionEdges": [
+            {
+              "boxA": 0,
+              "boxB": 1,
+              "weight": 1010,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 2,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 4,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 6,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 2,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 4,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 5,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 6,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 3,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 4,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 5,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 6,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 4,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 5,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 6,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 5,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 6,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 6,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 3,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 3,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            }
+          ],
+          "constraintResults": [
+            {
+              "id": "global-story",
+              "boxIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "typedCount": 5,
+              "genericCount": 2,
+              "classMinimumsSatisfied": true,
+              "interactionCutSatisfied": true,
+              "genericWitnessSatisfied": true,
+              "oppositionSatisfied": true,
+              "satisfied": true
+            }
+          ]
+        },
+        "targets": [
+          {
+            "targetId": "global-story",
+            "mechanismType": "global",
+            "goalIds": [
+              "goal-0",
+              "goal-1",
+              "goal-2",
+              "goal-3",
+              "goal-4",
+              "goal-5",
+              "goal-6"
+            ],
+            "boxIds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "minTyped": 2,
+            "minGeneric": 2,
+            "requireStrongInteraction": true,
+            "genericWitnesses": [],
+            "oppositionRequirements": [
+              {
+                "id": "global-story:causal-or-ordering",
+                "pairs": [
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    0,
+                    3
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "witness": "UUUUUruLLLLLLLulldddrrULdlUdrrdLullddrUUluuurrDDrdLdrdLuuuLrddlluUrDuruurDDDuurrrrdrrddddddrruLdlUUUUUUruLLLLLLLulDDrdLuurrrrrdrrdddddrruLdlUUUUUruLLLLLLLdlUruLLDrddrDuulLrdLrdLrdL",
+      "expectedFamilies": [
+        "assignment-misdirection",
+        "productive-reversal",
+        "multi-room-journey",
+        "gate-traffic",
+        "shared-transport",
+        "shared-support",
+        "causal-dependency"
+      ]
+    },
+    {
+      "sourceConfig": {
+        "batchSize": 64,
+        "retainTarget": 64,
+        "families": [
+          "linear",
+          "hub",
+          "loop",
+          "branch",
+          "nested"
+        ],
+        "boxCounts": [
+          10,
+          11,
+          12,
+          13
+        ],
+        "difficulties": [
+          "advanced"
+        ],
+        "modes": [
+          "plain",
+          "motif",
+          "composed",
+          "mechanism"
+        ],
+        "motifTypes": [
+          "auto"
+        ],
+        "compositionTypes": [
+          "auto"
+        ],
+        "boardWidth": 16,
+        "boardHeight": 16,
+        "blueprintRetries": 30,
+        "beamParams": {
+          "maxDepth": 100
+        },
+        "tighteningParams": {
+          "maxMutationsPerPass": 200,
+          "maxAccepted": 80,
+          "solverLimitMs": 10000,
+          "solverLimitStates": 1500000
+        },
+        "gates": {
+          "minSolutionPushes": 10,
+          "maxUnusedFloorRatio": 0.85,
+          "maxEmptyWalkRatio": 0.8,
+          "maxLongestWalkStreak": 25,
+          "maxRepetitivePushRatio": 0.85,
+          "maxBoxIndependenceRatio": 0.9,
+          "minDependencyRealizationRate": 0.3,
+          "maxMovesPerPush": 6,
+          "minSolverExpandedStates": 15,
+          "minGenericBoxCount": 2,
+          "minTypedBoxCount": 2,
+          "minPushesPerBox": 2,
+          "minCrossTypeInteractions": 1,
+          "minPlayableFloor": 45
+        },
+        "diversityMinDistance": 2,
+        "baseSeed": 330000,
+        "typingPolicy": {
+          "modes": [
+            "hybrid"
+          ],
+          "hybridTypedFractionMin": 0.3,
+          "hybridTypedFractionMax": 0.7
+        },
+        "funnelBudgets": {
+          "rawAttemptBudget": 64,
+          "preScreenRetain": 80,
+          "finalistRetain": 64,
+          "deepRetain": 64,
+          "catalogQuota": 64
+        },
+        "geometryProfile": {
+          "boardWidthRange": [
+            14,
+            18
+          ],
+          "boardHeightRange": [
+            14,
+            18
+          ],
+          "minRooms": 2,
+          "maxRooms": 6,
+          "minRoomSize": 3,
+          "maxRoomSize": 7,
+          "passageWidths": [
+            1,
+            2
+          ],
+          "minPlayableFloor": 45,
+          "maxPlayableFloor": 120,
+          "minFloorCoverage": 0.12,
+          "minRegions": 1,
+          "minChokepoints": 1
+        },
+        "reverseSearchProfile": {
+          "beamWidth": 16,
+          "maxDepth": 100,
+          "restartCount": 3,
+          "diverseArchiveSize": 24,
+          "diversityRadius": 2,
+          "stochasticTieBreaking": true,
+          "antiImmediateUndo": true
+        },
+        "mechanismTier": "advanced",
+        "reverseCandidatesPerBlueprint": 4,
+        "reuseEvidence": true,
+        "goalPlacementAttempts": 3,
+        "witnessFirst": true,
+        "v4EvaluatorPolicy": {
+          "witnessTimeoutMs": 1000,
+          "fastProbeMaxElapsedMs": 5000,
+          "fastProbeMaxStates": 500000,
+          "exactEvidenceMaxElapsedMs": 15000,
+          "exactEvidenceMaxStates": 2000000,
+          "proofMaxElapsedMs": 30000,
+          "proofMaxStates": 5000000,
+          "proofMaxBoxes": 0,
+          "proofMaxFloor": 200,
+          "requireOptimalProof": false
+        }
+      },
+      "puzzle": {
+        "id": "forge-330010-33b7129b",
+        "title": "Generated Puzzle",
+        "difficulty": "advanced",
+        "boxes": 11,
+        "rows": [
+          "OOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOO",
+          "OOOOOOOO   OOOO",
+          "OOOOOOOOSEXOOOO",
+          "OOScSOOO   OOOO",
+          "OO   OOO A OOOO",
+          "OO   OOOO  OOOO",
+          "OOS     CX  OOO",
+          "OOd  OOO XRX OO",
+          "OOSBXOOO D X OO",
+          "OOb  OOO  eSaOO",
+          "OOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOO"
+        ]
+      },
+      "seed": 330010,
+      "family": "branch",
+      "mode": "plain",
+      "evaluation": {
+        "solverExpandedStates": 2000,
+        "solverGeneratedStates": 17635,
+        "solverElapsedMs": 60.98570000000109,
+        "solverPeakFrontier": 652,
+        "solverDeadlockPrunes": 10380,
+        "solverDuplicateStates": 4603,
+        "solutionMoves": 333,
+        "solutionPushes": 100,
+        "solutionWalks": 233,
+        "pushRatio": 0.3003003003003003,
+        "boxCount": 11,
+        "avgLegalPushes": 1.17,
+        "maxLegalPushes": 2,
+        "singleChoiceRatio": 0.83,
+        "highBranchCount": 0,
+        "avgReachablePushes": 13.28,
+        "maxReachablePushes": 26,
+        "reachableSingleChoiceRatio": 0,
+        "reachableHighBranchCount": 99,
+        "reachableForcedPushRatio": 0,
+        "boxIndependenceRatio": 0.5555555555555556,
+        "boxInteractionEvents": 44,
+        "pushesPerBox": 9.090909090909092,
+        "pushSwitchRatio": 0.5555555555555556,
+        "sharedRouteCells": 24,
+        "sharedSupportCells": 27,
+        "sharedChokepointUses": 3,
+        "causalEnableCount": 107,
+        "causalDisableCount": 97,
+        "crossTypeSharedRouteCells": 23,
+        "crossTypeSharedSupportCells": 23,
+        "crossTypeSharedChokepoints": 3,
+        "crossTypeCausalEnableCount": 68,
+        "crossTypeCausalDisableCount": 64,
+        "minPushesPerBox": 2,
+        "inactiveBoxCount": 0,
+        "onePushBoxCount": 0,
+        "roomCrossingsInSolution": 5,
+        "deadlockDensity": 5.19,
+        "articulationPoints": 5,
+        "regionCount": 2,
+        "tunnelCells": 3,
+        "chokepoints": 3,
+        "floorUtilization": 0.25333333333333335,
+        "openAreaRatio": 0.2982456140350877,
+        "emptyWalkRatio": 0.6996996996996997,
+        "longestWalkStreak": 14,
+        "forcedPushRatio": 0.83,
+        "repetitivePushRatio": 0.5454545454545454,
+        "unusedFloorRatio": 0.5964912280701754,
+        "movesPerPush": 3.33,
+        "solutionFloorCoverage": 1,
+        "solutionUnusedFloorRatio": 0,
+        "nonMonotonicBoxMoves": 27,
+        "nonMonotonicBoxCount": 9,
+        "stagingOperations": 27,
+        "temporaryGoalVacancies": 0,
+        "boxSwitchRate": 0.4444444444444444,
+        "distinctBoxesMoved": 11,
+        "multiMoveBoxCount": 11,
+        "maxBoxEpisodes": 8,
+        "estimatedDependencyDepth": 22,
+        "goalOrderConstraints": 55,
+        "criticalMoveCount": 0,
+        "criticalMoveRatio": 0,
+        "boardWidth": 15,
+        "boardHeight": 15,
+        "totalFloor": 57,
+        "solved": true
+      },
+      "typing": {
+        "boardHash": "33b7129b",
+        "boxGoalIds": [
+          "goal-8",
+          "goal-9",
+          "goal-10",
+          "goal-2",
+          "goal-6",
+          "goal-1",
+          "goal-4",
+          "goal-7",
+          "goal-3",
+          "goal-5",
+          "goal-0"
+        ],
+        "hybridPlan": {
+          "typedBoxIndices": {},
+          "genericBoxIndices": {},
+          "typedCount": 5,
+          "genericCount": 6,
+          "minPerKind": 2,
+          "interactionCutWeight": 30228,
+          "interactionEdges": [
+            {
+              "boxA": 0,
+              "boxB": 1,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 2,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 3,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 4,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 5,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 6,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 8,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 2,
+              "weight": 1017,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 3,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 4,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 5,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 9,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 3,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 4,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 5,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 6,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 9,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 4,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 5,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 7,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 8,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 7,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 9,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 7,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 9,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 9,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 8,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 10,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 10,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            }
+          ],
+          "constraintResults": [
+            {
+              "id": "global-story",
+              "boxIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ],
+              "typedCount": 5,
+              "genericCount": 6,
+              "classMinimumsSatisfied": true,
+              "interactionCutSatisfied": true,
+              "genericWitnessSatisfied": true,
+              "oppositionSatisfied": true,
+              "satisfied": true
+            }
+          ]
+        },
+        "targets": [
+          {
+            "targetId": "global-story",
+            "mechanismType": "global",
+            "goalIds": [
+              "goal-0",
+              "goal-1",
+              "goal-2",
+              "goal-3",
+              "goal-4",
+              "goal-5",
+              "goal-6",
+              "goal-7",
+              "goal-8",
+              "goal-9",
+              "goal-10"
+            ],
+            "boxIds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "minTyped": 2,
+            "minGeneric": 2,
+            "requireStrongInteraction": true,
+            "genericWitnesses": [],
+            "oppositionRequirements": [
+              {
+                "id": "global-story:causal-or-ordering",
+                "pairs": [
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    6,
+                    10
+                  ],
+                  [
+                    0,
+                    10
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    10
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    8,
+                    9
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    9,
+                    10
+                  ],
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    1,
+                    10
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    9
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    8,
+                    10
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    1,
+                    9
+                  ],
+                  [
+                    6,
+                    7
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "witness": "LruulDLDuLLLLdllddrrUUlDuUdrUUdlUdrrrrrrrdddllUUddrruuulLLLLLdlUruLdlUdrrrrrrrrddLUruLLLLLLulDDurrrrrruruulldRurDDlddddlUUruLrurDldddrrruLLdlUUUUdddrUdrruLLruLuuulluurrDDDDlUruLruulDDrddDrddllluuRuUddDlddrruLuulLrdrRluurDDldRuulllLLLulDrrrrrdrddlUUruLruuruulDDDDDDrRluurDDurDululllLLLLLrdLrdLrdLuuurrrrrruulUdrddddldRuuullllluUdlUdlU",
+      "expectedFamilies": [
+        "assignment-misdirection",
+        "productive-reversal",
+        "multi-room-journey",
+        "ordered-packing",
+        "gate-traffic",
+        "shared-transport",
+        "shared-support",
+        "causal-dependency"
+      ]
+    },
+    {
+      "sourceConfig": {
+        "batchSize": 64,
+        "retainTarget": 64,
+        "families": [
+          "hub",
+          "loop",
+          "branch",
+          "nested"
+        ],
+        "boxCounts": [
+          14,
+          15,
+          16,
+          17
+        ],
+        "difficulties": [
+          "expert"
+        ],
+        "modes": [
+          "plain",
+          "motif",
+          "composed",
+          "mechanism"
+        ],
+        "motifTypes": [
+          "auto"
+        ],
+        "compositionTypes": [
+          "auto"
+        ],
+        "boardWidth": 19,
+        "boardHeight": 19,
+        "blueprintRetries": 30,
+        "beamParams": {
+          "maxDepth": 140
+        },
+        "tighteningParams": {
+          "maxMutationsPerPass": 200,
+          "maxAccepted": 80,
+          "solverLimitMs": 10000,
+          "solverLimitStates": 1500000
+        },
+        "gates": {
+          "minSolutionPushes": 15,
+          "maxUnusedFloorRatio": 0.85,
+          "maxEmptyWalkRatio": 0.8,
+          "maxLongestWalkStreak": 25,
+          "maxRepetitivePushRatio": 0.85,
+          "maxBoxIndependenceRatio": 0.8,
+          "minDependencyRealizationRate": 0.3,
+          "maxMovesPerPush": 6,
+          "minSolverExpandedStates": 30,
+          "minGenericBoxCount": 2,
+          "minTypedBoxCount": 2,
+          "minPushesPerBox": 2,
+          "minCrossTypeInteractions": 1,
+          "minPlayableFloor": 55
+        },
+        "diversityMinDistance": 2,
+        "baseSeed": 340000,
+        "typingPolicy": {
+          "modes": [
+            "hybrid"
+          ],
+          "hybridTypedFractionMin": 0.3,
+          "hybridTypedFractionMax": 0.7
+        },
+        "funnelBudgets": {
+          "rawAttemptBudget": 64,
+          "preScreenRetain": 120,
+          "finalistRetain": 64,
+          "deepRetain": 64,
+          "catalogQuota": 64
+        },
+        "geometryProfile": {
+          "boardWidthRange": [
+            14,
+            20
+          ],
+          "boardHeightRange": [
+            14,
+            20
+          ],
+          "minRooms": 3,
+          "maxRooms": 7,
+          "minRoomSize": 3,
+          "maxRoomSize": 7,
+          "passageWidths": [
+            1,
+            2
+          ],
+          "minPlayableFloor": 55,
+          "maxPlayableFloor": 150,
+          "minFloorCoverage": 0.12,
+          "minRegions": 1,
+          "minChokepoints": 1
+        },
+        "reverseSearchProfile": {
+          "beamWidth": 24,
+          "maxDepth": 140,
+          "restartCount": 4,
+          "diverseArchiveSize": 32,
+          "diversityRadius": 2,
+          "stochasticTieBreaking": true,
+          "antiImmediateUndo": true
+        },
+        "mechanismTier": "expert",
+        "reverseCandidatesPerBlueprint": 4,
+        "reuseEvidence": true,
+        "goalPlacementAttempts": 3,
+        "witnessFirst": true,
+        "participationSearch": true,
+        "v4EvaluatorPolicy": {
+          "witnessTimeoutMs": 1000,
+          "fastProbeMaxElapsedMs": 5000,
+          "fastProbeMaxStates": 500000,
+          "exactEvidenceMaxElapsedMs": 15000,
+          "exactEvidenceMaxStates": 2000000,
+          "proofMaxElapsedMs": 30000,
+          "proofMaxStates": 5000000,
+          "proofMaxBoxes": 0,
+          "proofMaxFloor": 200,
+          "requireOptimalProof": false
+        }
+      },
+      "puzzle": {
+        "id": "forge-340010-8791d491",
+        "title": "Generated Puzzle",
+        "difficulty": "expert",
+        "boxes": 15,
+        "rows": [
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOSScSSSSOOOOOOOOOOO",
+          "OOXX X   OO   OOOOOO",
+          "OO D XX  OO   OOOOOO",
+          "OOSa  SbdOO X OOOOOO",
+          "OOeX   SS   E OOOOOO",
+          "OOOO  OOOOO   OOOOOO",
+          "OOOO  OOOOO X OOOOOO",
+          "OOOO COOOOO   OOOOOO",
+          "OO B  OOOOOOOOOOOOOO",
+          "OO AXXOOOOOOOOOOOOOO",
+          "OO  R OOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOO"
+        ]
+      },
+      "seed": 340010,
+      "family": "branch",
+      "mode": "plain",
+      "evaluation": {
+        "solverExpandedStates": 2000,
+        "solverGeneratedStates": 19898,
+        "solverElapsedMs": 126.84069999999974,
+        "solverPeakFrontier": 4092,
+        "solverDeadlockPrunes": 4601,
+        "solverDuplicateStates": 9206,
+        "solutionMoves": 543,
+        "solutionPushes": 138,
+        "solutionWalks": 405,
+        "pushRatio": 0.2541436464088398,
+        "boxCount": 15,
+        "avgLegalPushes": 1.3043478260869565,
+        "maxLegalPushes": 3,
+        "singleChoiceRatio": 0.7101449275362319,
+        "highBranchCount": 0,
+        "avgReachablePushes": 15.905797101449275,
+        "maxReachablePushes": 30,
+        "reachableSingleChoiceRatio": 0.021739130434782608,
+        "reachableHighBranchCount": 120,
+        "reachableForcedPushRatio": 0.021739130434782608,
+        "boxIndependenceRatio": 0.4014598540145985,
+        "boxInteractionEvents": 82,
+        "pushesPerBox": 9.2,
+        "pushSwitchRatio": 0.4014598540145985,
+        "sharedRouteCells": 35,
+        "sharedSupportCells": 32,
+        "sharedChokepointUses": 2,
+        "causalEnableCount": 182,
+        "causalDisableCount": 158,
+        "crossTypeSharedRouteCells": 29,
+        "crossTypeSharedSupportCells": 28,
+        "crossTypeSharedChokepoints": 2,
+        "crossTypeCausalEnableCount": 99,
+        "crossTypeCausalDisableCount": 104,
+        "minPushesPerBox": 3,
+        "inactiveBoxCount": 0,
+        "onePushBoxCount": 0,
+        "roomCrossingsInSolution": 3,
+        "deadlockDensity": 2.3005,
+        "articulationPoints": 4,
+        "regionCount": 2,
+        "tunnelCells": 2,
+        "chokepoints": 2,
+        "floorUtilization": 0.2111111111111111,
+        "openAreaRatio": 0.34210526315789475,
+        "emptyWalkRatio": 0.7458563535911602,
+        "longestWalkStreak": 19,
+        "forcedPushRatio": 0.7101449275362319,
+        "repetitivePushRatio": 0.5693430656934306,
+        "unusedFloorRatio": 0.5921052631578947,
+        "movesPerPush": 3.9347826086956523,
+        "solutionFloorCoverage": 0.9342105263157895,
+        "solutionUnusedFloorRatio": 0.06578947368421051,
+        "nonMonotonicBoxMoves": 23,
+        "nonMonotonicBoxCount": 9,
+        "stagingOperations": 19,
+        "temporaryGoalVacancies": 4,
+        "boxSwitchRate": 0.5985401459854015,
+        "distinctBoxesMoved": 15,
+        "multiMoveBoxCount": 15,
+        "maxBoxEpisodes": 10,
+        "estimatedDependencyDepth": 34.5,
+        "goalOrderConstraints": 130,
+        "criticalMoveCount": 0,
+        "criticalMoveRatio": 0,
+        "boardWidth": 20,
+        "boardHeight": 18,
+        "totalFloor": 76,
+        "solved": true
+      },
+      "typing": {
+        "boardHash": "8791d491",
+        "boxGoalIds": [
+          "goal-0",
+          "goal-3",
+          "goal-6",
+          "goal-11",
+          "goal-4",
+          "goal-5",
+          "goal-13",
+          "goal-9",
+          "goal-12",
+          "goal-14",
+          "goal-2",
+          "goal-10",
+          "goal-8",
+          "goal-1",
+          "goal-7"
+        ],
+        "hybridPlan": {
+          "typedBoxIndices": {},
+          "genericBoxIndices": {},
+          "typedCount": 5,
+          "genericCount": 10,
+          "minPerKind": 2,
+          "interactionCutWeight": 50323,
+          "interactionEdges": [
+            {
+              "boxA": 0,
+              "boxB": 1,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 3,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 5,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 8,
+              "weight": 1004,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 10,
+              "weight": 1008,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 12,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 13,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 2,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 3,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 4,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 5,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 13,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 3,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 4,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 5,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 6,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 7,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 9,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 11,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 4,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 6,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 7,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 11,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 13,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 14,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 5,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 7,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 11,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 12,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 14,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 7,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 10,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 11,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 12,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 13,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 7,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 8,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 9,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 10,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 11,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 12,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 13,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 8,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 9,
+              "weight": 1004,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 11,
+              "weight": 1021,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 12,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 13,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 11,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 12,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 13,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 10,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 11,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 12,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 13,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 14,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 11,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 12,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 13,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 12,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 13,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 14,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 13,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 14,
+              "weight": 1025,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 13,
+              "boxB": 14,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 2,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 4,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 6,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 14,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 6,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 13,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 14,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 6,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 13,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 6,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            }
+          ],
+          "constraintResults": [
+            {
+              "id": "global-story",
+              "boxIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14
+              ],
+              "typedCount": 5,
+              "genericCount": 10,
+              "classMinimumsSatisfied": true,
+              "interactionCutSatisfied": true,
+              "genericWitnessSatisfied": true,
+              "oppositionSatisfied": true,
+              "satisfied": true
+            }
+          ]
+        },
+        "targets": [
+          {
+            "targetId": "global-story",
+            "mechanismType": "global",
+            "goalIds": [
+              "goal-0",
+              "goal-1",
+              "goal-2",
+              "goal-3",
+              "goal-4",
+              "goal-5",
+              "goal-6",
+              "goal-7",
+              "goal-8",
+              "goal-9",
+              "goal-10",
+              "goal-11",
+              "goal-12",
+              "goal-13",
+              "goal-14"
+            ],
+            "boxIds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14
+            ],
+            "minTyped": 2,
+            "minGeneric": 2,
+            "requireStrongInteraction": true,
+            "genericWitnesses": [],
+            "oppositionRequirements": [
+              {
+                "id": "global-story:causal-or-ordering",
+                "pairs": [
+                  [
+                    12,
+                    13
+                  ],
+                  [
+                    11,
+                    13
+                  ],
+                  [
+                    11,
+                    12
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    7,
+                    10
+                  ],
+                  [
+                    10,
+                    14
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    5,
+                    14
+                  ],
+                  [
+                    7,
+                    14
+                  ],
+                  [
+                    7,
+                    13
+                  ],
+                  [
+                    8,
+                    13
+                  ],
+                  [
+                    7,
+                    11
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    7,
+                    12
+                  ],
+                  [
+                    8,
+                    11
+                  ],
+                  [
+                    8,
+                    12
+                  ],
+                  [
+                    8,
+                    10
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    8,
+                    14
+                  ],
+                  [
+                    10,
+                    11
+                  ],
+                  [
+                    5,
+                    11
+                  ],
+                  [
+                    11,
+                    14
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    3,
+                    11
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    10
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    10,
+                    13
+                  ],
+                  [
+                    3,
+                    13
+                  ],
+                  [
+                    1,
+                    10
+                  ],
+                  [
+                    13,
+                    14
+                  ],
+                  [
+                    12,
+                    14
+                  ],
+                  [
+                    1,
+                    13
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    8,
+                    9
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    10,
+                    12
+                  ],
+                  [
+                    5,
+                    12
+                  ],
+                  [
+                    4,
+                    11
+                  ],
+                  [
+                    4,
+                    14
+                  ],
+                  [
+                    4,
+                    12
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    10
+                  ],
+                  [
+                    6,
+                    10
+                  ],
+                  [
+                    9,
+                    10
+                  ],
+                  [
+                    5,
+                    13
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    0,
+                    11
+                  ],
+                  [
+                    1,
+                    11
+                  ],
+                  [
+                    2,
+                    11
+                  ],
+                  [
+                    6,
+                    11
+                  ],
+                  [
+                    9,
+                    11
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    0,
+                    12
+                  ],
+                  [
+                    2,
+                    12
+                  ],
+                  [
+                    6,
+                    12
+                  ],
+                  [
+                    9,
+                    12
+                  ],
+                  [
+                    2,
+                    14
+                  ],
+                  [
+                    6,
+                    14
+                  ],
+                  [
+                    9,
+                    14
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    4,
+                    13
+                  ],
+                  [
+                    0,
+                    13
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    3,
+                    14
+                  ],
+                  [
+                    3,
+                    12
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    6,
+                    13
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    3,
+                    8
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "witness": "UUUdrUUdlUUdrUUruruulDDrdLuuuullllDurrdddRRllllUdrrrrdrUruLuullldRlddrDDDuuuURdrUddllddlddrUluuruuuluurDldRdddDuuuuuurrDulldRRurDlllddrUluRddrrUddlllddlddrUUUUUluRdrUdrruLLLdlUdlluRRRRluurDlddddlUUlldRRurDDDuuuuLruulDullDRurrrrrDulldldddddlddddlluuRlddrruUlldRurrUdlUrUdlUrUdlUUdrUrrrrrrdddrUluullllllUrUddllluRRRdrrrrruurrddLLuurDldLLLLLLLullUdrrdddddlddrUdrUlUdrUlUdrUlUdrUlUdrUUruLdrrrrrrurrddLruulldllluUddlluuUluRllldRurrddddrruuULrdddllulLrruRlddrUlllLUdrrddlUruLrruUddllURlUdrUdllUdlUdrrddLruuurrDurDurDlllddrrrrrrurrdLLLLLrrrrddlUruLLL",
+      "expectedFamilies": [
+        "assignment-misdirection",
+        "productive-reversal",
+        "multi-room-journey",
+        "ordered-packing",
+        "gate-traffic",
+        "shared-transport",
+        "shared-support",
+        "causal-dependency"
+      ]
+    },
+    {
+      "sourceConfig": {
+        "batchSize": 1,
+        "retainTarget": 4,
+        "families": [
+          "branch"
+        ],
+        "boxCounts": [
+          18
+        ],
+        "difficulties": [
+          "master"
+        ],
+        "modes": [
+          "plain"
+        ],
+        "motifTypes": [
+          "auto"
+        ],
+        "compositionTypes": [
+          "auto"
+        ],
+        "boardWidth": 26,
+        "boardHeight": 26,
+        "blueprintRetries": 30,
+        "beamParams": {
+          "maxDepth": 200
+        },
+        "tighteningParams": {
+          "maxMutationsPerPass": 200,
+          "maxAccepted": 80,
+          "solverLimitMs": 10000,
+          "solverLimitStates": 1500000
+        },
+        "gates": {
+          "minSolutionPushes": 20,
+          "maxUnusedFloorRatio": 0.85,
+          "maxEmptyWalkRatio": 0.8,
+          "maxLongestWalkStreak": 25,
+          "maxRepetitivePushRatio": 0.85,
+          "maxBoxIndependenceRatio": 0.75,
+          "minDependencyRealizationRate": 0.3,
+          "maxMovesPerPush": 6,
+          "minSolverExpandedStates": 40,
+          "minGenericBoxCount": 2,
+          "minTypedBoxCount": 2,
+          "minPushesPerBox": 2,
+          "minCrossTypeInteractions": 1,
+          "minPlayableFloor": 75
+        },
+        "diversityMinDistance": 2,
+        "baseSeed": 350057,
+        "typingPolicy": {
+          "modes": [
+            "hybrid"
+          ],
+          "hybridTypedFractionMin": 0.3,
+          "hybridTypedFractionMax": 0.7
+        },
+        "funnelBudgets": {
+          "rawAttemptBudget": 1,
+          "preScreenRetain": 1,
+          "finalistRetain": 4,
+          "deepRetain": 4,
+          "catalogQuota": 4
+        },
+        "geometryProfile": {
+          "boardWidthRange": [
+            18,
+            26
+          ],
+          "boardHeightRange": [
+            18,
+            26
+          ],
+          "minRooms": 4,
+          "maxRooms": 10,
+          "minRoomSize": 3,
+          "maxRoomSize": 8,
+          "passageWidths": [
+            1,
+            2
+          ],
+          "minPlayableFloor": 75,
+          "maxPlayableFloor": 220,
+          "minFloorCoverage": 0.12,
+          "minRegions": 1,
+          "minChokepoints": 1
+        },
+        "reverseSearchProfile": {
+          "beamWidth": 32,
+          "maxDepth": 200,
+          "restartCount": 6,
+          "diverseArchiveSize": 48,
+          "diversityRadius": 2,
+          "stochasticTieBreaking": true,
+          "antiImmediateUndo": true
+        },
+        "mechanismTier": "master",
+        "reverseCandidatesPerBlueprint": 4,
+        "goalPlacementAttempts": 3,
+        "witnessFirst": true,
+        "participationSearch": true
+      },
+      "puzzle": {
+        "id": "forge-350057-b254143b",
+        "title": "Generated Puzzle",
+        "difficulty": "master",
+        "boxes": 18,
+        "rows": [
+          "OOOOOOOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOOOOOOO",
+          "OOOOO         OOOOOOOOOOO",
+          "OOOOOOOOOOOOO OOOOOOOOOOO",
+          "OOOOOOOOOOOOO  OOOOOOOOOO",
+          "OOOOOOOOOOOOO  OOOOOOOOOO",
+          "OOOOOOOOOOOO    OOOOOOOOO",
+          "OOOO           F  OOOOOOO",
+          "OOOO OOOOOOO      OOOOOOO",
+          "OOOO OOOOOOOOOOO  OOOOOOO",
+          "OOOO OOOOOOOOOOO OOOOOOOO",
+          "OOO   OOOOOOOOOO  OOOOOOO",
+          "OOO  OOOOOOOOOOO  OOOOOOO",
+          "OOOOOOOOOOOOOOOO  OOOOOOO",
+          "OOOOOOOOOOOOOO    OOOOOOO",
+          "OOOSX SSX OOOOXXE OOOOOOO",
+          "OOOcXDSf   XR X   OOOOOOO",
+          "OOOeA SS  OOOO    OOOOOOO",
+          "OOOa Xb XXOOOOOOOOOOOOOOO",
+          "OOOSXCSXB OOOOOOOOOOOOOOO",
+          "OOOd  SSSSOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOOOOOOO",
+          "OOOOOOOOOOOOOOOOOOOOOOOOO"
+        ]
+      },
+      "seed": 350057,
+      "family": "branch",
+      "mode": "plain",
+      "evaluation": {
+        "solverExpandedStates": 2000,
+        "solverGeneratedStates": 14153,
+        "solverElapsedMs": 93.691499999999,
+        "solverPeakFrontier": 1771,
+        "solverDeadlockPrunes": 6537,
+        "solverDuplicateStates": 3808,
+        "solutionMoves": 936,
+        "solutionPushes": 200,
+        "solutionWalks": 736,
+        "pushRatio": 0.21367521367521367,
+        "boxCount": 18,
+        "avgLegalPushes": 1.345,
+        "maxLegalPushes": 3,
+        "singleChoiceRatio": 0.71,
+        "highBranchCount": 0,
+        "avgReachablePushes": 14.6,
+        "maxReachablePushes": 27,
+        "reachableSingleChoiceRatio": 0.045,
+        "reachableHighBranchCount": 178,
+        "reachableForcedPushRatio": 0.045,
+        "boxIndependenceRatio": 0.3316582914572864,
+        "boxInteractionEvents": 133,
+        "pushesPerBox": 11.11111111111111,
+        "pushSwitchRatio": 0.3316582914572864,
+        "sharedRouteCells": 35,
+        "sharedSupportCells": 35,
+        "sharedChokepointUses": 4,
+        "causalEnableCount": 296,
+        "causalDisableCount": 262,
+        "crossTypeSharedRouteCells": 28,
+        "crossTypeSharedSupportCells": 28,
+        "crossTypeSharedChokepoints": 4,
+        "crossTypeCausalEnableCount": 122,
+        "crossTypeCausalDisableCount": 112,
+        "minPushesPerBox": 4,
+        "inactiveBoxCount": 0,
+        "onePushBoxCount": 0,
+        "roomCrossingsInSolution": 1,
+        "deadlockDensity": 3.2685,
+        "articulationPoints": 32,
+        "regionCount": 2,
+        "tunnelCells": 23,
+        "chokepoints": 25,
+        "floorUtilization": 0.1872,
+        "openAreaRatio": 0.29914529914529914,
+        "emptyWalkRatio": 0.7863247863247863,
+        "longestWalkStreak": 16,
+        "forcedPushRatio": 0.71,
+        "repetitivePushRatio": 0.49246231155778897,
+        "unusedFloorRatio": 0.6837606837606838,
+        "movesPerPush": 4.68,
+        "solutionFloorCoverage": 0.6410256410256411,
+        "solutionUnusedFloorRatio": 0.3589743589743589,
+        "nonMonotonicBoxMoves": 17,
+        "nonMonotonicBoxCount": 11,
+        "stagingOperations": 7,
+        "temporaryGoalVacancies": 10,
+        "boxSwitchRate": 0.6683417085427136,
+        "distinctBoxesMoved": 18,
+        "multiMoveBoxCount": 18,
+        "maxBoxEpisodes": 16,
+        "estimatedDependencyDepth": 43.5,
+        "goalOrderConstraints": 210,
+        "criticalMoveCount": 0,
+        "criticalMoveRatio": 0,
+        "boardWidth": 25,
+        "boardHeight": 25,
+        "totalFloor": 117,
+        "solved": true
+      },
+      "typing": {
+        "boardHash": "b254143b",
+        "boxGoalIds": [
+          "goal-5",
+          "goal-0",
+          "goal-1",
+          "goal-2",
+          "goal-4",
+          "goal-6",
+          "goal-16",
+          "goal-13",
+          "goal-15",
+          "goal-14",
+          "goal-9",
+          "goal-11",
+          "goal-12",
+          "goal-17",
+          "goal-7",
+          "goal-3",
+          "goal-8",
+          "goal-10"
+        ],
+        "hybridPlan": {
+          "typedBoxIndices": {},
+          "genericBoxIndices": {},
+          "typedCount": 6,
+          "genericCount": 12,
+          "minPerKind": 2,
+          "interactionCutWeight": 72491,
+          "interactionEdges": [
+            {
+              "boxA": 0,
+              "boxB": 1,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 2,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 3,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 4,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 6,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 9,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 12,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 13,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 14,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 2,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 4,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 5,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 6,
+              "weight": 1010,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 7,
+              "weight": 1008,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 9,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 10,
+              "weight": 1012,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 11,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 12,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 15,
+              "weight": 1012,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 16,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 17,
+              "weight": 1006,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 3,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 4,
+              "weight": 1004,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 5,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 7,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 8,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 10,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 16,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 4,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 6,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 13,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 15,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 16,
+              "weight": 1006,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 17,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 5,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 6,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 7,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 8,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 13,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 14,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 16,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 17,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 6,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 7,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 8,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 9,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 11,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 12,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 13,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 14,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 15,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 16,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 5,
+              "boxB": 17,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 7,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 8,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 9,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 10,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 11,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 12,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 13,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 15,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 16,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 6,
+              "boxB": 17,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 8,
+              "weight": 1002,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 9,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 10,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 11,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 12,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 13,
+              "weight": 1004,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 15,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 16,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 7,
+              "boxB": 17,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 9,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 11,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 12,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 13,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 15,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 16,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 8,
+              "boxB": 17,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 10,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 11,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 12,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 13,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 15,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 16,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 9,
+              "boxB": 17,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 11,
+              "weight": 1019,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 14,
+              "weight": 1017,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 15,
+              "weight": 1013,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 16,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 17,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 12,
+              "weight": 1006,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 13,
+              "weight": 1004,
+              "kinds": [
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 14,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 15,
+              "weight": 1021,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 16,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 11,
+              "boxB": 17,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 13,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 14,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 15,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 16,
+              "weight": 1007,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 12,
+              "boxB": 17,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 13,
+              "boxB": 14,
+              "weight": 1003,
+              "kinds": [
+                "shared-route",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 13,
+              "boxB": 15,
+              "weight": 1005,
+              "kinds": [
+                "shared-route",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 13,
+              "boxB": 16,
+              "weight": 1011,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 13,
+              "boxB": 17,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 14,
+              "boxB": 15,
+              "weight": 1015,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 14,
+              "boxB": 16,
+              "weight": 1004,
+              "kinds": [
+                "shared-support",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 15,
+              "boxB": 16,
+              "weight": 1008,
+              "kinds": [
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 15,
+              "boxB": 17,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 16,
+              "boxB": 17,
+              "weight": 1009,
+              "kinds": [
+                "shared-route",
+                "shared-support",
+                "push-switch",
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 10,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 15,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 16,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 0,
+              "boxB": 17,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 3,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 8,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 13,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 1,
+              "boxB": 14,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 9,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 13,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 14,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 15,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 2,
+              "boxB": 17,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 7,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 10,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 3,
+              "boxB": 14,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 11,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 4,
+              "boxB": 15,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 12,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 10,
+              "boxB": 13,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            },
+            {
+              "boxA": 14,
+              "boxB": 17,
+              "weight": 1000,
+              "kinds": [
+                "mechanism-dependency"
+              ]
+            }
+          ],
+          "constraintResults": [
+            {
+              "id": "global-story",
+              "boxIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17
+              ],
+              "typedCount": 6,
+              "genericCount": 12,
+              "classMinimumsSatisfied": true,
+              "interactionCutSatisfied": true,
+              "genericWitnessSatisfied": true,
+              "oppositionSatisfied": true,
+              "satisfied": true
+            }
+          ]
+        },
+        "targets": [
+          {
+            "targetId": "global-story",
+            "mechanismType": "global",
+            "goalIds": [
+              "goal-0",
+              "goal-1",
+              "goal-2",
+              "goal-3",
+              "goal-4",
+              "goal-5",
+              "goal-6",
+              "goal-7",
+              "goal-8",
+              "goal-9",
+              "goal-10",
+              "goal-11",
+              "goal-12",
+              "goal-13",
+              "goal-14",
+              "goal-15",
+              "goal-16",
+              "goal-17"
+            ],
+            "boxIds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17
+            ],
+            "minTyped": 2,
+            "minGeneric": 2,
+            "requireStrongInteraction": true,
+            "genericWitnesses": [],
+            "oppositionRequirements": [
+              {
+                "id": "global-story:causal-or-ordering",
+                "pairs": [
+                  [
+                    8,
+                    9
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    7,
+                    10
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    7,
+                    15
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    7,
+                    14
+                  ],
+                  [
+                    10,
+                    15
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    10,
+                    14
+                  ],
+                  [
+                    5,
+                    15
+                  ],
+                  [
+                    14,
+                    15
+                  ],
+                  [
+                    5,
+                    14
+                  ],
+                  [
+                    11,
+                    15
+                  ],
+                  [
+                    6,
+                    11
+                  ],
+                  [
+                    11,
+                    14
+                  ],
+                  [
+                    6,
+                    15
+                  ],
+                  [
+                    6,
+                    14
+                  ],
+                  [
+                    7,
+                    11
+                  ],
+                  [
+                    10,
+                    11
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    6,
+                    10
+                  ],
+                  [
+                    12,
+                    17
+                  ],
+                  [
+                    12,
+                    16
+                  ],
+                  [
+                    16,
+                    17
+                  ],
+                  [
+                    8,
+                    12
+                  ],
+                  [
+                    8,
+                    17
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    8,
+                    16
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    9,
+                    10
+                  ],
+                  [
+                    9,
+                    15
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    9,
+                    14
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    12,
+                    15
+                  ],
+                  [
+                    6,
+                    12
+                  ],
+                  [
+                    9,
+                    12
+                  ],
+                  [
+                    15,
+                    17
+                  ],
+                  [
+                    6,
+                    17
+                  ],
+                  [
+                    9,
+                    17
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    13,
+                    16
+                  ],
+                  [
+                    11,
+                    17
+                  ],
+                  [
+                    9,
+                    11
+                  ],
+                  [
+                    10,
+                    17
+                  ],
+                  [
+                    12,
+                    13
+                  ],
+                  [
+                    13,
+                    17
+                  ],
+                  [
+                    10,
+                    16
+                  ],
+                  [
+                    15,
+                    16
+                  ],
+                  [
+                    6,
+                    16
+                  ],
+                  [
+                    5,
+                    16
+                  ],
+                  [
+                    9,
+                    16
+                  ],
+                  [
+                    5,
+                    11
+                  ],
+                  [
+                    14,
+                    16
+                  ],
+                  [
+                    11,
+                    16
+                  ],
+                  [
+                    12,
+                    14
+                  ],
+                  [
+                    11,
+                    12
+                  ],
+                  [
+                    5,
+                    12
+                  ],
+                  [
+                    5,
+                    17
+                  ],
+                  [
+                    8,
+                    15
+                  ],
+                  [
+                    1,
+                    10
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    1,
+                    9
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    4,
+                    17
+                  ],
+                  [
+                    8,
+                    10
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    2,
+                    10
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    8,
+                    11
+                  ],
+                  [
+                    8,
+                    13
+                  ],
+                  [
+                    8,
+                    14
+                  ],
+                  [
+                    2,
+                    12
+                  ],
+                  [
+                    2,
+                    17
+                  ],
+                  [
+                    6,
+                    13
+                  ],
+                  [
+                    2,
+                    9
+                  ],
+                  [
+                    9,
+                    13
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    5,
+                    13
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    3,
+                    13
+                  ],
+                  [
+                    3,
+                    15
+                  ],
+                  [
+                    3,
+                    16
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    4,
+                    13
+                  ],
+                  [
+                    4,
+                    15
+                  ],
+                  [
+                    4,
+                    16
+                  ],
+                  [
+                    1,
+                    15
+                  ],
+                  [
+                    7,
+                    12
+                  ],
+                  [
+                    2,
+                    11
+                  ],
+                  [
+                    2,
+                    14
+                  ],
+                  [
+                    4,
+                    14
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    13
+                  ],
+                  [
+                    0,
+                    14
+                  ],
+                  [
+                    0,
+                    16
+                  ],
+                  [
+                    0,
+                    17
+                  ],
+                  [
+                    2,
+                    15
+                  ],
+                  [
+                    13,
+                    15
+                  ],
+                  [
+                    0,
+                    15
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    1,
+                    14
+                  ],
+                  [
+                    1,
+                    13
+                  ],
+                  [
+                    1,
+                    16
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    17
+                  ],
+                  [
+                    1,
+                    12
+                  ],
+                  [
+                    10,
+                    13
+                  ],
+                  [
+                    0,
+                    10
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    10,
+                    12
+                  ],
+                  [
+                    4,
+                    11
+                  ],
+                  [
+                    11,
+                    13
+                  ],
+                  [
+                    0,
+                    11
+                  ],
+                  [
+                    3,
+                    11
+                  ],
+                  [
+                    7,
+                    13
+                  ],
+                  [
+                    7,
+                    16
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    7,
+                    17
+                  ],
+                  [
+                    2,
+                    16
+                  ],
+                  [
+                    3,
+                    14
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "witness": "LLLdlluullDrdrrrDulldlLrurrrdLulldlUdrddllluuuRldddrrUdrrrrUdlUdlluuuLDuruulDrdddRluurrrDullldlUrrDurrdLulldddllluuRluRdlddrrrrrUUddllllluuuuuRldddddrrruRUluuuLrddLrdLrddllluuuuuRldddddrrruuuurDDuuulLrdddddllluuuRldRuRldlddrrruuUdddllURdrUllluuuuRlddddrrrUruLruulLrDrddldllluurDlddrruruLrUdddllluuurRlldRurDrruLdlluluuRDlddrrruruulLrrdddlllluurDldddrrruuuruulDLrrddlddlUdlluRdrruuUruLdddLruuLDrddllluuuRldddrrruurrruLruLddllddrUluRluLrRdddllUdlluuuRldddrruruuuurDDlLDrddllluuuRldRRllddrrruUULdllddrUluRluRluuRDDDlddrrruuuruulDrrrrrrrRllllllllDurrrrrrrrdrruLrruulDuuuuuuulluurDldRurDDDDDDDrdddlluLLLLLLLLdlDururrrrrrrdrrruLdllullllllldldDrdrrUdlluluuruulDDurrrrrrrrdrruLLLLLLLLLrrrrrrrrrruulllDurDurrdLddllUllllllldlLrruulDLrrrrrrrrrdrruLLLLLLLLLulLddLdlUdddrrRRlllluurDuuruuLDDuurrrdrruLLddLruLruLdrrrrrrrrrruullDurrdLdLLLLLLdLUlldRlLrDDLruuurrrdDuulldDDuullLrrddlULrdLrdLuuuuuRldRldRdrruurrrrrrrruulDrdLLLLLLddDuuLrdLrdLuuruLruLdddLrdL",
+      "expectedFamilies": [
+        "assignment-misdirection",
+        "productive-reversal",
+        "multi-room-journey",
+        "ordered-packing",
+        "gate-traffic",
+        "shared-transport",
+        "shared-support",
+        "causal-dependency"
+      ]
+    }
+  ]
+}

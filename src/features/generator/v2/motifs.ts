@@ -13,6 +13,7 @@ import {
   chooseRobotPosition,
   findDoorways,
   selectGoals,
+  extendGoalSet,
   type RoomFloorCell,
 } from "./goal-placement.ts";
 import type { GridPosition } from "../generator-types.ts";
@@ -35,6 +36,7 @@ export const MOTIF_TYPES: readonly MotifType[] = [
 ];
 
 export interface MotifParams {
+  readonly scalable?: boolean;
   readonly seed: number;
   readonly boxCount: number;
   readonly motif: MotifType | "auto";
@@ -74,7 +76,12 @@ export function placeGoalsWithMotif(
       ? selectMotif(blueprint, params.boxCount, rng)
       : params.motif;
 
-  const placement = applyMotif(blueprint, grid, params.boxCount, motif, rng);
+  let placement = applyMotif(blueprint, grid, params.boxCount, motif, rng);
+  if (!placement && params.scalable && params.boxCount > 4) {
+    const anchor = applyMotif(blueprint, grid, 4, motif, rng);
+    const goals = anchor && extendGoalSet(blueprint, grid, anchor.goals, params.boxCount, params.seed);
+    if (anchor && goals) placement = { ...anchor, goals };
+  }
   if (!placement) return null;
 
   const robotPos = chooseRobotPosition(blueprint, grid, placement.goals, rng);

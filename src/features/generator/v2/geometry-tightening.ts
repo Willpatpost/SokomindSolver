@@ -5,7 +5,7 @@ import { classicGreedySolver } from "../../../solver/implementations/classic-sol
 import { analyzeSolutionUsage } from "./solution-usage.ts";
 import { analyzeGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { isBoxChar, isGoalChar, isRobotChar, isWallChar, WALL_CHAR } from "./tile-semantics.ts";
-import { solveWithEvidence, witnessedResult, type GenerationEvidence } from "./generation-evidence.ts";
+import { solveWithEvidence, witnessedResult, verifiedWitnessResult, type GenerationEvidence } from "./generation-evidence.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +39,7 @@ export interface TierTighteningPolicy {
   readonly protectPassageCells: boolean;
   readonly protectChokepointNeighborhoods: boolean;
   readonly maxFloorPerBox?: number;
+  readonly targetSolutionFloorCoverage?: number;
 }
 
 export const DEFAULT_TIER_TIGHTENING_POLICIES: Readonly<Record<Difficulty, TierTighteningPolicy>> = {
@@ -304,7 +305,8 @@ export async function tightenPuzzle(
     }
 
     if (tierPolicy?.maxFloorPerBox && puzzle.boxes > 0) {
-      if (currentStructural.totalFloor / puzzle.boxes <= tierPolicy.maxFloorPerBox) {
+      if (currentStructural.totalFloor / puzzle.boxes <= tierPolicy.maxFloorPerBox &&
+        1 - currentMetrics.solutionUnusedFloorRatio >= (tierPolicy.targetSolutionFloorCoverage ?? 0)) {
         break;
       }
     }
@@ -615,6 +617,12 @@ async function solvAndMeasure(
   evidence?: GenerationEvidence,
   witness?: readonly SolutionStep[],
 ): Promise<SolveResult | null> {
+  if (evidence?.witnessFirst) {
+    const verified = verifiedWitnessResult(puzzle, witness, evidence);
+    // Refinement is optional: never search repeatedly for a replacement route.
+    if (!verified) return null;
+    return { steps: [...verified.solution.steps], metrics: computeTighteningMetrics(puzzle, verified.solution.steps, {}) };
+  }
   const attempted = await solveWithEvidence(puzzle, classicGreedySolver, {
     maxElapsedMs: params.solverLimitMs, maxExpandedStates: params.solverLimitStates,
   }, undefined, evidence);

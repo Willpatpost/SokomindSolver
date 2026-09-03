@@ -62,6 +62,11 @@ test("shared links preserve the saved draft until explicit import", async ({ pag
   await expect(page.getByText("Shared puzzle preview")).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue(QUICK_TEST.title);
   await expect(page.getByLabel("Title")).toBeDisabled();
+  await page.getByRole("button", { name: "Play shared puzzle" }).click();
+  await page.getByRole("button", { name: "Move down", exact: true }).click();
+  await expect(page.getByText("Solved in 1 move!", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to editor" }).click();
+  await expect(page.getByRole("button", { name: "Play shared puzzle" })).toBeFocused();
   await page.waitForTimeout(1_100);
   expect(await page.evaluate(() =>
     localStorage.getItem("sokomind.editor-draft.v1"))).toBe(savedDraft);

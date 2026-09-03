@@ -2,6 +2,10 @@
 
 Last reconciled: August 23, 2026
 
+Offline generator follow-up (September 3, 2026): candidate evidence and search
+budgets are documented in [All-tier generator progress](generator-all-tier-progress.md).
+No exact solver or optimality rules are changed by that work.
+
 This document describes the code that exists now. It replaces the former
 sprint-by-sprint diary, which mixed historical intentions, intermediate test
 counts, and claims that were no longer true. The original design goals remain

@@ -25,7 +25,7 @@ test("editor draft validation rejects shallow, ragged, oversized, and invalid-sy
   };
   assert.equal(parseEditorDraft(JSON.stringify({ ...base, cells: ["x"] })), null);
   assert.equal(parseEditorDraft(JSON.stringify({ ...base, cells: [["O"]] })), null);
-  assert.equal(parseEditorDraft(JSON.stringify({ ...base, width: 21 })), null);
+  assert.equal(parseEditorDraft(JSON.stringify({ ...base, width: 27 })), null);
   assert.equal(parseEditorDraft(JSON.stringify({
     ...base,
     cells: [["O", "O", "O"], ["O", "?", "O"], ["O", "O", "O"]],

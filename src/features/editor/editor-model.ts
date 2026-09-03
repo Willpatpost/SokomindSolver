@@ -61,7 +61,8 @@ export const EDITOR_TOOLS = [
 ] as const;
 
 export const MIN_SIZE = 3;
-export const MAX_SIZE = 20;
+// Match the largest catalog-generator board so Master review links can be played.
+export const MAX_SIZE = 26;
 
 function createEmptyGrid(width: number, height: number): string[][] {
   return Array.from({ length: height }, () => Array<string>(width).fill(WALL));

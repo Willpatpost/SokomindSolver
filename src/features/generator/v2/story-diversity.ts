@@ -21,11 +21,17 @@ export interface StoryDiversityProfile {
 export interface StoryDiversityPolicy {
   readonly maxStoryShare: number;
   readonly maxVisualShare: number;
+  /** False preserves diversity limits even when the catalog remains underfilled. */
+  readonly allowBackfill?: boolean;
 }
 
 export const DEFAULT_STORY_DIVERSITY_POLICY: StoryDiversityPolicy = Object.freeze({
   maxStoryShare: 0.35,
   maxVisualShare: 0.20,
+});
+
+export const STRICT_STORY_DIVERSITY_POLICY: StoryDiversityPolicy = Object.freeze({
+  ...DEFAULT_STORY_DIVERSITY_POLICY, allowBackfill: false,
 });
 
 /** Use canonical strings, not short hashes, for clone decisions. */
@@ -183,7 +189,7 @@ export function selectStoryDiverse<T>(
   // Backfill: when the strict pass left a shortfall, relax story/visual caps
   // but keep layout-clone exclusions. Prefer candidates with the most novel
   // families among the soft-capped pool.
-  if (selected.length < target && softCapped.length > 0) {
+  if (policy.allowBackfill !== false && selected.length < target && softCapped.length > 0) {
     const selectedIds = new Set(selected.map((entry) => entry.id));
     const backfill = softCapped
       .filter((entry) => !selectedIds.has(entry.id) && !layouts.has(entry.profile!.layoutKey))

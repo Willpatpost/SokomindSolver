@@ -20,21 +20,14 @@ import {
   curateForgeCandidates,
   formatStorySelection,
   type StorySelectionReport,
-  DEFAULT_FORGE_CONFIG,
-  DEFAULT_FORGE_GATES,
-  DEFAULT_V4_POLICY,
   QUALITY_PRESETS,
   type ForgeConfig,
   type ForgeCandidate,
   type ForgeRejectionReason,
   type PuzzleEvaluationVector,
   type PopulationSummary,
-  type TopologyFamily,
-  type ForgeGenerationMode,
   type GeneratedPuzzleManifest,
   type GeneratedPuzzleManifestEntry,
-  type GeometryProfile,
-  type ReverseSearchProfile,
   type FinalistEvaluation,
   type FinalistEvaluationV4,
   type CurationObjectives,
@@ -51,7 +44,9 @@ import {
 } from "../src/features/generator/v2/index.ts";
 
 import { ForgeWorkerPool, getForgePoolSize } from "../src/features/generator/v2/forge-pool.ts";
+import { TIER_CONFIGS, CATALOG_FINALIST_POLICIES } from "./lib/generator-tier-config.ts";
 import type { ForgeProgress } from "../src/features/generator/v2/puzzle-forge.ts";
+import { STRICT_STORY_DIVERSITY_POLICY } from "../src/features/generator/v2/story-diversity.ts";
 
 function reportForgeProgress(p: ForgeProgress): void {
   console.log(`    [${p.phase}] ${p.pool.active}/${p.pool.workers} active, ${p.pool.queued} queued | ` +
@@ -103,7 +98,9 @@ const generationAbort = new AbortController();
 let catalogPool: ForgeWorkerPool | undefined;
 const SEED_WINDOW_SIZE = 10000;
 // Optimality proofs are not part of the current catalog contract.
-const CATALOG_EVALUATOR_POLICY = { ...DEFAULT_V4_POLICY, proofMaxBoxes: 0 };
+const evaluationPolicy = cliFlag("--evaluation") ?? "balanced";
+if (evaluationPolicy !== "balanced" && evaluationPolicy !== "deep") throw new Error("--evaluation must be balanced or deep");
+const CATALOG_EVALUATOR_POLICY = CATALOG_FINALIST_POLICIES[evaluationPolicy];
 
 const reviewMode = process.argv.includes("--review");
 const acceptPath = cliFlag("--accept");
@@ -114,295 +111,7 @@ const REVIEW_DIR = resolve(cliFlag("--output") ?? join(__dirname, "../review-cat
 // Per-tier forge configurations
 // ---------------------------------------------------------------------------
 
-interface TierConfig {
-  readonly difficulty: Difficulty;
-  readonly config: ForgeConfig;
-}
-
-const GEOMETRY_PROFILES: Record<Difficulty, GeometryProfile> = {
-  tutorial: {
-    boardWidthRange: [8, 12],
-    boardHeightRange: [8, 12],
-    minRooms: 1,
-    maxRooms: 3,
-    minRoomSize: 3,
-    maxRoomSize: 5,
-    passageWidths: [1],
-    minPlayableFloor: 10,
-    maxPlayableFloor: 30,
-    minFloorCoverage: 0.08,
-    minRegions: 1,
-    minChokepoints: 0,
-  },
-  beginner: {
-    boardWidthRange: [10, 14],
-    boardHeightRange: [10, 14],
-    minRooms: 1,
-    maxRooms: 4,
-    minRoomSize: 3,
-    maxRoomSize: 5,
-    passageWidths: [1],
-    minPlayableFloor: 15,
-    maxPlayableFloor: 50,
-    minFloorCoverage: 0.08,
-    minRegions: 1,
-    minChokepoints: 0,
-  },
-  intermediate: {
-    boardWidthRange: [12, 16],
-    boardHeightRange: [12, 16],
-    minRooms: 2,
-    maxRooms: 5,
-    minRoomSize: 3,
-    maxRoomSize: 6,
-    passageWidths: [1, 2],
-    minPlayableFloor: 35,
-    maxPlayableFloor: 90,
-    minFloorCoverage: 0.10,
-    minRegions: 1,
-    minChokepoints: 0,
-  },
-  advanced: {
-    boardWidthRange: [14, 18],
-    boardHeightRange: [14, 18],
-    minRooms: 2,
-    maxRooms: 6,
-    minRoomSize: 3,
-    maxRoomSize: 7,
-    passageWidths: [1, 2],
-    minPlayableFloor: 45,
-    maxPlayableFloor: 120,
-    minFloorCoverage: 0.12,
-    minRegions: 1,
-    minChokepoints: 1,
-  },
-  expert: {
-    boardWidthRange: [14, 20],
-    boardHeightRange: [14, 20],
-    minRooms: 3,
-    maxRooms: 7,
-    minRoomSize: 3,
-    maxRoomSize: 7,
-    passageWidths: [1, 2],
-    minPlayableFloor: 55,
-    maxPlayableFloor: 150,
-    minFloorCoverage: 0.12,
-    minRegions: 1,
-    minChokepoints: 1,
-  },
-  master: {
-    boardWidthRange: [18, 26],
-    boardHeightRange: [18, 26],
-    minRooms: 4,
-    maxRooms: 10,
-    minRoomSize: 3,
-    maxRoomSize: 8,
-    passageWidths: [1, 2],
-    minPlayableFloor: 75,
-    maxPlayableFloor: 220,
-    minFloorCoverage: 0.12,
-    minRegions: 1,
-    minChokepoints: 1,
-  },
-};
-
-const SEARCH_PROFILES: Record<Difficulty, ReverseSearchProfile> = {
-  tutorial: {
-    beamWidth: 4,
-    maxDepth: 10,
-    restartCount: 1,
-    diverseArchiveSize: 4,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-  beginner: {
-    beamWidth: 6,
-    maxDepth: 40,
-    restartCount: 1,
-    diverseArchiveSize: 8,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-  intermediate: {
-    beamWidth: 10,
-    maxDepth: 70,
-    restartCount: 2,
-    diverseArchiveSize: 16,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-  advanced: {
-    beamWidth: 16,
-    maxDepth: 100,
-    restartCount: 3,
-    diverseArchiveSize: 24,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-  expert: {
-    beamWidth: 24,
-    maxDepth: 140,
-    restartCount: 4,
-    diverseArchiveSize: 32,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-  master: {
-    beamWidth: 32,
-    maxDepth: 200,
-    restartCount: 6,
-    diverseArchiveSize: 48,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
-};
-
-const TIER_CONFIGS: readonly TierConfig[] = [
-  {
-    difficulty: "beginner",
-    config: {
-      ...DEFAULT_FORGE_CONFIG,
-      batchSize: 200,
-      retainTarget: 20,
-      families: ["linear", "hub", "loop"] as TopologyFamily[],
-      boxCounts: [3, 4, 5, 6],
-      difficulties: ["beginner"],
-      modes: ["plain", "motif"] as ForgeGenerationMode[],
-      boardWidth: 12,
-      boardHeight: 12,
-      beamParams: { maxDepth: 40 },
-      baseSeed: 310000,
-      geometryProfile: GEOMETRY_PROFILES.beginner,
-      reverseSearchProfile: SEARCH_PROFILES.beginner,
-      gates: {
-        ...DEFAULT_FORGE_GATES,
-        minSolutionPushes: 4,
-        maxMovesPerPush: 5,
-        minPlayableFloor: GEOMETRY_PROFILES.beginner.minPlayableFloor,
-      },
-    },
-  },
-  {
-    difficulty: "intermediate",
-    config: {
-      ...DEFAULT_FORGE_CONFIG,
-      batchSize: 200,
-      retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 20, catalogQuota: 20 },
-      families: ["linear", "hub", "loop", "branch"] as TopologyFamily[],
-      boxCounts: [7, 8, 9],
-      difficulties: ["intermediate"],
-      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
-      boardWidth: 14,
-      boardHeight: 14,
-      beamParams: { maxDepth: 70 },
-      baseSeed: 320000,
-      geometryProfile: GEOMETRY_PROFILES.intermediate,
-      reverseSearchProfile: SEARCH_PROFILES.intermediate,
-      mechanismTier: "intermediate",
-      gates: {
-        ...DEFAULT_FORGE_GATES,
-        minSolutionPushes: 6,
-        minSolverExpandedStates: 5,
-        minGenericBoxCount: 2,
-        minTypedBoxCount: 2,
-        minPlayableFloor: GEOMETRY_PROFILES.intermediate.minPlayableFloor,
-      },
-    },
-  },
-  {
-    difficulty: "advanced",
-    config: {
-      ...DEFAULT_FORGE_CONFIG,
-      batchSize: 200,
-      retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 200, preScreenRetain: 80, finalistRetain: 30, deepRetain: 20, catalogQuota: 20 },
-      families: ["linear", "hub", "loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [10, 11, 12, 13],
-      difficulties: ["advanced"],
-      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
-      boardWidth: 16,
-      boardHeight: 16,
-      beamParams: { maxDepth: 100 },
-      baseSeed: 330000,
-      geometryProfile: GEOMETRY_PROFILES.advanced,
-      reverseSearchProfile: SEARCH_PROFILES.advanced,
-      mechanismTier: "advanced",
-      gates: {
-        ...DEFAULT_FORGE_GATES,
-        minSolutionPushes: 10,
-        minSolverExpandedStates: 15,
-        minGenericBoxCount: 2,
-        minTypedBoxCount: 2,
-        minPlayableFloor: GEOMETRY_PROFILES.advanced.minPlayableFloor,
-      },
-    },
-  },
-  {
-    difficulty: "expert",
-    config: {
-      ...DEFAULT_FORGE_CONFIG,
-      batchSize: 300,
-      retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 300, preScreenRetain: 120, finalistRetain: 40, deepRetain: 20, catalogQuota: 20 },
-      families: ["hub", "loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [14, 15, 16, 17],
-      difficulties: ["expert"],
-      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
-      boardWidth: 19,
-      boardHeight: 19,
-      beamParams: { maxDepth: 140 },
-      baseSeed: 340000,
-      geometryProfile: GEOMETRY_PROFILES.expert,
-      reverseSearchProfile: SEARCH_PROFILES.expert,
-      mechanismTier: "expert",
-      gates: {
-        ...DEFAULT_FORGE_GATES,
-        minSolutionPushes: 15,
-        minSolverExpandedStates: 30,
-        maxBoxIndependenceRatio: 0.80,
-        minGenericBoxCount: 2,
-        minTypedBoxCount: 2,
-        minPlayableFloor: GEOMETRY_PROFILES.expert.minPlayableFloor,
-      },
-    },
-  },
-  {
-    difficulty: "master",
-    config: {
-      ...DEFAULT_FORGE_CONFIG,
-      batchSize: 400,
-      retainTarget: 20,
-      funnelBudgets: { rawAttemptBudget: 400, preScreenRetain: 150, finalistRetain: 50, deepRetain: 25, catalogQuota: 20 },
-      families: ["loop", "branch", "nested"] as TopologyFamily[],
-      boxCounts: [18, 19, 20, 21, 22],
-      difficulties: ["master"],
-      modes: ["plain", "motif", "composed", "mechanism"] as ForgeGenerationMode[],
-      boardWidth: 26,
-      boardHeight: 26,
-      beamParams: { maxDepth: 200 },
-      baseSeed: 350000,
-      geometryProfile: GEOMETRY_PROFILES.master,
-      reverseSearchProfile: SEARCH_PROFILES.master,
-      mechanismTier: "master",
-      gates: {
-        ...DEFAULT_FORGE_GATES,
-        minSolutionPushes: 20,
-        minSolverExpandedStates: 40,
-        maxBoxIndependenceRatio: 0.75,
-        minGenericBoxCount: 2,
-        minTypedBoxCount: 2,
-        minPlayableFloor: GEOMETRY_PROFILES.master.minPlayableFloor,
-      },
-    },
-  },
-];
+// Shared with the measurement harness so diagnostic and production settings cannot drift.
 
 // ---------------------------------------------------------------------------
 // Difficulty policy
@@ -835,7 +544,9 @@ async function main(): Promise<void> {
     const target = targetOverride ?? base.retainTarget;
     const budgets = qualityPreset ? QUALITY_PRESETS[qualityPreset] : base.funnelBudgets;
     const config: ForgeConfig = { ...base, baseSeed: base.baseSeed + seedOffset, retainTarget: target,
-      reverseCandidatesPerBlueprint: reverseVariants, reuseEvidence: true, goalPlacementAttempts: 3,
+      reverseCandidatesPerBlueprint: reverseVariants, reuseEvidence: true, goalPlacementAttempts: 3, witnessFirst: true, participationSearch: true,
+      scalableRecipes: true,
+      storyDiversityPolicy: STRICT_STORY_DIVERSITY_POLICY,
       v4EvaluatorPolicy: CATALOG_EVALUATOR_POLICY,
       batchSize: attemptBudget ?? base.batchSize,
       funnelBudgets: budgets ? { ...budgets, rawAttemptBudget: attemptBudget ?? budgets.rawAttemptBudget,
@@ -1015,7 +726,7 @@ async function main(): Promise<void> {
     // Run even for small/underfilled pools: quota shortfalls do not waive diversity.
     const selection = curateForgeCandidates(candidates.map((cc) => ({
       ...cc.candidate, curationObjectives: cc.curationObjectives,
-    })), target);
+    })), target, undefined, STRICT_STORY_DIVERSITY_POLICY);
     curationReports[difficulty] = selection.report;
     const selectedIds = new Set(selection.candidates.map((candidate) => candidate.puzzle.id));
     for (const cc of candidates) cc.rejected = !selectedIds.has(cc.candidate.puzzle.id);

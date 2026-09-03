@@ -137,8 +137,12 @@ export interface SolvedBlueprint {
 }
 
 export interface ReverseSearchProfile {
+  /** Construction guidance only; final forward participation remains authoritative. */
+  readonly participationWeight?: number;
   readonly beamWidth: number;
   readonly maxDepth: number;
+  /** Seed-selected construction depths, to avoid making every route equally long. */
+  readonly depthFractions?: readonly number[];
   readonly maxExpandedStates?: number;
   readonly maxElapsedMs?: number;
   readonly restartCount: number;

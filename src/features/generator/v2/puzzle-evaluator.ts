@@ -150,7 +150,7 @@ export async function evaluatePuzzleWithSteps(
   const limits = { maxElapsedMs: 15_000, maxExpandedStates: 2_000_000 };
   let result: SolverResult = await solveWithEvidence(puzzle, classicGreedySolver, limits, signal, evidence);
 
-  if (result.status !== "solved") {
+  if (result.status === "unsolved" && !evidence?.witnessFirst) {
     result = await solveWithEvidence(puzzle, classicAStarSolver, limits, signal, evidence);
   }
 

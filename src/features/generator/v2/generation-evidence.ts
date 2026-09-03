@@ -6,14 +6,72 @@ import type { PullRecord } from "./reverse-beam-search.ts";
 
 export type SolvedResult = Extract<SolverResult, { status: "solved" }>;
 
+export interface GenerationSearchBudget {
+  readonly maxExpandedStates: number;
+  readonly maxElapsedMs: number;
+  readonly maxCalls: number;
+  readonly probeExpandedStates: number;
+  readonly probeElapsedMs: number;
+}
+export const DEFAULT_GENERATION_SEARCH_BUDGET: GenerationSearchBudget = {
+  maxExpandedStates: 12000, maxElapsedMs: 5000, maxCalls: 8,
+  probeExpandedStates: 2000, probeElapsedMs: 500,
+};
+export interface GenerationWork {
+  readonly solverCalls: number;
+  readonly expandedStates: number;
+  readonly witnessVerifications: number;
+  readonly witnessFallbacks: number;
+  readonly budgetExhaustions: number;
+  readonly phaseMs: Readonly<Record<string, number>>;
+}
+
 /** Bounded, candidate-local evidence. Exact rows and solver settings form the key. */
 export class GenerationEvidence {
   readonly enabled: boolean;
-  constructor(enabled = true) { this.enabled = enabled; }
+  readonly witnessFirst: boolean;
+  readonly budget?: GenerationSearchBudget;
+  readonly startedAt = performance.now();
+  constructor(enabled = true, witnessFirst = false, budget?: GenerationSearchBudget) {
+    this.enabled = enabled;
+    this.witnessFirst = witnessFirst;
+    this.budget = budget ?? (witnessFirst ? DEFAULT_GENERATION_SEARCH_BUDGET : undefined);
+    if (this.budget && Object.values(this.budget).some(n => !Number.isSafeInteger(n) || n < 1)) {
+      throw new Error("Generation search budgets must be positive integers");
+    }
+  }
   readonly solved = new Map<string, SolvedResult>();
   solverCalls = 0;
   cacheHits = 0;
   witnessFallbacks = 0;
+  witnessVerifications = 0;
+  expandedStates = 0;
+  budgetExhaustions = 0;
+  private phase = "initial";
+  private phaseStart = this.startedAt;
+  private readonly phaseMs: Record<string, number> = {};
+  mark(phase: string): void {
+    const now = performance.now();
+    this.phaseMs[this.phase] = (this.phaseMs[this.phase] ?? 0) + now - this.phaseStart;
+    this.phase = phase; this.phaseStart = now;
+  }
+  work(): GenerationWork {
+    this.mark("done");
+    return { solverCalls: this.solverCalls, expandedStates: this.expandedStates,
+      witnessVerifications: this.witnessVerifications, witnessFallbacks: this.witnessFallbacks,
+      budgetExhaustions: this.budgetExhaustions, phaseMs: { ...this.phaseMs } };
+  }
+}
+
+/** Route evidence has no invented solver work or optimality claim. */
+export function verifiedWitnessResult(puzzle: PuzzleDefinition, steps: readonly SolutionStep[] | undefined,
+  evidence?: GenerationEvidence): SolvedResult | undefined {
+  if (!steps || !replayWitness(puzzle, steps)) return undefined;
+  if (evidence) evidence.witnessVerifications++;
+  return { status: "solved", metrics: { elapsedMs: 0 }, solution: {
+    steps, moves: steps.length, pushes: steps.filter(s => s.kind === "push").length,
+    objective: { kind: "moves" }, objectiveScore: steps.length, optimality: "unknown",
+  } };
 }
 
 export function replayWitness(puzzle: PuzzleDefinition, steps: readonly SolutionStep[]): boolean {
@@ -32,6 +90,17 @@ export async function solveWithEvidence(
   signal?: AbortSignal, evidence?: GenerationEvidence,
 ): Promise<SolverResult> {
   signal?.throwIfAborted();
+  if (evidence?.budget) {
+    const b = evidence.budget;
+    const remainingMs = b.maxElapsedMs - (performance.now() - evidence.startedAt);
+    const remainingStates = b.maxExpandedStates - evidence.expandedStates;
+    if (remainingMs <= 0 || remainingStates <= 0 || evidence.solverCalls >= b.maxCalls) {
+      evidence.budgetExhaustions++;
+      return { status: "unsolved", reason: "limit-reached", metrics: { elapsedMs: 0 } };
+    }
+    limits = { ...limits, maxElapsedMs: Math.min(limits.maxElapsedMs ?? Infinity, b.probeElapsedMs, remainingMs),
+      maxExpandedStates: Math.min(limits.maxExpandedStates ?? Infinity, b.probeExpandedStates, remainingStates) };
+  }
   const key = JSON.stringify([puzzle.rows, solver.metadata.id, solver.metadata.version]);
   const cached = evidence?.enabled ? evidence.solved.get(key) : undefined;
   if (cached && cached.metrics.elapsedMs <= (limits.maxElapsedMs ?? Infinity) &&
@@ -44,6 +113,7 @@ export async function solveWithEvidence(
     objective: { kind: "moves" }, limits }, {
     signal: signal ?? new AbortController().signal, reportProgress: () => {}, now: () => performance.now(),
   });
+  if (evidence) evidence.expandedStates += result.metrics.expandedStates ?? 0;
   if (result.status === "solved" && evidence?.enabled && replayWitness(puzzle, result.solution.steps)) {
     if (evidence.solved.size >= 8) evidence.solved.delete(evidence.solved.keys().next().value!);
     evidence.solved.set(key, result);

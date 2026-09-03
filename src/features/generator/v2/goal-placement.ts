@@ -478,6 +478,29 @@ export function selectGoals(
   return goals;
 }
 
+/** Extend a real motif without overwriting its goals or blocking its pull supports. */
+export function extendGoalSet(blueprint: FunctionalBlueprint, grid: readonly (readonly string[])[],
+  anchors: readonly GoalCell[], count: number, seed: number): GoalCell[] | null {
+  const goals = [...anchors];
+  const used = new Set(goals.map(g => `${g.row},${g.column}`));
+  const rng = createRng(seed);
+  const cells = blueprint.rooms.flatMap(room => collectRoomFloorCells(room, grid, blueprint)
+    .filter(c => c.reversePullDirs > 0).map(cell => ({ ...cell, roomId: room.id, tie: rng() })));
+  // Round-robin room occupancy prevents overfilling the motif's original room.
+  while (goals.length < count) {
+    const occupancy = new Map<number, number>();
+    for (const goal of goals) occupancy.set(goal.roomId, (occupancy.get(goal.roomId) ?? 0) + 1);
+    cells.sort((a, b) => (occupancy.get(a.roomId) ?? 0) - (occupancy.get(b.roomId) ?? 0) ||
+      b.depthFromDoorway - a.depthFromDoorway || a.tie - b.tie);
+    const next = cells.find(c => !used.has(`${c.row},${c.column}`) && !wouldBlockExistingGoals(goals, c, grid));
+    if (!next) return null;
+    used.add(`${next.row},${next.column}`);
+    goals.push({ goalId: `extension-${goals.length}`, roomId: next.roomId, row: next.row, column: next.column,
+      depthFromDoorway: next.depthFromDoorway, reversePullDirs: next.reversePullDirs });
+  }
+  return goals;
+}
+
 export function wouldBlockExistingGoals(
   existing: readonly GoalCell[],
   candidate: RoomFloorCell,

@@ -56,6 +56,22 @@ export interface PullRecord {
   readonly robotTo: GridPosition;
 }
 
+/** Reward the first two pulls of every box, not unlimited work on a few boxes. */
+export function participationProgress(history: readonly PullRecord[], count: number): number {
+  const pulls = new Uint8Array(count);
+  let progress = 0;
+  for (const record of history) if (record.boxIndex >= 0 && record.boxIndex < count && pulls[record.boxIndex] < 2) {
+    pulls[record.boxIndex]++; progress++;
+  }
+  return progress;
+}
+
+export function serializableStart(template: SolvedTemplate, candidate: Pick<BeamCandidate, "boxPositions" | "robotPosition">): boolean {
+  const key = (p: GridPosition) => p.row * template.grid[0].length + p.column;
+  const goals = new Set(template.goalPositions.map(key));
+  return !goals.has(key(candidate.robotPosition)) && candidate.boxPositions.every(b => !goals.has(key(b)));
+}
+
 export interface BeamSearchResult {
   readonly best: BeamCandidate;
   readonly candidates: readonly BeamCandidate[];
@@ -606,7 +622,8 @@ function singleRestartBeamSearch(
         }));
         const histBonus = historyComplexityBonus(historyEntries);
 
-        const compositeWithBonus = baseScore.composite + histBonus;
+        const compositeWithBonus = baseScore.composite + histBonus + (profile.participationWeight ?? 0) *
+          participationProgress(newHistory, newBoxes.length);
 
         if (depth === 0) firstLayerGenerated++;
 
@@ -631,7 +648,9 @@ function singleRestartBeamSearch(
 
         nextCandidates.push(newCandidate);
         archiveOffers++;
-        if (archive.offer(newCandidate, stateKey)) archiveContributions++;
+        // Intermediate states can overlap goals, but the shipped row format cannot.
+        if ((!profile.participationWeight || serializableStart(template, newCandidate)) &&
+          archive.offer(newCandidate, stateKey)) archiveContributions++;
 
         if (compositeWithBonus > bestComposite) {
           bestComposite = compositeWithBonus;
@@ -733,12 +752,23 @@ function selectDiverseBeamV4(
 // V4 Multi-restart beam search (public entry point)
 // ---------------------------------------------------------------------------
 
+export function reverseDepthForSeed(profile: ReverseSearchProfile, seed: number): number {
+  const fractions = profile.depthFractions;
+  if (!fractions) return profile.maxDepth;
+  if (fractions.length === 0 || fractions.some(f => !Number.isFinite(f) || f <= 0 || f > 1)) {
+    throw new Error("Reverse depth fractions must be a nonempty list in (0, 1]");
+  }
+  const index = (Math.imul(seed ^ 0x5bd1e995, 0x45d9f3b) >>> 0) % fractions.length;
+  return Math.max(1, Math.floor(profile.maxDepth * fractions[index]));
+}
+
 export function reverseBeamSearchV4(
   solved: SolvedBlueprint,
   seed: number,
   profile: ReverseSearchProfile = DEFAULT_SEARCH_PROFILE,
   mechCtx?: MechanismReverseContext,
 ): BeamSearchResultV4 {
+  profile = { ...profile, maxDepth: reverseDepthForSeed(profile, seed) };
   const globalStart = performance.now();
   const template = toSolvedTemplate(solved);
   const ctx = buildScoringContext(solved.blueprint, solved.grid, solved.goals);

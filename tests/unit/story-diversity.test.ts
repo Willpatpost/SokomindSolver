@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildStoryDiversityProfile, storyLayoutKeys, storyDiversityDistance, selectStoryDiverse,
-  summarizeStoryDiversity, checkStoryDiversityForRelease, type StoryDiversityProfile,
+  summarizeStoryDiversity, checkStoryDiversityForRelease, STRICT_STORY_DIVERSITY_POLICY, type StoryDiversityProfile,
 } from "../../src/features/generator/v2/story-diversity.ts";
 import { assessStoryQuality } from "../../src/features/generator/v2/story-quality-policy.ts";
 import { summarizePassiveStory } from "../../src/features/generator/v2/passive-story-analysis.ts";
@@ -90,6 +90,20 @@ test("selection seeks new stories before variants and is stable across pool orde
   assert.deepEqual(select([...entries].reverse()), select(entries));
   assert.ok(storyDiversityDistance(a.profile, c.profile) > storyDiversityDistance(a.profile, b.profile));
   assert.equal(storyDiversityDistance(c.profile, a.profile), storyDiversityDistance(a.profile, c.profile));
+});
+
+test("strict catalog selection reports shortages instead of padding story or visual quotas", () => {
+  const entries = Array.from({ length: 5 }, (_, i) => variant(`${i}`));
+  const stories = selectStoryDiverse(entries, 5, STRICT_STORY_DIVERSITY_POLICY);
+  assert.equal(stories.selected.length, 2);
+  assert.equal(stories.report.shortfall, 3);
+  assert.equal(stories.report.decisions.filter(d => d.reason === "story-cap").length, 3);
+  const visuals = selectStoryDiverse(entries.map((entry, i) => ({ ...entry,
+    profile: { ...entry.profile, storySignature: `${i}`, visualKey: "shared" },
+  })), 5, STRICT_STORY_DIVERSITY_POLICY);
+  assert.equal(visuals.selected.length, 1);
+  assert.equal(visuals.report.shortfall, 4);
+  assert.equal(visuals.report.decisions.filter(d => d.reason === "visual-cap").length, 4);
 });
 
 test("missing evidence, zero targets and invalid policies are explicit", () => {
