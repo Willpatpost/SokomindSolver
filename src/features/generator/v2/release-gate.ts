@@ -478,13 +478,15 @@ export function checkReleaseGate(
         `Puzzle "${pack.id}": requires hybrid typing with at least ${minPerClass} generic and ${minPerClass} typed boxes`,
       );
     }
+    const minPushes = boxCountTier === "beginner" ? 1 : 2;
+    const maxOnePush = boxCountTier === "beginner" ? 1 : 0;
     if (
-      (pack.minPushesPerBox ?? 0) < 2 ||
+      (pack.minPushesPerBox ?? 0) < minPushes ||
       (pack.inactiveBoxCount ?? 1) !== 0 ||
-      (pack.onePushBoxCount ?? 1) !== 0
+      (pack.onePushBoxCount ?? 1) > maxOnePush
     ) {
       errors.push(
-        `Puzzle "${pack.id}": every box must participate with at least two pushes`,
+        `Puzzle "${pack.id}": every box must participate with at least ${minPushes} pushes`,
       );
     }
     if ((pack.crossTypeInteractionCount ?? 0) < 1) {

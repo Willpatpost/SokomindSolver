@@ -222,6 +222,8 @@ export interface ForgeAcceptanceGates {
   readonly minTypedBoxCount: number;
   /** Reject untouched and one-push filler boxes in the verified route. */
   readonly minPushesPerBox: number;
+  readonly maxInactiveBoxCount: number;
+  readonly maxOnePushBoxCount: number;
   /** Require solution-level evidence that the two box classes interact. */
   readonly minCrossTypeInteractions: number;
   readonly minPlayableFloor?: number;
@@ -243,6 +245,8 @@ export const DEFAULT_FORGE_GATES: ForgeAcceptanceGates = {
   minGenericBoxCount: 1,
   minTypedBoxCount: 1,
   minPushesPerBox: 2,
+  maxInactiveBoxCount: 0,
+  maxOnePushBoxCount: 0,
   minCrossTypeInteractions: 1,
 };
 
@@ -798,11 +802,10 @@ function runReverseSearchAndBuild(
       const v4Result = reverseBeamSearchV4(solved, seed, config.participationSearch
         ? { ...searchProfile, participationWeight: 30 } : searchProfile, mechCtx);
       if (v4Result.best.depth === 0) return { failed: "beam-search-empty" };
-      bestCandidate = config.participationSearch
-        ? [v4Result.best, ...v4Result.rankedCandidates.map(c => c.candidate)].find(c => {
+      bestCandidate = [v4Result.best, ...v4Result.rankedCandidates.map(c => c.candidate)].find(c => {
           const p = buildPuzzleFromScramble({ template, boxPositions: [...c.boxPositions], robotPosition: c.robotPosition, reversePulls: c.depth }, difficulty);
           return validatePuzzle(p).valid;
-        }) ?? v4Result.best : v4Result.best;
+        }) ?? v4Result.best;
       rankedCandidates = v4Result.rankedCandidates;
     } else {
       const beamParams: BeamSearchParams = {
@@ -1286,8 +1289,8 @@ function applyGates(
   ) return "gate-mixed-typing";
   if (
     (ev.minPushesPerBox ?? 0) < gates.minPushesPerBox ||
-    (ev.inactiveBoxCount ?? ev.boxCount) > 0 ||
-    (ev.onePushBoxCount ?? ev.boxCount) > 0
+    (ev.inactiveBoxCount ?? ev.boxCount) > gates.maxInactiveBoxCount ||
+    (ev.onePushBoxCount ?? ev.boxCount) > gates.maxOnePushBoxCount
   ) return "gate-box-participation";
   const crossTypeInteractions =
     (ev.crossTypeSharedRouteCells ?? 0) +

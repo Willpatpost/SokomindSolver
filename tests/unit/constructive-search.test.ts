@@ -34,9 +34,9 @@ test("row-format start selection rejects hidden goals without changing game rule
 
 test("a scalable motif preserves its real anchors and allocates all eighteen distinct goals", () => {
   const config = { ...TIER_CONFIGS.find(t => t.difficulty === "master")!.config, goalPlacementAttempts: 3 };
-  const bp = generateBlueprintCandidate(config, 350057, "branch", 18, "plain", "master");
+  const bp = generateBlueprintCandidate(config, 350083, "branch", 18, "plain", "master");
   assert.ok(bp.ok);
-  const params = { seed: 350057, boxCount: 18, motif: "doorway-traffic" as const };
+  const params = { seed: 350083, boxCount: 18, motif: "doorway-traffic" as const };
   assert.equal(placeGoalsWithMotif(bp.candidate.blueprint, params), null);
   const expanded = placeGoalsWithMotif(bp.candidate.blueprint, { ...params, scalable: true });
   assert.ok(expanded);
