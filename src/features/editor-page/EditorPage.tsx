@@ -781,7 +781,7 @@ export function EditorPage({ customData }: EditorPageProps) {
 
               <div className={styles.actions}>
                 <button
-                  ref={testButtonRef}
+                  ref={isSharedPreview ? undefined : testButtonRef}
                   type="button"
                   data-primary
                   disabled={!isValid}
