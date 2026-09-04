@@ -32,6 +32,14 @@ search speed:
 
 ## Production solver paths
 
+The adapter's implementation is divided by responsibility:
+`src/solver/implementations/sokomind-legacy.ts` owns legacy data conversion and
+replay validation, `src/solver/implementations/sokomind-plans.ts` builds worker
+payloads and allocates rewrite budgets, and
+`src/solver/implementations/sokomind-solver.ts` coordinates execution. This is
+a module extraction; the public adapter exports, search policy, budget values,
+and generated engine remain unchanged.
+
 The shipped solver surface has three layers:
 
 1. Classic exact A* and IDA* kernels for move-optimal proofs.

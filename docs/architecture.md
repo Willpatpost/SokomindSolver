@@ -67,6 +67,19 @@ original dependency order and executed only in an isolated nested module
 worker. Future solver families should keep their own implementation modules and
 promote primitives only when multiple implementations genuinely require them.
 
+The Sokomind adapter separates three responsibilities within that family:
+
+| Module | Responsibility |
+|---|---|
+| `src/solver/implementations/sokomind-legacy.ts` | Translate snapshots, validate legacy analysis and checkpoints, reconstruct paths, and replay candidates through core rules |
+| `src/solver/implementations/sokomind-plans.ts` | Build immutable worker payloads and divide discovery/rewrite resource budgets |
+| `src/solver/implementations/sokomind-solver.ts` | Own worker lifecycle, telemetry, phase transitions, fallback, and proof coordination |
+
+Plan construction depends on the legacy data boundary. Neither helper module
+imports the adapter or starts workers. The adapter remains the public entry
+point and re-exports its established conversion and planning helpers, so
+consumers and tests do not need to know where those implementations live.
+
 These source-backed invariants are enforced by
 `tests/unit/module-boundaries.test.ts` using the TypeScript AST:
 

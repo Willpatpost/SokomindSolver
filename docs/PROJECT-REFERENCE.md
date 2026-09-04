@@ -42,6 +42,8 @@ CPU scaling, see [Generator performance](generator-performance.md).
 | Solver trust boundary | `src/solver/verification.ts` | canonical replay before display or persistence |
 | Exact search | `src/solver/search/exact-move-astar.ts`, `src/solver/search/ida-star.ts` | move-optimal proof kernels |
 | Solver portfolio | `src/solver/implementations/sokomind-solver.ts` | discovery, rewrite, proof coordination and run ledger |
+| Legacy engine data | `src/solver/implementations/sokomind-legacy.ts` | snapshot conversion, analysis/checkpoint decoding, route reconstruction and canonical replay |
+| Solver worker plans | `src/solver/implementations/sokomind-plans.ts` | preparation/discovery/continuation/rewrite payloads and disjoint budget allocation |
 | Generated engine | `src/solver/implementations/sokomind-engine/source/` | edit source, then regenerate `engine.generated.js` |
 | Play UI | `src/features/play/`, `src/features/game/` | controller composition, input, timer, board, dialogs |
 | Replay study UI | `src/features/replay/`, `src/features/stats/PersonalBestReplayShelf.tsx` | canonical display frames, route comparison, read-only ghost, completion and statistics entry points |

@@ -20,6 +20,11 @@ unless a separate change explicitly calls for them to change.
   dynamic loading, and documentation. The underlying implementations remain.
 - Enabled TypeScript unused-local and unused-parameter checks in the normal
   typecheck/build path.
+- Separated the Sokomind adapter's legacy data conversion and worker-plan
+  construction into `src/solver/implementations/sokomind-legacy.ts` and
+  `src/solver/implementations/sokomind-plans.ts`. The adapter retains worker
+  lifecycle, telemetry, and search-phase coordination; existing public imports
+  continue to work. Declaration bodies and budget constants are preserved.
 
 ## Next boundaries to review
 
@@ -28,7 +33,7 @@ it is not by itself a reason to create more modules.
 
 | Area | Candidate boundary | Evidence required before changing it |
 |---|---|---|
-| `src/solver/implementations/sokomind-solver.ts` | Legacy state/path conversion, analysis decoding, and portfolio orchestration | Existing adapter/protocol tests, canonical replay, exact counters, and performance gates |
+| `src/solver/implementations/sokomind-solver.ts` | Telemetry aggregation and worker-phase lifecycle, after the completed legacy-data and plan extraction | Existing adapter/protocol tests, canonical replay, exact counters, and performance gates |
 | `src/features/generator/v2/puzzle-forge.ts` | Candidate production, finalist evaluation, and evidence/release decisions | Fixed-seed rows, witnesses, quality decisions, and worker lifecycle tests |
 | `src/features/editor-page/EditorPage.tsx` | Draft/import/share orchestration and editor panels | Draft recovery, sharing, keyboard, mobile, and accessibility tests |
 | `src/features/play/PlayPage.tsx` | Route loading/recovery and play presentation | Navigation, restoration, playback, and mobile tests |
