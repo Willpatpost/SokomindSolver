@@ -395,21 +395,21 @@ Release recomputes these summaries instead of trusting cached catalog totals.
 The production manifest schema stays at 1. This phase changes no production
 catalog entries and does not generate or publish a replacement catalog.
 
-## Phase 8 generation verification and promotion
+## Generation verification and promotion
 
-The current objective is small-sample quality verification, not a catalog-sized
-generation run. `npm.cmd run verify:generator-quality` regenerates two known
-positive seeds, verifies every box's participation and interactions, and
-replays each final solution independently. Both examples are at Beginner box
-counts; successful higher-tier generation is not yet demonstrated.
+`npm.cmd run verify:generator-quality` regenerates two known Beginner seeds,
+verifies every box's participation and interactions, and replays each solution
+independently. `npm.cmd run verify:generator-tiers` covers one saved generated
+example at every catalog tier. The benchmark guide records the exact seeds,
+measurements, and limits of this evidence.
 
 For future promotion, review packs retain the evaluated witness and the typing
 and construction plans. `scripts/lib/catalog-promotion.ts` independently replays
 and remeasures them, verifies exact catalog/manifest/review binding, and backs
 up the old catalog pair before installation. `--accept ... --dry-run` does not
-write production. No promotion or gate relaxation is part of the present
-small-sample verification. See `docs/generator-phase-8-verification.md` for
-results, observed limitations, CLI controls, and recovery behavior.
+write production. No benchmark or verification command relaxes the release
+gate. See [Generator benchmarks](generator-benchmarks.md) for results, observed
+limits, CLI controls, and worker behavior.
 
 ## Required feature families
 

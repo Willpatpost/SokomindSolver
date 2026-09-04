@@ -139,12 +139,15 @@ history, so long routes do not copy every earlier snapshot per move.
 - [Living project reference](docs/PROJECT-REFERENCE.md) — authoritative owners,
   contracts, source-derived versions, routes, storage keys, and validation
 - [Architecture](docs/architecture.md)
-- [Documentation index](docs/README.md) — current guides, plans, and historical references
+- [Documentation index](docs/README.md) — current guides and active plans
 - [Maintenance and refactoring plan](docs/plans/maintenance.md)
 - [Experience, sound, and motion](docs/experience.md)
 - [GitHub Pages deployment](docs/deployment.md)
 - [Solver integration](docs/solver-integration.md)
+- [Solver status and benchmarks](docs/solver-status.md),
+  [benchmark methodology](docs/solver-benchmarks.md)
 - [Solver Lab guide and metric definitions](docs/solver-lab.md)
+- [Generator benchmarks and qualification evidence](docs/generator-benchmarks.md)
 - [Puzzle format](docs/puzzle-format.md)
 - [Testing strategy](docs/testing.md)
 - [Persistence and sharing](docs/persistence-and-sharing.md)
@@ -176,4 +179,5 @@ The classic family remains available for comparison and exact-search research.
 Its A* and IDA* results are accepted as move-optimal proof only after exact
 request/progress validation, canonical route replay, and proof-bound checks.
 Current safeguards, feature controls, and performance caveats live in the
-project reference and Solver V2 progress guide.
+project reference, [solver status](docs/solver-status.md), and
+[solver benchmarks](docs/solver-benchmarks.md).

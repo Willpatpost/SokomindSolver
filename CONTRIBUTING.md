@@ -25,10 +25,10 @@ an underscore to make that choice explicit. An exported symbol is not proven
 dead just because the compiler accepts it: check app, worker, script, test,
 and documented entry points before removing it.
 
-Keep current guidance in `docs/`, proposed work in `docs/plans/`, and historical
-evidence in `docs/archive/`. Update the [documentation index](docs/README.md)
-when adding or moving a guide. Preserve useful decision history without
-presenting old plans as current implementation instructions.
+Keep current guidance in `docs/` and active proposed work in `docs/plans/`.
+Consolidate measurements worth retaining into the owning benchmark guide and
+use Git history for superseded plans. Update the
+[documentation index](docs/README.md) when adding or moving a guide.
 
 ## Validation
 

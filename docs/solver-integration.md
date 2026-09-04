@@ -338,11 +338,11 @@ Each implementation should have:
 Grand Hall should be retained as a quality and performance fixture, but no
 single puzzle should determine the architecture or algorithm choice.
 
-## Solver V2
+## Proof-capable solver
 
-Work in progress. See [`solver-v2-spec.md`](archive/solver-v2-spec.md) for the full
-specification and [`solver-v2-progress.md`](solver-v2-progress.md) for sprint
-status.
+Current proof safeguards and implementation status are in
+[Solver status](solver-status.md). Controlled measurements and retained
+experiment history are in [Solver benchmarks](solver-benchmarks.md).
 
 ### Proof metadata
 

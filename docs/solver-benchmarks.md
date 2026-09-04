@@ -1,6 +1,4 @@
-# Solver V2 Benchmarking
-
-Last reconciled: August 14, 2026
+# Solver benchmarks
 
 The V2 harness measures production solver paths and controlled exact-search
 feature variants. Its JSON is evidence, not a substitute for replay and proof.
@@ -83,6 +81,7 @@ Accepted names are:
 - `patternDeadlockPruning`
 - `deadlockTablePruning`
 - `goalCommitmentPruning`
+- `tunnelMacros`
 
 The harness creates a matched control and `without:<feature>` variant. Every
 other feature, board, solver, limit, and deterministic setting stays identical.
@@ -104,6 +103,63 @@ The current `inter-rooms` PDB smoke results were replay-valid and proven on
 both sides, with identical work: A* expanded 312 and generated 1,433 states,
 while IDA* expanded 2,705 and generated 12,640. Both fixture/algorithm pairs
 classify as no effect for PDB; neither justifies an efficiency claim.
+
+The deterministic tunnel-macro prototype also produced no state-count change
+on the original four-fixture sample:
+
+| Fixture | Visited before | Visited after | Generated before | Generated after |
+| --- | ---: | ---: | ---: | ---: |
+| `beginner-three` | 13 | 13 | 30 | 30 |
+| `classic-1` | 46 | 46 | 177 | 177 |
+| `box-7x7` | 44 | 44 | 437 | 437 |
+| `expert-maze` | 381 | 381 | 1,715 | 1,715 |
+
+The result justified preserving the additive implementation for corridor-heavy
+coverage, but it did not establish a performance win.
+
+## Historical Grand Hall discovery experiments
+
+These deterministic captures explain the structural reserve and guard policy
+retained by the discovery engine. All listed solutions replayed successfully.
+Elapsed time is descriptive for the development machine and not a portable
+gate.
+
+| Case | Moves | Pushes | Visited | Generated | Retained | Peak frontier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Former fast baseline | 1,066 | 322 | 1,616 | 9,329 | 3,077 | 330 |
+| Current first found | 893 | 278 | 1,329 | 8,425 | 2,538 | 291 |
+| After quality rewrite | 789 | 270 | 29,000 | 108,722 | 29,000 | 1 |
+
+Base, mirrored, and 180-degree-rotated Grand Hall produced the same 893/278
+route metrics and counters. Direct Node runs took about 5.3-7.2 seconds by
+orientation. The rewrite is not part of fast mode.
+
+| Experiment | Result | Decision |
+| --- | --- | --- |
+| Original branch policy plus stranded hard guard | 1,066 / 322 | Baseline |
+| Distinct-box reserve only | 1,020 / 288, more generated work | Incomplete alone |
+| Guard relaxation only | Cutoff at 5,043 visited / 30,659 generated | Reject alone |
+| Reserve plus guard relaxation | 893 / 278, less search than baseline | Retain together |
+| One enabling handoff per box | Cutoff at 54,942 generated | Revert |
+| Persistent agenda-resumption slot | 1,121 / 322 | Revert |
+| Macro alternate-approach reserve | Cutoff at 27.5 s | Revert |
+| Move-aware macro arrival diversity | Cutoff at 20.6 s | Revert |
+| Temporary-goal penalty | 918 / 278, more search | Revert |
+| Remove temporary goals from milestone identity | Cutoff at 5,025 visited / 39,580 generated | Revert |
+
+The retained structural predicate uses topology and branch pressure rather than
+puzzle identity or dimensions. Representative generalization results were:
+
+| Puzzle | Before moves / pushes | After moves / pushes |
+| --- | ---: | ---: |
+| `gen-expert-057` | 109 / 24 | 87 / 24 |
+| `gen-master-090` | 90 / 28 | 86 / 28 |
+| `gen-expert-335` | 341 / 95 | 195 / 43 |
+
+Across a reviewed 15-puzzle room-bearing structural corpus, the combined policy
+produced four wins, eight ties, and three losses while reducing aggregate moves,
+pushes, and generated states. Large room and packing boards remain the principal
+regression class.
 
 ## Schema 3
 

@@ -67,11 +67,11 @@ executable tests remain authoritative when any prose disagrees.
 
 - SOKOMIND_TIMING_SCALE: multiplier for wall-clock timing gates in performance tests (default 1). Set to 2 on slower hardware (e.g. Waterfield login node). State-count and deterministic-result assertions are unaffected.
 
-## Sprint rules
+## Change workflow
 
-- Implement one approved sprint at a time.
-- Add tests with implementation.
-- Update docs/solver-v2-progress.md.
+- Keep each change focused and reversible.
+- Add tests for changed behavior.
+- Update `docs/solver-status.md` when proof safeguards or production solver
+  behavior changes.
+- Update the owning benchmark guide when retaining new measurements.
 - Run targeted and required tests.
-- Use one focused reversible commit.
-- Stop after the sprint report.
