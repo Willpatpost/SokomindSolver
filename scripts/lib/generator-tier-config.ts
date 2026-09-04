@@ -16,21 +16,9 @@ interface TierConfig {
   readonly config: ForgeConfig;
 }
 
-const GEOMETRY_PROFILES: Record<Difficulty, GeometryProfile> = {
-  tutorial: {
-    boardWidthRange: [8, 12],
-    boardHeightRange: [8, 12],
-    minRooms: 1,
-    maxRooms: 3,
-    minRoomSize: 3,
-    maxRoomSize: 5,
-    passageWidths: [1],
-    minPlayableFloor: 10,
-    maxPlayableFloor: 30,
-    minFloorCoverage: 0.08,
-    minRegions: 1,
-    minChokepoints: 0,
-  },
+type GeneratedDifficulty = Exclude<Difficulty, "tutorial">;
+
+const GEOMETRY_PROFILES: Record<GeneratedDifficulty, GeometryProfile> = {
   beginner: {
     boardWidthRange: [10, 14],
     boardHeightRange: [10, 14],
@@ -103,16 +91,7 @@ const GEOMETRY_PROFILES: Record<Difficulty, GeometryProfile> = {
   },
 };
 
-const SEARCH_PROFILES: Record<Difficulty, ReverseSearchProfile> = {
-  tutorial: {
-    beamWidth: 4,
-    maxDepth: 10,
-    restartCount: 1,
-    diverseArchiveSize: 4,
-    diversityRadius: 2,
-    stochasticTieBreaking: true,
-    antiImmediateUndo: true,
-  },
+const SEARCH_PROFILES: Record<GeneratedDifficulty, ReverseSearchProfile> = {
   beginner: {
     beamWidth: 6,
     maxDepth: 40,

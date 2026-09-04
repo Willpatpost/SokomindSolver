@@ -42,12 +42,6 @@ export interface MotifParams {
   readonly motif: MotifType | "auto";
 }
 
-export const DEFAULT_MOTIF_PARAMS: MotifParams = {
-  seed: 0,
-  boxCount: 3,
-  motif: "auto",
-};
-
 export interface DependencyHint {
   readonly type: string;
   readonly description: string;

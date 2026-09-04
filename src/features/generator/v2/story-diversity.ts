@@ -3,7 +3,7 @@ import { isBoxChar, isGoalChar, isWallChar } from "./tile-semantics.ts";
 import { STORY_QUALITY_FAMILIES, type StoryQualityFamily, type StoryQualityReport } from "./story-quality-types.ts";
 import type { PassiveStorySummary } from "./passive-story-analysis.ts";
 
-export const STORY_DIVERSITY_VERSION = "story-diversity-1" as const;
+const STORY_DIVERSITY_VERSION = "story-diversity-1" as const;
 
 export interface StoryDiversityProfile {
   readonly version: typeof STORY_DIVERSITY_VERSION;
@@ -25,7 +25,7 @@ export interface StoryDiversityPolicy {
   readonly allowBackfill?: boolean;
 }
 
-export const DEFAULT_STORY_DIVERSITY_POLICY: StoryDiversityPolicy = Object.freeze({
+const DEFAULT_STORY_DIVERSITY_POLICY: StoryDiversityPolicy = Object.freeze({
   maxStoryShare: 0.35,
   maxVisualShare: 0.20,
 });

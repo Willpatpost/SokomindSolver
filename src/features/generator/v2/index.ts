@@ -57,8 +57,6 @@ export {
   chooseRobotPosition,
   findDoorways,
   selectGoals,
-  isFloor,
-  findRoomForCell,
 } from "./goal-placement.ts";
 
 export type { RoomFloorCell } from "./goal-placement.ts";
@@ -135,7 +133,6 @@ export type {
 export {
   placeGoalsWithMotif,
   MOTIF_TYPES,
-  DEFAULT_MOTIF_PARAMS,
 } from "./motifs.ts";
 
 export type {
@@ -150,7 +147,6 @@ export {
   findCompatibleCompositions,
   isAcyclic,
   topologicalOrder,
-  verifyDependencies,
   generateComposedPuzzle,
   generateVerifiedMotifPuzzle,
   COMPOSITION_TYPES,
@@ -480,10 +476,8 @@ export type {
 
 export {
   evaluateFinalist,
-  evaluateFinalists,
   evaluateFinalistV4,
   computeCurationObjectives,
-  DEFAULT_FINALIST_CONFIG,
 } from "./finalist-evaluator.ts";
 
 export type {
@@ -549,7 +543,7 @@ export { WALL_CHAR } from "./tile-semantics.ts";
 export { curateForgeCandidates } from "./puzzle-forge.ts";
 export type { ForgeExecutionOptions, ForgeProgress, ForgePerformance, ForgeCheckpoint } from "./puzzle-forge.ts";
 export {
-  STORY_DIVERSITY_VERSION, DEFAULT_STORY_DIVERSITY_POLICY, storyLayoutKeys,
+  storyLayoutKeys,
   buildStoryDiversityProfile, storyDiversityDistance, selectStoryDiverse,
   summarizeStoryDiversity, storyDiversityLimits, formatStorySelection,
   checkStoryDiversityForRelease,
@@ -569,7 +563,7 @@ export type {
   StoryQualityMeasurements, StoryQualityReport, StoryQualityRejectionCode, StoryQualityViolation,
 } from "./story-quality-policy.ts";
 
-export { analyzeCounterfactualStory, DEFAULT_COUNTERFACTUAL_BUDGET } from "./counterfactual-analysis.ts";
+export { analyzeCounterfactualStory } from "./counterfactual-analysis.ts";
 export type {
   CounterfactualBudget,
   CounterfactualOutcome,

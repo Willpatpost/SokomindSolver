@@ -861,7 +861,7 @@ function pickStagingRoom(
 // Dependency verification via solution analysis (delegated to dependency-verification.ts)
 // ---------------------------------------------------------------------------
 
-export function verifyDependencies(
+function verifyDependencies(
   dag: DependencyDAG,
   puzzle: PuzzleDefinition,
   steps: readonly SolutionStep[],

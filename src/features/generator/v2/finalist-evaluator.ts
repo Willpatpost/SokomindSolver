@@ -107,7 +107,7 @@ export interface FinalistEvaluatorConfig {
   readonly maxExpandedStates: number;
 }
 
-export const DEFAULT_FINALIST_CONFIG: FinalistEvaluatorConfig = {
+const DEFAULT_FINALIST_CONFIG: FinalistEvaluatorConfig = {
   maxElapsedMs: 15_000,
   maxExpandedStates: 2_000_000,
 };
@@ -153,19 +153,6 @@ export async function evaluateFinalist(
     solversSucceeded: solved.length,
     solversAttempted: evidence.length,
   };
-}
-
-export async function evaluateFinalists(
-  puzzles: readonly PuzzleDefinition[],
-  config: FinalistEvaluatorConfig = DEFAULT_FINALIST_CONFIG,
-  signal?: AbortSignal,
-): Promise<readonly FinalistEvaluation[]> {
-  const results: FinalistEvaluation[] = [];
-  for (const puzzle of puzzles) {
-    if (signal?.aborted) break;
-    results.push(await evaluateFinalist(puzzle, config, signal));
-  }
-  return results;
 }
 
 export function computeCurationObjectives(

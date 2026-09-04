@@ -13,7 +13,7 @@ export interface CounterfactualBudget {
   readonly minDelayedPushes: number;
 }
 
-export const DEFAULT_COUNTERFACTUAL_BUDGET: CounterfactualBudget = Object.freeze({
+const DEFAULT_COUNTERFACTUAL_BUDGET: CounterfactualBudget = Object.freeze({
   maxProbes: 12,
   maxStatesPerProbe: 256,
   maxTotalStates: 2048,

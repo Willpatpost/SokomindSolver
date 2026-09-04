@@ -22,7 +22,7 @@ const DC = [0, 0, -1, 1];
 // Grid helpers
 // ---------------------------------------------------------------------------
 
-export function isFloor(
+function isFloor(
   grid: readonly (readonly string[])[],
   r: number,
   c: number,
@@ -501,7 +501,7 @@ export function extendGoalSet(blueprint: FunctionalBlueprint, grid: readonly (re
   return goals;
 }
 
-export function wouldBlockExistingGoals(
+function wouldBlockExistingGoals(
   existing: readonly GoalCell[],
   candidate: RoomFloorCell,
   grid: readonly (readonly string[])[],
@@ -675,7 +675,7 @@ function distributeEvenly(total: number, buckets: number): number[] {
   return Array.from({ length: buckets }, (_, i) => base + (i < remainder ? 1 : 0));
 }
 
-export function findRoomForCell(blueprint: FunctionalBlueprint, row: number, col: number): number {
+function findRoomForCell(blueprint: FunctionalBlueprint, row: number, col: number): number {
   for (const room of blueprint.rooms) {
     if (
       row >= room.y &&
