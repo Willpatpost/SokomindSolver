@@ -1,6 +1,6 @@
 # Generator V4 Implementation Checklist
 
-Working reference derived from `docs/generator-v4-roadmap.md`.
+Working reference derived from `docs/plans/generator.md`.
 
 ---
 

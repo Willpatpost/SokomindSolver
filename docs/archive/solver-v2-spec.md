@@ -1,5 +1,7 @@
 # Sokomind Solver V2
 
+> Historical reference. For current behavior, start with the [project reference](../PROJECT-REFERENCE.md).
+
 > Implementation note (August 11, 2026): this is the original design
 > specification, not a completion report. Current behavior and audited
 > deviations are recorded in `docs/solver-v2-progress.md`. In particular,
@@ -1648,7 +1650,7 @@ Every sprint ends with:
 Create:
 
 ```text
-docs/solver-v2-spec.md
+docs/archive/solver-v2-spec.md
 docs/solver-v2-progress.md
 docs/solver-v2-benchmarks.md
 scripts/benchmark-solver-v2.ts
@@ -1663,7 +1665,7 @@ docs/solver-integration.md
 
 ### Work
 
-* Copy this specification into `docs/solver-v2-spec.md`.
+* Copy this specification into `docs/archive/solver-v2-spec.md`.
 * Record current commit and solver versions.
 * Add the benchmark corpus.
 * Add the 17-box fixture.

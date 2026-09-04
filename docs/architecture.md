@@ -82,6 +82,25 @@ These source-backed invariants are enforced by
 The gate recognizes static, side-effect, type, and dynamic imports and rejects
 cycles between feature modules.
 
+## Solver validation modules
+
+`src/solver/validation.ts` is the public validation entry point. It assembles
+request, progress, and result checks and retains the established assertion
+functions, type guards, error class, and objective scorer exports. Internal
+modules under `src/solver/validation/` have narrower responsibilities:
+
+| Module | Responsibility |
+|---|---|
+| `common.ts` | Issue collection, errors, and primitive field checks |
+| `board.ts` | Geometry, labels, positions, and snapshot consistency |
+| `request.ts` | Objectives, resource limits, and JSON-safe options |
+| `solution.ts` | Steps, solution counters, proof metadata, and run metrics |
+| `metadata.ts` | Adapter identity and capability declarations |
+
+Consumers import the public entry point; internal checkers are implementation
+details. These checks validate the protocol shape and consistency. Canonical
+replay remains the separate responsibility of `src/solver/verification.ts`.
+
 ## Game state
 
 `ParsedBoard` contains static geometry. `GameSnapshot` contains the dynamic

@@ -9,7 +9,7 @@ No exact solver or optimality rules are changed by that work.
 This document describes the code that exists now. It replaces the former
 sprint-by-sprint diary, which mixed historical intentions, intermediate test
 counts, and claims that were no longer true. The original design goals remain
-in `docs/solver-v2-spec.md`; benchmark methodology lives in
+in `docs/archive/solver-v2-spec.md`; benchmark methodology lives in
 `docs/solver-v2-benchmarks.md`.
 
 ## Verdict

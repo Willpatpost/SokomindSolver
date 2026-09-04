@@ -490,7 +490,7 @@ function analyzeBranching(
 
   for (const step of steps) {
     if (step.kind === "push") {
-      const legalPushes = countLegalPushes(robot, boxes, boxSet, grid, h, w);
+      const legalPushes = countLegalPushes(robot, boxSet, grid, h, w);
       pushCounts.push(legalPushes);
       if (legalPushes <= 1) forcedPushes++;
 
@@ -573,7 +573,6 @@ function isCornerDead(
 
 function countLegalPushes(
   robot: { row: number; column: number },
-  boxes: Array<{ row: number; column: number }>,
   boxSet: Set<string>,
   grid: string[][],
   h: number,

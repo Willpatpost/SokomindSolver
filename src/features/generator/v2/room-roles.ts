@@ -113,7 +113,6 @@ export function assignRoomRoles(
   const assigned = assignRolesForFamily(
     rooms,
     blueprint.family,
-    blueprint.passages.length,
     boxCount,
     rng,
   );
@@ -127,7 +126,6 @@ export function assignRoomRoles(
 function assignRolesForFamily(
   rooms: FunctionalRoom[],
   family: TopologyFamily,
-  passageCount: number,
   boxCount: number,
   rng: () => number,
 ): FunctionalRoom[] {

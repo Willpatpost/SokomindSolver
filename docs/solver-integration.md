@@ -340,7 +340,7 @@ single puzzle should determine the architecture or algorithm choice.
 
 ## Solver V2
 
-Work in progress. See [`solver-v2-spec.md`](solver-v2-spec.md) for the full
+Work in progress. See [`solver-v2-spec.md`](archive/solver-v2-spec.md) for the full
 specification and [`solver-v2-progress.md`](solver-v2-progress.md) for sprint
 status.
 

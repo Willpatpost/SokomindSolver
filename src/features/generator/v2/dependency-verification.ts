@@ -213,7 +213,6 @@ function verifyBlocksAccess(
   fromNode: DepNode,
   toNode: DepNode,
   puzzle: PuzzleDefinition,
-  steps: readonly SolutionStep[],
   moveEvents: BoxMoveEvent[],
   completions: BoxCompletionEvent[],
 ): EdgeVerificationBody {
@@ -987,7 +986,7 @@ export function verifyDependenciesWithEvidence(
         result = verifyMustPrecede(fromNode, toNode, completions);
         break;
       case "blocks-access":
-        result = verifyBlocksAccess(fromNode, toNode, puzzle, steps, moveEvents, completions);
+        result = verifyBlocksAccess(fromNode, toNode, puzzle, moveEvents, completions);
         break;
       case "must-stage":
         result = verifyMustStage(fromNode, toNode, moveEvents, completions);

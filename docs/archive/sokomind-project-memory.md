@@ -469,7 +469,7 @@ The original Sprint 0–14 sequence has been implemented and then audited. It
 is no longer an active task checklist. Current behavior is authoritative in
 `docs/solver-v2-progress.md`, benchmark methodology is authoritative in
 `docs/solver-v2-benchmarks.md`, and the original proposal remains in
-`docs/solver-v2-spec.md` as design history.
+`docs/archive/solver-v2-spec.md` as design history.
 
 The August 11 audit established these important deviations from that proposal:
 
@@ -493,7 +493,7 @@ Solver V2 is represented by:
 
 ```text
 CLAUDE.md
-docs/solver-v2-spec.md
+docs/archive/solver-v2-spec.md
 docs/solver-v2-progress.md
 docs/solver-v2-benchmarks.md
 scripts/benchmark-solver-v2.ts
@@ -633,7 +633,7 @@ Waterfield application execution may require `crun`.
 
 Claude should receive prescriptive, sprint-scoped instructions.
 
-1. Read root `CLAUDE.md`, `docs/solver-v2-spec.md`, `docs/solver-v2-progress.md`, this file, and relevant integration/benchmark docs.
+1. Read root `CLAUDE.md`, `docs/archive/solver-v2-spec.md`, `docs/solver-v2-progress.md`, this file, and relevant integration/benchmark docs.
 2. Verify repository root, branch, working tree, latest commit, and sprint scope.
 3. Implement only one sprint.
 4. Do not begin the next sprint automatically.

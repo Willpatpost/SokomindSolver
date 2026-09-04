@@ -18,6 +18,18 @@ npm.cmd run dev
 Keep changes focused, add tests for changed behavior, and avoid committing
 generated build output or local benchmark artifacts.
 
+Typechecking rejects unused locals and parameters. Remove unused private
+arguments and their call-site values together. Keep an unused public argument
+only when its position is needed for compatibility, and prefix its name with
+an underscore to make that choice explicit. An exported symbol is not proven
+dead just because the compiler accepts it: check app, worker, script, test,
+and documented entry points before removing it.
+
+Keep current guidance in `docs/`, proposed work in `docs/plans/`, and historical
+evidence in `docs/archive/`. Update the [documentation index](docs/README.md)
+when adding or moving a guide. Preserve useful decision history without
+presenting old plans as current implementation instructions.
+
 ## Validation
 
 Before opening a pull request, run the checks relevant to the change. The full

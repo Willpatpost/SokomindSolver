@@ -1,5 +1,7 @@
 # Generator Phase 0 baseline
 
+> Historical reference. For current behavior, start with the [project reference](../PROJECT-REFERENCE.md).
+
 Recorded on 2026-08-31 before the rejected generated catalog was cleared.
 This document preserves aggregate evidence only; none of the rejected generated
 boards are retained as fixtures.

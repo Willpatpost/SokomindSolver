@@ -25,7 +25,7 @@ export function partitionGoals(
 
   if (allGoalCells.length === 0) return [];
 
-  const groups = groupByLabel(board, allGoalCells, goalLabels);
+  const groups = groupByLabel(allGoalCells, goalLabels);
 
   const partitions: GoalPartition[] = [];
   for (const group of groups) {
@@ -58,7 +58,6 @@ interface GoalGroup {
 }
 
 function groupByLabel(
-  board: CompiledSearchBoard,
   allGoalCells: readonly number[],
   goalLabels: ReadonlyMap<number, string>,
 ): GoalGroup[] {

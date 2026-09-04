@@ -130,11 +130,11 @@ export function analyzeGrid(grid: readonly (readonly string[])[]): StructuralMet
     neighborCache,
   );
 
-  const regions = findRegions(floorCells, neighborCache, articulations, totalFloor);
+  const regions = findRegions(neighborCache, articulations, totalFloor);
 
   const tunnelCells = findTunnels(floorCells, neighborCache);
 
-  const chokepoints = findChokepoints(floorCells, neighborCache, articulations);
+  const chokepoints = findChokepoints(neighborCache, articulations);
 
   const openAreaRatio = computeOpenAreaRatio(floorCells, neighborCache);
 
@@ -253,7 +253,6 @@ function findArticulationPoints(
 // ---------------------------------------------------------------------------
 
 function findRegions(
-  floorCells: number[],
   neighborCache: Map<number, number[]>,
   articulations: ReadonlySet<number>,
   totalFloor: number,
@@ -375,7 +374,6 @@ function computeWidth(neighborCache: Map<number, number[]>): number {
 // ---------------------------------------------------------------------------
 
 function findChokepoints(
-  floorCells: number[],
   neighborCache: Map<number, number[]>,
   articulations: ReadonlySet<number>,
 ): Set<number> {

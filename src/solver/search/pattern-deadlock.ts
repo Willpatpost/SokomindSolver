@@ -290,7 +290,7 @@ export class PatternDeadlockCache {
       return cachedResult;
     }
 
-    const deadlocked = this.#runBFS(board, windowCellSet, localBoxes, movedPos);
+    const deadlocked = this.#runBFS(board, localBoxes, movedPos);
     this.#storePatternResult(patternKey, deadlocked);
     if (deadlocked) this.#deadlocks += 1;
     return deadlocked;
@@ -298,7 +298,6 @@ export class PatternDeadlockCache {
 
   #runBFS(
     board: CompiledSearchBoard,
-    windowCells: ReadonlySet<number>,
     initialBoxes: readonly LocalBox[],
     centerPos: { row: number; column: number },
   ): boolean {

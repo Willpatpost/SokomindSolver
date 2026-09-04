@@ -11,7 +11,6 @@ interface BoxGoalPair {
 
 function collectAxisPairs(
   board: CompiledSearchBoard,
-  boxes: readonly DenseBox[],
   assignment: ReadonlyMap<string, { boxCells: readonly number[]; goalCells: readonly number[]; columns: readonly number[] }>,
   getAxisCoord: (cell: number) => number,
   getLineCoord: (cell: number) => number,
@@ -76,14 +75,15 @@ function collectAxisPairs(
 
 export function computeLinearConflict(
   board: CompiledSearchBoard,
-  boxes: readonly DenseBox[],
+  // The assignment contains box cells; retain this public argument for callers.
+  _boxes: readonly DenseBox[],
   assignment: ReadonlyMap<string, { boxCells: readonly number[]; goalCells: readonly number[]; columns: readonly number[] }>,
 ): number {
   const getRow = (cell: number) => board.positions[cell].row;
   const getCol = (cell: number) => board.positions[cell].column;
 
-  const rowConflicts = collectAxisPairs(board, boxes, assignment, getCol, getRow);
-  const colConflicts = collectAxisPairs(board, boxes, assignment, getRow, getCol);
+  const rowConflicts = collectAxisPairs(board, assignment, getCol, getRow);
+  const colConflicts = collectAxisPairs(board, assignment, getRow, getCol);
 
   return (rowConflicts + colConflicts) * 2;
 }

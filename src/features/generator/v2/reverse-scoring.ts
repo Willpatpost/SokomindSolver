@@ -470,7 +470,8 @@ function findTunnels(grid: readonly (readonly string[])[]): Set<string> {
 export function scoreState(
   ctx: ScoringContext,
   boxPositions: readonly GridPosition[],
-  robotPosition: GridPosition,
+  // Preserve the public positional API; scoring currently depends on boxes only.
+  _robotPosition: GridPosition,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
 ): ReverseStateScore {
   const goalSet = new Set(ctx.goals.map((g) => `${g.row},${g.column}`));

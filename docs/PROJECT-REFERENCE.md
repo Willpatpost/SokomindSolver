@@ -21,7 +21,7 @@ When two documents disagree, use this order:
 5. Historical audits, benchmark captures, and the original Solver V2 proposal.
 
 `docs/archive/AUG11AUDIT.MD` is a dated resolution ledger, not a statement that no new
-defects can exist. `docs/solver-v2-spec.md` is design history. Current solver
+defects can exist. `docs/archive/solver-v2-spec.md` is design history. Current solver
 behavior belongs in `docs/solver-v2-progress.md` and
 `docs/solver-v2-benchmarks.md`.
 
