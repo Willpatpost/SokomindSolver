@@ -4,7 +4,7 @@ import { directionDelta } from "../../../core/position.ts";
 import type { SolutionStep, SolverAdapter, SolverLimits, SolverResult } from "../../../solver/contracts.ts";
 import type { PullRecord } from "./reverse-beam-search.ts";
 
-export type SolvedResult = Extract<SolverResult, { status: "solved" }>;
+type SolvedResult = Extract<SolverResult, { status: "solved" }>;
 
 export interface GenerationSearchBudget {
   readonly maxExpandedStates: number;
@@ -13,7 +13,7 @@ export interface GenerationSearchBudget {
   readonly probeExpandedStates: number;
   readonly probeElapsedMs: number;
 }
-export const DEFAULT_GENERATION_SEARCH_BUDGET: GenerationSearchBudget = {
+const DEFAULT_GENERATION_SEARCH_BUDGET: GenerationSearchBudget = {
   maxExpandedStates: 12000, maxElapsedMs: 5000, maxCalls: 8,
   probeExpandedStates: 2000, probeElapsedMs: 500,
 };

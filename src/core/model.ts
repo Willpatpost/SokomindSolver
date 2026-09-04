@@ -29,6 +29,8 @@ export interface PuzzleDefinition {
   readonly collection?: string;
   readonly rows: readonly string[];
   readonly complexity?: { readonly estimatedDifficulty: number };
+  readonly generationMode?: string;
+  readonly topologyFamily?: string;
 }
 
 export const DIRECTIONS = ["up", "down", "left", "right"] as const;

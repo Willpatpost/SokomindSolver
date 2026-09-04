@@ -1,8 +1,6 @@
 import { Worker } from "node:worker_threads";
 import { availableParallelism, freemem } from "node:os";
 
-export interface PoolTask<T> { readonly index: number; readonly payload: T }
-export interface PoolResult<R> { readonly index: number; readonly result: R }
 export interface PoolStats {
   readonly workers: number;
   readonly active: number;

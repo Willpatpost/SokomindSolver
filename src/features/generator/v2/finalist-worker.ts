@@ -16,7 +16,7 @@ export interface FinalistTaskPayload {
   readonly dependencyRealizationRate?: number;
 }
 
-export interface FinalistTaskResult {
+interface FinalistTaskResult {
   readonly finalist: FinalistEvaluationV4;
   readonly objectives: CurationObjectives;
   readonly deepScore: number;

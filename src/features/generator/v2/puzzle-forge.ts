@@ -274,98 +274,6 @@ export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   },
 };
 
-export const ADVANCED_FORGE_PRESET: Partial<ForgeConfig> = {
-  boxCounts: [10, 11, 12, 13],
-  boardWidth: 18,
-  boardHeight: 18,
-  modes: ["mechanism", "motif", "composed"],
-  geometryProfile: {
-    boardWidthRange: [14, 18],
-    boardHeightRange: [14, 18],
-    minRooms: 2,
-    maxRooms: 5,
-    minRoomSize: 3,
-    maxRoomSize: 6,
-    passageWidths: [1, 2],
-    minPlayableFloor: 40,
-    maxPlayableFloor: 120,
-    minFloorCoverage: 0.20,
-    minRegions: 1,
-    minChokepoints: 1,
-  },
-  gates: {
-    ...DEFAULT_FORGE_GATES,
-    minSolutionPushes: 10,
-    maxBoxIndependenceRatio: 0.80,
-    minSolverExpandedStates: 20,
-  },
-};
-
-export const EXPERT_FORGE_PRESET: Partial<ForgeConfig> = {
-  boxCounts: [14, 15, 16, 17],
-  boardWidth: 22,
-  boardHeight: 22,
-  modes: ["mechanism", "motif", "composed"],
-  geometryProfile: {
-    boardWidthRange: [18, 22],
-    boardHeightRange: [18, 22],
-    minRooms: 3,
-    maxRooms: 6,
-    minRoomSize: 3,
-    maxRoomSize: 6,
-    passageWidths: [1],
-    minPlayableFloor: 55,
-    maxPlayableFloor: 150,
-    minFloorCoverage: 0.25,
-    minRegions: 2,
-    minChokepoints: 2,
-  },
-  gates: {
-    ...DEFAULT_FORGE_GATES,
-    minSolutionPushes: 15,
-    maxBoxIndependenceRatio: 0.70,
-    minSolverExpandedStates: 50,
-    minGenericBoxCount: 2,
-    minTypedBoxCount: 2,
-  },
-};
-
-export const MASTER_FORGE_PRESET: Partial<ForgeConfig> = {
-  boxCounts: [18, 19, 20, 21, 22],
-  boardWidth: 26,
-  boardHeight: 26,
-  modes: ["mechanism"],
-  geometryProfile: {
-    boardWidthRange: [18, 26],
-    boardHeightRange: [18, 26],
-    minRooms: 4,
-    maxRooms: 7,
-    minRoomSize: 3,
-    maxRoomSize: 6,
-    passageWidths: [1],
-    minPlayableFloor: 75,
-    maxPlayableFloor: 220,
-    minFloorCoverage: 0.30,
-    minRegions: 3,
-    minChokepoints: 3,
-  },
-  gates: {
-    ...DEFAULT_FORGE_GATES,
-    minSolutionPushes: 25,
-    maxBoxIndependenceRatio: 0.50,
-    minSolverExpandedStates: 200,
-    minGenericBoxCount: 2,
-    minTypedBoxCount: 2,
-  },
-};
-
-export function getForgePreset(difficulty: Difficulty): Partial<ForgeConfig> {
-  if (difficulty === "master") return MASTER_FORGE_PRESET;
-  if (difficulty === "expert") return EXPERT_FORGE_PRESET;
-  if (difficulty === "advanced") return ADVANCED_FORGE_PRESET;
-  return {};
-}
-
 function resolveSearchProfile(
   config: ForgeConfig,
   difficulty: Difficulty,
@@ -857,7 +765,7 @@ export type CompletionResult = (
   | { ok: false; reason: ForgeRejectionReason; solverCalls: number; cacheHits?: number; witnessFallbacks?: number; qualityProfile?: PuzzleQualityProfile }
 ) & { readonly evaluationWork?: import("./generation-evidence.ts").GenerationWork };
 
-export type RawGenerationResult =
+type RawGenerationResult =
   | { ok: true; raw: RawGenResult; rankedCandidates?: readonly ArchiveCandidate[] }
   | { ok: false; reason: ForgeRejectionReason; solverCalls: number };
 

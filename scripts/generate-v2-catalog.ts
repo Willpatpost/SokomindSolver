@@ -45,6 +45,7 @@ import {
 
 import { ForgeWorkerPool, getForgePoolSize } from "../src/features/generator/v2/forge-pool.ts";
 import { TIER_CONFIGS, CATALOG_FINALIST_POLICIES } from "./lib/generator-tier-config.ts";
+import { DEFAULT_RELEASE_GATE_CONFIG } from "../src/features/generator/v2/release-gate.ts";
 import type { ForgeProgress } from "../src/features/generator/v2/puzzle-forge.ts";
 import { STRICT_STORY_DIVERSITY_POLICY } from "../src/features/generator/v2/story-diversity.ts";
 
@@ -167,6 +168,8 @@ function catalogCandidateToEntry(
     difficulty: cc.assignedDifficulty,
     boxes: cc.candidate.puzzle.boxes,
     collection: "Sokomind Generated",
+    generationMode: cc.candidate.provenance.mode,
+    topologyFamily: cc.candidate.provenance.family,
     // Never change geometry/coordinates after the final trace and plans were verified.
     rows: [...cc.candidate.puzzle.rows],
   };
@@ -772,7 +775,10 @@ async function main(): Promise<void> {
 
   console.log(`    Total catalog entries: ${catalogEntries.length}`);
 
-  const manifest = buildManifest(catalogEntries, ccMap, tierTargets);
+  const releaseTargets = new Map<Difficulty, number>(
+    DIFFICULTIES.map((d) => [d, DEFAULT_RELEASE_GATE_CONFIG.tierQuotas[d]?.target ?? 0]),
+  );
+  const manifest = buildManifest(catalogEntries, ccMap, releaseTargets);
 
   // -----------------------------------------------------------------------
   // Phase 6: Benchmark comparison against handcrafted puzzles
@@ -935,7 +941,7 @@ async function main(): Promise<void> {
           ),
         );
       }
-      tierPacks.set(difficulty, { target: tierTargets.get(difficulty) ?? 0, packs });
+      tierPacks.set(difficulty, { target: DEFAULT_RELEASE_GATE_CONFIG.tierQuotas[difficulty]?.target ?? 0, packs });
     }
 
     const reviewCatalog = buildReviewCatalog(tierPacks, {
