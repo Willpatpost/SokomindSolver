@@ -31,7 +31,7 @@
   "puzzles": [
     {
       "id": "gen-v2-310116-594a231c",
-      "title": "Beginner 1",
+      "title": "Packing Order: Passage 1",
       "difficulty": "beginner",
       "seed": 310116,
       "family": "linear",
@@ -86,7 +86,7 @@
     },
     {
       "id": "gen-v2-310014-7ebd2f54",
-      "title": "Beginner 2",
+      "title": "Packing Order: Passage 2",
       "difficulty": "beginner",
       "seed": 310014,
       "family": "linear",
@@ -141,7 +141,7 @@
     },
     {
       "id": "gen-v2-310089-a702de93",
-      "title": "Beginner 3",
+      "title": "Room to Room: Passage 3",
       "difficulty": "beginner",
       "seed": 310089,
       "family": "linear",
@@ -195,7 +195,7 @@
     },
     {
       "id": "gen-v2-310032-ceaf7565",
-      "title": "Beginner 4",
+      "title": "Room to Room: Passage 4",
       "difficulty": "beginner",
       "seed": 310032,
       "family": "linear",
@@ -251,7 +251,7 @@
     },
     {
       "id": "gen-v2-310056-2f55f9f8",
-      "title": "Beginner 5",
+      "title": "Room to Room: Passage 5",
       "difficulty": "beginner",
       "seed": 310056,
       "family": "linear",
@@ -307,7 +307,7 @@
     },
     {
       "id": "gen-v2-310118-e9172c97",
-      "title": "Beginner 6",
+      "title": "False Promise: Passage 6",
       "difficulty": "beginner",
       "seed": 310118,
       "family": "linear",
@@ -363,7 +363,7 @@
     },
     {
       "id": "gen-v2-310145-228a1c30",
-      "title": "Beginner 7",
+      "title": "Necessary Detour: Passage 7",
       "difficulty": "beginner",
       "seed": 310145,
       "family": "linear",
@@ -420,7 +420,7 @@
     },
     {
       "id": "gen-v2-310136-dd37455b",
-      "title": "Beginner 8",
+      "title": "Room to Room: Passage 8",
       "difficulty": "beginner",
       "seed": 310136,
       "family": "linear",
@@ -475,7 +475,7 @@
     },
     {
       "id": "gen-v2-310081-a2088508",
-      "title": "Beginner 9",
+      "title": "Room to Room: Passage 9",
       "difficulty": "beginner",
       "seed": 310081,
       "family": "linear",
@@ -530,7 +530,7 @@
     },
     {
       "id": "gen-v2-310183-c9e1ef62",
-      "title": "Beginner 10",
+      "title": "False Promise: Passage 10",
       "difficulty": "beginner",
       "seed": 310183,
       "family": "linear",
@@ -589,7 +589,7 @@
     },
     {
       "id": "gen-v2-320093-09d278d1",
-      "title": "Intermediate 1",
+      "title": "False Promise: Passage 1",
       "difficulty": "intermediate",
       "seed": 320093,
       "family": "linear",
@@ -647,7 +647,7 @@
     },
     {
       "id": "gen-v2-320165-dcd465b6",
-      "title": "Intermediate 2",
+      "title": "False Promise: Passage 2",
       "difficulty": "intermediate",
       "seed": 320165,
       "family": "linear",
@@ -706,7 +706,7 @@
     },
     {
       "id": "gen-v2-320118-f55e1396",
-      "title": "Intermediate 3",
+      "title": "False Promise: Crossroads 3",
       "difficulty": "intermediate",
       "seed": 320118,
       "family": "branch",
@@ -765,7 +765,7 @@
     },
     {
       "id": "gen-v2-320050-78319f43",
-      "title": "Intermediate 4",
+      "title": "False Promise: Passage 4",
       "difficulty": "intermediate",
       "seed": 320050,
       "family": "linear",
@@ -823,7 +823,7 @@
     },
     {
       "id": "gen-v2-320050-ece6c64b",
-      "title": "Intermediate 5",
+      "title": "False Promise: Passage 5",
       "difficulty": "intermediate",
       "seed": 320050,
       "family": "linear",
@@ -880,7 +880,7 @@
     },
     {
       "id": "gen-v2-320115-e2982270",
-      "title": "Intermediate 6",
+      "title": "False Promise: Passage 6",
       "difficulty": "intermediate",
       "seed": 320115,
       "family": "linear",
@@ -939,7 +939,7 @@
     },
     {
       "id": "gen-v2-320041-027a9b04",
-      "title": "Intermediate 7",
+      "title": "False Promise: Passage 7",
       "difficulty": "intermediate",
       "seed": 320041,
       "family": "linear",
@@ -998,7 +998,7 @@
     },
     {
       "id": "gen-v2-320050-4eb88a2d",
-      "title": "Intermediate 8",
+      "title": "False Promise: Passage 8",
       "difficulty": "intermediate",
       "seed": 320050,
       "family": "linear",
@@ -1055,7 +1055,7 @@
     },
     {
       "id": "gen-v2-320081-b59cab95",
-      "title": "Intermediate 9",
+      "title": "False Promise: Crossroads 9",
       "difficulty": "intermediate",
       "seed": 320081,
       "family": "branch",
@@ -1114,7 +1114,7 @@
     },
     {
       "id": "gen-v2-320041-e16f5a47",
-      "title": "Intermediate 10",
+      "title": "False Promise: Passage 10",
       "difficulty": "intermediate",
       "seed": 320041,
       "family": "linear",
@@ -1173,7 +1173,7 @@
     },
     {
       "id": "gen-v2-340114-a8b9d02a",
-      "title": "Advanced 1",
+      "title": "False Promise: Chambers 1",
       "difficulty": "advanced",
       "seed": 340114,
       "family": "nested",
@@ -1232,7 +1232,7 @@
     },
     {
       "id": "gen-v2-340053-6d913910",
-      "title": "Advanced 2",
+      "title": "False Promise: Passage 2",
       "difficulty": "advanced",
       "seed": 340053,
       "family": "linear",
@@ -1290,7 +1290,7 @@
     },
     {
       "id": "gen-v2-340187-cd08a50a",
-      "title": "Advanced 3",
+      "title": "False Promise: Passage 3",
       "difficulty": "advanced",
       "seed": 340187,
       "family": "linear",
@@ -1349,7 +1349,7 @@
     },
     {
       "id": "gen-v2-340053-466f0008",
-      "title": "Advanced 4",
+      "title": "False Promise: Passage 4",
       "difficulty": "advanced",
       "seed": 340053,
       "family": "linear",
@@ -1407,7 +1407,7 @@
     },
     {
       "id": "gen-v2-330146-44c41505",
-      "title": "Advanced 5",
+      "title": "False Promise: Passage 5",
       "difficulty": "advanced",
       "seed": 330146,
       "family": "linear",
@@ -1470,7 +1470,7 @@
     },
     {
       "id": "gen-v2-340106-b3558338",
-      "title": "Advanced 6",
+      "title": "False Promise: Passage 6",
       "difficulty": "advanced",
       "seed": 340106,
       "family": "linear",
@@ -1533,7 +1533,7 @@
     },
     {
       "id": "gen-v2-340048-b5d312a6",
-      "title": "Advanced 7",
+      "title": "False Promise: Chambers 7",
       "difficulty": "advanced",
       "seed": 340048,
       "family": "nested",
@@ -1591,7 +1591,7 @@
     },
     {
       "id": "gen-v2-340046-c9f5ef3b",
-      "title": "Expert 1",
+      "title": "False Promise: Crossroads 1",
       "difficulty": "expert",
       "seed": 340046,
       "family": "branch",
@@ -1651,7 +1651,7 @@
     },
     {
       "id": "gen-v2-350108-80cb0432",
-      "title": "Expert 2",
+      "title": "False Promise: Chambers 2",
       "difficulty": "expert",
       "seed": 350108,
       "family": "nested",
@@ -1709,7 +1709,7 @@
     },
     {
       "id": "gen-v2-340272-fd819d0e",
-      "title": "Expert 3",
+      "title": "False Promise: Circuit 3",
       "difficulty": "expert",
       "seed": 340272,
       "family": "loop",
@@ -1769,7 +1769,7 @@
     },
     {
       "id": "gen-v2-350250-5b361f8b",
-      "title": "Expert 4",
+      "title": "False Promise: Chambers 4",
       "difficulty": "expert",
       "seed": 350250,
       "family": "nested",
@@ -1829,7 +1829,7 @@
     },
     {
       "id": "gen-v2-350070-6be05c02",
-      "title": "Expert 5",
+      "title": "False Promise: Junction 5",
       "difficulty": "expert",
       "seed": 350070,
       "family": "hub",
@@ -1889,7 +1889,7 @@
     },
     {
       "id": "gen-v2-350108-b13869bc",
-      "title": "Expert 6",
+      "title": "False Promise: Chambers 6",
       "difficulty": "expert",
       "seed": 350108,
       "family": "nested",
@@ -1947,7 +1947,7 @@
     },
     {
       "id": "gen-v2-360313-16158b3b",
-      "title": "Master 1",
+      "title": "False Promise: Chambers 1",
       "difficulty": "master",
       "seed": 360313,
       "family": "nested",
@@ -2004,7 +2004,7 @@
     },
     {
       "id": "gen-v2-370002-8ea0b852",
-      "title": "Master 2",
+      "title": "False Promise: Circuit 2",
       "difficulty": "master",
       "seed": 370002,
       "family": "loop",
@@ -2067,7 +2067,7 @@
     },
     {
       "id": "gen-v2-370193-88873f15",
-      "title": "Master 3",
+      "title": "False Promise: Crossroads 3",
       "difficulty": "master",
       "seed": 370193,
       "family": "branch",
@@ -2127,7 +2127,7 @@
     },
     {
       "id": "gen-v2-350001-a996dcbc",
-      "title": "Master 4",
+      "title": "False Promise: Chambers 4",
       "difficulty": "master",
       "seed": 350001,
       "family": "nested",
@@ -2187,7 +2187,7 @@
     },
     {
       "id": "gen-v2-360372-b5687375",
-      "title": "Master 5",
+      "title": "False Promise: Crossroads 5",
       "difficulty": "master",
       "seed": 360372,
       "family": "branch",

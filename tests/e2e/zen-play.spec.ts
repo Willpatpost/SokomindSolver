@@ -57,6 +57,17 @@ test("pausing locks keyboard and swipe movement until play resumes", async ({ pa
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByTestId("moves-count")).toHaveText("1");
 
+  await page.keyboard.press("u");
+  await page.keyboard.press("r");
+  await page.keyboard.press("PageDown");
+  await page.keyboard.press("f");
+  await page.keyboard.press("z");
+  await expect(page.getByTestId("moves-count")).toHaveText("1");
+  await expect(page.getByRole("dialog", { name: "Restart this room?" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Color Line" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to favorites" })).toBeVisible();
+  await expect(page.locator("main[data-zen='true']")).toHaveCount(0);
+
   const hasTouchEvent = await page.evaluate(() => typeof TouchEvent !== "undefined");
   if (hasTouchEvent) {
     await page.getByTestId("game-board").evaluate((element) => {

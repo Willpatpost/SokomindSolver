@@ -99,10 +99,13 @@ a resource veto: it prevents an apparent state-count reduction from being
 accepted as an uncomplicated improvement, and conflicting directions are
 reported as mixed evidence.
 
-The current `inter-rooms` PDB smoke results were replay-valid and proven on
-both sides, with identical work: A* expanded 312 and generated 1,433 states,
-while IDA* expanded 2,705 and generated 12,640. Both fixture/algorithm pairs
-classify as no effect for PDB; neither justifies an efficiency claim.
+The September 4, 2026 `inter-rooms` PDB smoke results were replay-valid and
+proven on both sides, with identical work: A* expanded 312 and generated 1,433
+states, while IDA* expanded 2,831 and generated 12,738. In one five-run cold
+capture, the PDB-on/PDB-off medians were 196/185 ms for A* and 902/892 ms for
+IDA*. PDB construction retained 56,698 extra estimated bytes. Both
+fixture/algorithm pairs classify as no effect for PDB; this partial, dirty-tree
+smoke capture does not justify an efficiency claim.
 
 The deterministic tunnel-macro prototype also produced no state-count change
 on the original four-fixture sample:
@@ -188,7 +191,7 @@ Use a new versioned filename for each reviewed capture. Existing files are not
 overwritten unless the operator deliberately passes `--force`:
 
 ```text
-npm.cmd run benchmark:solver:v2 -- --save=tests/fixtures/solver-v2/baseline-v3-20260811.json
+npm.cmd run benchmark:solver:v2 -- --save=tests/fixtures/solver-v2/baseline-v3-YYYYMMDD.json
 ```
 
 The SLURM wrapper includes the job ID and UTC timestamp in its output filename.

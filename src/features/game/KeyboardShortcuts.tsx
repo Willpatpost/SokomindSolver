@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Modal } from "@/src/shared/ui/Modal";
 import styles from "./KeyboardShortcuts.module.css";
 
 interface KeyboardShortcutsProps {
@@ -42,27 +42,8 @@ const SHORTCUTS = [
 ] as const;
 
 export function KeyboardShortcuts({ open, onClose }: KeyboardShortcutsProps) {
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" || event.key === "?") {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      className={styles.overlay}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="presentation"
-    >
-      <div className={styles.panel} role="dialog" aria-label="Keyboard shortcuts">
+    <Modal open={open} onClose={onClose} label="Keyboard shortcuts" className={styles.panel}>
         <div className={styles.heading}>
           <h2>Keyboard shortcuts</h2>
           <button
@@ -93,8 +74,7 @@ export function KeyboardShortcuts({ open, onClose }: KeyboardShortcutsProps) {
           </div>
         ))}
 
-        <p className={styles.hint}>Press ? or Esc to close</p>
-      </div>
-    </div>
+        <p className={styles.hint}>Press Esc to close</p>
+    </Modal>
   );
 }

@@ -23,7 +23,6 @@ import type {
 } from "./catalog-manifest-types.ts";
 import { REVIEW_CATALOG_SCHEMA_VERSION } from "./catalog-manifest-types.ts";
 import { QUALITY_FLOORS } from "./quality-gate.ts";
-import { classifyDifficultyByBoxCount } from "./difficulty-model.ts";
 import { checkStoryQualityForRelease } from "./story-quality-policy.ts";
 import {
   checkStoryDiversityForRelease, summarizeStoryDiversity, storyDiversityLimits,
@@ -444,7 +443,6 @@ export function checkReleaseGate(
   // ---- 4. Quality and mechanism evidence ----
   const storyPacks: ReviewCandidatePack[] = [];
   for (const pack of allPacks) {
-    const boxCountTier = classifyDifficultyByBoxCount(pack.boxCount);
     const storyErrors = checkStoryQualityForRelease(pack.storyQuality, pack);
     for (const error of storyErrors) {
       errors.push(`Puzzle "${pack.id}": ${error}`);
@@ -454,20 +452,16 @@ export function checkReleaseGate(
       for (const error of diversityErrors) errors.push(`Puzzle "${pack.id}": ${error}`);
       if (diversityErrors.length === 0) storyPacks.push(pack);
     }
-    if (boxCountTier === "tutorial") {
+    if (pack.classifiedDifficulty === "tutorial") {
       errors.push(`Puzzle "${pack.id}": Tutorial puzzles must not be generator-produced`);
     }
-    if (
-      pack.difficulty !== boxCountTier ||
-      pack.intendedDifficulty !== boxCountTier ||
-      pack.classifiedDifficulty !== boxCountTier
-    ) {
+    if (pack.v4Classification !== pack.classifiedDifficulty) {
       errors.push(
-        `Puzzle "${pack.id}": ${pack.boxCount} boxes requires tier ${boxCountTier}`,
+        `Puzzle "${pack.id}": recorded V4 classification must match its measured classification`,
       );
     }
 
-    const minPerClass = boxCountTier === "beginner" ? 1 : 2;
+    const minPerClass = pack.classifiedDifficulty === "beginner" ? 1 : 2;
     if (
       pack.typingMode !== "hybrid" ||
       (pack.genericBoxCount ?? 0) < minPerClass ||
@@ -478,8 +472,8 @@ export function checkReleaseGate(
         `Puzzle "${pack.id}": requires hybrid typing with at least ${minPerClass} generic and ${minPerClass} typed boxes`,
       );
     }
-    const minPushes = boxCountTier === "beginner" ? 1 : 2;
-    const maxOnePush = boxCountTier === "beginner" ? 1 : 0;
+    const minPushes = pack.classifiedDifficulty === "beginner" ? 1 : 2;
+    const maxOnePush = pack.classifiedDifficulty === "beginner" ? 1 : 0;
     if (
       (pack.minPushesPerBox ?? 0) < minPushes ||
       (pack.inactiveBoxCount ?? 1) !== 0 ||

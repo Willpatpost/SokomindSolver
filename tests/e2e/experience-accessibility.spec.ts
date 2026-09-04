@@ -117,6 +117,22 @@ test("experience settings contains focus and restores it on close", async ({
   await expect(trigger).toBeFocused();
 });
 
+test("keyboard shortcuts contains focus and restores its trigger", async ({ page }) => {
+  await page.goto("./#/play/ultra-tiny");
+  const trigger = page.getByRole("button", { name: "Enter Zen mode" });
+  await trigger.focus();
+  await page.keyboard.press("?");
+  const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(shortcuts).toBeVisible();
+  await expect(shortcuts.getByRole("button", { name: "Close" })).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+  expect(await shortcuts.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(shortcuts).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
 test("audio previews and the mute shortcut expose accessible feedback", async ({
   page,
 }) => {

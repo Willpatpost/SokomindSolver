@@ -26,8 +26,17 @@ const candidates: ForgeCandidate[] = fixture.samples.map((s: typeof fixture.samp
       difficulty: s.puzzle.difficulty, boxCount: s.puzzle.boxes, tightened: true, cellsRemoved: 0, typingMode: "hybrid",
       genericBoxCount: quality.story!.measurements.genericBoxCount, typedBoxCount: quality.story!.measurements.typedBoxCount } };
 });
-const catalog = buildFinalReviewCatalog(candidates.map(c => ({ difficulty: c.puzzle.difficulty, target: 1 })),
-  new Map(candidates.map(c => [c.puzzle.difficulty, [c]])));
+const catalog = structuredClone(buildFinalReviewCatalog(candidates.map(c => ({ difficulty: c.puzzle.difficulty, target: 1 })),
+  new Map(candidates.map(c => [c.puzzle.difficulty, [c]]))));
+for (const [tier, summary] of Object.entries(catalog.tierSummaries)) {
+  for (const pack of summary.candidates) {
+    Object.assign(pack, {
+      classifiedDifficulty: tier,
+      difficultyGap: 0,
+      v4Classification: tier,
+    });
+  }
+}
 const text = JSON.stringify(catalog), empty = emptyHumanReview(catalog, text);
 const fixtureGate = { ...DEFAULT_RELEASE_GATE_CONFIG, minTotalPuzzles: 5, minDistinctModes: 1, maxModeConcentration: 1,
   tierQuotas: Object.fromEntries(candidates.map(c => [c.puzzle.difficulty, { min: 1, target: 1 }])) };

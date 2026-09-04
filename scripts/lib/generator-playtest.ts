@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ReviewCatalog, ReviewCandidatePack } from "../../src/features/generator/v2/catalog-manifest-types.ts";
 import { encodePuzzleUrl, decodeCustomPuzzle } from "../../src/features/editor/editor-serialization.ts";
-import { checkReleaseGate, type ReleaseGateConfig } from "../../src/features/generator/v2/release-gate.ts";
+import { checkReleaseGate, DEFAULT_RELEASE_GATE_CONFIG, type ReleaseGateConfig } from "../../src/features/generator/v2/release-gate.ts";
 import { storyDiversityLimits, STRICT_STORY_DIVERSITY_POLICY } from "../../src/features/generator/v2/story-diversity.ts";
 import { buildCanonicalSolutionTrace } from "../../src/features/generator/v2/solution-trace.ts";
 import { analyzePassiveSolutionStory } from "../../src/features/generator/v2/passive-story-analysis.ts";
@@ -47,7 +47,10 @@ export function checkHumanGeneratorReview(catalogText: string, input: unknown, r
   if (typeof r.reviewer !== "string" || !r.reviewer.trim() || !r.reviewedAt || !Number.isFinite(Date.parse(r.reviewedAt))) {
     errors.push("A named reviewer and review date are required.");
   }
-  for (const tier of ["beginner", "intermediate", "advanced", "expert", "master"]) {
+  const requiredTiers = Object.entries(
+    (releaseConfig ?? DEFAULT_RELEASE_GATE_CONFIG).tierQuotas,
+  ).filter(([, quota]) => (quota?.target ?? 0) > 0).map(([tier]) => tier);
+  for (const tier of requiredTiers) {
     const t = catalog.tierSummaries[tier];
     if (!t || t.target < 1 || t.actual < t.target) { errors.push(`${tier}: target is not filled.`); continue; }
     const limits = storyDiversityLimits(t.target, STRICT_STORY_DIVERSITY_POLICY);
@@ -63,7 +66,13 @@ export function checkHumanGeneratorReview(catalogText: string, input: unknown, r
       errors.push(`${p.id}: playtesting is incomplete or requires revision.`);
     }
     const grid = (p.rows ?? []).map(row => [...row]);
-    const replay = buildCanonicalSolutionTrace(grid, p.solutionSteps ?? [], { requireSolved: true });
+    let replay: ReturnType<typeof buildCanonicalSolutionTrace>;
+    try {
+      replay = buildCanonicalSolutionTrace(grid, p.solutionSteps ?? [], { requireSolved: true });
+    } catch {
+      errors.push(`${p.id}: fresh replay failed.`);
+      continue;
+    }
     if (!replay.ok) { errors.push(`${p.id}: fresh replay failed.`); continue; }
     const story = analyzePassiveSolutionStory(grid, replay.trace);
     const quality = assessStoryQuality({ puzzle: puzzleFor(p), trace: replay.trace, passiveStory: story,

@@ -403,7 +403,7 @@ independently. `npm.cmd run verify:generator-tiers` covers one saved generated
 example at every catalog tier. The benchmark guide records the exact seeds,
 measurements, and limits of this evidence.
 
-For future promotion, review packs retain the evaluated witness and the typing
+For catalog promotion, review packs retain the evaluated witness and the typing
 and construction plans. `scripts/lib/catalog-promotion.ts` independently replays
 and remeasures them, verifies exact catalog/manifest/review binding, and backs
 up the old catalog pair before installation. `--accept ... --dry-run` does not

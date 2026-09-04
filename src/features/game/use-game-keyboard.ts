@@ -18,6 +18,8 @@ const KEY_DIRECTIONS: Readonly<Record<string, Direction>> = {
 
 interface GameKeyboardOptions {
   readonly enabled?: boolean;
+  /** Whether shortcuts that mutate or leave the current room may run. */
+  readonly gameplayEnabled?: boolean;
   readonly onMove: (direction: Direction) => void;
   readonly onUndo: () => void;
   readonly onReset: () => void;
@@ -33,6 +35,7 @@ interface GameKeyboardOptions {
 
 export function useGameKeyboard({
   enabled = true,
+  gameplayEnabled = true,
   onMove,
   onUndo,
   onReset,
@@ -53,6 +56,18 @@ export function useGameKeyboard({
       if (event.defaultPrevented) return;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (document.querySelector("dialog[open], [role='dialog']")) return;
+
+      if (event.key === "?") {
+        event.preventDefault();
+        onShowShortcuts?.();
+        return;
+      }
+      if ((event.key === "p" || event.key === "P") && onPause) {
+        event.preventDefault();
+        onPause();
+        return;
+      }
+      if (!gameplayEnabled) return;
 
       if ((event.ctrlKey || event.metaKey) && event.key === "z") {
         event.preventDefault();
@@ -84,12 +99,6 @@ export function useGameKeyboard({
       } else if (event.key === "]" || event.key === "PageDown") {
         event.preventDefault();
         onNextPuzzle?.();
-      } else if (event.key === "?") {
-        event.preventDefault();
-        onShowShortcuts?.();
-      } else if ((event.key === "p" || event.key === "P") && onPause) {
-        event.preventDefault();
-        onPause();
       } else if ((event.key === "n" || event.key === "N") && onNextUnsolved) {
         event.preventDefault();
         onNextUnsolved();
@@ -104,5 +113,5 @@ export function useGameKeyboard({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
+  }, [enabled, gameplayEnabled, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
 }

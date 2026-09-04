@@ -11,7 +11,9 @@ import { runForge, DEFAULT_FORGE_CONFIG } from "../../src/features/generator/v2/
 import { createGeneratedPuzzleId } from "../../src/features/generator/v2/puzzle-identity.ts";
 import { buildReviewPack, buildReviewCatalog } from "../../src/features/generator/v2/review-catalog.ts";
 import { DEFAULT_RELEASE_GATE_CONFIG } from "../../src/features/generator/v2/release-gate.ts";
+import { computeV4Profile } from "../../src/features/generator/v2/difficulty-model.ts";
 import { catalogContentHash, verifyPromotionBundle, installPromotionBundle, type PromotionBundle } from "../../scripts/lib/catalog-promotion.ts";
+import { emptyHumanReview, reviewDigest, type HumanGeneratorReview } from "../../scripts/lib/generator-playtest.ts";
 
 const root = mkdtempSync(join(tmpdir(), "sokomind-promotion-test-"));
 after(() => {
@@ -21,7 +23,8 @@ after(() => {
 });
 
 const onePuzzleConfig = { ...DEFAULT_RELEASE_GATE_CONFIG, minTotalPuzzles: 1,
-  tierQuotas: { beginner: { min: 1, target: 1 } }, minDistinctTopologies: 1, minDistinctModes: 1, minDistinctBoxCounts: 1 };
+  tierQuotas: { beginner: { min: 1, target: 1 } },
+  minDistinctTopologies: 1, minDistinctModes: 1, minDistinctBoxCounts: 1 };
 
 const fixture = (async () => {
   const result = await runForge({ ...DEFAULT_FORGE_CONFIG, batchSize: 3, retainTarget: 3,
@@ -30,21 +33,55 @@ const fixture = (async () => {
   assert.ok(result.candidates.length > 0, "must exercise a real qualified generator candidate");
   const candidate = result.candidates[0];
   const puzzle = { ...candidate.puzzle, title: "Beginner 1", id: createGeneratedPuzzleId(candidate.provenance.seed, candidate.puzzle.rows) };
-  const pack = buildReviewPack({ ...candidate, puzzle }, "beginner", "beginner", 0);
+  const measured = computeV4Profile(candidate.evaluation);
+  const profile = { ...measured, classification: "beginner" as const };
+  const pack = buildReviewPack({ ...candidate, puzzle }, "beginner", "beginner", 0, undefined, profile);
   const review = buildReviewCatalog(new Map([["beginner", { target: 1, packs: [pack] }]]));
   const manifest = { schemaVersion: 1, generatorVersion: review.generatorVersion, catalogHash: catalogContentHash([puzzle]),
     tierQuotas: Object.fromEntries(DIFFICULTIES.map((tier) => [tier, { target: tier === "beginner" ? 1 : 0, actual: tier === "beginner" ? 1 : 0 }])),
     puzzles: [{ ...pack, title: puzzle.title }],
   };
-  return { catalog: JSON.stringify([puzzle]), manifest: JSON.stringify(manifest), review: JSON.stringify(review) };
+  const reviewText = JSON.stringify(review);
+  const pending = emptyHumanReview(review, reviewText);
+  const humanReview: HumanGeneratorReview = {
+    ...pending,
+    reviewer: "Promotion test fixture",
+    reviewedAt: "2026-09-04T00:00:00.000Z",
+    puzzles: pending.puzzles.map((item) => ({
+      ...item,
+      decision: "approve",
+      enjoyable: true,
+      excessiveWalking: false,
+      shortcutFound: false,
+      tierFit: "appropriate",
+    })),
+  };
+  return {
+    catalog: JSON.stringify([puzzle]),
+    manifest: JSON.stringify(manifest),
+    review: reviewText,
+    humanReview: JSON.stringify(humanReview),
+  };
 })();
 
 type Mutable<T> = T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
-type BundleParts = { catalog: Mutable<PuzzleDefinition[]>; manifest: Mutable<GeneratedPuzzleManifest>; review: Mutable<ReviewCatalog> };
+type BundleParts = {
+  catalog: Mutable<PuzzleDefinition[]>;
+  manifest: Mutable<GeneratedPuzzleManifest>;
+  review: Mutable<ReviewCatalog>;
+  humanReview: Mutable<HumanGeneratorReview>;
+};
 function mutate<K extends keyof BundleParts>(bundle: PromotionBundle, file: K, change: (value: BundleParts[K]) => void): PromotionBundle {
   const value = JSON.parse(bundle[file]) as BundleParts[K];
   change(value);
   return { ...bundle, [file]: JSON.stringify(value) };
+}
+
+function mutateReview(bundle: PromotionBundle, change: (value: BundleParts["review"]) => void): PromotionBundle {
+  const changed = mutate(bundle, "review", change);
+  return mutate(changed, "humanReview", (value) => {
+    value.reviewSha256 = reviewDigest(changed.review);
+  });
 }
 
 test("promotion independently replays a real generated mixed-box puzzle", async () => {
@@ -64,10 +101,28 @@ test("malformed or incomplete promotion bundles fail closed", async () => {
   assert.equal(verifyPromotionBundle(extraManifest, onePuzzleConfig).passed, false);
 });
 
+test("promotion requires an approved human review bound to the exact review catalog", async () => {
+  const bundle = await fixture;
+  const missing = { ...bundle, humanReview: undefined } as unknown as PromotionBundle;
+  assert.equal(verifyPromotionBundle(missing, onePuzzleConfig).passed, false);
+
+  const stale = mutate(bundle, "humanReview", (value) => {
+    value.reviewSha256 = "stale";
+  });
+  assert.ok(verifyPromotionBundle(stale, onePuzzleConfig).errors.some((error) =>
+    error.includes("Human review")));
+
+  const rejected = mutate(bundle, "humanReview", (value) => {
+    value.puzzles[0].decision = "reject";
+  });
+  assert.ok(verifyPromotionBundle(rejected, onePuzzleConfig).errors.some((error) =>
+    error.includes("playtesting is incomplete")));
+});
+
 test("promotion refuses missing, invalid and unsolved witnesses even with passing cached gates", async () => {
   const bundle = await fixture;
   for (const steps of [undefined, [], [{ kind: "walk", direction: "north" }], [{ kind: "walk", direction: "left" }]]) {
-    const bad = mutate(bundle, "review", (value) => {
+    const bad = mutateReview(bundle, (value) => {
       const pack = value.tierSummaries.beginner.candidates[0];
       pack.solutionSteps = steps as typeof pack.solutionSteps;
     });
@@ -79,10 +134,10 @@ test("promotion refuses missing, invalid and unsolved witnesses even with passin
 
 test("promotion detects forged story measurements and missing construction/typing intent", async () => {
   const bundle = await fixture;
-  const forged = mutate(bundle, "review", (value) => { value.tierSummaries.beginner.candidates[0].storyQuality!.measurements.boxes[0].pushes++; });
-  assert.ok(verifyPromotionBundle(forged, onePuzzleConfig).errors.some((error) => error.includes("replayed story measurements")));
-  const missingTyping = mutate(bundle, "review", (value) => { delete value.tierSummaries.beginner.candidates[0].storyAwareTypingPlan; });
-  assert.ok(verifyPromotionBundle(missingTyping, onePuzzleConfig).errors.some((error) => error.includes("replay quality failed")));
+  const forged = mutateReview(bundle, (value) => { value.tierSummaries.beginner.candidates[0].storyQuality!.measurements.boxes[0].pushes++; });
+  assert.ok(verifyPromotionBundle(forged, onePuzzleConfig).errors.some((error) => error.includes("fresh story verification")));
+  const missingTyping = mutateReview(bundle, (value) => { delete value.tierSummaries.beginner.candidates[0].storyAwareTypingPlan; });
+  assert.ok(verifyPromotionBundle(missingTyping, onePuzzleConfig).errors.some((error) => error.includes("fresh story verification")));
 });
 
 test("promotion binds exact catalog bytes semantically to manifest and review", async () => {
@@ -119,9 +174,12 @@ test("successful installation preserves both previous files in a recovery backup
   assert.equal(result.installed, true);
   assert.equal(readFileSync(join(target, "generated-puzzles.json"), "utf8"), bundle.catalog);
   assert.equal(readFileSync(join(target, "generated-puzzles.manifest.json"), "utf8"), bundle.manifest);
+  assert.equal(readFileSync(join(target, "generated-puzzles.human-review.json"), "utf8"), bundle.humanReview);
   assert.equal(readFileSync(join(result.backupDirectory!, "generated-puzzles.json"), "utf8"), "old catalog");
   assert.equal(readFileSync(join(result.backupDirectory!, "generated-puzzles.manifest.json"), "utf8"), "old manifest");
   assert.ok(existsSync(join(result.backupDirectory!, "completed.json")));
+  const completed = JSON.parse(readFileSync(join(result.backupDirectory!, "completed.json"), "utf8"));
+  assert.equal(completed.verification.humanReview.reviewer, "Promotion test fixture");
   assert.equal(readdirSync(target).some((name) => name.endsWith(".staged")), false);
 });
 

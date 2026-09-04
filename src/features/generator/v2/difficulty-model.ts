@@ -30,12 +30,7 @@ export const V4_TIER_THRESHOLDS: Readonly<Record<Difficulty, V4DifficultyThresho
   master:        { minComposite: 80.0, minStructural: 5.0, minDepth: 30.0, minReasoning: 50.0, maxTedium: 0.55, minBoxes: 8, minPushes: 30 },
 };
 
-/**
- * Catalog tiers are a box-count taxonomy. Quality and solution metrics still
- * rank and reject candidates within a tier, but never rename that tier.
- * Ten boxes belongs to Advanced so the requested overlapping boundary is
- * deterministic.
- */
+/** Board scale is useful for sampling and display, but is not a difficulty rating. */
 export function classifyDifficultyByBoxCount(boxCount: number): Difficulty {
   if (boxCount >= 18) return "master";
   if (boxCount >= 14) return "expert";
@@ -125,6 +120,56 @@ export function computeTediumPenalty(ev: PuzzleEvaluationVector): number {
     unusedFloorTedium;
 }
 
+function classifyV4Difficulty(
+  ev: PuzzleEvaluationVector,
+  structuralScale: number,
+  solutionDepth: number,
+  humanReasoningComplexity: number,
+  tediumPenalty: number,
+  composite: number,
+): Difficulty {
+  const ranked: readonly Difficulty[] = [
+    "master",
+    "expert",
+    "advanced",
+    "intermediate",
+    "beginner",
+  ];
+  for (const tier of ranked) {
+    const threshold = V4_TIER_THRESHOLDS[tier];
+    if (
+      composite >= threshold.minComposite &&
+      structuralScale >= threshold.minStructural &&
+      solutionDepth >= threshold.minDepth &&
+      humanReasoningComplexity >= threshold.minReasoning &&
+      tediumPenalty <= threshold.maxTedium &&
+      ev.boxCount >= (threshold.minBoxes ?? 0) &&
+      ev.solutionPushes >= (threshold.minPushes ?? 0)
+    ) {
+      return tier;
+    }
+  }
+  return "tutorial";
+}
+
+/** Classify measured player difficulty independently from the requested board size. */
+export function classifyDifficultyFromMetrics(ev: PuzzleEvaluationVector): Difficulty {
+  const structuralScale = computeStructuralScale(ev);
+  const solutionDepth = computeSolutionDepthScore(ev);
+  const humanReasoningComplexity = computeHumanReasoningComplexity(ev);
+  const tediumPenalty = computeTediumPenalty(ev);
+  const composite = structuralScale + solutionDepth + humanReasoningComplexity -
+    tediumPenalty * 7;
+  return classifyV4Difficulty(
+    ev,
+    structuralScale,
+    solutionDepth,
+    humanReasoningComplexity,
+    tediumPenalty,
+    composite,
+  );
+}
+
 export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfile {
   const structuralScale = computeStructuralScale(ev);
   const solutionDepth = computeSolutionDepthScore(ev);
@@ -134,8 +179,16 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
   const composite = structuralScale + solutionDepth + humanReasoningComplexity -
     tediumPenalty * 7;
 
-  const classification = classifyDifficultyByBoxCount(ev.boxCount);
-  const confidenceNote = `classified solely from ${ev.boxCount} boxes`;
+  const classification = classifyV4Difficulty(
+    ev,
+    structuralScale,
+    solutionDepth,
+    humanReasoningComplexity,
+    tediumPenalty,
+    composite,
+  );
+  const confidenceNote =
+    `classified from structural scale, solution depth, reasoning complexity, and tedium; ${ev.boxCount} boxes is a scale input`;
 
   return {
     structuralScale,

@@ -234,8 +234,8 @@ export function buildFinalReviewCatalog(
 
     for (const candidate of candidates) {
       const intendedDifficulty = spec.difficulty;
-      // Tier assignment is derived from the current box-count contract. Do
-      // not trust cached provenance from an older difficulty policy.
+      // Tier assignment is recomputed from the current measured difficulty
+      // model. Do not trust cached provenance from an older policy.
       const v4Profile = computeV4Profile(candidate.evaluation);
       const classifiedDifficulty = v4Profile.classification;
       const gap = tierIndex(classifiedDifficulty) - tierIndex(intendedDifficulty);

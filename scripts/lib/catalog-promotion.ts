@@ -10,13 +10,17 @@ import type { ReviewCatalog } from "../../src/features/generator/v2/catalog-mani
 import { buildCanonicalSolutionTrace } from "../../src/features/generator/v2/solution-trace.ts";
 import { analyzePassiveSolutionStory, summarizePassiveStory } from "../../src/features/generator/v2/passive-story-analysis.ts";
 import { assessStoryQuality } from "../../src/features/generator/v2/story-quality-policy.ts";
-import { classifyDifficultyByBoxCount } from "../../src/features/generator/v2/difficulty-model.ts";
 import { isBoxChar, isGenericBoxChar, isTypedBoxChar } from "../../src/features/generator/v2/tile-semantics.ts";
+import {
+  checkHumanGeneratorReview,
+  type HumanGeneratorReview,
+} from "./generator-playtest.ts";
 
 export interface PromotionBundle {
   readonly catalog: string;
   readonly manifest: string;
   readonly review: string;
+  readonly humanReview: string;
 }
 
 export interface PromotionVerification {
@@ -25,6 +29,10 @@ export interface PromotionVerification {
   readonly warnings: readonly string[];
   readonly puzzleCount: number;
   readonly replayed: number;
+  readonly humanReview?: Readonly<Pick<
+    HumanGeneratorReview,
+    "reviewSha256" | "reviewer" | "reviewedAt"
+  >>;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -42,10 +50,12 @@ export function verifyPromotionBundle(bundle: PromotionBundle, config?: ReleaseG
   let catalog: unknown;
   let manifest: unknown;
   let review: unknown;
+  let humanReview: unknown;
   try {
     catalog = JSON.parse(bundle.catalog);
     manifest = JSON.parse(bundle.manifest);
     review = JSON.parse(bundle.review);
+    humanReview = JSON.parse(bundle.humanReview);
   } catch {
     return { passed: false, errors: ["Promotion bundle contains invalid JSON"], warnings, puzzleCount: 0, replayed: 0 };
   }
@@ -53,6 +63,8 @@ export function verifyPromotionBundle(bundle: PromotionBundle, config?: ReleaseG
   errors.push(...verdict.errors);
   warnings.push(...verdict.warnings);
   errors.push(...checkReviewManifestBinding(review, manifest));
+  const humanVerdict = checkHumanGeneratorReview(bundle.review, humanReview, config);
+  errors.push(...humanVerdict.errors.map((error) => `Human review: ${error}`));
   if (!Array.isArray(catalog) || catalog.length === 0) errors.push("Promotion catalog must be a non-empty array");
   if (!record(manifest) || manifest.schemaVersion !== 1 || !Array.isArray(manifest.puzzles)) {
     errors.push("Promotion manifest must have schemaVersion 1 and a puzzles array");
@@ -98,8 +110,8 @@ export function verifyPromotionBundle(bundle: PromotionBundle, config?: ReleaseG
         tiles.filter(isGenericBoxChar).length !== pack.genericBoxCount || tiles.filter(isTypedBoxChar).length !== pack.typedBoxCount) {
         errors.push(`${entry.id}: actual box counts do not match review/manifest`);
       }
-      if (entry.difficulty !== classifyDifficultyByBoxCount(boxCount) || entry.difficulty !== pack.classifiedDifficulty || entry.difficulty !== mp.difficulty) {
-        errors.push(`${entry.id}: difficulty does not match actual box count`);
+      if (entry.difficulty !== pack.intendedDifficulty || entry.difficulty !== mp.difficulty) {
+        errors.push(`${entry.id}: catalog difficulty does not match the reviewed intent and manifest`);
       }
       if (mp.title !== entry.title || pack.boardHash !== hash || mp.boardHash !== hash || mp.symmetryHash !== symmetryHash(entry.rows)) {
         errors.push(`${entry.id}: catalog identity does not match review/manifest`);
@@ -159,7 +171,19 @@ export function verifyPromotionBundle(bundle: PromotionBundle, config?: ReleaseG
     const target = reviewCatalog.tierSummaries[tier]?.target ?? 0;
     if (!record(quota) || quota.actual !== actual || quota.target !== target) errors.push(`Manifest ${tier} quota does not match catalog/review`);
   }
-  return { passed: errors.length === 0, errors, warnings, puzzleCount: entries.length, replayed };
+  const approved = humanReview as HumanGeneratorReview;
+  return {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+    puzzleCount: entries.length,
+    replayed,
+    humanReview: {
+      reviewSha256: approved.reviewSha256,
+      reviewer: approved.reviewer.trim(),
+      reviewedAt: approved.reviewedAt,
+    },
+  };
 }
 
 export function readPromotionBundle(sourceDirectory: string): PromotionBundle {
@@ -167,6 +191,7 @@ export function readPromotionBundle(sourceDirectory: string): PromotionBundle {
     catalog: readFileSync(join(sourceDirectory, "generated-puzzles.json"), "utf8"),
     manifest: readFileSync(join(sourceDirectory, "generated-puzzles.manifest.json"), "utf8"),
     review: readFileSync(join(sourceDirectory, "review-catalog.json"), "utf8"),
+    humanReview: readFileSync(join(sourceDirectory, "human-review.json"), "utf8"),
   };
 }
 
@@ -185,11 +210,16 @@ export function installPromotionBundle(
   if (!verification.passed || options.dryRun) return { verification, installed: false };
   const targetDirectory = resolve(catalogDirectory);
   const backupDirectory = join(resolve(backupRoot), `promotion-${Date.now()}-${randomUUID()}`);
-  const targets = ["generated-puzzles.json", "generated-puzzles.manifest.json"].map((name, i) => ({
-    name, target: join(targetDirectory, name), bytes: i === 0 ? bundle.catalog : bundle.manifest,
+  const targetContents = [
+    ["generated-puzzles.json", bundle.catalog],
+    ["generated-puzzles.manifest.json", bundle.manifest],
+    ["generated-puzzles.human-review.json", bundle.humanReview],
+  ] as const;
+  const targets = targetContents.map(([name, bytes]) => ({
+    name, target: join(targetDirectory, name), bytes,
     staged: join(targetDirectory, `.${name}.${randomUUID()}.staged`), existed: existsSync(join(targetDirectory, name)),
   }));
-  // Only the two named files inside the resolved target directory may be replaced.
+  // Only the named release files inside the resolved target directory may be replaced.
   if (targets.some((item) => dirname(item.target) !== targetDirectory)) throw new Error("Invalid promotion target");
   mkdirSync(backupDirectory, { recursive: true });
   for (const item of targets) if (item.existed) copyFileSync(item.target, join(backupDirectory, item.name));

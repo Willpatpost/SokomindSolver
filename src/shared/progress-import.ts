@@ -1,11 +1,15 @@
 import {
+  MAX_ACTIVITY_DAYS,
+  MAX_ACTIVITY_ENTRIES,
   normalizeProgress,
   tryParseProgress,
   type ProgressData,
 } from "./progress.ts";
 
 export const MAX_PROGRESS_IMPORT_BYTES = 1_000_000;
-export const MAX_PROGRESS_IMPORT_RECORDS = 10_000;
+const MAX_COMPLETION_RECORDS = 10_000;
+export const MAX_PROGRESS_IMPORT_RECORDS =
+  MAX_ACTIVITY_ENTRIES + MAX_ACTIVITY_DAYS + MAX_COMPLETION_RECORDS;
 
 export type ProgressImportParseResult =
   | {

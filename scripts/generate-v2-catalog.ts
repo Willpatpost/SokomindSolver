@@ -48,6 +48,7 @@ import { TIER_CONFIGS, CATALOG_FINALIST_POLICIES } from "./lib/generator-tier-co
 import { DEFAULT_RELEASE_GATE_CONFIG } from "../src/features/generator/v2/release-gate.ts";
 import type { ForgeProgress } from "../src/features/generator/v2/puzzle-forge.ts";
 import { STRICT_STORY_DIVERSITY_POLICY } from "../src/features/generator/v2/story-diversity.ts";
+import { createCatalogPresentation } from "../src/features/generator/v2/catalog-presentation.ts";
 
 function reportForgeProgress(p: ForgeProgress): void {
   console.log(`    [${p.phase}] ${p.pool.active}/${p.pool.workers} active, ${p.pool.queued} queued | ` +
@@ -149,22 +150,21 @@ interface CatalogCandidate {
 // Catalog conversion
 // ---------------------------------------------------------------------------
 
-const TITLE_LABELS: Record<Difficulty, string> = {
-  tutorial: "Tutorial",
-  beginner: "Beginner",
-  intermediate: "Intermediate",
-  advanced: "Advanced",
-  expert: "Expert",
-  master: "Master",
-};
-
 function catalogCandidateToEntry(
   cc: CatalogCandidate,
   index: number,
 ): PuzzleDefinition {
+  const presentation = createCatalogPresentation({
+    difficulty: cc.assignedDifficulty,
+    family: cc.candidate.provenance.family,
+    mode: cc.candidate.provenance.mode,
+    storyFamilies: cc.candidate.qualityProfile?.story?.measurements.families,
+    ordinal: index + 1,
+  });
   return {
     id: createGeneratedPuzzleId(cc.candidate.provenance.seed, cc.candidate.puzzle.rows),
-    title: `${TITLE_LABELS[cc.assignedDifficulty]} ${index + 1}`,
+    title: presentation.title,
+    hint: presentation.hint,
     difficulty: cc.assignedDifficulty,
     boxes: cc.candidate.puzzle.boxes,
     collection: "Sokomind Generated",

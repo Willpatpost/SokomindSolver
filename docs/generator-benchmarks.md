@@ -1,9 +1,9 @@
 # Generator benchmarks and qualification evidence
 
 This guide owns generator measurements, reproducible qualification examples,
-and throughput results. Generated candidates are review evidence only: no
-benchmark or automated gate promotes them to the production catalog, and none
-establishes human enjoyment or solution optimality.
+and throughput results. Benchmarks only create review evidence; catalog
+installation is a separate promotion step. Automated evidence does not
+establish human enjoyment or solution optimality.
 
 ## Commands
 
@@ -41,8 +41,11 @@ The fresh 128-attempt seed window at offset 10,000 produced 45 Beginner, 30
 Intermediate, 23 Advanced, and 16 Expert qualified candidates. Master reached
 the 240-second run limit with 12 qualified checkpoints; unfinished jobs had no
 recorded outcome. Recovery plus the earlier Master example produced a
-five-puzzle Master selection. The resulting five-per-tier review set passed the
-automated release gate and remains unpromoted pending human review.
+five-puzzle Master selection. That historical five-per-tier review set passed
+the automated release gate. The current production catalog is a later
+38-puzzle selection: 10 Beginner, 10 Intermediate, 7 Advanced, 6 Expert, and 5
+Master puzzles. The repository does not retain a completed `human-review.json`
+for either selection, so these benchmark records do not prove human approval.
 
 `verify:generator-tiers` regenerates or replays one independently verified
 example at each tier:

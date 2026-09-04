@@ -7,7 +7,6 @@ import { getPuzzleById } from "../../src/catalog/puzzles.ts";
 import {
   evaluatePuzzleWithSteps,
   buildCalibrationReport,
-  classifyDifficultyByBoxCount,
   formatCalibrationReport,
 } from "../../src/features/generator/v2/index.ts";
 import type { CalibrationReport } from "../../src/features/generator/v2/index.ts";
@@ -44,7 +43,7 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
     calibrationData.push({
       puzzleId: entry.id,
-      expectedTier: classifyDifficultyByBoxCount(entry.boxes),
+      expectedTier: entry.difficulty,
       vector: result.vector,
     });
     assert.equal(result.vector.boxCount, entry.boxes, `${entry.id} box count drifted`);
@@ -62,12 +61,12 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
   assert.equal(report.totalPuzzles, calibrationData.length);
   assert.ok(
-    report.exactMatchAccuracy === 1,
-    `box-count tier accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is not exact`,
+    report.exactMatchAccuracy >= 0.85,
+    `independent tier accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is below 85%`,
   );
   assert.ok(
     report.withinOneTierAccuracy === 1,
-    `box-count within-one accuracy ${(report.withinOneTierAccuracy * 100).toFixed(1)}% is not exact`,
+    `independent within-one accuracy ${(report.withinOneTierAccuracy * 100).toFixed(1)}% is not exact`,
   );
 
   for (const entry of report.entries) {

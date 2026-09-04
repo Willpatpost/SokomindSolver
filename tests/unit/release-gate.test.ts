@@ -37,6 +37,8 @@ import type { PuzzleEvaluationVector } from "../../src/features/generator/v2/puz
 import type { PuzzleDefinition, Difficulty } from "../../src/core/model.ts";
 import { syntheticStoryReport } from "../support/story-quality.ts";
 import { boardHash } from "../../src/features/generator/v2/puzzle-identity.ts";
+import { computeV4Profile } from "../../src/features/generator/v2/difficulty-model.ts";
+import { DIFFICULTIES } from "../../src/core/model.ts";
 
 // ---------------------------------------------------------------------------
 // Mock builders (same shape as review-catalog.test.ts)
@@ -234,7 +236,11 @@ function makeDiversePack(
     },
     { id: `gen-v2-${seed}-hash${seed}`, rows, difficulty },
   );
-  const pack = buildReviewPack(candidate, difficulty, difficulty, 0);
+  const measured = computeV4Profile(candidate.evaluation);
+  const pack = buildReviewPack(candidate, difficulty, difficulty, 0, undefined, {
+    ...measured,
+    classification: difficulty,
+  });
   return { ...pack, storyQuality: syntheticStoryReport(pack.boardHash, boxCount, genericBoxCount) };
 }
 
@@ -819,7 +825,7 @@ describe("buildFinalReviewCatalog", () => {
     assert.equal(catalog.tierSummaries.beginner.target, 10);
   });
 
-  it("recomputes box-count classification instead of trusting stale provenance", () => {
+  it("recomputes metric classification instead of trusting stale provenance", () => {
     const candidates = new Map<Difficulty, readonly ForgeCandidate[]>();
     candidates.set("advanced", [
       makeCandidate(
@@ -836,21 +842,22 @@ describe("buildFinalReviewCatalog", () => {
     const catalog = buildFinalReviewCatalog(tiers, candidates);
     const pack = catalog.tierSummaries.advanced.candidates[0];
 
-    assert.equal(pack.classifiedDifficulty, "expert");
-    // Gap should be 1 (expert is one tier above advanced)
-    assert.equal(pack.difficultyGap, 1);
+    const expected = computeV4Profile(makeEvaluation({ boxCount: 14 })).classification;
+    assert.equal(pack.classifiedDifficulty, expected);
+    assert.notEqual(pack.classifiedDifficulty, "master");
+    assert.equal(pack.difficultyGap, DIFFICULTIES.indexOf(expected) - DIFFICULTIES.indexOf("advanced"));
   });
 
   it("produced catalog can be validated by release gate", () => {
     const candidates = new Map<Difficulty, readonly ForgeCandidate[]>();
     const makeUniqueCandidate = (seed: number, diff: Difficulty, fam: "hub" | "linear" | "loop", mode: "plain" | "motif" | "composed") => {
       const rows = makeUniqueRows();
-      const boxCount = diff === "beginner" ? 3 + (seed % 4)
+      const boxCount = diff === "beginner" ? 4 + (seed % 3)
         : diff === "intermediate" ? 7 + (seed % 3)
         : diff === "advanced" ? 10 + (seed % 4)
         : diff === "expert" ? 14 + (seed % 4)
         : 18 + (seed % 5);
-      const genericBoxCount = diff === "beginner" ? 1 : 2;
+      const genericBoxCount = 2;
       return makeCandidate(
         { boxCount },
         {
@@ -895,13 +902,18 @@ describe("buildFinalReviewCatalog", () => {
       generatorVersion: "4.1.0",
     });
 
+    const classifiedCounts = new Map<Difficulty, number>();
+    for (const summary of Object.values(catalog.tierSummaries)) {
+      for (const pack of summary.candidates) {
+        classifiedCounts.set(pack.classifiedDifficulty, (classifiedCounts.get(pack.classifiedDifficulty) ?? 0) + 1);
+      }
+    }
     const gateConfig: ReleaseGateConfig = {
       minTotalPuzzles: 5,
-      tierQuotas: {
-        beginner: { min: 2, target: 10 },
-        intermediate: { min: 2, target: 15 },
-        advanced: { min: 2, target: 10 },
-      },
+      tierQuotas: Object.fromEntries(DIFFICULTIES.map((tier) => {
+        const count = classifiedCounts.get(tier) ?? 0;
+        return [tier, { min: count > 0 ? 1 : 0, target: count }];
+      })),
       maxTopologyConcentration: 0.60,
       maxModeConcentration: 0.70,
       maxDifficultyGap: 5,

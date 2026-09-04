@@ -222,7 +222,7 @@ fails when the generated facts below differ from source.
 ### Bounded local data
 
 - Saved action-log limit: **100,000** actions
-- Progress import limit: **1,000,000 bytes** and **10,000 records**
+- Progress import limit: **1,000,000 bytes** and **20,366 records**
 - Completion activity retention: **366 days** and **10,000 entries**
 - Named editor draft limit: **25 drafts**
 

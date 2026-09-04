@@ -347,6 +347,7 @@ export type {
 
 export {
   computeV4Profile,
+  classifyDifficultyFromMetrics,
   classifyDifficultyByBoxCount,
   computeStructuralScale,
   computeSolutionDepthScore,
@@ -358,6 +359,11 @@ export {
   formatCalibrationReport,
   V4_TIER_THRESHOLDS,
 } from "./difficulty-model.ts";
+
+export {
+  createCatalogPresentation,
+  type CatalogPresentationInput,
+} from "./catalog-presentation.ts";
 
 export type {
   V4DifficultyProfile,

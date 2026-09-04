@@ -466,6 +466,7 @@ export function usePlayController(
 
   useGameKeyboard({
     enabled: !playback.active,
+    gameplayEnabled: inputEnabled,
     onMove: attemptMove,
     onUndo: handleUndo,
     onReset: requestReset,

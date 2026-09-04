@@ -386,10 +386,10 @@ describe("semantic: difficulty benchmark ordering (19.9)", () => {
     );
   });
 
-  it("semantic richness cannot override the box-count tier", () => {
+  it("semantic richness can classify a compact puzzle as expert", () => {
     const v = makeExpertVector();
     const profile = computeV4Profile(v);
-    assert.equal(profile.classification, "beginner");
+    assert.equal(profile.classification, "expert");
   });
 
   it("V4 tier thresholds are monotonically increasing", () => {
@@ -427,10 +427,10 @@ describe("semantic: difficulty benchmark ordering (19.9)", () => {
     );
   });
 
-  it("18 boxes classify as master regardless of semantic score", () => {
+  it("box count alone cannot promote a puzzle to master", () => {
     const v = { ...makeExpertVector(), boxCount: 18 };
     const profile = computeV4Profile(v);
-    assert.equal(profile.classification, "master");
+    assert.equal(profile.classification, "expert");
   });
 });
 

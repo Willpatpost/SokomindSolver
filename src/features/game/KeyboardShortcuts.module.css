@@ -1,15 +1,3 @@
-.overlay {
-  position: fixed;
-  z-index: 50;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgb(23 25 22 / 0.6);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  animation: overlay-in 180ms ease;
-}
-
 .panel {
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
@@ -118,22 +106,6 @@
   font-size: 0.66rem;
   font-weight: 700;
   text-align: center;
-}
-
-@keyframes overlay-in {
-  from {
-    opacity: 0;
-  }
-}
-
-:global(html[data-motion="reduced"]) .overlay {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :global(html:not([data-motion="full"])) .overlay {
-    animation: none;
-  }
 }
 
 @media (forced-colors: active) {
