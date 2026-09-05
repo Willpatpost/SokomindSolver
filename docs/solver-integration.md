@@ -61,6 +61,21 @@ selects 512. On The Exchange, width 256 cut generated successors from roughly
 1.2 million to 449,000 and solved in 39 seconds, although compacting transient
 successors remains necessary to bring peak process RSS down further.
 
+Pre-search analysis also returns an advisory `transportPlan`: each box's full
+matching goal domain, mandatory room transfers, currently legal first-push move
+costs, and up to four relaxed parking candidates. Room batches expose shared
+doorways and their initial blockers. Parking candidates avoid doorway lanes and
+articulation cells, but are not certified safe or reachable with other boxes
+present. They retain occupancy and goal annotations; the plan never fixes a
+generic box to a single goal or supplies a hard pruning rule.
+
+The prepared board carries compiled room membership and ordered dense doorway
+geometry. Structural search consumes this geometry for its existing scheduling
+checks instead of rebuilding string-coordinate neighbors. Older prepared seeds
+without this additive data compile it during hydration. The richer transport
+agenda is analysis output for future move-aware ordering experiments; it does
+not yet change the production beam's ordering or its returned route.
+
 Bidirectional meeting keys use compact typed box tokens; the adapter decodes
 those tokens before finding the robot-only bridge, fixing the obsolete key
 parser in the legacy UI director. Record batches now carry exact visited,

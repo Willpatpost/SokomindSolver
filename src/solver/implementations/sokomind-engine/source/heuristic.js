@@ -612,6 +612,25 @@ function roomInterfaceStates(boxes, board, tasks, robot = null) {
   });
 }
 
+function doorwayCrossingReachable(board, geometry, indexByCell) {
+  const start = indexByCell[geometry.gateId] < 0
+    ? geometry.gateId
+    : geometry.cellIds.find(cell => indexByCell[cell] < 0);
+  const accessible = new Set(start !== undefined ? [board.dense.keys[start]] : []);
+  const queue = start !== undefined ? [start] : [];
+  for (let head = 0; head < queue.length; head++) {
+    for (let direction = 0; direction < DIRECTION_ENTRIES.length; direction++) {
+      const cell = board.dense.neighbors[queue[head] * DIRECTION_ENTRIES.length + direction];
+      if (cell < 0 || indexByCell[cell] >= 0) continue;
+      const next = board.dense.keys[cell];
+      if (accessible.has(next)) continue;
+      accessible.add(next);
+      queue.push(cell);
+    }
+  }
+  return accessible;
+}
+
 function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
   const started = now();
   board.metrics.doorwayScheduleCalls++;
@@ -637,10 +656,11 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
   const interfaceTables = roomInterfacePolicyTables(tasks, board);
   for (let roomIndex = 0; roomIndex < board.topology.rooms.length; roomIndex++) {
     const room = board.topology.rooms[roomIndex];
+    const geometry = board.topology.transportGeometry[roomIndex];
     const {exports, imports} = partitions[roomIndex];
     const insideRoomIndices = [];
     for (let boxIndex = 0; boxIndex < boxes.length; boxIndex++) {
-      if (room.cells.has(positions[boxIndex])) insideRoomIndices.push(boxIndex);
+      if (geometry.inside[layout.cells[boxIndex]]) insideRoomIndices.push(boxIndex);
     }
     const currentLabels = new Map();
     const targetLabels = interfaceTables[roomIndex].targetLabels;
@@ -659,12 +679,12 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
       }
     }
     const pending = exports.filter(task => {
-      const position = positions[task.boxIndex];
-      return room.cells.has(position) || position === room.gate;
+      const cell = layout.cells[task.boxIndex];
+      return geometry.inside[cell] || cell === geometry.gateId;
     });
     const pendingSet = new Set(pending);
     const imported = imports.filter(task => {
-      return room.cells.has(positions[task.boxIndex]);
+      return geometry.inside[layout.cells[task.boxIndex]];
     });
     const unpacked = imported.filter(task => {
       const targets = doorwayTaskTargets(task);
@@ -707,19 +727,7 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
         : 0;
     let accessible = null;
     const crossingAccessible = () => {
-      if (accessible) return accessible;
-      const accessStart = !isOccupied(room.gate)
-        ? room.gate
-        : [...room.cells].find(position => !isOccupied(position));
-      accessible = new Set(accessStart ? [accessStart] : []);
-      const accessQueue = accessStart ? [accessStart] : [];
-      for (let head = 0; head < accessQueue.length; head++) {
-        for (const next of floorNeighbors(accessQueue[head], board.floor)) {
-          if (isOccupied(next) || accessible.has(next)) continue;
-          accessible.add(next);
-          accessQueue.push(next);
-        }
-      }
+      accessible ??= doorwayCrossingReachable(board, geometry, indexByCell);
       return accessible;
     };
     let stranded = 0;

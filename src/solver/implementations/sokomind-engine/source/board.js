@@ -405,7 +405,11 @@ function hydratePreparedBoard(data, seed, metrics) {
     goalsByLabel: seed.goalsByLabel,
     pushDistances: seed.pushDistances,
     goalPressure: seed.goalPressure,
-    topology: seed.topology,
+    topology: {
+      ...seed.topology,
+      transportGeometry: seed.topology.transportGeometry ||
+        compileRoomTransportGeometry(seed.topology, seed.dense),
+    },
     singleBoxGraph: seed.singleBoxGraph,
     goalPushTables,
     dense: seed.dense,
@@ -518,6 +522,7 @@ function parse(data) {
   const patternEligibility = compilePatternEligibility(dense, metrics);
   const patternEligibleCount = patternEligibility.reduce((sum, eligible) => sum + eligible, 0);
   const topology = analyzeTopology(floor, goals);
+  topology.transportGeometry = compileRoomTransportGeometry(topology, dense);
   metrics.parseMs += now() - parseStarted;
   return attachBoardMemorySampler({
     rows: data.rows, floor, walls, goals, goalsByLabel, pushDistances, goalPressure,

@@ -284,6 +284,48 @@ describe("vendored Sokomind engine", () => {
     );
   });
 
+  it("builds an advisory per-box transport agenda without fixing goal assignments", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const result = search({algorithm: "analyze-puzzle", state: toLegacyState(request)});
+    const plan = (result.analysis as { transportPlan: {
+      scope: string;
+      hardPruning: boolean;
+      batches: Array<{ gate: string; exports: number[]; imports: number[]; stagingCandidates: string[] }>;
+      boxes: Array<{
+        position: string;
+        label: string;
+        allowedTargets: string[];
+        goalDomainComplete: boolean;
+        initialPushOptions: Array<{ destination: string; moves: number }>;
+        parkingCandidates: Array<{ position: string; relaxedPushesToPark: number; relaxedPushesToGoal: number }>;
+      }>;
+    } }).transportPlan;
+    assert.equal(plan.scope, "initial-position-advisory");
+    assert.equal(plan.hardPruning, false);
+    assert.equal(plan.boxes.length, 17);
+    assert.deepEqual(JSON.parse(JSON.stringify(plan)), plan);
+    const lower = plan.batches.find(batch => batch.gate === "10,7");
+    assert.ok(lower);
+    assert.equal(lower.exports.length, 6);
+    assert.equal(lower.imports.length, 4);
+    assert.ok(!lower.stagingCandidates.includes(lower.gate));
+    const generic = plan.boxes.find(box => box.position === "10,6");
+    assert.ok(generic?.goalDomainComplete);
+    assert.deepEqual(new Set(generic.allowedTargets), new Set(["13,2", "13,12"]));
+    const goals = new Map(request.board.goals.map(goal => [
+      `${goal.position.row},${goal.position.column}`, goal.label,
+    ]));
+    for (const box of plan.boxes) {
+      assert.ok(box.parkingCandidates.length <= 4);
+      for (const target of box.allowedTargets) assert.equal(goals.get(target), box.label);
+      for (const option of box.initialPushOptions) assert.ok(option.moves >= 1);
+      for (const parking of box.parkingCandidates) {
+        assert.ok(Number.isFinite(parking.relaxedPushesToPark));
+        assert.ok(Number.isFinite(parking.relaxedPushesToGoal));
+      }
+    }
+  });
+
   it("shares one state budget across the ultimate portfolio", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const result = search({

@@ -2,6 +2,79 @@
 // Part of the Sokomind solver engine. Functions are bare globals for
 // cross-module compatibility. The namespace object is registered for new usage.
 
+// An explainable agenda, not a fixed order or an optimality certificate. Matching
+// domains certify crossings; parking and initial walking costs are advisory.
+function analyzeTransportPlan(initial, board, doorwayPlan, initialPushes) {
+  const positions = initial.boxes.map(([y, x]) => pkey(y, x));
+  const occupied = new Set(positions);
+  const transitCells = new Set();
+  for (const room of board.topology.rooms) {
+    transitCells.add(room.gate);
+    for (const lane of room.doorwayLanes) {
+      transitCells.add(lane.inside);
+      transitCells.add(lane.outside);
+    }
+  }
+  const batches = board.topology.rooms.map((room, roomIndex) => {
+    const tasks = doorwayPlan.tasks.filter(task => task.roomIndex === roomIndex);
+    return {
+      roomIndex,
+      gate: room.gate,
+      exports: tasks.filter(task => task.direction === "export").map(task => task.boxIndex),
+      imports: tasks.filter(task => task.direction === "import").map(task => task.boxIndex),
+      initialTransitBlockers: positions.flatMap((position, boxIndex) =>
+        position === room.gate || room.doorwayLanes.some(lane =>
+          lane.inside === position || lane.outside === position) ? [boxIndex] : []),
+      stagingCandidates: [...room.exteriorStaging].filter(position =>
+        !transitCells.has(position) && !board.topology.articulations.has(position)),
+    };
+  });
+  return {
+    schemaVersion: 1,
+    scope: "initial-position-advisory",
+    hardPruning: false,
+    batches,
+    boxes: initial.boxes.map(([y, x, label], boxIndex) => {
+      const position = positions[boxIndex];
+      const domain = doorwayPlan.proof.boxDomains[boxIndex];
+      const targets = domain?.allowedTargets || [];
+      const tasks = doorwayPlan.tasks.filter(task => task.boxIndex === boxIndex);
+      const parking = new Set(tasks.flatMap(task => batches[task.roomIndex].stagingCandidates));
+      const distances = parking.size ? playerAwarePushDistances(board, position) : null;
+      const parkingCandidates = [];
+      for (const candidate of parking) {
+        const toParking = distances.get(candidate);
+        const toGoal = Math.min(...targets.map(target =>
+          compiledGoalPushDistance(board, candidate, target)));
+        if (!Number.isFinite(toParking) || !Number.isFinite(toGoal)) continue;
+        parkingCandidates.push({
+          position: candidate,
+          initiallyOccupied: occupied.has(candidate),
+          onGoal: board.goals.has(candidate),
+          relaxedPushesToPark: toParking,
+          relaxedPushesToGoal: toGoal,
+        });
+      }
+      parkingCandidates.sort((left, right) =>
+        Number(left.onGoal) - Number(right.onGoal) ||
+        left.relaxedPushesToPark + left.relaxedPushesToGoal -
+          right.relaxedPushesToPark - right.relaxedPushesToGoal);
+      return {
+        boxIndex,
+        position,
+        label,
+        onMatchingGoal: board.goals.get(pkey(y, x)) === label,
+        allowedTargets: [...targets],
+        goalDomainComplete: domain?.complete === true,
+        transfers: tasks.map(task => ({roomIndex: task.roomIndex, gate: task.gate, direction: task.direction})),
+        initialPushOptions: initialPushes.filter(next => next.pushedFrom === position)
+          .map(next => ({destination: next.pushedTo, moves: next.path.length})),
+        parkingCandidates: parkingCandidates.slice(0, 4),
+      };
+    }),
+  };
+}
+
 function analyzePuzzleForSearch(data) {
   const board = parse(data);
   const boxes = data.boxes.map(([position, label]) => [
@@ -20,7 +93,9 @@ function analyzePuzzleForSearch(data) {
     doorwayPlan.tasks,
     initial.robot,
   );
-  const legalPushes = pushNeighbors(initial, board).length;
+  const initialPushes = pushNeighbors(initial, board);
+  const legalPushes = initialPushes.length;
+  const transportPlan = analyzeTransportPlan(initial, board, doorwayPlan, initialPushes);
   const solvedBoxes = boxes.filter(([y, x, label]) =>
     board.goals.get(pkey(y, x)) === label).length;
   const roomSummaries = board.topology.rooms.map((room, roomIndex) => {
@@ -131,6 +206,7 @@ function analyzePuzzleForSearch(data) {
       })),
     },
     roomInterfaces,
+    transportPlan,
     evacuationPenalty,
     goalAccessClauses: board.topology.goalAccess.reduce(
       (total, goal) => total + goal.lanes.filter(lane => lane.blockingGoals.length).length,

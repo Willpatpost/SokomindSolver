@@ -914,6 +914,22 @@ function floorNeighbors(position, floor) {
     .filter(next => floor.has(next));
 }
 
+// Static room membership and doorway geometry travel with the prepared board.
+// Preserve the original Set order: search tie-breaking depends on it.
+function compileRoomTransportGeometry(topology, dense) {
+  return topology.rooms.map(room => {
+    const cellIds = Int32Array.from(room.cells, cell => dense.idByKey.get(cell));
+    const inside = new Uint8Array(dense.keys.length);
+    for (const cell of cellIds) inside[cell] = 1;
+    return {
+      gateId: dense.idByKey.get(room.gate),
+      cellIds,
+      inside,
+      stagingIds: Int32Array.from(room.exteriorStaging, cell => dense.idByKey.get(cell)),
+    };
+  });
+}
+
 function floorComponents(floor, blocked = null) {
   const remaining = new Set(floor);
   if (blocked) remaining.delete(blocked);
@@ -1584,7 +1600,11 @@ function hydratePreparedBoard(data, seed, metrics) {
     goalsByLabel: seed.goalsByLabel,
     pushDistances: seed.pushDistances,
     goalPressure: seed.goalPressure,
-    topology: seed.topology,
+    topology: {
+      ...seed.topology,
+      transportGeometry: seed.topology.transportGeometry ||
+        compileRoomTransportGeometry(seed.topology, seed.dense),
+    },
     singleBoxGraph: seed.singleBoxGraph,
     goalPushTables,
     dense: seed.dense,
@@ -1697,6 +1717,7 @@ function parse(data) {
   const patternEligibility = compilePatternEligibility(dense, metrics);
   const patternEligibleCount = patternEligibility.reduce((sum, eligible) => sum + eligible, 0);
   const topology = analyzeTopology(floor, goals);
+  topology.transportGeometry = compileRoomTransportGeometry(topology, dense);
   metrics.parseMs += now() - parseStarted;
   return attachBoardMemorySampler({
     rows: data.rows, floor, walls, goals, goalsByLabel, pushDistances, goalPressure,
@@ -2797,6 +2818,25 @@ function roomInterfaceStates(boxes, board, tasks, robot = null) {
   });
 }
 
+function doorwayCrossingReachable(board, geometry, indexByCell) {
+  const start = indexByCell[geometry.gateId] < 0
+    ? geometry.gateId
+    : geometry.cellIds.find(cell => indexByCell[cell] < 0);
+  const accessible = new Set(start !== undefined ? [board.dense.keys[start]] : []);
+  const queue = start !== undefined ? [start] : [];
+  for (let head = 0; head < queue.length; head++) {
+    for (let direction = 0; direction < DIRECTION_ENTRIES.length; direction++) {
+      const cell = board.dense.neighbors[queue[head] * DIRECTION_ENTRIES.length + direction];
+      if (cell < 0 || indexByCell[cell] >= 0) continue;
+      const next = board.dense.keys[cell];
+      if (accessible.has(next)) continue;
+      accessible.add(next);
+      queue.push(cell);
+    }
+  }
+  return accessible;
+}
+
 function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
   const started = now();
   board.metrics.doorwayScheduleCalls++;
@@ -2822,10 +2862,11 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
   const interfaceTables = roomInterfacePolicyTables(tasks, board);
   for (let roomIndex = 0; roomIndex < board.topology.rooms.length; roomIndex++) {
     const room = board.topology.rooms[roomIndex];
+    const geometry = board.topology.transportGeometry[roomIndex];
     const {exports, imports} = partitions[roomIndex];
     const insideRoomIndices = [];
     for (let boxIndex = 0; boxIndex < boxes.length; boxIndex++) {
-      if (room.cells.has(positions[boxIndex])) insideRoomIndices.push(boxIndex);
+      if (geometry.inside[layout.cells[boxIndex]]) insideRoomIndices.push(boxIndex);
     }
     const currentLabels = new Map();
     const targetLabels = interfaceTables[roomIndex].targetLabels;
@@ -2844,12 +2885,12 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
       }
     }
     const pending = exports.filter(task => {
-      const position = positions[task.boxIndex];
-      return room.cells.has(position) || position === room.gate;
+      const cell = layout.cells[task.boxIndex];
+      return geometry.inside[cell] || cell === geometry.gateId;
     });
     const pendingSet = new Set(pending);
     const imported = imports.filter(task => {
-      return room.cells.has(positions[task.boxIndex]);
+      return geometry.inside[layout.cells[task.boxIndex]];
     });
     const unpacked = imported.filter(task => {
       const targets = doorwayTaskTargets(task);
@@ -2892,19 +2933,7 @@ function doorwayScheduleState(boxes, board, tasks, preparedLayout = null) {
         : 0;
     let accessible = null;
     const crossingAccessible = () => {
-      if (accessible) return accessible;
-      const accessStart = !isOccupied(room.gate)
-        ? room.gate
-        : [...room.cells].find(position => !isOccupied(position));
-      accessible = new Set(accessStart ? [accessStart] : []);
-      const accessQueue = accessStart ? [accessStart] : [];
-      for (let head = 0; head < accessQueue.length; head++) {
-        for (const next of floorNeighbors(accessQueue[head], board.floor)) {
-          if (isOccupied(next) || accessible.has(next)) continue;
-          accessible.add(next);
-          accessQueue.push(next);
-        }
-      }
+      accessible ??= doorwayCrossingReachable(board, geometry, indexByCell);
       return accessible;
     };
     let stranded = 0;
@@ -3955,6 +3984,79 @@ const SokomindDeadlock = {
 // Part of the Sokomind solver engine. Functions are bare globals for
 // cross-module compatibility. The namespace object is registered for new usage.
 
+// An explainable agenda, not a fixed order or an optimality certificate. Matching
+// domains certify crossings; parking and initial walking costs are advisory.
+function analyzeTransportPlan(initial, board, doorwayPlan, initialPushes) {
+  const positions = initial.boxes.map(([y, x]) => pkey(y, x));
+  const occupied = new Set(positions);
+  const transitCells = new Set();
+  for (const room of board.topology.rooms) {
+    transitCells.add(room.gate);
+    for (const lane of room.doorwayLanes) {
+      transitCells.add(lane.inside);
+      transitCells.add(lane.outside);
+    }
+  }
+  const batches = board.topology.rooms.map((room, roomIndex) => {
+    const tasks = doorwayPlan.tasks.filter(task => task.roomIndex === roomIndex);
+    return {
+      roomIndex,
+      gate: room.gate,
+      exports: tasks.filter(task => task.direction === "export").map(task => task.boxIndex),
+      imports: tasks.filter(task => task.direction === "import").map(task => task.boxIndex),
+      initialTransitBlockers: positions.flatMap((position, boxIndex) =>
+        position === room.gate || room.doorwayLanes.some(lane =>
+          lane.inside === position || lane.outside === position) ? [boxIndex] : []),
+      stagingCandidates: [...room.exteriorStaging].filter(position =>
+        !transitCells.has(position) && !board.topology.articulations.has(position)),
+    };
+  });
+  return {
+    schemaVersion: 1,
+    scope: "initial-position-advisory",
+    hardPruning: false,
+    batches,
+    boxes: initial.boxes.map(([y, x, label], boxIndex) => {
+      const position = positions[boxIndex];
+      const domain = doorwayPlan.proof.boxDomains[boxIndex];
+      const targets = domain?.allowedTargets || [];
+      const tasks = doorwayPlan.tasks.filter(task => task.boxIndex === boxIndex);
+      const parking = new Set(tasks.flatMap(task => batches[task.roomIndex].stagingCandidates));
+      const distances = parking.size ? playerAwarePushDistances(board, position) : null;
+      const parkingCandidates = [];
+      for (const candidate of parking) {
+        const toParking = distances.get(candidate);
+        const toGoal = Math.min(...targets.map(target =>
+          compiledGoalPushDistance(board, candidate, target)));
+        if (!Number.isFinite(toParking) || !Number.isFinite(toGoal)) continue;
+        parkingCandidates.push({
+          position: candidate,
+          initiallyOccupied: occupied.has(candidate),
+          onGoal: board.goals.has(candidate),
+          relaxedPushesToPark: toParking,
+          relaxedPushesToGoal: toGoal,
+        });
+      }
+      parkingCandidates.sort((left, right) =>
+        Number(left.onGoal) - Number(right.onGoal) ||
+        left.relaxedPushesToPark + left.relaxedPushesToGoal -
+          right.relaxedPushesToPark - right.relaxedPushesToGoal);
+      return {
+        boxIndex,
+        position,
+        label,
+        onMatchingGoal: board.goals.get(pkey(y, x)) === label,
+        allowedTargets: [...targets],
+        goalDomainComplete: domain?.complete === true,
+        transfers: tasks.map(task => ({roomIndex: task.roomIndex, gate: task.gate, direction: task.direction})),
+        initialPushOptions: initialPushes.filter(next => next.pushedFrom === position)
+          .map(next => ({destination: next.pushedTo, moves: next.path.length})),
+        parkingCandidates: parkingCandidates.slice(0, 4),
+      };
+    }),
+  };
+}
+
 function analyzePuzzleForSearch(data) {
   const board = parse(data);
   const boxes = data.boxes.map(([position, label]) => [
@@ -3973,7 +4075,9 @@ function analyzePuzzleForSearch(data) {
     doorwayPlan.tasks,
     initial.robot,
   );
-  const legalPushes = pushNeighbors(initial, board).length;
+  const initialPushes = pushNeighbors(initial, board);
+  const legalPushes = initialPushes.length;
+  const transportPlan = analyzeTransportPlan(initial, board, doorwayPlan, initialPushes);
   const solvedBoxes = boxes.filter(([y, x, label]) =>
     board.goals.get(pkey(y, x)) === label).length;
   const roomSummaries = board.topology.rooms.map((room, roomIndex) => {
@@ -4084,6 +4188,7 @@ function analyzePuzzleForSearch(data) {
       })),
     },
     roomInterfaces,
+    transportPlan,
     evacuationPenalty,
     goalAccessClauses: board.topology.goalAccess.reduce(
       (total, goal) => total + goal.lanes.filter(lane => lane.blockingGoals.length).length,

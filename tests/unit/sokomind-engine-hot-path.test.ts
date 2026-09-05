@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { describe, it } from "node:test";
+import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
+import { createSession, decodeActionCode, move } from "../../src/core/index.ts";
+import reference from "../fixtures/solver-v2/grand-hall-reference.json" with { type: "json" };
 
 const SOURCE_FILES = [
   "state.js",
@@ -27,6 +30,7 @@ interface PreparedSeed {
 }
 
 interface TestEngine {
+  doorwayCrossingReachable(board: EngineBoard, geometry: RoomGeometry, occupied: Int32Array): Set<string>;
   parse(data: { rows: string[]; preparedBoard?: unknown }): EngineBoard;
   createPerformanceMetrics(): Record<string, unknown>;
   createPreparedBoardSeed(board: EngineBoard): PreparedSeed;
@@ -84,7 +88,18 @@ interface TestEngine {
   };
 }
 
+interface RoomGeometry {
+  readonly gateId: number;
+  readonly cellIds: Int32Array;
+  readonly inside: Uint8Array;
+}
+
 interface EngineBoard {
+  readonly dense: { readonly keys: string[]; readonly idByKey: Map<string, number> };
+  readonly topology: {
+    readonly rooms: Array<{ gate: string; cells: Set<string> }>;
+    readonly transportGeometry: RoomGeometry[];
+  };
   readonly floor: Set<string>;
   readonly goalsByLabel: Map<string, string[]>;
   readonly playerPushDistances: Map<string, DistanceTable>;
@@ -147,6 +162,7 @@ async function loadSourceEngine(): Promise<TestEngine> {
       evaluateGoalAccess, evaluateGoalAccessSummary,
       boardCacheMemorySnapshot, configureBoardCaches,
       search,
+      doorwayCrossingReachable,
     };`, context);
   return (context as unknown as { __engineTest: TestEngine }).__engineTest;
 }
@@ -160,6 +176,60 @@ const ROWS = [
 ];
 
 describe("Sokomind engine dense hot paths", () => {
+  it("preserves doorway reachability through occupied gates and prepared-board cloning", async () => {
+    const engine = await loadSourceEngine();
+    const puzzle = PUZZLE_BY_ID.huge;
+    const board = engine.parse({ rows: [...puzzle.rows] });
+    const clone = engine.hydratePreparedBoard(
+      { rows: [...puzzle.rows] }, structuredClone(engine.createPreparedBoardSeed(board)),
+      engine.createPerformanceMetrics(),
+    );
+    const olderSeed = structuredClone(engine.createPreparedBoardSeed(board)) as
+      PreparedSeed & { topology: { transportGeometry?: unknown } };
+    delete olderSeed.topology.transportGeometry;
+    const olderClone = engine.hydratePreparedBoard(
+      { rows: [...puzzle.rows] }, olderSeed, engine.createPerformanceMetrics(),
+    );
+    const sessions = [createSession(puzzle)];
+    for (const code of reference.actionLog) {
+      sessions.push(move(sessions[sessions.length - 1], decodeActionCode(code)));
+    }
+    const occupancies = sessions.map(session => new Set(session.snapshot.boxes.map(
+      box => `${box.position.row},${box.position.column}`,
+    )));
+    // Also exercise an empty board and a fully blocked room (no flood seed).
+    occupancies.push(new Set(), new Set(board.floor));
+    for (const occupied of occupancies) {
+      for (let roomIndex = 0; roomIndex < board.topology.rooms.length; roomIndex++) {
+        const room = board.topology.rooms[roomIndex];
+        const start = !occupied.has(room.gate) ? room.gate :
+          [...room.cells].find(cell => !occupied.has(cell));
+        const reached = new Set(start === undefined ? [] : [start]);
+        const queue = [...reached];
+        for (let head = 0; head < queue.length; head++) {
+          const [row, column] = queue[head].split(",").map(Number);
+          for (const [dy, dx] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const next = `${row + dy},${column + dx}`;
+            if (!board.floor.has(next) || occupied.has(next) || reached.has(next)) continue;
+            reached.add(next);
+            queue.push(next);
+          }
+        }
+        for (const candidate of [board, clone, olderClone]) {
+          const geometry = candidate.topology.transportGeometry[roomIndex];
+          const indices = new Int32Array(candidate.dense.keys.length).fill(-1);
+          for (const cell of occupied) indices[candidate.dense.idByKey.get(cell)!] = 0;
+          const actual = engine.doorwayCrossingReachable(candidate, geometry, indices);
+          assert.deepEqual([...actual].sort(), [...reached].sort());
+          assert.deepEqual(
+            [...candidate.dense.keys].filter((_, cell) => geometry.inside[cell]).sort(),
+            [...room.cells].sort(),
+          );
+        }
+      }
+    }
+  });
+
   it("keeps dense source distances equivalent through prepared-board cloning", async () => {
     const engine = await loadSourceEngine();
     const board = engine.parse({ rows: ROWS });

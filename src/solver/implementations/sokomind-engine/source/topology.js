@@ -39,6 +39,22 @@ function floorNeighbors(position, floor) {
     .filter(next => floor.has(next));
 }
 
+// Static room membership and doorway geometry travel with the prepared board.
+// Preserve the original Set order: search tie-breaking depends on it.
+function compileRoomTransportGeometry(topology, dense) {
+  return topology.rooms.map(room => {
+    const cellIds = Int32Array.from(room.cells, cell => dense.idByKey.get(cell));
+    const inside = new Uint8Array(dense.keys.length);
+    for (const cell of cellIds) inside[cell] = 1;
+    return {
+      gateId: dense.idByKey.get(room.gate),
+      cellIds,
+      inside,
+      stagingIds: Int32Array.from(room.exteriorStaging, cell => dense.idByKey.get(cell)),
+    };
+  });
+}
+
 function floorComponents(floor, blocked = null) {
   const remaining = new Set(floor);
   if (blocked) remaining.delete(blocked);
