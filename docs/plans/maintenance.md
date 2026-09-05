@@ -50,7 +50,7 @@ not proof that it can be deleted. Remove an obsolete path together with its
 exports, tests that only exercise that path, documentation, and script entries.
 Do not replace a real behavioral regression test with a test of file layout.
 
-## Validation and deferred behavior changes
+## Validation and resolved audit findings
 
 Use the [contribution checks](../../CONTRIBUTING.md#validation) for each change.
 Keep refactors reviewable: move behavior first, verify it, then simplify it in
@@ -58,5 +58,15 @@ a separate step. Search and generator refactors also need their deterministic
 and performance gates; unit-test success alone is insufficient evidence.
 
 The September 4 audit findings about progress-import capacity and paused-game
-keyboard actions remain deferred at the user's request. This cleanup does not
-change either behavior.
+keyboard actions have been addressed:
+
+- Progress import accounts for the retained activity ledger, daily records,
+  and completion records. The maximum-retention round-trip regression is in
+  `tests/unit/progress-import.test.ts`.
+- Paused play disables gameplay shortcuts through `gameplayEnabled`, while
+  keeping pause/resume and shortcut help available. The keyboard and swipe
+  regression is in `tests/e2e/zen-play.spec.ts`.
+
+Static artifact verification now runs for pull requests as well as
+default-branch pushes and manual runs, so delivery budgets, CSP, and asset
+manifest checks execute before merge.

@@ -17,8 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # deploy-pages.yml owns the PR build, browser matrix, and Huge gate. This
-    # job owns source, coverage, and representative solver correctness.
+    # deploy-pages.yml owns the PR build, static artifact checks, browser
+    # matrix, and Huge gate. This job owns source, coverage, and representative
+    # solver correctness.
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

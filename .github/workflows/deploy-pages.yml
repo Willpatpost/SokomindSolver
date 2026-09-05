@@ -52,14 +52,9 @@ jobs:
         run: npm run lint:docs
 
       # Coverage below executes the complete unit suite. Keep artifact
-      # production/static verification here without running those tests twice.
+      # production/static verification on every event without repeating them.
       - name: Build and verify static artifact
-        if: github.event_name != 'pull_request'
         run: npm run build && npm run test:static
-
-      - name: Build (PR only)
-        if: github.event_name == 'pull_request'
-        run: npm run build
 
       - name: Coverage gate
         if: github.event_name != 'pull_request'
