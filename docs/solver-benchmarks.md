@@ -339,6 +339,83 @@ with exact reviewed counters, including the unchanged 789-move quality rewrite.
 Differential traversal tests compare every state of the 626-move human route,
 empty and fully occupied boards, and fresh/current/older prepared-board forms.
 
+### Goal-transit prerequisite analysis
+
+The next analysis pass models each goal as permanently occupied and recomputes
+relaxed push routes, including the keeper support squares needed for a push.
+It retains every compatible target instead of pinning a matching. The resulting
+`transportPlan.goalTransit` identifies conditional final-placement prerequisites
+and release regions; it does not require the prerequisite box to finish first.
+
+For Grand Hall, it identifies H's goal at `7,4` as blocking G's escape from
+`7,2`. The release frontier is `5,4` or `9,4`. Tests check this relation under
+mirroring and rotation, its clearance in the 626-move reference, an already
+solved board, and a compatible alternative goal inside the pocket.
+
+Seven alternating warm Node analysis samples (one warmup per implementation)
+measured a median of 79.58 ms before and 84.75 ms after, approximately 5.17 ms
+of additional analysis. These are analysis-only measurements on this machine,
+not browser or whole-solver timing claims.
+
+This dependency is **not yet used to change default search ordering**. Local
+prototypes that penalized premature goal occupation returned 910–922 moves;
+adding keeper approach distance to first-push ranking produced cutoffs or a
+922-move route. Deferring goal tasks and substituting temporary destinations
+also regressed; the latter produced 1,216 moves. None of those experimental
+search changes are retained. The reviewed 893-move discovery and 789-move
+rewrite guardrails remain unchanged. Release-aware macro scheduling needs a
+measured win before promotion; the analysis upgrade alone does not achieve
+the 650-move/3-second target.
+
+### Executable strategic planning experiments
+
+The analyzer now has an experimental path through task simulation, adaptive
+interaction groups, serialized verified prefixes, and structural search.
+Production defaults remain unchanged. See
+[the integration contract](solver-integration.md#experimental-strategic-planning).
+
+Run isolated Node kernel comparisons with separate analysis and search timing:
+
+```text
+npm.cmd run benchmark:solver:analyzer -- --ids=huge --budgets=0,100,250,500,1000 --search-ms=3000
+npm.cmd run benchmark:solver:analyzer -- --ids=huge --budgets=0,250 --runs=3 --search-ms=0 --rewrite
+```
+
+The second command is explicitly an unlimited-search quality experiment.
+Search-based rewriting does not yet have a cooperative deadline; the runner
+rejects combining `--rewrite` with a nonzero search deadline. Each sample gets
+a fresh process and a 90-second external watchdog. Results include full
+analysis time, planning counters, accepted prefixes, discovery/rewrite times,
+verification, and peak process RSS. These are not production browser timings
+or a full-corpus promotable baseline.
+
+Three alternating preliminary Grand Hall comparisons reproduced 789 moves /
+270 pushes for the control rewrite and 780 moves / 250 pushes for the planned
+rewrite. The planned discovery was 894 moves / 262 pushes, compared with the
+control's 893 / 278. Thus fewer pushes did not improve discovery move count.
+Those initial runs spent about 283–289 ms in analysis; subsequent geometry reuse,
+shared analysis timing, and bounded distance caching reduced a follow-up to
+about 246 ms with the same 780-move rewritten result. Discovery and rewriting
+still took roughly 6 and 6–7 seconds respectively. The 650-move/three-second
+search target remains unmet.
+
+A five-puzzle, fixed structural-kernel smoke comparison at a three-second
+search limit gave these verified move counts (not the adapter's full portfolio):
+
+| Puzzle | Control | Experimental |
+|---|---:|---:|
+| beginner-three | 7 | 8 |
+| classic-1 | 45 | 43 |
+| adv-gallery | 31 | 29 |
+| expert-maze | 231 | 231 |
+| huge | cutoff | cutoff |
+
+These mixed results do not justify promotion. A dedicated browser test verifies
+that separate workers can exchange the plan package and replay a complete
+two-box solution without discovery expansions. Chromium and WebKit passed;
+Firefox failed to launch on the test machine with an SWGL framebuffer error,
+before solver code ran. This is correctness coverage, not browser benchmarking.
+
 ### Tuning objective defect
 
 The older `scripts/benchmark-sokomind-solver.ts` fitness uses

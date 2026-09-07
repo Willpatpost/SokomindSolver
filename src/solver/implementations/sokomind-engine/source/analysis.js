@@ -4,6 +4,74 @@
 
 // An explainable agenda, not a fixed order or an optimality certificate. Matching
 // domains certify crossings; parking and initial walking costs are advisory.
+// Removing a goal models its final occupation, including loss of keeper support
+// squares. Other boxes are relaxed away: failure proves a transit dependency,
+// while success only says that this particular obstruction has been cleared.
+function analyzeGoalTransitPrerequisites(initial, board, doorwayPlan) {
+  const positions = initial.boxes.map(([y, x]) => pkey(y, x));
+  const commitments = [];
+  for (const [target, label] of board.goals) {
+    const owners = initial.boxes.flatMap((box, boxIndex) =>
+      box[2] === label && doorwayPlan.proof.boxDomains[boxIndex]?.allowedTargets
+        .includes(target) ? [boxIndex] : []);
+    if (!owners.length) continue;
+    const floor = new Set(board.floor);
+    floor.delete(target);
+    const routesByLabel = new Map();
+    for (const [goal, kind] of board.goals) {
+      if (goal === target) continue;
+      let routes = routesByLabel.get(kind);
+      if (!routes) routesByLabel.set(kind, routes = new Set());
+      for (const position of reversePushDistances(floor, goal).keys()) routes.add(position);
+    }
+    const blocked = initial.boxes.flatMap((box, boxIndex) => {
+      const position = positions[boxIndex];
+      // A present occupant is a replacement/assignment question, not a box
+      // whose transit is cut off by future occupation of this same square.
+      if (position === target) return [];
+      const routes = routesByLabel.get(box[2]);
+      if (routes?.has(position)) return [];
+      // Do not turn an already unreachable box into a newly discovered ordering
+      // dependency. Keep all compatible goals, rather than one chosen matching.
+      const targets = [...board.goals].filter(([, kind]) => kind === box[2]);
+      if (!targets.some(([goal]) =>
+        Number.isFinite(compiledGoalPushDistance(board, position, goal)))) return [];
+      const reachable = playerAwarePushDistances(board, position);
+      const releaseCells = [...(routes || [])].filter(cell => reachable.has(cell));
+      if (!releaseCells.length) return [];
+      const releaseSet = new Set(releaseCells);
+      const releaseFrontier = releaseCells.filter(cell => {
+        const [y, x] = cell.split(",").map(Number);
+        return DIRECTION_ENTRIES.some(([, [dy, dx]]) => {
+          const source = pkey(y - dy, x - dx);
+          return reachable.has(source) && !releaseSet.has(source) &&
+            board.floor.has(pkey(y - 2 * dy, x - 2 * dx));
+        });
+      });
+      return [{boxIndex, label: box[2], position, releaseCells, releaseFrontier}];
+    });
+    for (const boxIndex of owners) {
+      const prerequisites = blocked.filter(box => box.boxIndex !== boxIndex);
+      if (!prerequisites.length) continue;
+      commitments.push({
+        boxIndex,
+        label,
+        target,
+        prerequisites,
+        reason: "final-occupation-blocks-relaxed-push-route",
+      });
+    }
+  }
+  return {
+    model: "single-occupied-goal-relaxed-push-routes",
+    hardPruning: false,
+    // A release region is a milestone, not an instruction to finish that box.
+    // Cyclic dependencies can be cleared through staging instead of goal order.
+    completionRule: "move-prerequisites-into-release-regions-before-final-occupation",
+    commitments,
+  };
+}
+
 function analyzeTransportPlan(initial, board, doorwayPlan, initialPushes) {
   const positions = initial.boxes.map(([y, x]) => pkey(y, x));
   const occupied = new Set(positions);
@@ -33,6 +101,7 @@ function analyzeTransportPlan(initial, board, doorwayPlan, initialPushes) {
     schemaVersion: 1,
     scope: "initial-position-advisory",
     hardPruning: false,
+    goalTransit: analyzeGoalTransitPrerequisites(initial, board, doorwayPlan),
     batches,
     boxes: initial.boxes.map(([y, x, label], boxIndex) => {
       const position = positions[boxIndex];
@@ -75,7 +144,8 @@ function analyzeTransportPlan(initial, board, doorwayPlan, initialPushes) {
   };
 }
 
-function analyzePuzzleForSearch(data) {
+function analyzePuzzleForSearch(data, options = {}) {
+  const analysisStarted = now();
   const board = parse(data);
   const boxes = data.boxes.map(([position, label]) => [
     ...position.split(",").map(Number), label,
@@ -178,6 +248,11 @@ function analyzePuzzleForSearch(data) {
     checkpointLimit: difficulty === "extreme" ? 12 : 8,
   };
   const preparedBoard = createPreparedBoardSeed(board);
+  const strategicPlan = options.strategicAnalysis ? buildStrategicPlan(data, {
+    ...options.strategicAnalysis,
+    maxMs: Math.max(0, strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) -
+      (now() - analysisStarted)),
+  }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit}) : undefined;
   return {
     dimensions: {rows: data.rows.length, columns: Math.max(...data.rows.map(row => row.length))},
     floorCells: board.floor.size,
@@ -207,6 +282,7 @@ function analyzePuzzleForSearch(data) {
     },
     roomInterfaces,
     transportPlan,
+    ...(strategicPlan ? {strategicPlan} : {}),
     evacuationPenalty,
     goalAccessClauses: board.topology.goalAccess.reduce(
       (total, goal) => total + goal.lanes.filter(lane => lane.blockingGoals.length).length,

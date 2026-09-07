@@ -67,6 +67,7 @@ export interface LegacySearchCheckpoint {
 }
 
 export interface SokomindAnalysisPlan {
+  readonly strategicPlan?: Readonly<Record<string, unknown>>;
   readonly difficulty?: string;
   readonly phases: readonly string[];
   readonly recommendations: Readonly<{
@@ -194,6 +195,8 @@ export function analysisPlanFromAnalysis(
   return Object.freeze({
     difficulty:
       typeof analysis.difficulty === "string" ? analysis.difficulty : undefined,
+    ...(objectRecord(analysis.strategicPlan)?.schemaVersion === 1
+      ? { strategicPlan: Object.freeze({ ...objectRecord(analysis.strategicPlan) }) } : {}),
     phases: Object.freeze(phases),
     recommendations: Object.freeze({
       beamWidth: optionalNumber("beamWidth"),

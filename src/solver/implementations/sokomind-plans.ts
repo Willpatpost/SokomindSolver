@@ -55,7 +55,7 @@ function remainingGeneratedBudget(
   return Math.max(0, Math.min(fallback, Math.floor(limit / divisor)));
 }
 
-export function preparationPlan(state: LegacyState): EnginePlan {
+export function preparationPlan(state: LegacyState, strategicAnalysisMs = 0, request?: SolverRequest): EnginePlan {
   return Object.freeze({
     id: "prepare-board",
     label: "Typed board analysis",
@@ -64,6 +64,12 @@ export function preparationPlan(state: LegacyState): EnginePlan {
     payload: Object.freeze({
       algorithm: "analyze-puzzle",
       state,
+      ...(strategicAnalysisMs > 0 ? { strategicAnalysis: { maxMs: strategicAnalysisMs,
+        ...(request?.limits?.maxExpandedStates !== undefined
+          ? {maxExpanded: Math.min(4000, request.limits.maxExpandedStates)} : {}),
+        ...(request?.limits?.maxGeneratedStates !== undefined
+          ? {maxGenerated: Math.min(48000, request.limits.maxGeneratedStates)} : {}),
+      } } : {}),
     }),
   });
 }
@@ -74,6 +80,7 @@ export function structuralPlan(
   tuning: Readonly<Record<string, number>>,
   mode: SokomindRequestOptions["mode"],
   budgetDivisor = 1,
+  analysisPlan?: SokomindAnalysisPlan,
 ): EnginePlan {
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
   const transpositionLimit =
@@ -91,6 +98,7 @@ export function structuralPlan(
     payload: Object.freeze({
       algorithm: "plan-macro-beam",
       state,
+      ...(analysisPlan?.strategicPlan ? { strategicPlan: analysisPlan.strategicPlan } : {}),
       maxDepth: 460,
       maxVisited: remainingStateBudget(request, 6_000, budgetDivisor),
       maxGenerated: remainingGeneratedBudget(

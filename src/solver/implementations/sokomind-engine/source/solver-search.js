@@ -1443,6 +1443,8 @@ function canonicalFessSearch(payload) {
 }
 
 function planMacroBeamSearch(payload) {
+  const planDeadline = Number.isFinite(payload.planSearchMs)
+    ? now() + Math.max(0, payload.planSearchMs) : undefined;
   const board = prepareSearchBoard(payload);
   board.reachabilityMemoLimit = payload.reachabilityMemoLimit ?? REACHABILITY_MEMO_LIMIT;
   const initial = {
@@ -1670,6 +1672,19 @@ function planMacroBeamSearch(payload) {
   initial.exactIdentity = exactPushIdentity(initial, board);
   initial.goalAccess = structuralAnalysis(initial.boxes, true).goalAccess;
   initial.doorwaySchedule = evaluateDoorwaySchedule(initial.boxes);
+  const preparedSeeds = preparedStrategicSeeds(payload, initial, board);
+  if (planDiagnostics) planDiagnostics.preparedPlansAccepted = preparedSeeds.length;
+  const completeSeed = preparedSeeds.filter(seed => goal(seed.boxes, board.goals))
+    .sort((a, b) => a.moves - b.moves)[0];
+  if (completeSeed) return {
+      path: reconstructNodePath(completeSeed.node), visited: 0, generated: 0,
+      bestPushes: completeSeed.cost, bestMoves: completeSeed.moves, preparedPlansAccepted: preparedSeeds.length,
+    };
+  for (const seed of preparedSeeds) {
+    seed.exactIdentity = exactPushIdentity(seed, board);
+    scoreCandidate(seed);
+  }
+  beam = [initial, ...preparedSeeds];
   if (moveAwareTranspositions) seenExact.set(initial.exactIdentity, 0, 0);
   else seenExact.set(
     initial.exactIdentity,
@@ -1678,7 +1693,8 @@ function planMacroBeamSearch(payload) {
 
   for (let segment = 0;
     segment < maxSegments && beam.length &&
-      visited < maxVisited && generated < maxGenerated;
+      visited < maxVisited && generated < maxGenerated &&
+      (planDeadline === undefined || now() < planDeadline);
     segment++) {
     const candidates = new Map();
     let layerSolution = null;
@@ -1711,6 +1727,7 @@ function planMacroBeamSearch(payload) {
       : beam;
     layerExpansion:
     for (const current of expansionBeam) {
+      if (planDeadline !== undefined && now() >= planDeadline) break;
       if (visited++ >= maxVisited) break;
       if (layerDiagnostics) layerDiagnostics.expanded++;
       const reachable = reachablePaths(current, board);
@@ -1776,6 +1793,7 @@ function planMacroBeamSearch(payload) {
         ).size;
       }
       for (let firstIndex = 0; firstIndex < selectedFirst.length; firstIndex++) {
+        if (planDeadline !== undefined && now() >= planDeadline) break;
         const first = materializePushNeighborPath(
           selectedFirst[firstIndex],
           reachable,
@@ -1866,7 +1884,7 @@ function planMacroBeamSearch(payload) {
         const expand = (explored, results) => objective
           ? expandTargetedPushSequence(
             first, board, objective, macroLimit, explored, results,
-            {lockProven: false, intermediateGuard:
+            {lockProven: false, deadline: planDeadline, intermediateGuard:
               payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
             targetBound: payload.targetedMacroBound !== false,
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
@@ -1876,7 +1894,7 @@ function planMacroBeamSearch(payload) {
           )
           : expandPushSequences(
             first, board, macroLimit, explored, results,
-            {lockProven: false, intermediateGuard:
+            {lockProven: false, deadline: planDeadline, intermediateGuard:
               payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
             paretoLimit: payload.macroParetoLimit,
@@ -2203,7 +2221,8 @@ function planMacroBeamSearch(payload) {
     checkpoints: checkpoints.filter(Boolean),
     ...(planDiagnostics ? {planDiagnostics} : {}),
     cutoff: true,
-    terminationReason: visited >= maxVisited ? "state-budget" :
+    terminationReason: planDeadline !== undefined && now() >= planDeadline ? "search-time-budget" :
+      visited >= maxVisited ? "state-budget" :
       generated >= maxGenerated ? "generated-budget" : "plan-frontier-exhausted",
   };
 }
@@ -4507,7 +4526,9 @@ function solveGoalCutComponents(payload, board, initial, certificate) {
 
 function searchCore(payload) {
   if (payload.algorithm === "analyze-puzzle") {
-    return {path: null, visited: 0, analysis: analyzePuzzleForSearch(payload.state)};
+    const analysis = analyzePuzzleForSearch(payload.state, payload);
+    return {path: null, visited: analysis.strategicPlan?.statistics.expanded || 0,
+      ...(analysis.strategicPlan ? {generated: analysis.strategicPlan.statistics.generated} : {}), analysis};
   }
   if (payload.algorithm === "bridge-astar") return bridgeAStarSearch(payload);
   if (payload.algorithm === "solution-window-rewrite") {

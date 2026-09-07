@@ -69,12 +69,61 @@ articulation cells, but are not certified safe or reachable with other boxes
 present. They retain occupancy and goal annotations; the plan never fixes a
 generic box to a single goal or supplies a hard pruning rule.
 
+`transportPlan.goalTransit.commitments` adds conditional final-placement
+prerequisites. Each entry names a candidate owner (`boxIndex`, `label`) and
+`target`, plus boxes whose compatible relaxed push routes disappear when that
+target is occupied. Each prerequisite includes its current `position`,
+`releaseCells` (reachable in the empty-board relaxation and connected to a
+compatible goal with the target blocked), and `releaseFrontier` (entry cells
+into that region). The relaxation checks push support squares as well as box
+paths. It ignores other boxes, simultaneous goal occupation, and keeper-side
+connectivity, so entering a release region is not a safety certificate.
+
+These are escape milestones, not a fixed goal order: staging can clear a
+dependency before the prerequisite box reaches its goal. Entries are relative
+to the analyzed snapshot; reanalyze after moving boxes rather than treating
+them as permanent locks. The plan remains serializable and advisory
+(`hardPruning: false`). It does not alter the default beam's scoring.
+
 The prepared board carries compiled room membership and ordered dense doorway
 geometry. Structural search consumes this geometry for its existing scheduling
 checks instead of rebuilding string-coordinate neighbors. Older prepared seeds
 without this additive data compile it during hydration. The richer transport
 agenda is analysis output for future move-aware ordering experiments; it does
 not yet change the production beam's ordering or its returned route.
+
+### Experimental strategic planning
+
+The opt-in request option
+`options["sokomind-solver"].strategicAnalysisMs` accepts an integer from 0 to
+1,000; zero is the default and preserves the reviewed search configuration.
+Timed strategic planning is incompatible with `deterministic: true` and is
+rejected rather than silently weakening that guarantee.
+
+When enabled on structural puzzles, analysis constructs version-1 canonical
+plan packages. It simulates export, delivery, and transit-release tasks on the
+full board, tracks actual keeper walking, and retains alternative prefixes.
+When a task is blocked, it can include the obstructing box, up to three boxes
+in one local simulation. Relaxed task-distance tables are cached only within
+that planning request. Static preparation is charged against the requested
+analysis allowance; work already completed before a deadline check can cause
+a small overrun, and static preparation alone can exceed a very short allowance.
+
+The adapter carries the package to structural search. Search checks exact board
+and snapshot identity, replays bounded candidate paths, recomputes push counts,
+rejects invalid or stale candidates, and adds valid prefixes alongside its
+normal root state. A complete verified plan can finish without discovery
+expansions. These are full-state prefixes, not certificates that every remaining
+task can be completed. Valid but strategically poor prefixes can still regress
+a bounded beam, which is why the feature remains experimental.
+
+Planning has shared expansion/generation limits, and its actual work is reported
+to the adapter's request budget. Existing public request elapsed limits still
+bound the complete solve. The engine's optional `planSearchMs` separately bounds
+structural discovery using cooperative checks inside macro expansion; it is
+currently exercised by the analyzer benchmark rather than exposed as a separate
+UI time control. No three-second browser performance claim follows from this
+integration alone.
 
 Bidirectional meeting keys use compact typed box tokens; the adapter decodes
 those tokens before finding the robot-only bridge, fixing the obsolete key

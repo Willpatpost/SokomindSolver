@@ -2034,7 +2034,7 @@ export function createSokomindSolverAdapter(
       if (structural) {
         const preparation = await runPhase(
           run,
-          [preparationPlan(state)],
+          [preparationPlan(state, sokomindOptions.strategicAnalysisMs, request)],
           createWorker,
           1,
         );
@@ -2067,6 +2067,8 @@ export function createSokomindSolverAdapter(
                   structuralRequest,
                   tuning,
                   sokomindOptions.mode,
+                  1,
+                  analysisPlan,
                 ),
               ],
               createWorker,

@@ -4,6 +4,8 @@ export type SokomindMode = "fast" | "quality" | "optimal";
 
 export interface SokomindRequestOptions {
   readonly mode: SokomindMode;
+  /** Experimental strategic preparation; zero preserves the reviewed planner. */
+  readonly strategicAnalysisMs: number;
   readonly proofAlgorithm: "auto" | "astar" | "ida-star";
   readonly deterministic: boolean;
   readonly maximumIncumbents: number;
@@ -16,6 +18,7 @@ export interface SokomindRequestOptions {
 export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
   Object.freeze({
     mode: "fast",
+    strategicAnalysisMs: 0,
     proofAlgorithm: "auto",
     deterministic: false,
     maximumIncumbents: 4,
@@ -95,6 +98,9 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
   if ("mode" in obj) {
     validated.mode = validateEnum("mode", obj.mode, VALID_MODES) as SokomindMode;
   }
+  if ("strategicAnalysisMs" in obj) {
+    validated.strategicAnalysisMs = validateInt("strategicAnalysisMs", obj.strategicAnalysisMs, 0, 1000);
+  }
   if ("proofAlgorithm" in obj) {
     validated.proofAlgorithm = validateEnum(
       "proofAlgorithm",
@@ -145,10 +151,14 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
     );
   }
 
-  return Object.freeze({
+  const result = Object.freeze({
     ...DEFAULT_SOKOMIND_REQUEST_OPTIONS,
     ...validated,
   });
+  if (result.deterministic && result.strategicAnalysisMs > 0) {
+    throw new Error("sokomind-solver: timed strategic analysis is incompatible with deterministic mode");
+  }
+  return result;
 }
 
 export function extractSokomindOptions(

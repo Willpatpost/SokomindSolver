@@ -335,6 +335,7 @@ function expandPushSequences(
     : new Set([initialSignature]);
   let head = 0;
   for (; head < queue.length && queue.length < maxExplored; head++) {
+    if (options.deadline !== undefined && now() >= options.deadline) break;
     const current = queue[head];
     const currentSignature = exactPushKey(current, board);
     if (moveAwareDedupe && !macroParetoActive(
@@ -502,6 +503,7 @@ function expandTargetedPushSequence(
     : new Set([initialSignature]);
   let explored = 0;
   while (open.length && explored++ < maxExplored) {
+    if (options.deadline !== undefined && now() >= options.deadline) break;
     if (options.targetBound !== false && completedTargets.size >= maxReturned) {
       const worstPushes = Math.max(
         ...[...completedTargets.values()].map(endpoint => endpoint.pushes),

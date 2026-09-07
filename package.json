@@ -41,6 +41,7 @@
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
     "benchmark:solver:memory": "node --experimental-strip-types scripts/benchmark-solver-memory.ts",
+    "benchmark:solver:analyzer": "node --experimental-strip-types scripts/benchmark-strategic-analyzer.mjs",
     "benchmark:generator": "node --experimental-strip-types scripts/benchmark-generator.ts",
     "measure:generator": "node --experimental-strip-types scripts/measure-generator.ts",
     "review:generator": "node --experimental-strip-types scripts/prepare-generator-review.ts",

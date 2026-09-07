@@ -26,6 +26,7 @@ const SOURCE_FILES = Object.freeze([
   "deadlock.js",
   "analysis.js",
   "push-generation.js",
+  "strategic-planning.js",
   "solver-search.js",
 ]);
 
