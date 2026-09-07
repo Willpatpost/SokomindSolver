@@ -1,11 +1,25 @@
 # Sokomind Solver: Strategic Intelligence Audit and Implementation Roadmap
 
+> **2026-09-07 implementation checkpoint:** Sprint 2 connected matching,
+> alternative goal supports, temporary clearance, and task macros are implemented
+> experimentally. Quality acceptance remains open: Grand Hall is 952 moves versus
+> the production 893. Keep execution opt-in. Prioritize route quality before the
+> timing target; see the Sprint 2 checkpoint in `docs/fast-strategic-analyzer-plan.md`
+> and raw `docs/benchmarks/strategic-inference-sprint2.json` for evidence and the
+> next approach/owner hypothesis work.
+
 **Repository:** `Willpatpost/SokomindSolver`  
 **Audit target:** current `main` branch as reviewed on 2026-09-07  
 **Scope:** flagship **Sokomind Solver** only; commit history intentionally excluded  
 **Purpose:** turn the current sophisticated Sokoban search portfolio into a solver that **studies a puzzle, derives what must and must not happen, forms a causal plan, and then searches to execute and repair that plan**.
 
 ---
+
+**Architecture revision — 2026-09-07:** Corrected dependency strength, temporal
+resource semantics, predicate validation, scoped provenance, matching reuse,
+move-aware scoring, and delivery order. Part VII governs implementation order;
+earlier priority groupings describe topics, not prerequisites. These are planned
+changes, not claims that the architecture is already implemented.
 
 ## 1. Executive summary
 
@@ -309,13 +323,30 @@ export type StrategicTaskKind =
   | "solve-room"
   | "solve-corral";
 
-export interface StrategicPredicate {
-  readonly kind: string;
-  readonly payload: Readonly<Record<string, JsonValue>>;
+export type StrategicFactScope =
+  | { readonly kind: "static"; readonly boardKey: string }
+  | { readonly kind: "snapshot"; readonly snapshotKey: string }
+  | { readonly kind: "hypothesis"; readonly snapshotKey: string;
+      readonly hypothesisId: string; readonly assumptionIds: readonly string[] };
+
+export interface StrategicEvidence {
+  readonly id: string;
   readonly strength: StrategicFactStrength;
+  readonly scope: StrategicFactScope;
+  readonly rule: string;
+  readonly sourceIds: readonly string[];
   readonly reason: string;
-  readonly sourceIds?: readonly string[];
 }
+
+/** Initial variants; add each new kind with its validator and evaluator. */
+export type StrategicPredicate = StrategicEvidence & (
+  | { readonly kind: "box-in-region"; readonly boxCandidates: readonly number[];
+      readonly regionId: string }
+  | { readonly kind: "goal-unoccupied"; readonly goalId: string }
+  | { readonly kind: "keeper-can-reach"; readonly cell: string }
+  | { readonly kind: "doorway-open"; readonly doorwayId: string }
+  | { readonly kind: "task-complete"; readonly taskId: string }
+);
 
 export interface StrategicTask {
   readonly id: string;
@@ -333,7 +364,7 @@ export interface StrategicTask {
   /** Facts used to recognize completion from a board state. */
   readonly completesWhen: readonly StrategicPredicate[];
 
-  /** Facts that must remain true while this task or dependent tasks are pending. */
+  /** Invariants enforced only during their declared resource-use intervals. */
   readonly preserve: readonly StrategicPredicate[];
 
   /** Explicit partial-order edges. */
@@ -367,6 +398,8 @@ export interface StrategicPlan {
   readonly analysis: StrategicAnalysisSummary;
 }
 ```
+
+Every predicate kind needs exhaustive runtime evaluation and bounded validation of its payload, references, and scope. Unknown kinds or invalid packages reject the plan and resume ordinary search; they must never become pruning evidence. The union above is an initial subset, not permission to accept arbitrary string/payload predicates.
 
 The exact names can change. The important architectural shift is that the plan stops being “some object from the engine” and becomes a **versioned solver contract**.
 
@@ -426,7 +459,7 @@ This will prevent the architecture from blurring “which algorithm should run?�
 
 Create something like:
 
-`src/solver/implementations/sokomind-strategic-contract.ts`
+a proposed `sokomind-strategic-contract.ts` module under `src/solver/implementations`
 
 with:
 
@@ -714,8 +747,10 @@ Now suppose the final push to G1 consumes doorway D, while B must cross D to rea
 Then:
 
 ```text
-B->G2 BEFORE A->G1
+cross(B, D) BEFORE commit(A, G1)
 ```
+
+This requires proof that committing A closes the required crossing route. It does not require B to finish on G2 first; that stronger edge needs separate evidence.
 
 That new ordering may invalidate a staging square for A, which may create a new transport obligation, which may reveal another forced assignment.
 
@@ -732,6 +767,7 @@ interface StrategicFact {
   readonly strength: StrategicFactStrength;
   readonly payload: JsonValue;
   readonly derivedFrom: readonly string[];
+  readonly scope: StrategicFactScope;
   readonly rule: string;
 }
 ```
@@ -771,15 +807,21 @@ Use matching support to detect:
 - forced subsets;
 - Hall-style bottlenecks.
 
-For small label groups, an exact edge-support test is affordable:
+Reuse the existing `perfectMatchingDomains` implementation in
+`src/solver/implementations/sokomind-engine/source/heuristic.js`. It already
+computes allowed perfect-matching edges through alternating-cycle reachability.
+The forced-assignment example above is already covered by this capability.
 
-1. require an edge;
-2. test whether the remaining graph still admits a complete matching;
-3. if not, the edge is impossible.
+The upgrade is feedback from sound support, transit, and resource deductions
+into matching domains. Recompute matching and supported edges when the domain
+signature changes; do not reuse support computed for an older graph. Reserve
+per-edge matching checks for a test oracle or a demonstrated gap in the existing
+method, rather than adding redundant production work.
 
-Likewise, temporarily remove an edge; if no matching remains, the edge is forced.
-
-Cache results by domain signature.
+Deductions are monotone only within a fixed snapshot and assumption context.
+A heuristic assumption may narrow its own hypothesis, never global domains.
+On state or assumption changes, invalidate dependent facts and rebuild affected
+domains before continuing propagation.
 
 #### Pass C — final-push support requirements
 
@@ -974,8 +1016,16 @@ export interface StrategicResourceUse {
   readonly resourceId: string;
   readonly mode: "requires" | "preserves" | "consumes" | "releases";
   readonly strength: StrategicFactStrength;
+  readonly activeFromTaskId: string;
+  readonly activeUntilTaskId: string;
+  readonly releaseObligationTaskId?: string;
 }
 ```
+
+Resource intervals are explicit task events, not "all time while a task is pending".
+Temporary occupation may create a clearance obligation before a consumer becomes
+enabled. An unverified clearance route is uncertainty within a hypothesis;
+only a sound impossibility result justifies rejecting the board state.
 
 ### 8.3 Resource example
 
@@ -1002,7 +1052,9 @@ Threatened by:
   stage:B3@8,12
 
 Therefore:
-  stage:B3@8,12 is forbidden while commit:G6 is pending
+  clear B3 from 8,12 before commit:G6 needs its support
+  temporary staging is allowed if its clearance remains feasible
+  reject it as impossible only with sound evidence that clearance cannot occur
 ```
 
 ### 8.4 Turn current obstruction observations into causal evidence
@@ -1021,6 +1073,8 @@ That can create a new candidate dependency:
 ```text
 clear-or-stage(B) BEFORE T
 ```
+
+Repeated failed realizations are heuristic evidence, not proof that every realization needs this dependency. Keep the dependency hypothesis-scoped until independently justified.
 
 This is more useful than merely making B part of the same local search.
 
@@ -1107,8 +1161,9 @@ P1 and P2 are complete. An assumption used by P3 fails.
 Do this:
 
 ```text
-preserve proven facts
-preserve P1/P2 completion
+preserve facts whose scope and evidence remain valid
+re-evaluate P1/P2 completion against the current board
+reopen any reversible task whose completion predicate no longer holds
 invalidate affected downstream tasks
 recompute affected domains/resources
 rebuild only the invalid suffix
@@ -1262,10 +1317,13 @@ A room macro can be reused when the relevant local state matches:
 ```text
 room topology ID
 box multiset/labels inside
+entry keeper position (or separately priced entry connector)
 entry keeper region
 boundary occupancy
 required external resources
 ```
+
+Include every external connectivity assumption used by the local proof. Keeper region alone cannot identify walking cost: different entry positions can require different walks. Replay cached realizations against the full board, recompute connector cost, and verify their contracts. A valid macro does not prove that alternative local paths can be pruned; that requires a separate completeness or dominance argument.
 
 Do not key only by full-board state.
 
@@ -1457,11 +1515,13 @@ strategicAnalysis: {
 }
 ```
 
-The default flagship experience should eventually be `auto`, not `off`.
+Stable iteration order, deterministic tie-breaking, and work accounting are required for reproducibility. An emergency wall-clock cutoff must be reported as partial and cannot promise identical output across machines.
+
+Promote cheap analysis and eventually `auto` only after corpus and browser measurements establish acceptable overhead and quality. Keep deeper analysis opt-in until its acceptance gates pass.
 
 ---
 
-## 13. P2-3: separate proof, safe derivation, and heuristic advice
+## 13. P0 foundation: separate proof, safe derivation, and heuristic advice
 
 ### 13.1 Why this becomes mandatory
 
@@ -1487,11 +1547,11 @@ Allowed use:
 
 #### `derived-safe`
 
-A fact follows from a tested sound inference rule built from proven inputs.
+A fact follows from a sound inference rule whose inputs hold in the same declared scope. Tests support the soundness argument; passing tests alone does not establish it. This class distinguishes derivation method from direct proof, not weaker permission to prune.
 
 Allowed use:
 
-- hard prune after the rule has strong soundness coverage;
+- hard prune only with a soundness argument, validated input scope, and differential coverage;
 - hard task dependency.
 
 #### `heuristic`
@@ -1506,6 +1566,8 @@ Allowed use:
 - budget allocation.
 
 Never use alone for completeness-destroying pruning.
+
+A contradiction under hypothesis assumptions invalidates that hypothesis, not the puzzle. Snapshot facts must be revalidated after affected state changes. Exact proof lanes must independently validate any evidence they consume.
 
 ### 13.3 Every fact needs provenance
 
@@ -1657,22 +1719,16 @@ path length
 
 This is useful guidance, but fixed linear weights can blur fundamentally different concerns.
 
-Prefer a lexicographic or tiered evaluation:
+First reject only independently sound board-level impossibilities. A violated
+hypothesis triggers repair or another hypothesis; uncertain resource risk is
+advice, not a hard feasibility class.
 
-```text
-1. hard contradiction count
-2. hard invariant violations
-3. number/severity of threatened required resources
-4. number of enabled tasks advanced
-5. unresolved mandatory task count
-6. estimated remaining pushes
-7. estimated keeper/move cost
-8. diversity tie-breakers
-```
-
-Within the same feasibility tier, numerical weights are fine.
-
-This prevents a sufficiently cheap path from “paying for” a strategically disastrous access loss merely because a penalty weight was too small.
+Among admissible candidates, prioritize actual moves plus estimated remaining
+moves, including keeper travel. Use resource risk and task progress as bounded
+heuristic preferences, with diversity slots for competing strategies. Do not
+rank raw task counts or push lower bounds lexicographically ahead of move cost:
+task counts depend on decomposition, and fewer pushes can require more walking.
+Any combined score must be labelled heuristic unless its bounds are justified.
 
 Because the user-visible solver objective is moves, also keep units clear:
 
@@ -2081,223 +2137,132 @@ Benchmark reports can answer:
 
 ---
 
-## 26. Stage 1 — typed strategic plan contract, no algorithm change
+## 26. Stage 1 — integrated persistent-plan execution
 
-### Implement
+**Sprint implementation status — 2026-09-07:** A V2 advisory task contract now
+reaches structural search and replay-verified checkpoint continuation. It includes
+bounded validation, hypothesis-scoped evidence, reversible board-derived progress,
+witnessed staging tasks, consumer-scoped resource intervals, bounded ordering
+preferences, recovery candidates, and telemetry. The adapter uses a generated
+lightweight validator; checkpoint replay and rebinding run inside the worker.
 
-- `StrategicPlanV2` wire schema;
-- validators;
-- explicit task/fact/resource/hypothesis types;
-- conversion of current `release`/`export`/`deliver` output into the new shape;
-- preserve current candidate paths as `realizations` or `candidateExecutions`.
+This is an experimental integration, not acceptance of the quality gate. Enable
+`strategicAnalysisMs` and `strategicPlanExecution: true` to exercise it. Execution
+defaults to false because matched experiments improve the maze fixture but regress
+Grand Hall. The initial predicate subset is box-at-cells/cells-clear, and one
+root assignment hypothesis is represented. Cross-domain fixed-point inference,
+proved clearance feasibility, role-domain alternatives, task-directed macros,
+and incremental causal repair remain subsequent work. The current scoring
+retains calibrated structural guidance with bounded task/walking adjustments;
+it is not the final remaining-move estimator described in section 16.
 
-### Why
+See [sprint measurements](solver-benchmarks.md#persistent-strategic-execution-sprint-1)
+for results and reproduction commands.
 
-Create the foundation without risking solver behavior.
 
-### Acceptance
+Implement the typed contract, exhaustive predicates, scoped provenance, minimal
+hypothesis representation, and temporal resource semantics together. Convert
+current tasks and retain replay-verified realizations. Recompute completion from
+the board; reversible accomplishments must not remain permanently complete.
 
-Current results remain behaviorally equivalent.
+Connect enabled tasks and move-aware ordering to structural search and checkpoint
+continuation, preserving independent recovery. Schema-only conversion is an
+internal milestone, not the delivery boundary.
 
----
-
-## 27. Stage 2 — always-on cheap analysis
-
-### Implement
-
-Run a small deterministic analysis pass for every Sokomind solve, not only puzzles above structural size thresholds.
-
-Keep expensive bounded task simulation conditional.
-
-### Why
-
-The flagship identity should be “analyze first” on every puzzle.
-
-### Acceptance
-
-- negligible overhead on trivial puzzles;
-- small but structurally difficult puzzles now receive strategic facts;
-- no regression in deterministic mode.
+Acceptance: exercise doorway release → temporary staging → goal commitment end
+to end, verify worker serialization and replay, and benchmark behavior against a
+fresh baseline. Plan-progress counters explain behavior but do not prove quality.
 
 ---
 
-## 28. Stage 3 — declarative plan DAG generated from existing facts
+## 27. Stage 2 — connected inference and temporal staging
 
-### Implement
+Add bounded agenda-based propagation between existing matching support, final-push
+access, doorway crossings, room flow, and staging clearance obligations. Reuse
+matching support rather than rebuilding it. Keep conditional conclusions scoped
+to their hypothesis and invalidate affected facts when their inputs change.
 
-Turn existing transit, doorway, and assignment information into tasks with:
-
-- prerequisites;
-- completion conditions;
-- preserve invariants;
-- explicit dependencies;
-- proof strength.
-
-Do not hard-prune new things yet.
-
-### Why
-
-Separate strategic meaning from concrete move paths.
-
-### Acceptance
-
-Debug output can explain a puzzle plan without showing any moves.
-
-Example:
-
-```text
-1. release blue candidate from deep room
-2. export two surplus boxes through doorway D
-3. preserve D until both exports complete
-4. import required red box
-5. commit deep red goal
-6. pack room
-```
+Acceptance: mechanism fixtures cover crossing-before-commit without unnecessary
+finish-before-commit edges, reusable support squares, and reversible task progress.
+Measure analysis cost, total moves, walking, and downstream search effort. Do not
+introduce new hard pruning in this stage.
 
 ---
 
-## 29. Stage 4 — plan-aware search execution
+## 28. Stage 3 — competing strategies and incremental repair
 
-### Implement
+Maintain a bounded set of hypotheses with explicit assumptions; detect strategic
+events, invalidate dependent evidence, rebind interchangeable roles, and repair
+only affected tasks. Extend plan-aware execution through applicable forward lanes
+while keeping an independent recovery lane and independent exact proof lanes.
 
-- enabled tasks;
-- plan-progress scoring;
-- strategic macro generation;
-- plan context in checkpoint continuation;
-- explicit recovery lane.
-
-### Why
-
-This is where the planner begins to control the solve rather than merely seed it.
-
-### Acceptance
-
-On plan-heavy fixtures, most expansions are `planAdvancing`, not generic recovery expansions.
+Acceptance: a bad strategy can be abandoned without declaring the puzzle
+unsolvable; equivalent states do not gain unnecessary narrative search identity.
+Repair work shares a bounded budget and is included in reported timing.
 
 ---
 
-## 30. Stage 5 — sound hard strategic constraints
+## 29. Stage 4 — reusable local execution contracts
 
-### Implement
+Add room/corral contracts with explicit boundary assumptions and verified paths.
+Cache by the complete relevant interface, including keeper entry position or an
+explicitly priced connector. Keep macro validity separate from claims of local
+optimality or completeness.
 
-Promote only fully tested rules to hard pruning.
-
-Start with the easiest-to-prove constraints:
-
-- impossible matching edges;
-- resource destruction that makes a mandatory exact support impossible;
-- exact local macro precondition contradictions;
-- impossible room inventory balance.
-
-### Why
-
-Hard pruning creates the largest branching reduction but also carries the largest correctness risk.
-
-### Acceptance
-
-Differential exhaustive tests show no solvability changes.
+Acceptance: cached and uncached execution replay identically; alternate entry
+positions and external connectivity changes cannot reuse invalid costs or proofs.
+Demonstrate reduced work without sacrificing solution quality.
 
 ---
 
-## 31. Stage 6 — fixed-point propagation
+## 30. Stage 5 — justified hard strategic constraints
 
-### Implement
+Only after inference, resource semantics, and repair are validated, consider new
+hard pruning. Each rule needs a soundness argument, explicit assumption scope,
+small-board exhaustive differential checks, and metamorphic coverage. A failed
+macro precondition rejects that macro, not all successors. A hypothesis conflict
+rejects that hypothesis, not the board.
 
-Agenda-based inference between:
-
-- goal domains;
-- matchings;
-- support requirements;
-- room flows;
-- doorway resources;
-- staging viability;
-- ordering constraints.
-
-### Why
-
-This creates compounding deductions before search.
-
-### Acceptance
-
-The analyzer regularly reduces assignment/domain uncertainty through multiple rounds rather than a single pass.
+Acceptance: no solvability loss in exhaustive fixtures; every promoted rule has
+an independent rationale. Test coverage alone is not a proof of soundness.
 
 ---
 
-## 32. Stage 7 — temporal resources and staging
+## 31. Stage 6 — measured default promotion
 
-### Implement
+Promote the cheap pass across puzzle sizes only after overhead and quality gates
+pass. Use deterministic work budgets and reasoning pressure to select deeper
+analysis; preserve explicit off/experimental controls during rollout.
 
-- explicit resource objects;
-- staging tasks;
-- support preservation;
-- doorway consumption/release;
-- future-plan deadlock classification.
+Acceptance: browser and mechanism-corpus measurements show acceptable analysis
+latency, no material quality regressions, and reproducible work-budget behavior.
 
-### Why
+## 32. Delivery and performance gates
 
-This captures one of the most human-like Sokoban skills: knowing what **not** to occupy yet.
+Every stage includes runtime integration, regression coverage, and comparative
+benchmarks. Target a replay-valid Grand Hall solution of at most 650 moves within
+three seconds of search after analysis. Report analysis, search, refinement, and
+total elapsed time separately; any refinement needed to meet 650 counts within
+the search allowance. The 626-move reference is an upper bound, not a runtime
+route or a proof of optimality. Browser timings establish the product target;
+Node measurements support iteration but cannot substitute for them.
 
-### Acceptance
+## 33. Cross-stage telemetry
 
-Fixtures that require temporary staging or delayed goal occupation show major reductions in wrong-plan search.
+Track moves, pushes, walking, solved rate, analysis/repair work, downstream search
+work, and latency distributions. Domain reductions and task progress explain
+results; they are not standalone acceptance criteria.
 
----
+## 34. Cross-stage mechanism corpus
 
-## 33. Stage 8 — incremental re-analysis and plan repair
+Cover temporary occupation, delayed commitment, alternative crossings, role
+symmetry, reversible progress, hypothesis failure, and cache-boundary changes.
+Run replay and transformed-board checks alongside the established puzzle corpus.
 
-### Implement
+## 35. Review boundaries
 
-- strategic event detection;
-- provenance invalidation;
-- suffix repair;
-- task rebinding for interchangeable boxes.
-
-### Why
-
-Plans become adaptive rather than root-static.
-
-### Acceptance
-
-Strategic failure does not immediately fall back to broad search; the solver repairs the plan first.
-
----
-
-## 34. Stage 9 — exact local macros
-
-### Implement
-
-- room macro contracts;
-- corral macro contracts;
-- local signature cache;
-- verified realization storage.
-
-### Why
-
-Collapse large regions of detailed push search into high-level transformations.
-
-### Acceptance
-
-Global search expansion falls substantially on multi-room puzzles without sacrificing correctness.
-
----
-
-## 35. Stage 10 — explicit competing plan hypotheses
-
-### Implement
-
-- set-valued assignment decisions;
-- top-K strategic hypotheses;
-- hypothesis-specific assumptions;
-- hypothesis-level parallel portfolio;
-- hypothesis abandonment/repair.
-
-### Why
-
-A smart solver should acknowledge uncertainty rather than encode guesses as facts.
-
-### Acceptance
-
-Puzzles with ambiguous goal order/assignment are robust against one bad strategic guess.
+Keep internal patches reviewable while delivering integrated stages. Do not stop
+a quality upgrade at types, advisory JSON, or counters that search does not use.
 
 ---
 
@@ -2483,18 +2448,17 @@ function strategicSuccessors(state, plan):
     for candidate in candidates:
         assessment = assessPlanTransition(state, candidate.state, plan)
 
-        if assessment.provenHardViolation:
+        if assessment.soundBoardImpossibility:
             prune
         else:
-            candidate.score = lexicographic(
-                assessment.hardViolationCount,
-                assessment.resourceRisk,
-                -assessment.tasksCompleted,
-                -assessment.tasksAdvanced,
-                candidate.pushLowerBound,
-                candidate.moveEstimate,
+            candidate.score = moveAwareHeuristic(
+                candidate.movesSoFar + candidate.remainingMoveEstimate,
+                boundedPreference(assessment.resourceRisk, assessment.taskProgress),
             )
+            retainDiverseHypothesesAndRecovery(candidate)
 
+    # Independent recovery retains budget even when task candidates exist.
+    scheduleIndependentRecovery(state)
     if candidates empty or plateau exceeded:
         return boundedRecoverySuccessors(state, plan)
 
@@ -2588,6 +2552,7 @@ A -> G1 forced
 ```text
 Final push A->G1 requires support S.
 Keeper reaches S only while doorway D remains open.
+Committing A to G1 closes D, and B has no alternate crossing route.
 ```
 
 ### Transport analysis
@@ -2599,7 +2564,7 @@ B must cross D to reach G2.
 ### Ordering inference
 
 ```text
-B->G2 before A->G1
+cross(B, D) before commit(A, G1)
 ```
 
 ### Obstruction analysis
@@ -2613,7 +2578,8 @@ C is already assigned G3, but sending C directly to G3 would block keeper route 
 
 ```text
 C may stage at P2 safely until B crosses D.
-P1 is rejected because it consumes keeper support for G1.
+P1 needs a clearance obligation before G1 uses its support.
+Reject P1 only if clearance is proven impossible; otherwise compare its move cost.
 ```
 
 ### Plan DAG
@@ -2623,11 +2589,12 @@ T1: stage C at P2
 T2: transport B through D        depends on T1
 T3: commit B to G2               depends on T2
 T4: commit C to G3               depends on T2
-T5: commit A to G1               depends on T3,T4
+T5: commit A to G1               depends on T2
 
 Invariant:
 D must remain open until T2 completes.
-S must remain keeper-accessible until T5.
+S must be keeper-accessible when T5 uses it; temporary occupation needs clearance.
+T3/T4 need not precede T5 without additional access evidence.
 ```
 
 ### Search behavior
@@ -2649,7 +2616,7 @@ After T2:
 
 ```text
 doorway resource no longer reserved for B
-T3/T4 enabled
+T3/T4/T5 considered enabled if their own support predicates hold
 ```
 
 This is the style of reasoning that would make Sokomind feel qualitatively different from ordinary search.
@@ -2662,16 +2629,14 @@ This is the style of reasoning that would make Sokomind feel qualitatively diffe
 
 | Priority | Change | Why it matters | Expected impact |
 |---|---|---|---|
-| **P0** | Typed authoritative plan DAG | Gives strategic reasoning a real contract | Fundamental architecture |
-| **P0** | Plan progress governs all flagship forward lanes | Prevents plan semantics from disappearing after seeding | Very high |
-| **P0** | Fixed-point inference | Makes independent facts compound into deductions | Very high |
-| **P1** | Temporal resource model | Captures delayed goals, doorway/support preservation, staging | Very high |
-| **P1** | Incremental plan repair | Makes planning adaptive instead of root-static | High |
-| **P1** | Exact room/corral macros | Collapses local combinatorial search | High on structured puzzles |
-| **P2** | Plan hypotheses | Handles ambiguity safely | High robustness |
-| **P2** | Always-on cheap analysis + reasoning-pressure tiers | Makes “analyze first” the normal Sokomind identity | High consistency |
-| **P2** | Proof/derived/heuristic provenance | Prevents smart pruning from becoming unsound | Critical safety/correctness |
-| **P2** | Intelligence telemetry and mechanism corpus | Lets improvements be demonstrated rather than guessed | Critical engineering feedback |
+| **P0** | Typed plan, executable predicates, scoped provenance | Makes inference and repair auditable from the first integration | Foundation |
+| **P0** | Structural execution and checkpoints, then applicable forward lanes | Retains task meaning with independent recovery | Runtime benefit |
+| **P0** | Temporal resources and connected inference | Models crossing, clearance, and commitment precisely | Strategic quality |
+| **P0** | Minimal hypotheses, telemetry, and mechanism corpus | Separates assumptions from facts and measures outcomes | Correctness and feedback |
+| **P1** | Competing strategies and incremental repair | Recovers from bad assumptions cheaply | Robustness |
+| **P1** | Verified room/corral contracts | Reuses bounded local execution | Structured-puzzle efficiency |
+| **P2** | New hard pruning after soundness validation | Removes only justified impossibilities | Branch reduction |
+| **P2** | Measured cheap/auto default promotion | Expands coverage after overhead and quality gates pass | Product rollout |
 
 ---
 
@@ -2679,7 +2644,7 @@ This is the style of reasoning that would make Sokomind feel qualitatively diffe
 
 ## 50. What I would implement first
 
-The first coding slice should be intentionally small enough to review but architecturally meaningful.
+The first delivery is Stage 1 end to end. The following steps are internal review milestones, not separate chat-sized endpoints. Include scoped provenance, minimal hypotheses, temporal resource intervals, and an independent recovery path from the start.
 
 ### Step 1 — create `StrategicPlanV2` types and validator
 
@@ -2723,17 +2688,17 @@ planNeutralPushes
 
 Still do not hard-prune.
 
-### Step 5 — use plan progress as a strong ordering signal
+### Step 5 — execute the plan with move-aware ordering
 
-Prioritize transitions that complete/advance enabled tasks.
+Connect doorway release, temporary staging, and goal commitment to successor generation and checkpoint continuation. Estimate total moves including keeper travel; task progress and uncertain resource risks guide bounded preferences and diversity, not hard exclusion.
 
-Keep fallback successors.
+Keep fallback successors and an independent recovery lane. Re-evaluate reversible completion against the current board.
 
 ### Step 6 — benchmark
 
 Compare current `main` behavior to the plan-aware ordering version.
 
-If search reductions are real and no regressions appear, proceed to fixed-point inference.
+Measure analysis separately, and compare verified moves, walking, solved rate, and search time across the mechanism corpus and browser Grand Hall runs. Proceed to connected inference only after reporting the integrated result; more completed tasks alone is not a performance win.
 
 This approach yields useful feedback early without requiring the entire final architecture at once.
 
@@ -2797,7 +2762,7 @@ Long-term fix: preserve diversity among full strategic hypotheses and causal sch
 
 Candidate score combines path cost, estimated remaining pushes, doorway schedule penalty, and goal-access penalty.
 
-Long-term fix: feasibility/resource preservation should dominate cost lexicographically; weights can remain within a feasibility class.
+Long-term fix: reject sound board-level impossibilities, repair hypothesis conflicts, and rank admissible candidates by move-aware estimates with bounded strategic preferences and diversity. Uncertain resource risk must not dominate move cost lexicographically.
 
 ---
 

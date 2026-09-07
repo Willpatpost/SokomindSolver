@@ -517,3 +517,73 @@ harness when comparing production profiles or feature vectors.
 
 JSON is emitted even for rejected completed captures so the failure remains
 inspectable.
+
+
+## Persistent strategic execution sprint 1
+
+September 7, 2026: the V2 task package is now consumed after seeding and rebound
+at verified checkpoints. This is an experimental architecture integration;
+**its quality gate has not passed**. Both strategic preparation and persistent
+execution remain off by default. Preparation alone retains seed-only execution.
+
+Enable the integrated path with request options:
+
+```ts
+options: {
+  "sokomind-solver": {
+    strategicAnalysisMs: 250,
+    strategicPlanExecution: true,
+  },
+}
+```
+
+The initial contract covers release/export/stage/commit tasks, box-at-cells and
+cells-clear predicates, hypothesis-scoped provenance, and resource availability
+between consumer enablement and completion. Runtime changes are advisory ordering
+and recovery reservations, not new hard pruning. No full causal repair or
+fixed-point resource/assignment inference is implemented yet.
+
+Matched, alternating, isolated Node runs use the same preparation allowance and
+kernel settings for seed-only (execution off) and persistent execution (on).
+The [raw results](benchmarks/strategic-execution-sprint1.json) record environment,
+engine/harness hashes, counters, preparation time, and replay verification.
+
+| Puzzle | Execution | Moves / pushes | Expanded / generated | Search time, two runs |
+|---|---|---|---|---|
+| expert-maze | off | 231 / 26 | 370 / 1,618 | 240–249 ms |
+| expert-maze | on | 107 / 28 | 210 / 900 | 173 ms |
+| Grand Hall | off | 894 / 262 | 1,446 / 10,978 | 6,099–6,183 ms |
+| Grand Hall | on | 1,009 / 284 | 1,973 / 14,654 | 6,252–6,297 ms |
+
+Analysis took 45–47 ms for the maze and 245–251 ms for Grand Hall. Every returned
+solution passed replay. The maze saves 126 walking moves (205 to 79), but Grand
+Hall gets worse, so this does not justify promoting the new execution policy.
+These are kernel experiments, not production-adapter or browser performance
+claims. The previously recorded production maze result uses different settings.
+An exploratory rewrite of the 1,009-move Grand Hall path reached 797 moves / 264
+pushes in another 5.4 seconds; it does not meet the 650-move/search-time objective.
+
+Reproduce the matched experiment:
+
+```powershell
+npm.cmd run benchmark:solver:analyzer -- --ids=expert-maze,huge --budgets=250 --runs=2 --search-ms=0 --execution=both
+```
+
+`--execution=both` alternates seed-only and persistent execution; preparation
+remains identical in configuration. `--search-ms=0` removes only the wall-clock
+search cutoff, retaining existing work/segment limits. Use `--search-ms=3000`
+for the strict search allowance. Rewrite experiments remain separate because the
+rewriter does not yet implement that cooperative deadline.
+
+Next acceptance work: improve connected transit/staging inference and remaining
+walking estimates, then rerun the mechanism corpus and browser Grand Hall gate.
+Do not treat more completed tasks as evidence of better solutions.
+
+Sprint validation: 2,353 unit tests, nine static-build checks, type checking,
+lint, documentation validation, and production build pass. The fresh-worker
+V2 handoff and seed-free execution test passes in Chromium and WebKit. The
+default Grand Hall regression retains 893 moves / 278 pushes, 1,329 expanded,
+8,425 generated, 2,538 retained, and peak frontier 291 in base/mirrored/rotated
+orientations; its rewrite remains 789 / 270. All four production multi-puzzle
+regressions pass. These checks establish integration and default preservation,
+not browser performance acceptance for the experimental policy.

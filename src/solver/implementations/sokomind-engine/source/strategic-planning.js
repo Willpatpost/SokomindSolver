@@ -15,7 +15,7 @@ function strategicTasks(state, board, doorwayTasks, transit) {
     for (const prerequisite of commitment.prerequisites) {
       if (prerequisite.releaseCells.includes(positions[prerequisite.boxIndex])) continue;
       tasks.push({
-        id: `release:${prerequisite.boxIndex}:${commitment.boxIndex}`,
+        id: `release:${prerequisite.boxIndex}:${commitment.boxIndex}:${commitment.target}`,
         kind: "release",
         boxIndex: prerequisite.boxIndex,
         participants: [prerequisite.boxIndex, commitment.boxIndex],
@@ -51,7 +51,8 @@ function strategicTasks(state, board, doorwayTasks, transit) {
 function strategicTaskDistances(task, board, budget) {
   // Multi-source relaxed push distances guide local simulation toward the task
   // boundary. Uniform move-cost exploration spends its budget on nearby walks.
-  const cached = budget.distanceTables.get(task.id);
+  const distanceKey = JSON.stringify([task.id, [...task.destinations].sort()]);
+  const cached = budget.distanceTables.get(distanceKey);
   if (cached) { budget.distanceCacheHits++; return cached; }
   const distances = new Map([...task.destinations].map(cell => [cell, 0]));
   const queue = [...task.destinations];
@@ -66,10 +67,10 @@ function strategicTaskDistances(task, board, budget) {
       queue.push(previous);
     }
   }
-  // Task IDs encode their fixed destination domain. Tables never cross a
-  // planning request and are independent of temporary box occupancy.
+  // Clearance destinations can change with the current box position. Include
+  // the domain in the key; tables never cross a planning request.
   if (budget.distanceTables.size < 64) {
-    budget.distanceTables.set(task.id, distances);
+    budget.distanceTables.set(distanceKey, distances);
     budget.distanceEntries += distances.size;
   }
   return distances;
@@ -135,6 +136,11 @@ function simulateStrategicTask(start, task, board, budget, options) {
       }
     }
   }
+  if (!endpoints.length && obstructions.size) {
+    const blocker = [...obstructions].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+    budget.taskObstructions.set(task.id, {boxIndex: blocker,
+      cell: pkey(start.boxes[blocker][0], start.boxes[blocker][1])});
+  }
   if (!endpoints.length && task.participants.length < 3 && obstructions.size &&
       budget.expanded < options.maxExpanded && budget.generated < options.maxGenerated && now() < budget.deadline) {
     const blocker = [...obstructions].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
@@ -148,24 +154,27 @@ function simulateStrategicTask(start, task, board, budget, options) {
 function buildStrategicPlan(data, config = {}, prepared = undefined) {
   const started = now();
   const options = {
-    maxMs: strategicLimit(config.maxMs, 250, 10000),
-    maxExpanded: strategicLimit(config.maxExpanded, 4000, 20000),
-    maxGenerated: strategicLimit(config.maxGenerated, 48000, 200000),
+    maxMs: strategicLimit(config.maxMs, 250, 60000),
+    maxExpanded: strategicLimit(config.maxExpanded, 4000, 1000000),
+    maxGenerated: strategicLimit(config.maxGenerated, 48000, 5000000),
     taskExpanded: strategicLimit(config.taskExpanded, 64, 2000),
     taskPushes: strategicLimit(config.taskPushes, 20, 80),
     taskResults: strategicLimit(config.taskResults, 2, 4),
     width: strategicLimit(config.width, 4, 16),
-    layers: strategicLimit(config.layers, 6, 12),
-    pathLimit: 512,
+    layers: strategicLimit(config.layers, 6, 128),
+    pathLimit: strategicLimit(config.pathLimit, 512, 4096),
+    inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
-  const plan = {schemaVersion: 1, snapshotKey: strategicSnapshotKey(state),
+  const plan = {schemaVersion: 2, tasks: [], resources: [],
+    hypotheses: [{id: "root", taskIds: [], assumption: "root-assignment-and-transit"}],
+    snapshotKey: strategicSnapshotKey(state),
     orientation: "canonical", candidates: [], options,
     statistics: {elapsedMs: 0, expanded: 0, generated: 0, tasksAttempted: 0, completedLayers: 0},
     status: "partial"};
   const budget = {expanded: 0, generated: 0, groupWidenings: 0, deadline: started + options.maxMs,
-    distanceTables: new Map(), distanceEntries: 0, distanceCacheHits: 0};
+    distanceTables: new Map(), distanceEntries: 0, distanceCacheHits: 0, taskObstructions: new Map()};
   if (!options.maxMs || !options.maxExpanded || !options.maxGenerated || !options.width || !options.layers) {
     plan.statistics.elapsedMs = now() - started;
     return plan;
@@ -176,29 +185,98 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     [...cell.split(",").map(Number), label])};
   const doorway = reusable?.doorway || assignmentDoorwayPlan(initial.boxes, board, true);
   const transit = reusable?.transit || analyzeGoalTransitPrerequisites(initial, board, doorway);
-  let beam = [{...initial, path: [], pushes: 0, tasks: []}];
+  const registerTask = task => {
+    if (plan.tasks.some(existing => existing.id === task.id) || plan.tasks.length >= 128) return;
+    plan.tasks.push({id: task.id, kind: task.kind === "deliver" ? "commit-goal" : task.kind,
+      boxIndex: task.boxIndex, requires: [],
+      ...(task.forTaskId ? {forTaskId: task.forTaskId} : {}),
+      completesWhen: {kind: "box-at-cells", boxIndex: task.boxIndex, cells: [...task.destinations]},
+      dependsOn: [], evidence: {strength: "heuristic", scope: "hypothesis", hypothesisId: "root",
+        snapshotKey: plan.snapshotKey, rule: "root-assignment-and-transit", sourceIds: []}});
+    plan.hypotheses[0].taskIds.push(task.id);
+  };
+  for (const task of strategicTasks(initial, board, doorway.tasks, transit)) registerTask(task);
+  for (const [boxIndex, target] of cacheDiscoveryAssignmentDetail(initial.boxes, board).assignedTargets) {
+    registerTask({id: `deliver:${boxIndex}:${target}`, kind: "deliver", boxIndex, destinations: new Set([target])});
+  }
+  for (const commitment of transit.commitments) {
+    const consumer = plan.tasks.find(task => task.id === `deliver:${commitment.boxIndex}:${commitment.target}`);
+    if (!consumer) continue;
+    for (const prerequisite of commitment.prerequisites) {
+      const release = plan.tasks.find(task => task.id === `release:${prerequisite.boxIndex}:${commitment.boxIndex}:${commitment.target}`);
+      if (!release) continue;
+      consumer.dependsOn.push(release.id);
+      plan.resources.push({id: `transit:${release.id}`, cells: [commitment.target],
+        consumerTaskId: release.id, availableFrom: "task-enabled", availableUntil: "task-complete"});
+    }
+    consumer.evidence.sourceIds = [...consumer.dependsOn];
+  }
+  for (const task of plan.tasks.filter(task => task.kind === "export")) {
+    const consumer = plan.tasks.find(candidate => candidate.kind === "commit-goal" && candidate.boxIndex === task.boxIndex);
+    if (consumer && !consumer.dependsOn.includes(task.id)) {
+      consumer.dependsOn.push(task.id); consumer.evidence.sourceIds.push(task.id);
+    }
+  }
+  if (options.inferenceWork) inferStrategicDependencies(plan, initial, board, options.inferenceWork);
+  let beam = [{...initial, path: [], pushes: 0, tasks: [], staging: []}];
   const retained = new Map();
+  // Repeated parking/clearing cycles are the same physical plan state, not new
+  // progress. New clearance evidence starts a fresh epoch so a previously failed
+  // state can benefit from deductions learned by another candidate.
+  const scheduleArrivals = new ClockCache(20000);
+  const arrivalKey = child => JSON.stringify([plan.resources.length, child.robot, child.boxes]);
+  scheduleArrivals.set(arrivalKey(initial), 0);
   for (let layer = 0; layer < options.layers && now() < budget.deadline &&
       budget.expanded < options.maxExpanded && budget.generated < options.maxGenerated; layer++) {
     const candidates = [];
     for (const current of beam) {
-      const tasks = strategicTasks(current, board, doorway.tasks, transit);
+      if (options.inferenceWork) scheduleArrivals.set(arrivalKey(current), current.path.length);
+      const tasks = options.inferenceWork ? strategicExecutionAgenda(current, plan, board)
+        : strategicTasks(current, board, doorway.tasks, transit);
       for (const task of tasks) {
         if (now() >= budget.deadline || budget.expanded >= options.maxExpanded ||
             budget.generated >= options.maxGenerated) break;
+        registerTask(task);
+        if (!plan.tasks.some(existing => existing.id === task.id)) continue;
         plan.statistics.tasksAttempted++;
+        budget.taskObstructions.delete(task.id);
         const endpoints = simulateStrategicTask(current, task, board, budget, options);
+        const obstruction = budget.taskObstructions.get(task.id);
+        if (options.inferenceWork && !endpoints.length && obstruction && plan.resources.length < 128) {
+          const id = `obstruction:${plan.resources.length}`;
+          if (!plan.resources.some(resource => resource.consumerTaskId === task.id &&
+              resource.cells.length === 1 && resource.cells[0] === obstruction.cell)) {
+            plan.resources.push({id, cells: [obstruction.cell], consumerTaskId: task.id,
+              availableFrom: "task-enabled", availableUntil: "task-complete"});
+            plan.statistics.obstructionClearances = (plan.statistics.obstructionClearances || 0) + 1;
+          }
+        }
         for (const endpoint of endpoints) {
           const path = [...current.path, ...endpoint.path];
           if (path.length > options.pathLimit) continue;
           const child = {...endpoint, path, pushes: current.pushes + endpoint.pushes,
-            tasks: [...current.tasks, task.id]};
+            tasks: [...current.tasks, task.id], staging: [...current.staging]};
+          endpoint.boxes.forEach((box, index) => {
+            const position = pkey(box[0], box[1]);
+            if (index !== task.boxIndex && position !== pkey(current.boxes[index][0], current.boxes[index][1]) &&
+                board.goals.get(position) !== box[2]) {
+              child.staging.push({boxIndex: index, position, beforeTaskId: task.id});
+            }
+          });
           const remaining = discoveryHeuristic(child.boxes, board);
           child.estimatedRemainingPushes = remaining;
           const schedule = doorwayScheduleState(child.boxes, board, doorway.tasks);
           child.score = path.length + remaining + 4 * schedule.penalty +
-            4 * goalAccessAnalysis(child.boxes, board).penalty;
+            4 * goalAccessAnalysis(child.boxes, board).penalty +
+            (options.inferenceWork ? 16 * strategicCommitmentRisk(child, plan) : 0);
           if (!Number.isFinite(child.score)) continue;
+          if (options.inferenceWork) {
+            const key = arrivalKey(child);
+            if ((scheduleArrivals.get(key) ?? Infinity) <= path.length) {
+              plan.statistics.scheduleDuplicates = (plan.statistics.scheduleDuplicates || 0) + 1;
+              continue;
+            }
+          }
           candidates.push(child);
         }
       }
@@ -233,8 +311,21 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
   }
   const schedules = new Map();
   for (const candidate of [...retained.values()].sort((a, b) =>
-    b.tasks.length - a.tasks.length || a.score - b.score)) {
+    (options.inferenceWork ? a.estimatedRemainingPushes - b.estimatedRemainingPushes : b.tasks.length - a.tasks.length) || a.score - b.score)) {
     if (!schedules.has(candidate.tasks[0])) schedules.set(candidate.tasks[0], candidate);
+  }
+  // Keep one witnessed parking hypothesis, not incompatible staging choices.
+  const staged = new Set();
+  for (const stage of [...schedules.values()][0]?.staging || []) {
+    if (staged.has(stage.boxIndex) || plan.tasks.length >= 128) continue;
+    staged.add(stage.boxIndex);
+    const id = `stage:${stage.boxIndex}:${stage.position}`;
+    registerTask({id, kind: "stage", boxIndex: stage.boxIndex, destinations: new Set([stage.position]),
+      ...(options.inferenceWork ? {forTaskId: stage.beforeTaskId} : {})});
+    const consumer = plan.tasks.find(task => task.id === stage.beforeTaskId);
+    if (!options.inferenceWork && consumer && !consumer.dependsOn.includes(id)) {
+      consumer.dependsOn.push(id); consumer.evidence.sourceIds.push(id);
+    }
   }
   plan.candidates = [...schedules.values()].slice(0, options.width).map(candidate => ({path: candidate.path,
       moves: candidate.path.length, pushes: candidate.pushes, tasks: candidate.tasks,
@@ -255,12 +346,12 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
 
 function preparedStrategicSeeds(payload, initial, board) {
   const plan = payload.strategicPlan;
-  if (plan?.schemaVersion !== 1 || plan.orientation !== "canonical" ||
+  if (!validateStrategicPlanContract(plan) || plan.orientation !== "canonical" ||
       plan.snapshotKey !== strategicSnapshotKey(payload.state) ||
       !Array.isArray(plan.candidates)) return [];
   const seeds = new Map();
   for (const candidate of plan.candidates.slice(0, 16)) {
-    if (!Array.isArray(candidate?.path) || !candidate.path.length || candidate.path.length > 512) continue;
+    if (!Array.isArray(candidate?.path) || !candidate.path.length || candidate.path.length > 4096) continue;
     let state = initial, pushes = 0;
     for (const move of candidate.path) {
       const next = neighbors(state, board, false).find(next => next.move === move);

@@ -26,6 +26,8 @@ const SOURCE_FILES = Object.freeze([
   "deadlock.js",
   "analysis.js",
   "push-generation.js",
+  "strategic-contract.js",
+  "strategic-inference.js",
   "strategic-planning.js",
   "solver-search.js",
 ]);
@@ -66,23 +68,27 @@ async function generatedSource() {
       .replace(/^globalThis\.SokomindHardPruningRules.*$/gmu, "");
     modules.push(`\n/* ===== ${file} ===== */\n${source.trimEnd()}\n`);
   }
-  return `${banner}${modules.join("")}\nexport { bidirectionalSide, search };\n`;
+  return `${banner}${modules.join("")}\nexport { bidirectionalSide, search, validateStrategicPlanContract, evaluateStrategicPlanState, rebaseStrategicPlan };\n`;
 }
 
-const expected = await generatedSource();
-let existing = "";
-try {
-  existing = await fs.readFile(outputPath, "utf8");
-} catch (error) {
-  if (error?.code !== "ENOENT") throw error;
-}
-
-if (process.argv.includes("--check")) {
-  if (existing !== expected) {
-    throw new Error(
-      "Sokomind engine bundle is stale. Run npm run prepare:sokomind-solver.",
-    );
+const contractSource = await fs.readFile(path.join(sourceDirectory, "strategic-contract.js"), "utf8");
+const validatorSource = contractSource.slice(0, contractSource.indexOf("\nfunction evaluateStrategicPlanState"));
+const artifacts = [
+  [outputPath, await generatedSource()],
+  [path.join(engineDirectory, "strategic-validation.generated.js"),
+    banner + validatorSource + "\nexport { validateStrategicPlanContract };\n"],
+];
+for (const [artifactPath, expected] of artifacts) {
+  let existing = "";
+  try {
+    existing = await fs.readFile(artifactPath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
   }
-} else if (existing !== expected) {
-  await fs.writeFile(outputPath, expected, "utf8");
+  if (process.argv.includes("--check")) {
+    if (existing !== expected) throw new Error(
+      "Sokomind engine artifact is stale. Run npm run prepare:sokomind-solver.");
+  } else if (existing !== expected) {
+    await fs.writeFile(artifactPath, expected, "utf8");
+  }
 }

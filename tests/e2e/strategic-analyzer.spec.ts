@@ -39,18 +39,26 @@ test("a fresh search worker consumes a serialized analyzer plan", async ({page})
       worker.postMessage({mode: "search", payload});
     });
     const preparation = await run({algorithm: "analyze-puzzle", state, strategicAnalysis: {maxMs: 1000}});
-    const plan = (preparation.analysis as {strategicPlan: unknown}).strategicPlan;
+    const plan = (preparation.analysis as {strategicPlan: Record<string, unknown>}).strategicPlan;
     // Crossing both JSON and Worker boundaries must retain a usable package.
     const solved = await run({algorithm: "plan-macro-beam", state,
       strategicPlan: JSON.parse(JSON.stringify(plan)), maxVisited: 1});
+    const executed = await run({algorithm: "plan-macro-beam", state,
+      strategicPlan: {...JSON.parse(JSON.stringify(plan)), candidates: []}, planDiagnostics: true});
     const cutoff = await run({algorithm: "plan-macro-beam", state, planSearchMs: 0});
-    return {solved, cutoff};
+    return {solved, executed, cutoff};
   }, {asset, state});
   expect(result.solved.status).toBe("solved");
   expect(result.solved.visited).toBe(0);
   const solution = solutionFromLegacyPath(request, result.solved.path as string[]);
   expect(solution).toBeTruthy();
   expect(verifySolverSolution(request, solution!).valid).toBe(true);
+  expect(result.executed.status).toBe("solved");
+  const execution = (result.executed.planDiagnostics as {strategicExecution: {evaluations: number}}).strategicExecution;
+  expect(execution.evaluations).toBeGreaterThan(0);
+  const executedSolution = solutionFromLegacyPath(request, result.executed.path as string[]);
+  expect(executedSolution).toBeTruthy();
+  expect(verifySolverSolution(request, executedSolution!).valid).toBe(true);
   expect(result.cutoff.status).toBe("cutoff");
   expect(result.cutoff.terminationReason).toBe("search-time-budget");
 });

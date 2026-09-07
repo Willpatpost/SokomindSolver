@@ -6,6 +6,8 @@ export interface SokomindRequestOptions {
   readonly mode: SokomindMode;
   /** Experimental strategic preparation; zero preserves the reviewed planner. */
   readonly strategicAnalysisMs: number;
+  /** Experimental persistent task execution; independent of prepared path seeds. */
+  readonly strategicPlanExecution: boolean;
   readonly proofAlgorithm: "auto" | "astar" | "ida-star";
   readonly deterministic: boolean;
   readonly maximumIncumbents: number;
@@ -19,6 +21,7 @@ export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
   Object.freeze({
     mode: "fast",
     strategicAnalysisMs: 0,
+    strategicPlanExecution: false,
     proofAlgorithm: "auto",
     deterministic: false,
     maximumIncumbents: 4,
@@ -100,6 +103,9 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
   }
   if ("strategicAnalysisMs" in obj) {
     validated.strategicAnalysisMs = validateInt("strategicAnalysisMs", obj.strategicAnalysisMs, 0, 1000);
+  }
+  if ("strategicPlanExecution" in obj) {
+    validated.strategicPlanExecution = validateBoolean("strategicPlanExecution", obj.strategicPlanExecution);
   }
   if ("proofAlgorithm" in obj) {
     validated.proofAlgorithm = validateEnum(

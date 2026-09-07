@@ -9,7 +9,7 @@ import {
   type LegacyState,
   type SokomindAnalysisPlan,
 } from "./sokomind-legacy.ts";
-import type { SokomindRequestOptions } from "./sokomind-options.ts";
+import { extractSokomindOptions, type SokomindRequestOptions } from "./sokomind-options.ts";
 import type { SokomindTuningProfile } from "./sokomind-tuning.ts";
 
 export const DEFAULT_MAX_ENGINE_WORKERS = 3;
@@ -65,6 +65,7 @@ export function preparationPlan(state: LegacyState, strategicAnalysisMs = 0, req
       algorithm: "analyze-puzzle",
       state,
       ...(strategicAnalysisMs > 0 ? { strategicAnalysis: { maxMs: strategicAnalysisMs,
+        inferenceWork: request && extractSokomindOptions(request).strategicPlanExecution ? 2048 : 0,
         ...(request?.limits?.maxExpandedStates !== undefined
           ? {maxExpanded: Math.min(4000, request.limits.maxExpandedStates)} : {}),
         ...(request?.limits?.maxGeneratedStates !== undefined
@@ -98,7 +99,8 @@ export function structuralPlan(
     payload: Object.freeze({
       algorithm: "plan-macro-beam",
       state,
-      ...(analysisPlan?.strategicPlan ? { strategicPlan: analysisPlan.strategicPlan } : {}),
+      ...(analysisPlan?.strategicPlan ? { strategicPlan: analysisPlan.strategicPlan,
+        planStrategicExecution: extractSokomindOptions(request).strategicPlanExecution } : {}),
       maxDepth: 460,
       maxVisited: remainingStateBudget(request, 6_000, budgetDivisor),
       maxGenerated: remainingGeneratedBudget(
@@ -320,7 +322,11 @@ export function checkpointContinuationPlans(
             ? { preparedBoard: preparedState.preparedBoard }
             : {}),
         });
-        const direct = discoveryPlans(
+        const executeStrategy = Boolean(analysisPlan?.strategicPlan && extractSokomindOptions(request).strategicPlanExecution);
+        const direct = executeStrategy
+          ? structuralPlan(checkpointState, request, tuning, firstSolutionOnly ? "fast" : "quality",
+              budgetDivisor, analysisPlan)
+          : discoveryPlans(
           checkpointState,
           request,
           1,
@@ -340,6 +346,9 @@ export function checkpointContinuationPlans(
           payload: Object.freeze({
             ...direct.payload,
             state: checkpointState,
+            ...(executeStrategy ? {strategicContinuation: {
+              root: preparedState, path: checkpoint.path,
+            }} : {}),
             seed: 65_537 + index * 8_191,
             ...(maxDepth === undefined
               ? {}

@@ -473,6 +473,12 @@ function restorePlanCheckpoint(checkpoint, canonical, originalRows) {
 }
 
 function canonicalPlanMacroBeamSearch(payload) {
+  if (payload.strategicContinuation) {
+    const context = payload.strategicContinuation;
+    payload = {...payload, strategicPlan: context.root && Array.isArray(context.path)
+      ? rebaseStrategicPlan(payload.strategicPlan, context.root, payload.state, context.path)
+      : undefined};
+  }
   if (payload.planCanonicalOrientation === false) return planMacroBeamSearch(payload);
   const canonical = canonicalPlanTransform(payload.state);
   if (canonical.transform.id === "identity") {
@@ -1456,6 +1462,33 @@ function planMacroBeamSearch(payload) {
     moves: 0,
     node: null,
   };
+  const strategicPlan = payload.planStrategicExecution !== false &&
+    validateStrategicPlanContract(payload.strategicPlan) &&
+    payload.strategicPlan.snapshotKey === strategicSnapshotKey(payload.state) &&
+    payload.strategicPlan.tasks.length ? payload.strategicPlan : null;
+  const strategicStatistics = strategicPlan ? {evaluations: 0, advancingFirstPushes: 0,
+    recoveryFirstPushes: 0, maxCompleted: 0, maxEnabled: 0, taskMacros: 0, clearanceMacros: 0} : null;
+  const strategicProgressMemo = strategicPlan ? new WeakMap() : null;
+  const strategicAgendaMemo = strategicPlan ? new WeakMap() : null;
+  const strategicDistanceTables = new Map();
+  const connectedTasks = strategicPlan && strategicPlan.options.inferenceWork > 0 && payload.planTaskMacros !== false;
+  const planProgress = state => {
+    let progress = strategicProgressMemo.get(state.boxes);
+    if (!progress) {
+      progress = evaluateStrategicPlanState(state, strategicPlan);
+      strategicProgressMemo.set(state.boxes, progress);
+      strategicStatistics.evaluations++;
+      strategicStatistics.maxCompleted = Math.max(strategicStatistics.maxCompleted, progress.completed.length);
+      strategicStatistics.maxEnabled = Math.max(strategicStatistics.maxEnabled, progress.enabled.length);
+    }
+    return progress;
+  };
+  const taskPreference = (before, after) => {
+    const previous = planProgress(before), next = planProgress(after);
+    const advancing = previous.enabled.some(id => next.completed.includes(id));
+    return {advancing, penalty: Math.min(4, next.resourceRisk) - (advancing ? 2 : 0) +
+      (connectedTasks ? 40 * (next.commitmentRisk - previous.commitmentRisk) : 0)};
+  };
   const width = payload.planBeamWidth || payload.beamWidth || 80;
   const maxSegments = payload.maxPlanSegments || 80;
   const maxVisited = payload.maxVisited || 20000;
@@ -1523,6 +1556,7 @@ function planMacroBeamSearch(payload) {
       regionTransposition: 0,
     },
     layers: [],
+    ...(strategicStatistics ? {strategicExecution: strategicStatistics} : {}),
   } : null;
   const hasEvacuationPlan = rootDoorwayTasks.some(task => task.direction === "export");
   const doorwayScheduleMemo = registerBoardMemoryCache(
@@ -1654,9 +1688,17 @@ function planMacroBeamSearch(payload) {
       4 * child.goalAccess.penalty + 0.08 * child.evacuation +
       (evacuationActive ? 4 : 3) * child.doorwaySchedule.penalty -
       (evacuationComplete ? evacuationCompletionBonus : 0);
+    child.recoveryScore = child.score;
+    if (strategicPlan) {
+      const progress = planProgress(child);
+      // Retain calibrated structural guidance while pricing additional walking.
+      // Resource advice is bounded; this combined score is explicitly heuristic.
+      child.score = child.recoveryScore + 0.005 * (child.moves - child.cost) + 0.1 * Math.min(4, progress.resourceRisk) + (connectedTasks ? 4 * progress.commitmentRisk : 0);
+    }
     return child;
   };
   const checkpointRank = child => {
+    if (strategicPlan) return child.score;
     const schedule = child.doorwaySchedule;
     const unsafe = schedule.prematureImports + schedule.gateBlockers +
       schedule.crossingConflicts + schedule.strandedExports +
@@ -1672,6 +1714,7 @@ function planMacroBeamSearch(payload) {
   initial.exactIdentity = exactPushIdentity(initial, board);
   initial.goalAccess = structuralAnalysis(initial.boxes, true).goalAccess;
   initial.doorwaySchedule = evaluateDoorwaySchedule(initial.boxes);
+  if (strategicPlan) scoreCandidate(initial);
   const preparedSeeds = preparedStrategicSeeds(payload, initial, board);
   if (planDiagnostics) planDiagnostics.preparedPlansAccepted = preparedSeeds.length;
   const completeSeed = preparedSeeds.filter(seed => goal(seed.boxes, board.goals))
@@ -1679,6 +1722,7 @@ function planMacroBeamSearch(payload) {
   if (completeSeed) return {
       path: reconstructNodePath(completeSeed.node), visited: 0, generated: 0,
       bestPushes: completeSeed.cost, bestMoves: completeSeed.moves, preparedPlansAccepted: preparedSeeds.length,
+      ...(planDiagnostics ? {planDiagnostics} : {}),
     };
   for (const seed of preparedSeeds) {
     seed.exactIdentity = exactPushIdentity(seed, board);
@@ -1735,6 +1779,14 @@ function planMacroBeamSearch(payload) {
         if (planDiagnostics) planDiagnostics.pruning.sealedCorral++;
         continue;
       }
+      let strategicAgenda = null;
+      if (connectedTasks) {
+        strategicAgenda = strategicAgendaMemo.get(current.boxes);
+        if (!strategicAgenda) {
+          strategicAgenda = strategicExecutionAgenda(current, strategicPlan, board);
+          strategicAgendaMemo.set(current.boxes, strategicAgenda);
+        }
+      }
       const accessBlockers = importAccessBlockers(current, reachable);
       const firstPushes = pushNeighbors(
         current,
@@ -1761,13 +1813,18 @@ function planMacroBeamSearch(payload) {
         const completesEvacuation = hasEvacuationPlan &&
           current.doorwaySchedule.pendingExports > 0 &&
           schedule.pendingExports === 0;
-        return {
-          next,
-          score: estimateWeight * estimate + 5 * accessDelta + 0.08 * evacuation +
+        const recoveryScore = estimateWeight * estimate + 5 * accessDelta + 0.08 * evacuation +
             4 * (schedule.penalty - current.doorwaySchedule.penalty) -
             (completesEvacuation ? evacuationCompletionBonus : 0) -
-            12 * blockerProgress,
-        };
+            12 * blockerProgress;
+        let score = recoveryScore;
+        if (strategicPlan) {
+          const preference = taskPreference(current, next);
+          if (preference.advancing) strategicStatistics.advancingFirstPushes++;
+          const realized = materializePushNeighborPath(next, reachable);
+          score = recoveryScore + 0.02 * realized.path.length + 0.1 * preference.penalty;
+        }
+        return {next, score, recoveryScore};
       }).sort((left, right) => left.score - right.score);
       const selectedBoxes = new Set(), selectedFirst = [];
       // Preserve one additional box agenda before spending the final branch
@@ -1785,6 +1842,14 @@ function planMacroBeamSearch(payload) {
         if (selectedFirst.length >= boxBranchLimit + 2) break;
         if (selectedFirst.includes(candidate.next)) continue;
         selectedFirst.push(candidate.next);
+      }
+      if (strategicPlan && rankedFirst.length) {
+        const recovery = [...rankedFirst].sort((a, b) => a.recoveryScore - b.recoveryScore)[0].next;
+        if (!selectedFirst.includes(recovery)) {
+          if (selectedFirst.length >= boxBranchLimit + 2) selectedFirst.pop();
+          selectedFirst.push(recovery);
+          strategicStatistics.recoveryFirstPushes++;
+        }
       }
       if (layerDiagnostics) {
         layerDiagnostics.firstPushesSelected += selectedFirst.length;
@@ -1918,6 +1983,23 @@ function planMacroBeamSearch(payload) {
               activePerformance.macroFullExpansions++;
             }
             expanded = expand(fullExplored, macroResults);
+          }
+        }
+        if (strategicAgenda) {
+          const taskObjective = strategicMacroObjective(movedIndex, strategicAgenda, board, strategicDistanceTables);
+          if (taskObjective && (taskObjective.kind === "release" || taskObjective.kind === "stage")) {
+            const planned = expandTargetedPushSequence(first, board, taskObjective, macroLimit,
+              fullExplored, macroResults, {lockProven: false, deadline: planDeadline,
+                moveAwareDedupe: true, reserveAlternateApproach: true});
+            strategicStatistics.taskMacros++;
+            if (taskObjective.kind === "stage") strategicStatistics.clearanceMacros++;
+            // Keep baseline endpoints as recovery; a hypothesis cannot remove them.
+            const unique = new Map();
+            for (const endpoint of [...planned, ...expanded]) {
+              const key = exactPushKey(endpoint, board);
+              if (!unique.has(key) || unique.get(key).path.length > endpoint.path.length) unique.set(key, endpoint);
+            }
+            expanded = [...unique.values()];
           }
         }
         const endpoints = expanded.filter(next => next.pushes > 1);
@@ -2144,6 +2226,13 @@ function planMacroBeamSearch(payload) {
           selectKeeperArrivals(arrivals, keeperArrivalLimit))
       : eligible;
     beam = selectPlanLayer(boundedEligible, width, board);
+    if (strategicPlan && width > 1 && boundedEligible.length) {
+      const recovery = [...boundedEligible].sort((a, b) => a.recoveryScore - b.recoveryScore)[0];
+      if (!beam.includes(recovery)) {
+        if (beam.length >= width) beam.pop();
+        beam.push(recovery);
+      }
+    }
     if (layerDiagnostics) {
       layerDiagnostics.generatedStates = generated - layerGeneratedAt;
       layerDiagnostics.candidateStates = candidateList.length;

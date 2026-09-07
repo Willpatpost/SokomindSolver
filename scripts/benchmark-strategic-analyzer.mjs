@@ -14,7 +14,7 @@ const args = new Map(process.argv.slice(2).map(argument => {
   const [key, ...value] = argument.replace(/^--/, "").split("=");
   return [key, value.join("=")];
 }));
-const allowed = new Set(["ids", "budgets", "runs", "search-ms", "rewrite", "child"]);
+const allowed = new Set(["ids", "budgets", "runs", "search-ms", "rewrite", "child", "execution", "inference-work", "task-macros", "seed-index"]);
 for (const key of args.keys()) if (!allowed.has(key)) throw new Error(`Unknown argument: ${key}`);
 const integer = (value, maximum) => {
   const result = Number(value);
@@ -28,6 +28,13 @@ const runs = integer(args.get("runs") ?? 1, 100);
 if (!runs) throw new Error("runs must be positive");
 const searchMs = integer(args.get("search-ms") ?? 3000, 60000);
 const rewrite = args.has("rewrite");
+const inferenceWork = integer(args.get("inference-work") ?? 2048, 20000);
+const taskMacros = args.get("task-macros") !== "off";
+const seedIndex = args.has("seed-index") ? integer(args.get("seed-index"), 15) : null;
+const execution = args.get("execution") ?? "on";
+if (!["on", "off", "both"].includes(execution) || (args.has("child") && execution === "both")) {
+  throw new Error("execution must be on, off, or both (parent only)");
+}
 if (rewrite && searchMs) throw new Error("Rewrite experiments require --search-ms=0; rewrite has no cooperative deadline yet.");
 
 if (args.has("child")) {
@@ -37,12 +44,13 @@ if (args.has("child")) {
   globalThis.postMessage = () => {};
   const started = performance.now();
   const preparation = search({algorithm: "analyze-puzzle", state,
-    ...(budgets[0] ? {strategicAnalysis: {maxMs: budgets[0]}} : {})});
+    ...(budgets[0] ? {strategicAnalysis: {maxMs: budgets[0], inferenceWork}} : {})});
   const analysisMs = performance.now() - started;
-  const plan = preparation.analysis.strategicPlan;
+  let plan = preparation.analysis.strategicPlan;
+  if (plan && seedIndex !== null) plan = {...plan, candidates: plan.candidates.slice(seedIndex, seedIndex + 1)};
   const searchStarted = performance.now();
   const result = search({algorithm: "plan-macro-beam", state,
-    strategicPlan: plan, ...(searchMs ? {planSearchMs: searchMs} : {}),
+    strategicPlan: plan, planTaskMacros: taskMacros, planStrategicExecution: execution === "on", ...(searchMs ? {planSearchMs: searchMs} : {}),
     maxDepth: 460, maxVisited: 6000, transpositionLimit: 60000,
     planBeamWidth: 32, planBoxBranches: 6, maxPlanSegments: 160, planSlack: 240,
     sequenceMacroLimit: 24, sequenceMacroExplored: 48, sequenceMacroResults: 4,
@@ -65,6 +73,7 @@ if (args.has("child")) {
   const verified = solution ? verifySolverSolution(request, solution).valid : false;
   const verificationMs = performance.now() - verificationStarted;
   console.log(JSON.stringify({id: ids[0], analysisBudgetMs: budgets[0], searchBudgetMs: searchMs || null,
+    execution, inferenceWork, taskMacros, seedIndex, planExecution: result.planDiagnostics?.strategicExecution,
     analysisMs, strategicStatistics: plan?.statistics, preparedCandidates: plan?.candidates.length ?? 0,
     preparedAccepted: result.preparedPlansAccepted ?? result.planDiagnostics?.preparedPlansAccepted ?? 0,
     discoveryMs, rewriteMs, verificationMs, totalMs: performance.now() - started,
@@ -78,13 +87,18 @@ if (args.has("child")) {
   for (const id of ids) for (let run = 0; run < runs; run++) {
     // Alternate order to reduce systematic thermal/background-load bias.
     for (const budget of run % 2 ? [...budgets].reverse() : budgets) {
+      const variants = execution === "both" ? (run % 2 ? ["on", "off"] : ["off", "on"]) : [execution];
+      for (const variant of variants) {
       const child = spawnSync(process.execPath, ["--experimental-strip-types", fileURLToPath(import.meta.url),
-        "--child", `--ids=${id}`, `--budgets=${budget}`, `--search-ms=${searchMs}`,
+        "--child", `--ids=${id}`, `--budgets=${budget}`, `--search-ms=${searchMs}`, `--execution=${variant}`, `--inference-work=${inferenceWork}`,
+        `--task-macros=${taskMacros ? "on" : "off"}`,
+        ...(seedIndex === null ? [] : [`--seed-index=${seedIndex}`]),
         ...(rewrite ? ["--rewrite"] : [])], {encoding: "utf8", windowsHide: true, timeout: 90000});
       if (child.status !== 0) {
         samples.push({id, run, analysisBudgetMs: budget, error: child.error?.message || child.stderr});
         process.exitCode = 1;
       } else samples.push({run, ...JSON.parse(child.stdout)});
+      }
     }
   }
   console.log(JSON.stringify({schemaVersion: 1, environment: {node: process.version,

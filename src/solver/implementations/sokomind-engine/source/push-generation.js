@@ -448,6 +448,7 @@ function expandTargetedPushSequence(
     ? board.topology.rooms[objective.roomIndex] : null;
   const distance = state => {
     const position = state.pushedTo;
+    if (objective?.targetDistances) return objective.targetDistances.get(position) ?? Infinity;
     if (objective?.direction === "export" && room) {
       if (!room.cells.has(position) && position !== room.gate) return 0;
       const toGate = playerAwarePushDistances(board, position).get(room.gate);

@@ -3,6 +3,11 @@
 This plan supersedes the sequencing and priorities in
 [the earlier solver roadmap](solver-quality-roadmap.md).
 
+The corrected [strategic architecture roadmap](SOKOMIND_SOLVER_STRATEGIC_ROADMAP.md)
+now governs architecture and implementation sequencing. This document retains the
+product timing contract and implementation history; where sequencing differs,
+follow the strategic roadmap.
+
 ## Implementation status — September 7, 2026
 
 The first executable path is implemented behind the opt-in
@@ -13,9 +18,15 @@ Bounded per-request distance caching, state-budget accounting, and a separate
 kernel search deadline are included. The default remains off because benchmark
 results are mixed.
 
-The implementation is a prefix planner, not yet the full strategic architecture
-below. Explicit space reservations, incremental schedule repair, broader goal
-assignment alternatives, and deadline-aware global rewriting remain work.
+The original prefix planner now also emits a typed V2 advisory task package.
+Experimental persistent execution is available separately through
+`strategicPlanExecution: true` (default false), including board-derived progress,
+witnessed staging, temporal resource advice, and replay-verified continuation.
+The quality gate has not passed: Grand Hall regresses when execution is enabled.
+See [sprint measurements](solver-benchmarks.md#persistent-strategic-execution-sprint-1).
+This is not yet the full strategic architecture below. Proven clearance and
+space-reservation feasibility, incremental schedule repair, broader goal assignment
+alternatives, and deadline-aware global rewriting remain work.
 Initial rewritten Grand Hall quality improved from 789 to 780 moves in Node
 experiments, but the search-time target was not reached. Reproducible commands
 and limitations are recorded in [solver benchmarks](solver-benchmarks.md#executable-strategic-planning-experiments).
@@ -371,6 +382,42 @@ preview server is started correctly. Preserve historical benchmark artifacts.
   whose timing omits production overhead.
 
 ## 9. Final report
+
+### Sprint 2 checkpoint (2026-09-07): quality first
+
+Prioritize verified solution quality. Record analysis and search time, but defer
+the three-second gate below until planning reliably improves routes. The human
+626-move reference remains a witness, not an optimality proof.
+
+Connected inference now reuses perfect-matching support for compatible box
+owners, enumerates alternative final-push supports, and derives acyclic goal-order
+advice. Failed simulations introduce temporary clearance tasks that expire with
+their consumer. Release and staging objectives drive search macros. Joint closure
+of all approaches adds an advisory cost; ordinary search remains available.
+
+This is an experimental mechanism checkpoint, **not quality acceptance**. The
+public adapter enables connected inference only with `strategicPlanExecution`.
+The existing seed-only option and default production solving retain their prior
+behavior. Larger internal work limits support investigation without raising the
+public analysis budget or selecting a new production profile.
+
+Replay-verified isolated Node results are stored in
+`docs/benchmarks/strategic-inference-sprint2.json`:
+
+| Puzzle | Connected seeds only | Connected execution | Production regression |
+| --- | ---: | ---: | ---: |
+| Expert maze | 231 moves / 26 pushes | 127 / 28 | 155 / 26 |
+| Grand Hall | 1102 / 332 | 952 / 322 | 893 / 278 |
+
+Sprint 1 execution produced 107 moves on the maze, so this also regresses that
+experimental result. Do not promote this configuration. These kernel runs are
+not browser acceptance measurements.
+
+Next: retain competing approach and owner choices within schedule hypotheses,
+score obligations across tasks, and repair the implicated choice after failure.
+A chosen approach needs a realizable keeper route and a clearance lifetime.
+A union of possible approaches is not a concrete plan. Compare against both
+production and Sprint 1; more analysis expansions alone do not establish quality.
 
 Report verified moves and pushes, analysis duration, search-time-to-target,
 total latency, failures, and memory observations. Include cold and warm browser

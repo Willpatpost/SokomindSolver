@@ -16,3 +16,15 @@ export function search(
 export function bidirectionalSide(
   payload: EnginePayload,
 ): void;
+
+export function validateStrategicPlanContract(value: unknown): value is import("../sokomind-strategic-contract.ts").StrategicPlanV2;
+export function evaluateStrategicPlanState(
+  state: {readonly boxes: readonly (readonly [number, number, string])[]},
+  plan: import("../sokomind-strategic-contract.ts").StrategicPlanV2,
+): import("../sokomind-strategic-contract.ts").StrategicPlanProgress;
+export function rebaseStrategicPlan(
+  plan: import("../sokomind-strategic-contract.ts").StrategicPlanV2,
+  root: import("../sokomind-legacy.ts").LegacyState,
+  checkpoint: import("../sokomind-legacy.ts").LegacyState,
+  path: readonly unknown[],
+): import("../sokomind-strategic-contract.ts").StrategicPlanV2 | undefined;

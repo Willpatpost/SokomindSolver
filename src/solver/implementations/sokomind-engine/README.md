@@ -47,3 +47,16 @@ so type checking and editor navigation do not depend on a sibling repository.
 Large-board analysis also produces the legacy prepared-board seed, which is
 structured-cloned to search workers and rehydrated with worker-local mutable
 caches.
+
+Strategic preparation emits a validated V2 advisory contract. Its predicates and
+resource intervals are evaluated from each board state; completion is reversible
+and cannot authorize new hard pruning. The preparation script also generates
+`strategic-validation.generated.js` from the same validator source, so the typed
+adapter does not import the search engine into the UI bundle. Checkpoint lineage
+replay, canonical coordinate mapping, and box-role rebinding occur in the worker.
+
+Persistent execution requires the experimental request option
+`strategicPlanExecution: true` alongside strategic preparation. It defaults off
+because current quality results are mixed. Kernel experiments can disable it with
+`planStrategicExecution: false` while retaining prepared seeds. Diagnostics report
+`strategicExecution` evaluation, enabled/completed, advancement, and recovery counts.

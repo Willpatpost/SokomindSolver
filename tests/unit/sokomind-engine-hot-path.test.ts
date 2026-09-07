@@ -16,6 +16,8 @@ const SOURCE_FILES = [
   "deadlock.js",
   "analysis.js",
   "push-generation.js",
+  "strategic-contract.js",
+  "strategic-inference.js",
   "strategic-planning.js",
   "solver-search.js",
 ] as const;

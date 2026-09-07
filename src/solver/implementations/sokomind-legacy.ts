@@ -1,3 +1,5 @@
+import { validateStrategicPlanContract } from "./sokomind-engine/strategic-validation.generated.js";
+import type { StrategicPlanV2 } from "./sokomind-strategic-contract.ts";
 // Conversion and validation at the legacy engine data boundary.
 import {
   stepSnapshot,
@@ -67,7 +69,7 @@ export interface LegacySearchCheckpoint {
 }
 
 export interface SokomindAnalysisPlan {
-  readonly strategicPlan?: Readonly<Record<string, unknown>>;
+  readonly strategicPlan?: StrategicPlanV2;
   readonly difficulty?: string;
   readonly phases: readonly string[];
   readonly recommendations: Readonly<{
@@ -192,11 +194,18 @@ export function analysisPlanFromAnalysis(
       ? value
       : undefined;
   };
+  const strategicPlan = validateStrategicPlanContract(analysis.strategicPlan)
+    ? structuredClone(analysis.strategicPlan) : undefined;
+  const freezeTree = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    for (const child of Object.values(value)) freezeTree(child);
+    Object.freeze(value);
+  };
+  if (strategicPlan) freezeTree(strategicPlan);
   return Object.freeze({
     difficulty:
       typeof analysis.difficulty === "string" ? analysis.difficulty : undefined,
-    ...(objectRecord(analysis.strategicPlan)?.schemaVersion === 1
-      ? { strategicPlan: Object.freeze({ ...objectRecord(analysis.strategicPlan) }) } : {}),
+    ...(strategicPlan ? {strategicPlan} : {}),
     phases: Object.freeze(phases),
     recommendations: Object.freeze({
       beamWidth: optionalNumber("beamWidth"),

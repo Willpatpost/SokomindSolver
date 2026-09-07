@@ -69,12 +69,15 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Includes the on-demand Sprint 7 replay study, Sprint 8 journey/Daily V2,
   // Sprint 9 progression/cosmetics, and Sprint 10 Solver Lab. Cold Home and
   // Play route budgets stay fixed because the Lab remains route-split.
-  allScriptsAndStylesGzipBytes: 410_000,
+  // Persistent-plan V2 adds bounded validation and worker execution/rebinding.
+  // Measured total: 412,702 bytes; cold-route and outer-worker caps stay fixed.
+  allScriptsAndStylesGzipBytes: 417_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
   solverWorkerGzipBytes: 60_000,
-  engineWorkerGzipBytes: 65_000,
+  // Includes V2 predicates, task evaluation, and replayed continuation (66,138).
+  engineWorkerGzipBytes: 69_000,
   puzzleShardGzipBytes: 5_000,
 });
 

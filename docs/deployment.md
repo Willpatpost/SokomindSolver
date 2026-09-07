@@ -105,10 +105,16 @@ workers, and the generated 50-board puzzle shards remain runtime-loaded and are
 cached only after use. Static tests derive each cold route's eager JavaScript
 dependency closure and associated styles, include the largest board shard in
 Play's budget, reject board data in the Home closure, and enforce per-shard gzip
-budgets. The complete optional script/style inventory is capped at 410 KB gzip;
+budgets. The complete optional script/style inventory is capped at 417 KB gzip;
 the Sprint 7 replay-study chunks, Sprint 8 guided-journey/Daily V2 projections,
 Sprint 9 progression/cosmetic surfaces, and Sprint 10 Solver Lab are included
-in that total while the cold Home and Play route ceilings remain unchanged.
+in that total. The persistent-plan V2 validator and worker execution/rebinding
+raise the reviewed total ceiling from 410 to 415 KB (measured 412,702 bytes).
+The nested engine worker ceiling rises from 65 to 67 KB (measured 66,138 bytes).
+Sprint 2 connected inference adds matching-supported approaches, temporary
+clearance, and task macro objectives. Its measured total is 415,075 bytes and
+nested worker is 68,313 bytes; ceilings are now 417 KB and 69 KB respectively.
+The cold Home/Play and outer solver worker ceilings remain unchanged.
 Navigation responses never overwrite the known-good shell, so an online 404
 cannot poison offline startup. Runtime writes are restricted to
 manifest-declared same-scope resources and are awaited through the fetch event
