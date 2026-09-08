@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-08T01:54:40.493Z",
+  "node": "v24.14.0",
+  "engineSha256": "e10267929f2f2567a64707d8a0af2b0fe9a9494b67066a3854ed919147333d1c",
+  "scriptSha256": "0115698e3d7bb03de275d2d73098b9adc713afabef680eff714729808ebe8339",
+  "methodology": "production checkpointContinuationPlans with root analysis, independent search, no suffix seeded; one run per setting",
+  "samples": [
+    {
+      "beforePush": 7,
+      "maxExpandedStates": 6000,
+      "status": "inconclusive",
+      "terminationReason": "external-30s-process-budget",
+      "elapsedMs": 30092.0044,
+      "error": "spawnSync C:\\Program Files\\nodejs\\node.exe ETIMEDOUT",
+      "verified": false
+    },
+    {
+      "beforePush": 44,
+      "maxExpandedStates": 6000,
+      "status": "inconclusive",
+      "terminationReason": "external-30s-process-budget",
+      "elapsedMs": 30079.025599999997,
+      "error": "spawnSync C:\\Program Files\\nodejs\\node.exe ETIMEDOUT",
+      "verified": false
+    },
+    {
+      "beforePush": 7,
+      "maxExpandedStates": 60000,
+      "status": "inconclusive",
+      "terminationReason": "external-30s-process-budget",
+      "elapsedMs": 30089.009200000008,
+      "error": "spawnSync C:\\Program Files\\nodejs\\node.exe ETIMEDOUT",
+      "verified": false
+    },
+    {
+      "beforePush": 44,
+      "maxExpandedStates": 60000,
+      "status": "inconclusive",
+      "terminationReason": "external-30s-process-budget",
+      "elapsedMs": 30061.87550000001,
+      "error": "spawnSync C:\\Program Files\\nodejs\\node.exe ETIMEDOUT",
+      "verified": false
+    }
+  ]
+}

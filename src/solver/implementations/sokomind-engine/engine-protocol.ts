@@ -27,6 +27,7 @@ export type EngineResultType =
 interface EngineResultPayload {
   readonly adaptiveMovePriorImprovements?: number;
   readonly analysis?: unknown;
+  readonly boxRescheduling?: unknown;
   readonly arenaStates?: number;
   readonly compactArenaAllocatedBytes?: number;
   readonly compactPathBytes?: number;

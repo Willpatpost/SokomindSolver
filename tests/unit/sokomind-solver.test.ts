@@ -406,7 +406,7 @@ describe("Sokomind Solver adapter", () => {
     assert.deepEqual(algorithms, [
       "ultimate",
       "solution-window-rewrite",
-      "solution-window-rewrite",
+      "solution-box-reschedule",
     ]);
     assert.equal(result.solution.moves, 1);
     assert.equal(result.solution.pushes, 1);
@@ -416,6 +416,65 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(result.metrics.counters?.solutionImprovements, 1);
     assert.ok(phases.includes("improving"));
   });
+
+  for (const repairOutcome of ["better", "unchanged", "invalid", "failed", "timeout", "cancelled"] as const) {
+    it(`retains a verified incumbent and shared budgets when rescheduling is ${repairOutcome}`, async () => {
+      const commands: WorkerCommand[] = [];
+      const workers: ScriptedWorker[] = [];
+      const controller = new AbortController();
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        improvementMinimumMoves: 0,
+        improvementMaxVisited: 100,
+        improvementMaxElapsedMs: 100,
+        createWorker: () => {
+          const worker = new ScriptedWorker((self, command) => {
+            commands.push(command);
+            queueMicrotask(() => {
+              if (command.payload.algorithm === "solution-box-reschedule") {
+                if (repairOutcome === "cancelled") { controller.abort(); return; }
+                if (repairOutcome === "timeout") return;
+                self.emit({ type: "done", visited: 5, generated: 8,
+                  ...(repairOutcome === "failed" ? {status: "failed", error: "Repair failed"} : {
+                    status: "solved", path: repairOutcome === "better" ? ["Down"] :
+                      repairOutcome === "invalid" ? ["Up"] : ["Left", "Right", "Down"],
+                  }),
+                });
+              } else {
+                // Local windows cannot improve this incumbent; rescheduling must
+                // still run, without reusing the work those windows consumed.
+                self.emit({type: "done", status: "solved", path: ["Left", "Right", "Down"],
+                  visited: command.payload.algorithm === "ultimate" ? 1 : 40,
+                  generated: command.payload.algorithm === "ultimate" ? 3 : 7});
+              }
+            });
+          });
+          workers.push(worker); return worker;
+        },
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1}},
+        limits: {maxExpandedStates: 1000, maxGeneratedStates: 120},
+      });
+      const result = await adapter.solve(request, context(controller.signal));
+      const repair = commands.find(command => command.payload.algorithm === "solution-box-reschedule");
+      assert.ok(repair);
+      assert.equal(repair.payload.maxVisited, 60);
+      assert.equal(repair.payload.maxGenerated, 110);
+      assert.ok(Number(repair.payload.rescheduleMaxMs) > 0 && Number(repair.payload.rescheduleMaxMs) <= 100);
+      assert.deepEqual(repair.payload.solutionPath, ["Left", "Right", "Down"]);
+      assert.ok(workers.every(worker => worker.terminated));
+      assert.ok((result.metrics.expandedStates ?? 0) <= 101);
+      assert.ok((result.metrics.generatedStates ?? 0) <= 120);
+      if (repairOutcome === "cancelled") { assert.equal(result.status, "cancelled"); return; }
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") return;
+      // The subsequent exact proof can improve this tiny fixture independently.
+      assert.equal(result.metrics.counters?.bestSolutionMoves, repairOutcome === "better" ? 1 : 3);
+      assert.ok(result.solution.moves <= (repairOutcome === "better" ? 1 : 3));
+      assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    });
+  }
 
   it("harvests multiple seeded ordering profiles before stopping on duplicates", async () => {
     const harvestPayloads: Array<Readonly<Record<string, unknown>>> = [];

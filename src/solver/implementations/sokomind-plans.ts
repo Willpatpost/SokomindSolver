@@ -476,6 +476,37 @@ export function solutionImprovementPlan(
   });
 }
 
+/** Whole-journey repair is currently supported for individually labeled boxes. */
+export function supportsBoxRescheduling(state: LegacyState): boolean {
+  const counts = new Map<string, number>();
+  for (const [, label] of state.boxes) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...counts.values()].some(count => count === 1);
+}
+
+export function solutionReschedulingPlan(
+  state: LegacyState,
+  incumbent: SolverSolution,
+  maxVisited: number,
+  maxGenerated: number,
+  maxElapsedMs: number,
+  candidateIndex: number,
+): EnginePlan {
+  return Object.freeze({
+    id: `solution-reschedule-c${candidateIndex}`,
+    label: "Whole-box transport rescheduling",
+    mode: "search",
+    payload: Object.freeze({
+      algorithm: "solution-box-reschedule",
+      state,
+      solutionPath: legacyPathFromSolution(incumbent),
+      maxVisited,
+      maxGenerated,
+      rescheduleMaxMs: maxElapsedMs,
+      rescheduleRounds: 2,
+    }),
+  });
+}
+
 export interface RewriteBudgetAllocation {
   readonly permutationShare: number;
   readonly pushWindowShare: number;

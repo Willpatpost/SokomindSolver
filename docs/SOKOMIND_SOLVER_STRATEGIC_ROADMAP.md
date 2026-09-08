@@ -1,12 +1,13 @@
 # Sokomind Solver: Strategic Intelligence Audit and Implementation Roadmap
 
-> **2026-09-07 implementation checkpoint:** Sprint 2 connected matching,
-> alternative goal supports, temporary clearance, and task macros are implemented
-> experimentally. Quality acceptance remains open: Grand Hall is 952 moves versus
-> the production 893. Keep execution opt-in. Prioritize route quality before the
-> timing target; see the Sprint 2 checkpoint in `docs/fast-strategic-analyzer-plan.md`
-> and raw `docs/benchmarks/strategic-inference-sprint2.json` for evidence and the
-> next approach/owner hypothesis work.
+> **Governing revision — 2026-09-07:** Diagnose the verified move gap before
+> choosing further solver mechanisms. Parts VII, XI, XII, and section 59 below
+> govern the work. Earlier architectural proposals are a capability catalog,
+> not an implementation queue or a promise of improvement. Sprint 2 and Sprint 3
+> are implemented experiments that failed quality acceptance. Their mechanisms
+> remain available for controlled comparisons; neither is a production upgrade.
+> Quality comes first. The three-second search target is deferred until the
+> analyzer reliably produces better solutions, while analysis cost stays measured.
 
 **Repository:** `Willpatpost/SokomindSolver`  
 **Audit target:** current `main` branch as reviewed on 2026-09-07  
@@ -2108,161 +2109,163 @@ Goals:
 
 ---
 
-# Part VII — staged roadmap with acceptance criteria
+# Part VII — evidence-driven roadmap with acceptance criteria
 
-## 25. Stage 0 — establish a baseline before changing behavior
+These stages supersede the earlier mechanism-first sequence. Completing code,
+contracts, counters, or tests does not complete a quality milestone.
 
-### Implement
+**Quality checkpoint — 2026-09-08:** Long-range rescheduling now repairs the
+production 789-move route to **647 moves / 242 pushes**, without the human
+reference. The reusable `solution-box-reschedule` engine command reproduces the
+prototype and passes primitive-move oracle and Chromium/WebKit replay checks.
+See [results, calibration, and limitations](benchmarks/grand-hall-rescheduling.md).
+The public quality/optimal pipeline now invokes the repair with unused shared
+budgets. Board-only adapter runs reach 647 moves on base, mirrored, and rotated
+Grand Hall; Chromium/WebKit public worker tests reproduce 647/242. A 50,000-state
+quality budget reaches 709 moves. Seven other catalog puzzles pass integration
+replay checks. First local passes are capped and time is reserved for rescheduling
+instead of allowing larger local workloads to starve it. Fast mode is unchanged.
+Next work is adapting the costed scheduling model to analyzer-made partial plans.
+A repair requiring a complete incumbent is not pre-search success.
 
-Add strategic counters for the current planner:
+**Diagnosis checkpoint — 2026-09-07:** Stage 0 has produced the
+[route diagnosis and first same-state trials](benchmarks/grand-hall-diagnosis.md).
+The 267-move discovery gap is 30 pushes plus 237 walks; production's walking is
+already shortest for its push order. H's premature commitment and later transport
+is the leading measured divergence. Eight next-push trials did not establish a
+gain, and fresh continuation search failed on checkpoints with known replayable
+completions. Stage 1 remains open: calibrate checkpoint continuation before ranking
+full staging/transit episodes. Do not advance to a new heuristic on these cutoffs.
+Shortest-walk replay also improved the offline human witness to 624 moves; this
+is not an independently discovered solver route or an optimality proof.
 
-- tasks attempted;
-- candidates produced;
-- candidate task lengths;
-- seeds accepted;
-- solved strategic candidates;
-- analysis elapsed/expanded/generated;
-- plan-macro-beam expansions;
-- ordinary discovery expansions after the structural lane.
+## 25. Stage 0 — diagnose the verified move gap
 
-### Why
+Replay production's Grand Hall discovery route, its rewritten route, and the
+human reference against the same board. Reconfirm the recorded 893/278 and
+789/270 moves/pushes baselines and the 626-move witness. Record engine/build
+identity, options, budgets, paths, verification, and phase timings. The 267-move
+difference is a demonstrated opportunity, not proof that any particular move
+or task accounts for it. The reference is not an optimality proof.
 
-Without a baseline, later gains will be hard to attribute.
+Produce a push-indexed trace with keeper walks between pushes, box trajectories,
+goal fill/unfill events, temporary placements, and room/corridor crossings.
+Compare strategic events rather than aligning move indices or assuming physical
+identities of interchangeable boxes must match. Reconcile total moves as pushes
+plus walking. Room revisits and staging are explanatory annotations: do not add
+overlapping categories together or label necessary actions as waste.
 
-### Acceptance
+Deliver a route comparison and a ranked list of costly divergence hypotheses,
+with measured observations separated from inferred causes. Acceptance is a
+reproducible accounting of the gap and actionable experiments, not a new heuristic.
 
-Benchmark reports can answer:
+## 26. Stage 1 — test the consequential decisions
 
-> How often does the current strategic plan help, and how much search still occurs after it?
+Select early, potentially costly divergences from the trace. From the SAME
+replay-verified board and keeper position, compare legal alternative assignments,
+transport orders, staging choices, or goal approaches. Do not splice a reference
+suffix onto an incompatible state. Let independent search produce each continuation.
 
----
+Measure prefix plus continuation moves, pushes, walking, solve rate, and all work.
+Use matched downstream budgets and generous bounded diagnostic runs to distinguish
+weak guidance from insufficient execution. A timeout is inconclusive, not evidence
+that a decision is impossible. Report unsuccessful alternatives and selection bias.
 
-## 26. Stage 1 — integrated persistent-plan execution
+Acceptance: identify which tested decisions reduce eventual route cost, with
+replayable evidence and explicit uncertainty. If none do, revisit the diagnosis;
+do not advance merely because experiments ran.
 
-**Sprint implementation status — 2026-09-07:** A V2 advisory task contract now
-reaches structural search and replay-verified checkpoint continuation. It includes
-bounded validation, hypothesis-scoped evidence, reversible board-derived progress,
-witnessed staging tasks, consumer-scoped resource intervals, bounded ordering
-preferences, recovery candidates, and telemetry. The adapter uses a generated
-lightweight validator; checkpoint replay and rebinding run inside the worker.
+## 27. Stage 2 — implement the capability supported by evidence
 
-This is an experimental integration, not acceptance of the quality gate. Enable
-`strategicAnalysisMs` and `strategicPlanExecution: true` to exercise it. Execution
-defaults to false because matched experiments improve the maze fixture but regress
-Grand Hall. The initial predicate subset is box-at-cells/cells-clear, and one
-root assignment hypothesis is represented. Cross-domain fixed-point inference,
-proved clearance feasibility, role-domain alternatives, task-directed macros,
-and incremental causal repair remain subsequent work. The current scoring
-retains calibrated structural guidance with bounded task/walking adjustments;
-it is not the final remaining-move estimator described in section 16.
+Choose the smallest integrated capability that addresses a confirmed costly
+choice. Assignment, temporal staging, transport ordering, keeper access, persistent
+hypotheses, and improved remaining-move estimates are candidates, not mandatory
+sprints. Explain how it predicts downstream consequences beyond local push cost.
 
-See [sprint measurements](solver-benchmarks.md#persistent-strategic-execution-sprint-1)
-for results and reproduction commands.
+Reuse existing experimental mechanisms where useful. Connect the selected
+capability to real planning/execution, retain independent recovery, and compare
+feature-on/off against production and earlier experimental controls. Never embed
+the reference route, a Grand Hall script, or reference-derived runtime ordering.
 
+Acceptance: independently generated, replay-valid improvement attributable to
+the capability under declared controls. Lower heuristic scores and more completed
+tasks are diagnostic only. A regression returns the work to diagnosis or revision.
 
-Implement the typed contract, exhaustive predicates, scoped provenance, minimal
-hypothesis representation, and temporal resource semantics together. Convert
-current tasks and retain replay-verified realizations. Recompute completion from
-the board; reversible accomplishments must not remain permanently complete.
+## 28. Stage 3 — establish quality with generous analysis limits
 
-Connect enabled tasks and move-aware ordering to structural search and checkpoint
-continuation, preserving independent recovery. Schema-only conversion is an
-internal milestone, not the delivery boundary.
+Allow enough explicitly bounded analysis to determine whether the planner can
+make better decisions. Record analysis and downstream search effort separately;
+compare equal downstream budgets and total-work controls so brute force is not
+misreported as better guidance. Budget increases are experiments, not acceptance.
 
-Acceptance: exercise doorway release → temporary staging → goal commitment end
-to end, verify worker serialization and replay, and benchmark behavior against a
-fresh baseline. Plan-progress counters explain behavior but do not prove quality.
+Acceptance: repeatable verified improvement over production, with a distribution
+of outcomes, failures, and costs. Continue toward at most 650 Grand Hall moves.
+A smaller gain may justify retaining a capability but does not meet the target.
+The three-second search limit is NOT a gate at this stage.
 
----
+## 29. Stage 4 — generalize the demonstrated improvement
 
-## 27. Stage 2 — connected inference and temporal staging
+Test a declared set of other puzzles, including held-out layouts, relevant failure
+mechanisms, mirrored/rotated boards, and interchangeable-box cases. Run both
+production and earlier experimental controls, including Sprint 1 where applicable.
 
-Add bounded agenda-based propagation between existing matching support, final-push
-access, doorway crossings, room flow, and staging clearance obligations. Reuse
-matching support rather than rebuilding it. Keep conditional conclusions scoped
-to their hypothesis and invalidate affected facts when their inputs change.
+Acceptance: report per-puzzle quality and solved-rate changes without hiding
+regressions in an average. Investigate material regressions before promotion.
+The human reference is used only for offline diagnosis and verification.
 
-Acceptance: mechanism fixtures cover crossing-before-commit without unnecessary
-finish-before-commit edges, reusable support squares, and reversible task progress.
-Measure analysis cost, total moves, walking, and downstream search effort. Do not
-introduce new hard pruning in this stage.
+## 30. Stage 5 — streamline the successful planner
 
----
+Profile the demonstrated quality-producing path. Optimize repeated analysis,
+local simulation, caches, and execution while preserving its quality gains.
+Reintroduce browser latency acceptance only here: at most 650 moves within three
+seconds of downstream search, with analysis fast enough for product use and
+separately reported. Moving search work into analysis does not make it free.
 
-## 28. Stage 3 — competing strategies and incremental repair
-
-Maintain a bounded set of hypotheses with explicit assumptions; detect strategic
-events, invalidate dependent evidence, rebind interchangeable roles, and repair
-only affected tasks. Extend plan-aware execution through applicable forward lanes
-while keeping an independent recovery lane and independent exact proof lanes.
-
-Acceptance: a bad strategy can be abandoned without declaring the puzzle
-unsolvable; equivalent states do not gain unnecessary narrative search identity.
-Repair work shares a bounded budget and is included in reported timing.
-
----
-
-## 29. Stage 4 — reusable local execution contracts
-
-Add room/corral contracts with explicit boundary assumptions and verified paths.
-Cache by the complete relevant interface, including keeper entry position or an
-explicitly priced connector. Keep macro validity separate from claims of local
-optimality or completeness.
-
-Acceptance: cached and uncached execution replay identically; alternate entry
-positions and external connectivity changes cannot reuse invalid costs or proofs.
-Demonstrate reduced work without sacrificing solution quality.
-
----
-
-## 30. Stage 5 — justified hard strategic constraints
-
-Only after inference, resource semantics, and repair are validated, consider new
-hard pruning. Each rule needs a soundness argument, explicit assumption scope,
-small-board exhaustive differential checks, and metamorphic coverage. A failed
-macro precondition rejects that macro, not all successors. A hypothesis conflict
-rejects that hypothesis, not the board.
-
-Acceptance: no solvability loss in exhaustive fixtures; every promoted rule has
-an independent rationale. Test coverage alone is not a proof of soundness.
-
----
+Acceptance: cold/warm browser distributions, failures, analysis latency, search
+time, total latency, memory, and verified quality. Node timings are diagnostic,
+not substitutes for browser evidence. Define the acceptable analysis budget from
+measurements before promotion rather than assuming preparation can be unlimited.
 
 ## 31. Stage 6 — measured default promotion
 
-Promote the cheap pass across puzzle sizes only after overhead and quality gates
-pass. Use deterministic work budgets and reasoning pressure to select deeper
-analysis; preserve explicit off/experimental controls during rollout.
-
-Acceptance: browser and mechanism-corpus measurements show acceptable analysis
-latency, no material quality regressions, and reproducible work-budget behavior.
+Promote only after quality, generalization, correctness, and latency evidence
+supports it. Preserve experimental/off controls and a recovery path. Do not
+activate failed experimental configurations simply because their code is tested.
 
 ## 32. Delivery and performance gates
 
-Every stage includes runtime integration, regression coverage, and comparative
-benchmarks. Target a replay-valid Grand Hall solution of at most 650 moves within
-three seconds of search after analysis. Report analysis, search, refinement, and
-total elapsed time separately; any refinement needed to meet 650 counts within
-the search allowance. The 626-move reference is an upper bound, not a runtime
-route or a proof of optimality. Browser timings establish the product target;
-Node measurements support iteration but cannot substitute for them.
+Every claimed quality upgrade needs verified moves against production and prior
+experiments, declared budgets and environment, causal evidence, and replay checks.
+Time is recorded throughout; the product timing gate is deferred to Stage 5.
+Diagnostic and counterfactual tools are legitimate deliverables, but must not be
+called solver quality improvements until independent generated routes improve.
 
 ## 33. Cross-stage telemetry
 
-Track moves, pushes, walking, solved rate, analysis/repair work, downstream search
-work, and latency distributions. Domain reductions and task progress explain
-results; they are not standalone acceptance criteria.
+Track moves, pushes, walking, solved rate, analysis/repair work, downstream work,
+latency, and memory. Preserve raw routes and provenance. Explain uncertainty;
+local simulation failure and search cutoff are not infeasibility proofs.
 
 ## 34. Cross-stage mechanism corpus
 
-Cover temporary occupation, delayed commitment, alternative crossings, role
-symmetry, reversible progress, hypothesis failure, and cache-boundary changes.
-Run replay and transformed-board checks alongside the established puzzle corpus.
+Select fixtures from observed failure modes, plus held-out puzzles and transformed
+boards. Keep hard-pruning soundness checks separate from advisory planning tests.
+Do not introduce new hard pruning without an independent soundness argument.
 
-## 35. Review boundaries
+## 35. Review boundaries and experiment status
 
-Keep internal patches reviewable while delivering integrated stages. Do not stop
-a quality upgrade at types, advisory JSON, or counters that search does not use.
+Deliver integrated, reviewable work, but do not use a chat or code milestone as a
+quality acceptance boundary. Stop expanding mechanisms without evidence of need.
+
+| Experiment | Implementation status | Quality status |
+| --- | --- | --- |
+| Sprint 1 persistent execution | Implemented, opt-in | Mixed; maze improved, Grand Hall regressed; not promoted |
+| Sprint 2 connected inference | Implemented experiment | Failed quality acceptance: 952 Grand Hall moves versus 893 production; maze worse than Sprint 1 |
+| Sprint 3 local approach repair | Implemented experiment, disabled | Failed quality acceptance: Grand Hall frontier exhausted; maze remained 127 moves |
+
+Preserve these controls and their raw evidence. No conclusion here implies the
+solver is close to optimal. Whole-schedule hypotheses remain an unvalidated
+candidate capability, not the automatically scheduled next sprint.
 
 ---
 
@@ -2627,82 +2630,46 @@ This is the style of reasoning that would make Sokomind feel qualitatively diffe
 
 ## 49. Recommended priority table
 
-| Priority | Change | Why it matters | Expected impact |
-|---|---|---|---|
-| **P0** | Typed plan, executable predicates, scoped provenance | Makes inference and repair auditable from the first integration | Foundation |
-| **P0** | Structural execution and checkpoints, then applicable forward lanes | Retains task meaning with independent recovery | Runtime benefit |
-| **P0** | Temporal resources and connected inference | Models crossing, clearance, and commitment precisely | Strategic quality |
-| **P0** | Minimal hypotheses, telemetry, and mechanism corpus | Separates assumptions from facts and measures outcomes | Correctness and feedback |
-| **P1** | Competing strategies and incremental repair | Recovers from bad assumptions cheaply | Robustness |
-| **P1** | Verified room/corral contracts | Reuses bounded local execution | Structured-puzzle efficiency |
-| **P2** | New hard pruning after soundness validation | Removes only justified impossibilities | Branch reduction |
-| **P2** | Measured cheap/auto default promotion | Expands coverage after overhead and quality gates pass | Product rollout |
+| Priority | Work | Advancement evidence |
+| --- | --- | --- |
+| P0 | Verified route-gap diagnosis | Reconciled traces and ranked causal hypotheses |
+| P0 | Same-state decision experiments | Independently replayed continuation improvements |
+| P1 | Evidence-selected planning capability | Attributable verified gain against controls |
+| P1 | Quality with generous analysis limits | Repeatable gains; progress toward 650 moves |
+| P2 | Generalization | Held-out results and explained regressions |
+| P3 | Performance and promotion | Quality preserved with browser timing evidence |
 
----
+Other proposed architecture remains deferred until diagnosis justifies it.
 
 # Part XII — immediate next implementation slice
 
-## 50. What I would implement first
+## 50. What to implement next
 
-The first delivery is Stage 1 end to end. The following steps are internal review milestones, not separate chat-sized endpoints. Include scoped provenance, minimal hypotheses, temporal resource intervals, and an independent recovery path from the start.
+The initial diagnosis and decision experiments below have now produced a
+demonstrated capability: long-range box rescheduling reaches 647 moves. The bounded
+repair is now integrated into the quality pipeline with explicit budget sharing,
+incumbent preservation, public browser checks, and a broader integration corpus.
+Next, use the established full-horizon cost model
+to evaluate analyzer-generated partial schedules, where feasibility must still
+be established. Keep the diagnosis sequence below as the method for choosing
+subsequent capabilities, not an instruction to repeat completed measurements.
 
-### Step 1 — create `StrategicPlanV2` types and validator
+1. Capture and replay the current production discovery and rewritten routes and
+   the human reference, preserving configuration and build identity.
+2. Generate push-by-push walking, box, goal, staging, and crossing annotations.
+3. Produce a reconciled comparison, distinguishing observations from suspected
+   avoidable costs and avoiding duplicate attribution.
+4. Rank consequential divergences and implement reproducible same-state trials
+   of legal alternatives with independent continuations.
+5. Report eventual route costs and inconclusive runs. Select the next solver
+   change only when these experiments identify a capability worth implementing.
 
-No search behavior change.
-
-### Step 2 — translate current strategic output
-
-Map current planner concepts into:
-
-- facts;
-- tasks;
-- candidate realizations;
-- plan statistics.
-
-Keep existing candidate paths unchanged.
-
-### Step 3 — add plan completion evaluation
-
-Implement:
-
-```text
-evaluateStrategicTaskCompletion(state, task)
-```
-
-for the existing task kinds:
-
-- release;
-- export;
-- deliver/commit.
-
-### Step 4 — instrument structural search
-
-At every retained checkpoint/candidate, report:
-
-```text
-completedTaskCount
-enabledTaskCount
-planAdvancingPushes
-planNeutralPushes
-```
-
-Still do not hard-prune.
-
-### Step 5 — execute the plan with move-aware ordering
-
-Connect doorway release, temporary staging, and goal commitment to successor generation and checkpoint continuation. Estimate total moves including keeper travel; task progress and uncertain resource risks guide bounded preferences and diversity, not hard exclusion.
-
-Keep fallback successors and an independent recovery lane. Re-evaluate reversible completion against the current board.
-
-### Step 6 — benchmark
-
-Compare current `main` behavior to the plan-aware ordering version.
-
-Measure analysis separately, and compare verified moves, walking, solved rate, and search time across the mechanism corpus and browser Grand Hall runs. Proceed to connected inference only after reporting the integrated result; more completed tasks alone is not a performance win.
-
-This approach yields useful feedback early without requiring the entire final architecture at once.
+Do not stop at a telemetry schema: deliver the actual Grand Hall diagnosis and
+counterfactual results. Do not claim a solver upgrade merely for producing them.
 
 ---
+
+
 
 # Part XIII — current-code observations that should guide the work
 
@@ -2823,32 +2790,11 @@ These hashes are included only to make clear which code snapshot informed the re
 
 # 59. Final recommendation
 
-The flagship solver is already sophisticated enough that the next major improvement should **not** be another isolated heuristic or another search lane.
+The immediate task is to explain and test the decisions behind the verified move
+gap. The solver is not known to be close to optimal; failed modifications say
+nothing of the kind. The analyzer must demonstrate that it can predict downstream
+cost well enough to choose better plans, not merely generate more plausible tasks.
 
-The next leap is architectural:
-
-> Turn all of the solver's existing structural knowledge into a persistent causal model of the puzzle.
-
-The best sequence is:
-
-```text
-1. Strong typed strategic-plan contract
-2. Persistent plan progress in every flagship forward lane
-3. Fixed-point constraint propagation
-4. Temporal doorway/support/staging resources
-5. Incremental plan repair
-6. Exact local room/corral macros
-7. Explicit competing plan hypotheses
-8. Always-on tiered strategic analysis
-9. Strategic telemetry and soundness corpus
-```
-
-If those pieces are implemented carefully, Sokomind will stop being best described as:
-
-> a sophisticated Sokoban search portfolio with strategic preprocessing
-
-and start being accurately described as:
-
-> **a hierarchical Sokoban reasoning system that analyzes the puzzle, derives constraints, forms and tests a plan, repairs that plan as the state changes, and uses search as the executor of strategic intent.**
-
-That is the architecture closest to the human process described at the beginning: **look first, understand what has to happen, then search inside that understanding.**
+Follow diagnosis → same-state decision tests → evidence-selected capability →
+quality validation → generalization → performance. Keep the architectural catalog
+as design material, and let measured route improvements determine what gets built.

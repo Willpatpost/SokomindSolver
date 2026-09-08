@@ -160,3 +160,27 @@ function strategicMacroObjective(boxIndex, agenda, board, tables) {
   }
   return {taskId: task.id, kind: task.kind, targetDistances: distances};
 }
+
+// A schedule branch chooses a concrete owner and final push. These are local
+// simulation constraints, never deductions that remove ordinary search moves.
+function strategicTaskChoices(task, current, plan, board, limit) {
+  if (!limit || task.kind !== "commit-goal") return [task];
+  const contract = plan.tasks.find(candidate => candidate.id === task.id);
+  const resource = plan.resources.find(candidate => candidate.consumerTaskId === task.id && candidate.alternatives);
+  if (!resource) return [task];
+  const target = contract.completesWhen.cells[0];
+  const occupied = new Set(current.boxes.map(box => pkey(box[0], box[1])));
+  const choices = [];
+  for (const owner of contract.boxCandidates || [task.boxIndex]) {
+    const box = current.boxes[owner];
+    const distances = playerAwarePushDistances(board, pkey(box[0], box[1]));
+    for (const route of resource.alternatives) {
+      if (!distances.has(route[0])) continue;
+      const choice = {taskId: task.id, boxIndex: owner, target, route};
+      choices.push({...task, boxIndex: owner, participants: [owner], finalPredecessor: route[0], choice,
+        choiceScore: distances.get(route[0]) + route.filter(cell => occupied.has(cell)).length * 4});
+    }
+  }
+  return choices.sort((a, b) => a.choiceScore - b.choiceScore || a.boxIndex - b.boxIndex)
+    .slice(0, limit);
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "route": "rewrite",
+  "label": "D",
+  "orientation": "identity",
+  "sourceMoves": 647,
+  "inputArtifact": "docs/benchmarks/grand-hall-reschedule-pass2-A.json",
+  "sourceActionLogSha256": "01b72797447dd003173774e576b13fef697b7c32da36bc7addd6a318caff5f24",
+  "scriptSha256": "f5019ab2ef87fa5327b5140eee50266117ba3839f0f8faea433e9ef1b8f642e1",
+  "node": "v24.14.0",
+  "capturedAt": "2026-09-08T01:58:11.981Z",
+  "maxExpanded": 300000,
+  "preparationMs": 10.146100000000004,
+  "elapsedMs": 28.642200000000003,
+  "totalMs": 38.792000000000016,
+  "expanded": 9337,
+  "generated": 9628,
+  "peak": 1365,
+  "methodology": "A* over fixed other-box pushes and unrestricted selected-box pushes; shortest keeper travel; original route cost upper bound; no reference input",
+  "status": "no-improvement-in-restricted-space",
+  "optimalWithinFixedOtherPushes": false,
+  "verified": false
+}

@@ -29,6 +29,7 @@ const SOURCE_FILES = Object.freeze([
   "strategic-contract.js",
   "strategic-inference.js",
   "strategic-planning.js",
+  "box-rescheduling.js",
   "solver-search.js",
 ]);
 

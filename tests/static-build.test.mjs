@@ -71,13 +71,13 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Play route budgets stay fixed because the Lab remains route-split.
   // Persistent-plan V2 adds bounded validation and worker execution/rebinding.
   // Measured total: 412,702 bytes; cold-route and outer-worker caps stay fixed.
-  allScriptsAndStylesGzipBytes: 417_000,
+  allScriptsAndStylesGzipBytes: 418_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
   solverWorkerGzipBytes: 60_000,
   // Includes V2 predicates, task evaluation, and replayed continuation (66,138).
-  engineWorkerGzipBytes: 69_000,
+  engineWorkerGzipBytes: 71_000,
   puzzleShardGzipBytes: 5_000,
 });
 

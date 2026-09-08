@@ -19,6 +19,7 @@ const SOURCE_FILES = [
   "strategic-contract.js",
   "strategic-inference.js",
   "strategic-planning.js",
+  "box-rescheduling.js",
   "solver-search.js",
 ] as const;
 

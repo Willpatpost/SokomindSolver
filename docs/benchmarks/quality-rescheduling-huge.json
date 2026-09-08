@@ -1,0 +1,507 @@
+{
+  "node": "v24.14.0",
+  "engineSha256": "2cb0154668174f1dddf39bd486ebfdad6fe69a003ea799160b5b6bb445a3874f",
+  "adapterSha256": "16667ef8b4b7902779e9f48d58ec665cf9225fb3ffac9513834e5b7d498d0226",
+  "results": [
+    {
+      "id": "huge",
+      "orientation": "identity",
+      "budget": 50000,
+      "requestLimits": {
+        "maxElapsedMs": 30000,
+        "maxExpandedStates": 60000,
+        "maxGeneratedStates": 2000000,
+        "maxMemoryBytes": 2147483648
+      },
+      "verified": true,
+      "phases": [
+        {
+          "detail": "Typed board analysis started.",
+          "elapsedMs": 1.9925000000000068,
+          "expanded": 0
+        },
+        {
+          "detail": "Structural plan search started.",
+          "elapsedMs": 164.433,
+          "expanded": 0
+        },
+        {
+          "detail": "Verifying candidate from Structural plan search.",
+          "elapsedMs": 5189.092799999999
+        },
+        {
+          "detail": "Move-count solution rewrite c0 p1 started.",
+          "elapsedMs": 5197.1145,
+          "expanded": 1333
+        },
+        {
+          "detail": "Verifying candidate from Move-count solution rewrite c0 p1.",
+          "elapsedMs": 13625.534000000001
+        },
+        {
+          "detail": "Whole-box transport rescheduling started.",
+          "elapsedMs": 13629.4662,
+          "expanded": 30333
+        },
+        {
+          "detail": "Verifying candidate from Whole-box transport rescheduling.",
+          "elapsedMs": 13821.095200000002
+        }
+      ],
+      "status": "solved",
+      "moves": 709,
+      "pushes": 250,
+      "actionLog": "DDLLURDRUUURRULLLULLUUUUUUULLLDRDDLURUURRRRRRRRRRDLLDDDLLLRDRRDRDDLLDLLDDDLLLLURRDLLLLURDRRRRRUUUURRRUUUULLLLDLUUUULURRLDDDDRRRRRURULUURDLLDDRDDDDDLDLLDDDLLURDRUUURUURRUUULLLLLDLDDRRDRRDLDDDLLLLLURRRRDRUUURRULURDRUUUUUULUURRDLULDDDRDLLLLDLUUUDDDLDDRRDRRDLDDDRRULDLUUURRULURDRUUUUUUULURRRDLLDDDLLLLDLLDDDDRRURRLDDDRDLLLLLURRRRUURRULURDRUUUUUUULURDDDDLLLLLULLLUURURDDULLDDRRURDLDRRRRRURDDDDRDLLULDRDLULDDDRDLLLLRRRRRRRULLLDLUUULLURRRLLLLUULURUULUDRDRRRRDRRDDDRDLLLULDDDLDRRRURRDRRULLLLDRRULLLDLUUURULLLDLUUUUUURULLDLUUDDRRDRRRRRURRUDRRULLDLLUURDDDDDDDRDLLLULDDDLDRRRRULLLUUURRDRUUUUUULURRDRUUDDLLDDDDDLLLLULDLUUUUUDDLLLDRRDRUUURUULUULLRRDDLDRLLUUDRRRDLDRRRRRURDDDRDDLLURDRULURULULLLLDLUUULUURDDDLDDRRULDLUUUURUL",
+      "metrics": {
+        "elapsedMs": 29999.8076,
+        "expandedStates": 51333,
+        "generatedStates": 155104,
+        "peakFrontierSize": 32,
+        "counters": {
+          "uniqueStates": 51333,
+          "duplicateStates": 103771,
+          "retainedStates": 0,
+          "peakRetainedStates": 52317,
+          "deadlockPrunes": 156003,
+          "infeasiblePrunes": 0,
+          "heuristicCalls": 28840,
+          "reachabilityFloods": 494275,
+          "estimatedMemoryBytes": 272446871,
+          "currentEstimatedMemoryBytes": 272446871,
+          "peakEstimatedMemoryBytes": 272446871,
+          "currentWorkerMemoryBytes": 0,
+          "currentCoordinatorMemoryBytes": 0,
+          "currentPreparedBoardMemoryBytes": 3529154,
+          "workerRuntimeMemoryBytes": 0,
+          "workerBoardMemoryBytes": 0,
+          "workerRetainedMemoryBytes": 0,
+          "workerFrontierMemoryBytes": 0,
+          "workerCacheMemoryBytes": 0,
+          "workerArenaMemoryBytes": 0,
+          "workerRecordMemoryBytes": 0,
+          "workerIsolateSampleBytes": 0,
+          "browserProcessMemoryBytes": 0,
+          "peakBrowserProcessMemoryBytes": 0,
+          "workersCompleted": 4,
+          "rejectedCandidates": 0,
+          "phaseTimeouts": 0,
+          "watchdogTimeouts": 0,
+          "coordinatorRecords": 0,
+          "peakCoordinatorRecords": 0,
+          "initialSolutionMoves": 893,
+          "bestSolutionMoves": 709,
+          "solutionImprovements": 2,
+          "memoryCurrentPrepareBoardBytes": 0,
+          "memoryPeakPrepareBoardBytes": 22080832,
+          "memoryCurrentPrepareBoardProcessBytes": 0,
+          "memoryPeakPrepareBoardProcessBytes": 0,
+          "memoryPrepareBoardRetainedStates": 0,
+          "memoryPrepareBoardFrontierStates": 0,
+          "memoryPrepareBoardCacheBytes": 0,
+          "memoryCurrentStructuralPlanBytes": 0,
+          "memoryPeakStructuralPlanBytes": 62855232,
+          "memoryCurrentStructuralPlanProcessBytes": 0,
+          "memoryPeakStructuralPlanProcessBytes": 0,
+          "memoryStructuralPlanRetainedStates": 0,
+          "memoryStructuralPlanFrontierStates": 0,
+          "memoryStructuralPlanCacheBytes": 0,
+          "memoryCurrentSolutionRewriteC0P1Bytes": 0,
+          "memoryPeakSolutionRewriteC0P1Bytes": 89670208,
+          "memoryCurrentSolutionRewriteC0P1ProcessBytes": 0,
+          "memoryPeakSolutionRewriteC0P1ProcessBytes": 0,
+          "memorySolutionRewriteC0P1RetainedStates": 0,
+          "memorySolutionRewriteC0P1FrontierStates": 0,
+          "memorySolutionRewriteC0P1CacheBytes": 0,
+          "memoryCurrentSolutionRescheduleC100Bytes": 0,
+          "memoryPeakSolutionRescheduleC100Bytes": 53967424,
+          "memoryCurrentSolutionRescheduleC100ProcessBytes": 0,
+          "memoryPeakSolutionRescheduleC100ProcessBytes": 0,
+          "memorySolutionRescheduleC100RetainedStates": 0,
+          "memorySolutionRescheduleC100FrontierStates": 0,
+          "memorySolutionRescheduleC100CacheBytes": 0,
+          "proof.estimatedMemoryBytes": 272446871,
+          "proof.currentEstimatedMemoryBytes": 272446871,
+          "proof.peakEstimatedMemoryBytes": 272446871,
+          "proof.exactFeatureMask": 1023,
+          "proofExpandedStates": 0,
+          "proofGeneratedStates": 0
+        }
+      }
+    },
+    {
+      "id": "huge",
+      "orientation": "identity",
+      "budget": 300000,
+      "requestLimits": {
+        "maxElapsedMs": 30000,
+        "maxExpandedStates": 310000,
+        "maxGeneratedStates": 2000000,
+        "maxMemoryBytes": 2147483648
+      },
+      "verified": true,
+      "phases": [
+        {
+          "detail": "Typed board analysis started.",
+          "elapsedMs": 2.315500000000611,
+          "expanded": 0
+        },
+        {
+          "detail": "Structural plan search started.",
+          "elapsedMs": 240.99399999999878,
+          "expanded": 0
+        },
+        {
+          "detail": "Verifying candidate from Structural plan search.",
+          "elapsedMs": 8606.2013
+        },
+        {
+          "detail": "Move-count solution rewrite c0 p1 started.",
+          "elapsedMs": 8617.687899999997,
+          "expanded": 1333
+        },
+        {
+          "detail": "Verifying candidate from Move-count solution rewrite c0 p1.",
+          "elapsedMs": 19240.8741
+        },
+        {
+          "detail": "Whole-box transport rescheduling started.",
+          "elapsedMs": 19244.172599999998,
+          "expanded": 30333
+        },
+        {
+          "detail": "Verifying candidate from Whole-box transport rescheduling.",
+          "elapsedMs": 19919.378299999997
+        }
+      ],
+      "status": "solved",
+      "moves": 647,
+      "pushes": 242,
+      "actionLog": "UULULLLLLURRURDDLDRRRRRLDDDDLLURDRUUURRULLLULLUUUULLLUDRRRUUURRRRRDDDDLLRDRRRDDDLLDLLDDDLLLLURRDRRUUUURRRUUUULLLLDLUUUULURRLDDDDRRRRRURULUURDLLDDRDDDDDLDLLDDDLLURDRUUURUURRUUULLLLLDLDDRRDRRDLDDDLLLLLLURRRRRDRUUURRULURDRUUUUUULUURRDLULDDDRDLLLLDLUUUDLDDDDRRDRRDLDDDRRULDLUUURRULURDRUUUUUUULURRRDLLDDDLLLLDLLDDLDDRRRURRLDDDRDLLLLLURRRRUURRULURDRUUUUUUULURDDDDDDDDLDLLDDDRRRRULLLDLUUULLURRRLLLLDLUURUUUUUUULLDDLDRRURDDDDDDLDRRRURDDDRDRRRRRULLLLLDLLLLRRRUUURUURRDRDLLLULDDDLDRRRRRULLLLUUULLDLUUUUUURULLDLUUDDRRDRRRRRURRUDRRULLDLLUURDDDDDDDRUDDLLLURDRUUURLUUULURRDRUUDDLLDDDDDLLLDDDLDRRRRULLLUUULULDLUUUUURULUULLRRDDLDLUUDRRUURDDDLDDLLDRURRRULDLUUUURUL",
+      "metrics": {
+        "elapsedMs": 30009.2673,
+        "expandedStates": 163787,
+        "generatedStates": 303820,
+        "peakFrontierSize": 32,
+        "counters": {
+          "uniqueStates": 163787,
+          "duplicateStates": 140033,
+          "retainedStates": 0,
+          "peakRetainedStates": 57732,
+          "deadlockPrunes": 156003,
+          "infeasiblePrunes": 0,
+          "heuristicCalls": 28840,
+          "reachabilityFloods": 494275,
+          "estimatedMemoryBytes": 203893407,
+          "currentEstimatedMemoryBytes": 203893407,
+          "peakEstimatedMemoryBytes": 203893407,
+          "currentWorkerMemoryBytes": 0,
+          "currentCoordinatorMemoryBytes": 0,
+          "currentPreparedBoardMemoryBytes": 3529154,
+          "workerRuntimeMemoryBytes": 0,
+          "workerBoardMemoryBytes": 0,
+          "workerRetainedMemoryBytes": 0,
+          "workerFrontierMemoryBytes": 0,
+          "workerCacheMemoryBytes": 0,
+          "workerArenaMemoryBytes": 0,
+          "workerRecordMemoryBytes": 0,
+          "workerIsolateSampleBytes": 0,
+          "browserProcessMemoryBytes": 0,
+          "peakBrowserProcessMemoryBytes": 0,
+          "workersCompleted": 4,
+          "rejectedCandidates": 0,
+          "phaseTimeouts": 0,
+          "watchdogTimeouts": 0,
+          "coordinatorRecords": 0,
+          "peakCoordinatorRecords": 0,
+          "initialSolutionMoves": 893,
+          "bestSolutionMoves": 647,
+          "solutionImprovements": 2,
+          "memoryCurrentPrepareBoardBytes": 0,
+          "memoryPeakPrepareBoardBytes": 22080832,
+          "memoryCurrentPrepareBoardProcessBytes": 0,
+          "memoryPeakPrepareBoardProcessBytes": 0,
+          "memoryPrepareBoardRetainedStates": 0,
+          "memoryPrepareBoardFrontierStates": 0,
+          "memoryPrepareBoardCacheBytes": 0,
+          "memoryCurrentStructuralPlanBytes": 0,
+          "memoryPeakStructuralPlanBytes": 62855232,
+          "memoryCurrentStructuralPlanProcessBytes": 0,
+          "memoryPeakStructuralPlanProcessBytes": 0,
+          "memoryStructuralPlanRetainedStates": 0,
+          "memoryStructuralPlanFrontierStates": 0,
+          "memoryStructuralPlanCacheBytes": 0,
+          "memoryCurrentSolutionRewriteC0P1Bytes": 0,
+          "memoryPeakSolutionRewriteC0P1Bytes": 89670208,
+          "memoryCurrentSolutionRewriteC0P1ProcessBytes": 0,
+          "memoryPeakSolutionRewriteC0P1ProcessBytes": 0,
+          "memorySolutionRewriteC0P1RetainedStates": 0,
+          "memorySolutionRewriteC0P1FrontierStates": 0,
+          "memorySolutionRewriteC0P1CacheBytes": 0,
+          "memoryCurrentSolutionRescheduleC100Bytes": 0,
+          "memoryPeakSolutionRescheduleC100Bytes": 62284864,
+          "memoryCurrentSolutionRescheduleC100ProcessBytes": 0,
+          "memoryPeakSolutionRescheduleC100ProcessBytes": 0,
+          "memorySolutionRescheduleC100RetainedStates": 0,
+          "memorySolutionRescheduleC100FrontierStates": 0,
+          "memorySolutionRescheduleC100CacheBytes": 0,
+          "proof.estimatedMemoryBytes": 203893407,
+          "proof.currentEstimatedMemoryBytes": 203893407,
+          "proof.peakEstimatedMemoryBytes": 203893407,
+          "proof.exactFeatureMask": 1023,
+          "proofExpandedStates": 0,
+          "proofGeneratedStates": 0
+        }
+      }
+    },
+    {
+      "id": "huge",
+      "orientation": "mirror",
+      "budget": 300000,
+      "requestLimits": {
+        "maxElapsedMs": 30000,
+        "maxExpandedStates": 310000,
+        "maxGeneratedStates": 2000000,
+        "maxMemoryBytes": 2147483648
+      },
+      "verified": true,
+      "phases": [
+        {
+          "detail": "Typed board analysis started.",
+          "elapsedMs": 1.547100000003411,
+          "expanded": 0
+        },
+        {
+          "detail": "Structural plan search started.",
+          "elapsedMs": 190.00310000000172,
+          "expanded": 0
+        },
+        {
+          "detail": "Verifying candidate from Structural plan search.",
+          "elapsedMs": 5345.542700000005
+        },
+        {
+          "detail": "Move-count solution rewrite c0 p1 started.",
+          "elapsedMs": 5350.942900000002,
+          "expanded": 1333
+        },
+        {
+          "detail": "Verifying candidate from Move-count solution rewrite c0 p1.",
+          "elapsedMs": 13079.991199999997
+        },
+        {
+          "detail": "Whole-box transport rescheduling started.",
+          "elapsedMs": 13085.282400000004,
+          "expanded": 30333
+        },
+        {
+          "detail": "Verifying candidate from Whole-box transport rescheduling.",
+          "elapsedMs": 13610.459800000004
+        }
+      ],
+      "status": "solved",
+      "moves": 647,
+      "pushes": 242,
+      "actionLog": "UURURRRRRULLULDDRDLLLLLRDDDDRRULDLUUULLURRRURRUUUURRRUDLLLUUULLLLLDDDDRRLDLLLDDDRRDRRDDDRRRRULLDLLUUUULULLUUURRRRDRUUUURULLRDDDDLLLLLULURUULDRRDDLDDDDDRDRRDDDRRULDLUUULUULLUUURRRRRDRDDLLDLLDRDDDRRRRRRULLLLLDLUUULLURULDLUUUUUURUULLDRURDDDLDRRRRDRUUUDRDDDDLLDLLDRDDDLLURDRUUULLURULDLUUUUUUURULLLDRRDDDRRRRDRRDDRDDLLLULLRDDDLDRRRRRULLLLUULLURULDLUUUUUUURULDDDDDDDDRDRRDDDLLLLURRRDRUUURRULLLRRRRDRUULUUUUUUURRDDRDLLULDDDDDDRDLLLULDDDLDLLLLLURRRRRDRRRRLLLUUULUULLDLDRRRURDDDRDLLLLLURRRRUUURRDRUUUUUULURRDRUUDLLUURRDDDLLDLLLLLULLUDLLURRDRRUULDDDDDDDLUDDRRRULDLUUULRUUURULLDLUUDDRRDDDDDRRRDDDRDLLLLURRRUUURURDRUUUUULURRDRUUDLLUULDDDRDDLLURDRRRDLULUUUULUR",
+      "metrics": {
+        "elapsedMs": 29999.059700000005,
+        "expandedStates": 164624,
+        "generatedStates": 305051,
+        "peakFrontierSize": 32,
+        "counters": {
+          "uniqueStates": 164624,
+          "duplicateStates": 140427,
+          "retainedStates": 0,
+          "peakRetainedStates": 57780,
+          "deadlockPrunes": 155968,
+          "infeasiblePrunes": 0,
+          "heuristicCalls": 28840,
+          "reachabilityFloods": 494281,
+          "estimatedMemoryBytes": 304441607,
+          "currentEstimatedMemoryBytes": 304441607,
+          "peakEstimatedMemoryBytes": 304441607,
+          "currentWorkerMemoryBytes": 0,
+          "currentCoordinatorMemoryBytes": 0,
+          "currentPreparedBoardMemoryBytes": 3529154,
+          "workerRuntimeMemoryBytes": 0,
+          "workerBoardMemoryBytes": 0,
+          "workerRetainedMemoryBytes": 0,
+          "workerFrontierMemoryBytes": 0,
+          "workerCacheMemoryBytes": 0,
+          "workerArenaMemoryBytes": 0,
+          "workerRecordMemoryBytes": 0,
+          "workerIsolateSampleBytes": 0,
+          "browserProcessMemoryBytes": 0,
+          "peakBrowserProcessMemoryBytes": 0,
+          "workersCompleted": 4,
+          "rejectedCandidates": 0,
+          "phaseTimeouts": 0,
+          "watchdogTimeouts": 0,
+          "coordinatorRecords": 0,
+          "peakCoordinatorRecords": 0,
+          "initialSolutionMoves": 893,
+          "bestSolutionMoves": 647,
+          "solutionImprovements": 2,
+          "memoryCurrentPrepareBoardBytes": 0,
+          "memoryPeakPrepareBoardBytes": 22080832,
+          "memoryCurrentPrepareBoardProcessBytes": 0,
+          "memoryPeakPrepareBoardProcessBytes": 0,
+          "memoryPrepareBoardRetainedStates": 0,
+          "memoryPrepareBoardFrontierStates": 0,
+          "memoryPrepareBoardCacheBytes": 0,
+          "memoryCurrentStructuralPlanBytes": 0,
+          "memoryPeakStructuralPlanBytes": 58246080,
+          "memoryCurrentStructuralPlanProcessBytes": 0,
+          "memoryPeakStructuralPlanProcessBytes": 0,
+          "memoryStructuralPlanRetainedStates": 0,
+          "memoryStructuralPlanFrontierStates": 0,
+          "memoryStructuralPlanCacheBytes": 0,
+          "memoryCurrentSolutionRewriteC0P1Bytes": 0,
+          "memoryPeakSolutionRewriteC0P1Bytes": 89670208,
+          "memoryCurrentSolutionRewriteC0P1ProcessBytes": 0,
+          "memoryPeakSolutionRewriteC0P1ProcessBytes": 0,
+          "memorySolutionRewriteC0P1RetainedStates": 0,
+          "memorySolutionRewriteC0P1FrontierStates": 0,
+          "memorySolutionRewriteC0P1CacheBytes": 0,
+          "memoryCurrentSolutionRescheduleC100Bytes": 0,
+          "memoryPeakSolutionRescheduleC100Bytes": 62358592,
+          "memoryCurrentSolutionRescheduleC100ProcessBytes": 0,
+          "memoryPeakSolutionRescheduleC100ProcessBytes": 0,
+          "memorySolutionRescheduleC100RetainedStates": 0,
+          "memorySolutionRescheduleC100FrontierStates": 0,
+          "memorySolutionRescheduleC100CacheBytes": 0,
+          "proof.estimatedMemoryBytes": 304441607,
+          "proof.currentEstimatedMemoryBytes": 304441607,
+          "proof.peakEstimatedMemoryBytes": 304441607,
+          "proof.exactFeatureMask": 1023,
+          "proofExpandedStates": 0,
+          "proofGeneratedStates": 0
+        }
+      }
+    },
+    {
+      "id": "huge",
+      "orientation": "rotate",
+      "budget": 300000,
+      "requestLimits": {
+        "maxElapsedMs": 30000,
+        "maxExpandedStates": 310000,
+        "maxGeneratedStates": 2000000,
+        "maxMemoryBytes": 2147483648
+      },
+      "verified": true,
+      "phases": [
+        {
+          "detail": "Typed board analysis started.",
+          "elapsedMs": 1.7209000000002561,
+          "expanded": 0
+        },
+        {
+          "detail": "Structural plan search started.",
+          "elapsedMs": 191.41189999999187,
+          "expanded": 0
+        },
+        {
+          "detail": "Verifying candidate from Structural plan search.",
+          "elapsedMs": 6294.467499999999
+        },
+        {
+          "detail": "Move-count solution rewrite c0 p1 started.",
+          "elapsedMs": 6298.984099999987,
+          "expanded": 1333
+        },
+        {
+          "detail": "Verifying candidate from Move-count solution rewrite c0 p1.",
+          "elapsedMs": 12557.878199999992
+        },
+        {
+          "detail": "Whole-box transport rescheduling started.",
+          "elapsedMs": 12562.425599999988,
+          "expanded": 30333
+        },
+        {
+          "detail": "Verifying candidate from Whole-box transport rescheduling.",
+          "elapsedMs": 13075.531299999988
+        }
+      ],
+      "status": "solved",
+      "moves": 647,
+      "pushes": 240,
+      "actionLog": "DDRDRRRRRDLLDLUURULLLLLRUUUURRDLULDDDLLDRRRDRRDDDDDDDRRRULUURDLDLDLUDLLLLLUUUURRLULLLUUURRURRUUURRRRDLLULLDDDDLDLLDDDRRRRURDDDDRDLLRURUUUUDLLLLLLDLDRDDLURRUULUUUUURURRUUURRDLULDDDLDLLLDRDDDRRRRRURUULLULLURUUURRRRRRDLLLLLULDDDLLDRDLULDDDDDDRDDLLURDRUUULURRRRURDDDUUURUULLULLURUUULLDRURDDDLLDRDLULDDDDDDDRDLLLURRUUURRRRRDRUUURUUULLLDLLRUUULURRRRRDLLLLDDLLDRDLULDDDDDDDRDLUUUUUUUURRRRDRRURULLLDLUUULULLLDRRRURRRRLLLDDDRRDLLLRRRRRDLDDDDRDULULLLLULLULUUURRRDRUUURULLLDLLULLDRRRRULLDRRRURDDDLDRRRURDDDDDDLDRRURDDUULLULLLLLDLLDULLDRRURRDDLUUUUUUULURRRDLULDDDDDDRDLLULDDUURRUUUUURRRUUURULLLLDRRRDDDRDRURDDDDDLDRDDRRLLUURURDDULLDDLUUURUULLDRURRRULDLDDDDLDR",
+      "metrics": {
+        "elapsedMs": 29999.397599999997,
+        "expandedStates": 167044,
+        "generatedStates": 307211,
+        "peakFrontierSize": 32,
+        "counters": {
+          "uniqueStates": 167044,
+          "duplicateStates": 140167,
+          "retainedStates": 0,
+          "peakRetainedStates": 57852,
+          "deadlockPrunes": 156006,
+          "infeasiblePrunes": 0,
+          "heuristicCalls": 28840,
+          "reachabilityFloods": 494266,
+          "estimatedMemoryBytes": 131585535,
+          "currentEstimatedMemoryBytes": 131585535,
+          "peakEstimatedMemoryBytes": 131585535,
+          "currentWorkerMemoryBytes": 0,
+          "currentCoordinatorMemoryBytes": 0,
+          "currentPreparedBoardMemoryBytes": 3440686,
+          "workerRuntimeMemoryBytes": 0,
+          "workerBoardMemoryBytes": 0,
+          "workerRetainedMemoryBytes": 0,
+          "workerFrontierMemoryBytes": 0,
+          "workerCacheMemoryBytes": 0,
+          "workerArenaMemoryBytes": 0,
+          "workerRecordMemoryBytes": 0,
+          "workerIsolateSampleBytes": 0,
+          "browserProcessMemoryBytes": 0,
+          "peakBrowserProcessMemoryBytes": 0,
+          "workersCompleted": 4,
+          "rejectedCandidates": 0,
+          "phaseTimeouts": 0,
+          "watchdogTimeouts": 0,
+          "coordinatorRecords": 0,
+          "peakCoordinatorRecords": 0,
+          "initialSolutionMoves": 893,
+          "bestSolutionMoves": 647,
+          "solutionImprovements": 2,
+          "memoryCurrentPrepareBoardBytes": 0,
+          "memoryPeakPrepareBoardBytes": 22080832,
+          "memoryCurrentPrepareBoardProcessBytes": 0,
+          "memoryPeakPrepareBoardProcessBytes": 0,
+          "memoryPrepareBoardRetainedStates": 0,
+          "memoryPrepareBoardFrontierStates": 0,
+          "memoryPrepareBoardCacheBytes": 0,
+          "memoryCurrentStructuralPlanBytes": 0,
+          "memoryPeakStructuralPlanBytes": 58246080,
+          "memoryCurrentStructuralPlanProcessBytes": 0,
+          "memoryPeakStructuralPlanProcessBytes": 0,
+          "memoryStructuralPlanRetainedStates": 0,
+          "memoryStructuralPlanFrontierStates": 0,
+          "memoryStructuralPlanCacheBytes": 0,
+          "memoryCurrentSolutionRewriteC0P1Bytes": 0,
+          "memoryPeakSolutionRewriteC0P1Bytes": 89670208,
+          "memoryCurrentSolutionRewriteC0P1ProcessBytes": 0,
+          "memoryPeakSolutionRewriteC0P1ProcessBytes": 0,
+          "memorySolutionRewriteC0P1RetainedStates": 0,
+          "memorySolutionRewriteC0P1FrontierStates": 0,
+          "memorySolutionRewriteC0P1CacheBytes": 0,
+          "memoryCurrentSolutionRescheduleC100Bytes": 0,
+          "memoryPeakSolutionRescheduleC100Bytes": 62469184,
+          "memoryCurrentSolutionRescheduleC100ProcessBytes": 0,
+          "memoryPeakSolutionRescheduleC100ProcessBytes": 0,
+          "memorySolutionRescheduleC100RetainedStates": 0,
+          "memorySolutionRescheduleC100FrontierStates": 0,
+          "memorySolutionRescheduleC100CacheBytes": 0,
+          "proof.estimatedMemoryBytes": 131585535,
+          "proof.currentEstimatedMemoryBytes": 131585535,
+          "proof.peakEstimatedMemoryBytes": 131585535,
+          "proof.exactFeatureMask": 1023,
+          "proofExpandedStates": 0,
+          "proofGeneratedStates": 0
+        }
+      }
+    }
+  ]
+}

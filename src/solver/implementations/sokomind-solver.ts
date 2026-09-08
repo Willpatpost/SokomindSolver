@@ -61,6 +61,8 @@ import {
   reverseLaneCount,
   sokomindRewriteConcurrency,
   solutionImprovementPlan,
+  solutionReschedulingPlan,
+  supportsBoxRescheduling,
   structuralPlan,
   type EnginePlan,
   type RewriteBudgetAllocation,
@@ -1188,6 +1190,7 @@ async function improveIncumbent(
   reservedGenerated = Infinity,
   memoryConcurrency = 1,
   allocation: RewriteBudgetAllocation = DEFAULT_REWRITE_BUDGET_ALLOCATION,
+  repair: "window" | "box" = "window",
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -1248,7 +1251,7 @@ async function improveIncumbent(
       pushes: incumbent.pushes,
       objectiveScore: incumbent.objectiveScore,
     },
-    detail: `Rewriting the ${incumbent.moves}-move route within a bounded local-search budget.`,
+    detail: `Improving the ${incumbent.moves}-move route within the remaining quality budget.`,
   });
 
   let best = incumbent;
@@ -1256,7 +1259,7 @@ async function improveIncumbent(
     run.deadline,
     run.context.now() + maxElapsedMs,
   );
-  for (let pass = 1; pass <= maxPasses; pass += 1) {
+  for (let pass = 1; pass <= (repair === "box" ? 1 : maxPasses); pass += 1) {
     const remainingImprovementMs = Math.max(
       0,
       improvementDeadline - run.context.now(),
@@ -1278,7 +1281,10 @@ async function improveIncumbent(
       const outcome = await runPhase(
         run,
         [
-          solutionImprovementPlan(
+          repair === "box" ? solutionReschedulingPlan(
+            state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
+            Math.floor(remainingImprovementMs), candidateIndex,
+          ) : solutionImprovementPlan(
             state,
             best,
             Math.floor(maxVisited),
@@ -1487,6 +1493,7 @@ async function harvestAndImprove(
 
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
+  const reschedule = supportsBoxRescheduling(state);
 
   run.progressPhase = "improving";
   report(
@@ -1520,6 +1527,12 @@ async function harvestAndImprove(
     run.deadline,
     run.context.now() + configuredRewriteElapsed,
   );
+  // Larger quality budgets should fund the whole-journey phase instead of
+  // expanding local windows indefinitely. Reserve a quarter of the available
+  // time; all phases still charge the same state/generated/deadline envelope.
+  const windowDeadline = reschedule
+    ? run.context.now() + Math.max(0, rewriteDeadline - run.context.now()) * 0.75
+    : rewriteDeadline;
   const rewrittenCandidates: Array<{
     solution: SolverSolution;
     discoveryOrder: number;
@@ -1543,7 +1556,7 @@ async function harvestAndImprove(
       0,
       totalRewriteGenerated - (usage.generatedStates - rewriteStarted.generatedStates),
     );
-    const remainingElapsed = Math.max(0, rewriteDeadline - run.context.now());
+    const remainingElapsed = Math.max(0, windowDeadline - run.context.now());
     if (remainingVisited < 1 || remainingGenerated < 1 || remainingElapsed < 1) break;
 
     const waveSize = Math.min(rewriteConcurrency, pending.length);
@@ -1559,7 +1572,7 @@ async function harvestAndImprove(
       { incumbent, candidateIndex },
       waveIndex,
     ) => {
-      const maxVisited = visitedShares[waveIndex] ?? 0;
+      const maxVisited = Math.min(visitedShares[waveIndex] ?? 0, reschedule ? 50_000 : Infinity);
       const maxGenerated = generatedShares[waveIndex] ?? 0;
       if (maxVisited < 1 || maxGenerated < 1) {
         return {
@@ -1593,10 +1606,12 @@ async function harvestAndImprove(
     rewrittenCandidates.push(...results);
   }
 
-  // If a basin was productive and earlier lanes returned budget unused, spend
-  // the remainder at the best improved route instead of abandoning it.
+  // Whole-journey repair can succeed even when local windows made no progress.
+  // Give it the best verified route, with only the unspent shared quality budget.
+  // Interchangeable-only puzzles keep the existing local refinement policy.
   const productive = rewrittenCandidates.filter((candidate) => candidate.improved);
-  if (productive.length && !run.context.signal.aborted) {
+  const refinementCandidates = reschedule ? rewrittenCandidates : productive;
+  if (refinementCandidates.length && !run.context.signal.aborted) {
     const usage = aggregate(run);
     const remainingVisited = Math.max(
       0,
@@ -1608,10 +1623,10 @@ async function harvestAndImprove(
     );
     const remainingElapsed = Math.max(0, rewriteDeadline - run.context.now());
     if (remainingVisited >= 1 && remainingGenerated >= 1 && remainingElapsed >= 1) {
-      const bestProductiveSolution = selectBest(productive);
-      const bestProductive = productive.find(
+      const bestProductiveSolution = selectBest(refinementCandidates);
+      const bestProductive = refinementCandidates.find(
         (candidate) => candidate.solution === bestProductiveSolution,
-      ) ?? productive[0];
+      ) ?? refinementCandidates[0];
       const refinement = await improveIncumbent(
         run,
         state,
@@ -1626,6 +1641,8 @@ async function harvestAndImprove(
         100 + bestProductive.discoveryOrder,
         remainingGenerated,
         1,
+        DEFAULT_REWRITE_BUDGET_ALLOCATION,
+        reschedule ? "box" : "window",
       );
       if (refinement.improved) {
         rewrittenCandidates.push({

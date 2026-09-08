@@ -8,7 +8,44 @@ now governs architecture and implementation sequencing. This document retains th
 product timing contract and implementation history; where sequencing differs,
 follow the strategic roadmap.
 
+## Governing priority — September 7, 2026
+
+Follow the evidence-driven stages in the strategic roadmap. Route-gap diagnosis
+and decision experiments have now justified long-range rescheduling, which is
+integrated into the quality pipeline with shared budgets and replay checks.
+Next comes applying that costed model to analyzer-generated partial schedules. Sprints 2–3 are
+implemented experiments that failed quality acceptance;
+keep them for controlled comparisons. Architectural sections below are candidate
+capabilities, not an automatic implementation queue.
+
+Prioritize verified route improvement with generous, explicitly bounded analysis.
+Record timing and memory throughout, but defer the three-second search acceptance
+gate until quality and generalization are established. No reference-derived route
+or puzzle-specific strategy may enter runtime planning.
+
 ## Implementation status — September 7, 2026
+
+**September 8 update:** The new `solution-box-reschedule` engine command repairs
+production's 789-move Grand Hall route to **647 moves / 242 pushes** without using
+the human reference. An independent small-board oracle and Chromium/WebKit worker
+tests pass. [Measured results](benchmarks/grand-hall-rescheduling.md) explain the
+method and limits. This is a post-solution repair, not yet pre-search planning;
+the public quality/optimal adapter now invokes it automatically with unused shared
+budgets. Board-only adapter tests reach 647 moves on all three Grand Hall
+orientations; public Chromium/WebKit worker tests reproduce 647/242. A smaller
+50,000-state quality budget reaches 709 moves. Seven other catalog puzzles pass
+integration replay checks. The next work is adapting its long-horizon cost model
+to partial analyzer schedules, while keeping the proven complete-route repair as
+a quality baseline. Fast mode and the pre-search analyzer remain unchanged.
+
+The earlier evidence-driven Stage 0 diagnosis is available in
+[Grand Hall diagnosis](benchmarks/grand-hall-diagnosis.md), with replayable traces
+and eight same-state H decision trials. No trial proves a quality gain. The next
+work at that checkpoint was continuation-evaluator calibration, then
+full staging/transit episode comparisons. This superseded the suggestion to
+implement another planning mechanism immediately. The diagnostic replay yielded
+a 624-move version of the human witness without changing its pushes; runtime
+planning does not consume that route and optimality remains unproven.
 
 The first executable path is implemented behind the opt-in
 `strategicAnalysisMs` request option: task generation, costed full-board
@@ -69,7 +106,7 @@ Any strategic repair performed after this handoff is charged to that same
 clock. Reentering analysis cannot reset it. Report a solution constructed
 entirely during analysis with its actual analysis cost.
 
-Initially compare analysis budgets of 100, 250, 500, and 1,000 ms. Use 250 ms
+For later latency acceptance, compare analysis budgets of 100, 250, 500, and 1,000 ms. Use 250 ms
 as an experimental starting configuration, not a promised final default. If
 static preparation alone exceeds a budget, report the overrun rather than
 silently excluding it. Longer diagnostic runs may identify missing capability,
@@ -250,71 +287,33 @@ extra search to make the architecture appear necessary.
 
 ## 6. Implementation sequence and deliverables
 
-### Milestone 1: measurement and a complete working path
+This sequence mirrors the governing strategic roadmap and supersedes the earlier
+mechanism-first milestones.
 
-Add timing boundaries and plan-package validation. Connect existing dependency
-analysis to a minimal task scheduler, pair simulation, and downstream macro
-execution. Deliver one complete path from board analysis to a replay-valid
-result using analyzer-generated segments.
+1. **Diagnose:** replay and trace production discovery, production rewrite, and
+   the 626-move witness. Reconcile pushes and walking; annotate repeated crossings,
+   temporary placements, and goal undoing without double-counting suspected waste.
+2. **Test decisions:** compare legal choices from identical board/keeper states
+   using independent continuations, matched downstream limits, and generous
+   diagnostic budgets. Report eventual moves and inconclusive failures.
+3. **Implement from evidence:** choose the capability that fixes a demonstrated
+   costly decision. Connect it to execution and establish an attributable verified
+   gain against production and prior experiments.
+4. **Establish quality:** repeat with declared generous analysis bounds and track
+   progress toward 650 moves. More effort or lower heuristic scores alone do not
+   demonstrate better planning. Timing is measured but not yet an acceptance gate.
+5. **Generalize:** evaluate held-out puzzles, orientations, and roles; report
+   per-puzzle regressions and solved rates before promotion.
+6. **Optimize and promote:** profile the successful approach, preserve quality,
+   and then validate the three-second search target and acceptable analysis cost
+   in cold/warm browser runs.
 
-Instrument the Grand Hall G/H dependency, but discover it through general
-geometry and goal-domain logic. No board ID, coordinates, or human route may
-control production behavior. Add small synthetic interaction fixtures as well.
+Each quality milestone requires independently generated, replay-verified route
+improvement. Tests and mechanism completion establish correctness, not quality.
+The next integrated deliverable is the actual diagnosis and decision experiments,
+not merely instrumentation or another proposed architecture.
 
-Exit: the plan is consumed by search, startup/analysis/search timing is distinct,
-and generated segments are validated. Continue immediately into strategy quality;
-this engineering milestone alone is not the requested solver upgrade.
 
-### Milestone 2: coherent schedules and alternative plans
-
-Add access/space requirements, candidate schedule diversity, keeper transition
-costs, and incremental status updates. Simulate composed prefixes. Implement
-task exchange, alternative staging, and delayed placement repairs.
-
-Exit: demonstrate that a composed plan catches an interaction missed by isolated
-task planning and that alternatives can recover from the first choice failing.
-Measure solution changes under the same downstream search budget.
-
-### Milestone 3: adaptive interaction depth and fast analysis
-
-Add obstruction-directed group expansion, compatible simulation caching, and
-adaptive effort allocation. Profile allocation, reachability, serialization,
-and schedule update costs. Compare the four analysis budgets.
-
-Exit: select a configuration on the measured tradeoff between analysis time,
-solution moves, and downstream work. Reject extra planning machinery that does
-not improve that tradeoff. Do not choose the default from Grand Hall alone.
-
-### Milestone 4: execution, repair, and move-quality integration
-
-Preserve useful keeper arrivals and task-order alternatives in the main search.
-Review push-first dominance for move-oriented discovery, using bounded
-nondominated records where appropriate. Reuse verified prefixes and localize
-repair instead of restarting unrestricted search.
-
-Apply schedule restructuring to complete plans inside analysis. Use expensive
-episode and room-boundary rewriting downstream only where it improves the
-incumbent inside the search deadline. Match complete splice states or explicitly
-construct connecting bridges; always replay the final route.
-
-Exit: an integrated configuration improves verified moves within fixed search
-budgets. Document its remaining analysis cost and failure cases.
-
-### Milestone 5: generalization and production promotion
-
-Tune on a declared subset and evaluate held-out fixtures. Run feature ablations
-and production-browser measurements. Retain the smallest effective combination,
-remove rejected experiments, and update reviewed deterministic expectations
-only after explaining their changes.
-
-Exit: report whether the Grand Hall target is met, alongside analysis speed,
-broader solved count, quality/time regressions, and memory observations. Deliver
-validated improvements even if the full target remains unmet, without calling
-an analysis-only change a solution-quality improvement.
-
-These milestones belong to one sustained implementation effort. Do not require
-a new chat or approval between dependent steps. Communicate meaningful findings
-and changes of approach; do not stop at scaffolding, metadata, or failed tuning.
 
 ## 7. Tests and experimental design
 
@@ -383,6 +382,37 @@ preview server is started correctly. Preserve historical benchmark artifacts.
 
 ## 9. Final report
 
+### Sprint 3 experiment: concrete approach repair (2026-09-07)
+
+The analyzer can now retry a failed goal task with bounded matching-supported
+owner/final-push alternatives. Simulation checks the actual final-push transition;
+a keeper merely reaching the predecessor afterward is insufficient. Failed
+constrained choices do not create shared clearance obligations. Remaining beam
+slots can retain distinct continuations with the same first task.
+
+This implements local choice repair, **not yet a consistent whole-plan hypothesis
+solver**. Choices are realized in replayable prefixes; unresolved owner/approach
+choices are not persisted across the whole schedule. The latter remains open.
+
+Internal `scheduleChoices` defaults to zero and is bounded at eight. Reproduce:
+
+```sh
+node --experimental-strip-types scripts/benchmark-strategic-analyzer.mjs --ids=expert-maze,huge --budgets=250 --runs=1 --search-ms=0 --schedule-choices=2
+```
+
+Raw evidence: `docs/benchmarks/strategic-choice-repair-sprint3.json`. Maze remains
+127 moves / 28 pushes. Grand Hall exhausts the search frontier without a solution.
+Its analyzer attempts 61 concrete choices, with 60 failures and one successful
+endpoint, within 4,000 expansions. These are bounded simulation failures, not
+proofs of infeasibility. Eager choice enumeration was also unsuccessful; the
+implemented version repairs on demand. Do not enable this configuration in the
+public adapter. Production and Sprint 2 defaults retain their existing behavior.
+
+A possible future capability is connecting unresolved obligations across a schedule
+and scoping blocker evidence to that hypothesis. Diagnosis must establish its need. Retrying local approach alternatives
+alone does not remove the need for that work. Compare against the archived
+production and Sprint 1 controls before any promotion.
+
 ### Sprint 2 checkpoint (2026-09-07): quality first
 
 Prioritize verified solution quality. Record analysis and search time, but defer
@@ -413,7 +443,7 @@ Sprint 1 execution produced 107 moves on the maze, so this also regresses that
 experimental result. Do not promote this configuration. These kernel runs are
 not browser acceptance measurements.
 
-Next: retain competing approach and owner choices within schedule hypotheses,
+Deferred candidate capability: retain competing approach and owner choices within schedule hypotheses,
 score obligations across tasks, and repair the implicated choice after failure.
 A chosen approach needs a realizable keeper route and a clearance lifetime.
 A union of possible approaches is not a concrete plan. Compare against both
@@ -424,7 +454,7 @@ total latency, failures, and memory observations. Include cold and warm browser
 results and the selected analysis budget. Show which expensive decisions were
 removed from the route and which features caused the gain.
 
-The target is met only when solutions at or below 650 moves arrive within
+For final product promotion, the target is met only when solutions at or below 650 moves arrive within
 three seconds of search across the declared reference-run acceptance set.
 Report the full success fraction; a best run or median alone is insufficient.
 Separately judge whether the selected analysis latency is suitable for the

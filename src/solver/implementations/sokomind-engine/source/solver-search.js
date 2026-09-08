@@ -4620,6 +4620,7 @@ function searchCore(payload) {
       ...(analysis.strategicPlan ? {generated: analysis.strategicPlan.statistics.generated} : {}), analysis};
   }
   if (payload.algorithm === "bridge-astar") return bridgeAStarSearch(payload);
+  if (payload.algorithm === "solution-box-reschedule") return solutionBoxRescheduleSearch(payload);
   if (payload.algorithm === "solution-window-rewrite") {
     return solutionWindowRewriteSearch(payload);
   }

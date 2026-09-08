@@ -99,7 +99,8 @@ function simulateStrategicTask(start, task, board, budget, options) {
     expanded++;
     budget.expanded++;
     const box = current.boxes[task.boxIndex];
-    if (current.path.length && task.destinations.has(pkey(box[0], box[1]))) {
+    if (current.path.length && task.destinations.has(pkey(box[0], box[1])) &&
+        (!task.finalPredecessor || pkey(...current.robot) === task.finalPredecessor)) {
       endpoints.push(current);
       if (endpoints.length >= options.taskResults) break;
       continue;
@@ -124,6 +125,11 @@ function simulateStrategicTask(start, task, board, budget, options) {
       if (now() >= budget.deadline) break;
       const [y, x] = current.boxes[index];
       for (const next of pushBoxNeighbors(current, board, pkey(y, x), reachable, {lockProven: false})) {
+        // Enforce the selected final push at the transition, not merely by a
+        // keeper position that could also be reached after a different push.
+        if (index === task.boxIndex && task.finalPredecessor &&
+            task.destinations.has(pkey(next.boxes[index][0], next.boxes[index][1])) &&
+            pkey(y, x) !== task.finalPredecessor) continue;
         if (budget.generated >= options.maxGenerated) break;
         const path = [...current.path, ...next.path];
         if (path.length > options.pathLimit) continue;
@@ -164,6 +170,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     layers: strategicLimit(config.layers, 6, 128),
     pathLimit: strategicLimit(config.pathLimit, 512, 4096),
     inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
+    scheduleChoices: strategicLimit(config.scheduleChoices, 0, 8),
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
@@ -239,10 +246,25 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
         registerTask(task);
         if (!plan.tasks.some(existing => existing.id === task.id)) continue;
         plan.statistics.tasksAttempted++;
+        if (task.choice) plan.statistics.approachChoicesAttempted = (plan.statistics.approachChoicesAttempted || 0) + 1;
         budget.taskObstructions.delete(task.id);
         const endpoints = simulateStrategicTask(current, task, board, budget, options);
+        if (options.scheduleChoices && !task.choice && !endpoints.length && task.kind === "commit-goal") {
+          const alternatives = strategicTaskChoices(task, current, plan, board, options.scheduleChoices);
+          // Repair on demand. Eagerly expanding every approach exhausted the
+          // whole-board budget before the schedule could reach later tasks.
+          tasks.push(...alternatives.filter(alternative => alternative.choice));
+        }
         const obstruction = budget.taskObstructions.get(task.id);
-        if (options.inferenceWork && !endpoints.length && obstruction && plan.resources.length < 128) {
+        // Failure of one selected owner/approach does not establish a clearance
+        // obligation for all alternatives. Try the next choice without leaking
+        // that observation into the shared root contract.
+        if (task.choice && !endpoints.length) {
+          plan.statistics.approachChoicesFailed = (plan.statistics.approachChoicesFailed || 0) + 1;
+        }
+        if (options.inferenceWork && !task.choice &&
+            !(options.scheduleChoices && task.kind === "commit-goal") &&
+            !endpoints.length && obstruction && plan.resources.length < 128) {
           const id = `obstruction:${plan.resources.length}`;
           if (!plan.resources.some(resource => resource.consumerTaskId === task.id &&
               resource.cells.length === 1 && resource.cells[0] === obstruction.cell)) {
@@ -256,6 +278,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
           if (path.length > options.pathLimit) continue;
           const child = {...endpoint, path, pushes: current.pushes + endpoint.pushes,
             tasks: [...current.tasks, task.id], staging: [...current.staging]};
+          if (task.choice) plan.statistics.approachChoicesSucceeded = (plan.statistics.approachChoicesSucceeded || 0) + 1;
           endpoint.boxes.forEach((box, index) => {
             const position = pkey(box[0], box[1]);
             if (index !== task.boxIndex && position !== pkey(current.boxes[index][0], current.boxes[index][1]) &&
@@ -293,6 +316,18 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
       represented.add(child.tasks[0]);
       beam.push(child);
       if (beam.length >= options.width) break;
+    }
+    // Once first-task diversity is represented, retain distinct physical
+    // continuations. Previously a shared first task discarded every later
+    // approach/owner alternative even when beam slots remained unused.
+    if (options.scheduleChoices) {
+      const states = new Set(beam.map(child => JSON.stringify([child.robot, child.boxes])));
+      for (const child of candidates) {
+        if (beam.length >= options.width) break;
+        const key = JSON.stringify([child.robot, child.boxes]);
+        if (states.has(key)) continue;
+        states.add(key); beam.push(child);
+      }
     }
     for (const child of candidates) {
       if (beam.length >= options.width) break;
