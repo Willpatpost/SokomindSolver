@@ -50,6 +50,7 @@ import {
   DEFAULT_IMPROVEMENT_MINIMUM_MOVES,
   DEFAULT_MAX_ENGINE_WORKERS,
   DEFAULT_REWRITE_BUDGET_ALLOCATION,
+  adaptiveRewriteAllocation,
   bidirectionalPlans,
   checkpointContinuationPlans,
   configuredBudget,
@@ -1376,6 +1377,10 @@ async function solvedWithImprovement(
     incumbent,
     createWorker,
     options,
+    0,
+    Infinity,
+    1,
+    adaptiveRewriteAllocation(run.request),
   );
   if (improved.cancelled) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
@@ -1494,6 +1499,7 @@ async function harvestAndImprove(
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
   const reschedule = supportsBoxRescheduling(state);
+  const rewriteAllocation = adaptiveRewriteAllocation(run.request);
 
   run.progressPhase = "improving";
   report(
@@ -1596,6 +1602,7 @@ async function harvestAndImprove(
         candidateIndex,
         maxGenerated,
         waveSize,
+        rewriteAllocation,
       );
       return {
         solution: improved.solution,
@@ -1641,7 +1648,7 @@ async function harvestAndImprove(
         100 + bestProductive.discoveryOrder,
         remainingGenerated,
         1,
-        DEFAULT_REWRITE_BUDGET_ALLOCATION,
+        rewriteAllocation,
         reschedule ? "box" : "window",
       );
       if (refinement.improved) {
@@ -1985,9 +1992,29 @@ export function createSokomindSolverAdapter(
   return Object.freeze({
     metadata: sokomindSolverMetadata,
     async solve(
-      request: SolverRequest,
+      originalRequest: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
+      const originalOptions = extractSokomindOptions(originalRequest);
+      const structural = isStructuralPuzzle(originalRequest);
+      const autoStrategic =
+        originalOptions.mode === "quality" &&
+        structural &&
+        !originalOptions.deterministic &&
+        originalOptions.strategicAnalysisMs === 0;
+      const request = autoStrategic
+        ? Object.freeze({
+            ...originalRequest,
+            options: Object.freeze({
+              ...originalRequest.options,
+              "sokomind-solver": Object.freeze({
+                ...(originalRequest.options?.["sokomind-solver"] as Record<string, unknown> | undefined),
+                strategicAnalysisMs: 500,
+                strategicPlanExecution: true,
+              }),
+            }),
+          })
+        : originalRequest;
       const sokomindOptions = extractSokomindOptions(request);
       const startedAt = context.now();
       const maxElapsed = request.limits?.maxElapsedMs;
@@ -2043,7 +2070,6 @@ export function createSokomindSolverAdapter(
       let stopReason: PhaseStopReason | undefined;
       let engineWorkersStarted = 0;
       let engineWorkersFailed = 0;
-      const structural = isStructuralPuzzle(request);
       let analysisPlan: SokomindAnalysisPlan | undefined;
       let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
         Object.freeze([]);

@@ -12,7 +12,7 @@ import {
 import { extractSokomindOptions, type SokomindRequestOptions } from "./sokomind-options.ts";
 import type { SokomindTuningProfile } from "./sokomind-tuning.ts";
 
-export const DEFAULT_MAX_ENGINE_WORKERS = 3;
+export const DEFAULT_MAX_ENGINE_WORKERS = 6;
 
 export function defaultImprovementMaxVisited(maxMemoryBytes?: number): number {
   if (maxMemoryBytes === undefined || !Number.isFinite(maxMemoryBytes)) {
@@ -518,6 +518,28 @@ export const DEFAULT_REWRITE_BUDGET_ALLOCATION: RewriteBudgetAllocation = Object
   pushWindowShare: 0.3,
   moveWindowShare: 0.5,
 });
+
+const CORRIDOR_REWRITE_ALLOCATION: RewriteBudgetAllocation = Object.freeze({
+  permutationShare: 0.10,
+  pushWindowShare: 0.50,
+  moveWindowShare: 0.40,
+});
+
+const COMPACT_REWRITE_ALLOCATION: RewriteBudgetAllocation = Object.freeze({
+  permutationShare: 0.35,
+  pushWindowShare: 0.35,
+  moveWindowShare: 0.30,
+});
+
+export function adaptiveRewriteAllocation(
+  request: SolverRequest,
+): RewriteBudgetAllocation {
+  const boxes = request.snapshot.boxes.length;
+  const floor = request.board.floor.length;
+  if (boxes >= 8 && floor >= 80) return CORRIDOR_REWRITE_ALLOCATION;
+  if (boxes >= 6 && floor < 60) return COMPACT_REWRITE_ALLOCATION;
+  return DEFAULT_REWRITE_BUDGET_ALLOCATION;
+}
 
 export interface ParallelRewriteBudget {
   readonly maxVisited: number;
