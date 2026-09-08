@@ -18,6 +18,9 @@ interface Plan {
   snapshotKey: string;
   candidates: Array<{path: string[]; moves: number; pushes: number; tasks: string[]}>;
   statistics: {expanded: number; generated: number; elapsedMs: number; groupWidenings?: number};
+  resources: Array<{id: string; consumerTaskId: string; cells: string[]; alternatives?: string[][]; availableFrom: string; availableUntil: string}>;
+  tasks: Array<{id: string; kind: string; boxIndex: number; boxCandidates?: number[]; completesWhen: {kind: string; cells: string[]; label?: string}; dependsOn: string[]; requires: string[]; evidence: {snapshotKey: string}; forTaskId?: string}>;
+  hypotheses: Array<{taskIds: string[]}>;
 }
 beforeEach(t => {
   assert.ok("after" in t);
