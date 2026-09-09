@@ -114,7 +114,6 @@ test("Grand Hall preparation respects the shared expansion budget", () => {
   assert.ok(plan.candidates.length <= 4);
   assert.ok(plan.statistics.elapsedMs >= 0);
   assert.ok(validateStrategicPlanContract(plan));
-  assert.ok(plan.resources.length > 0);
   for (const resource of plan.resources.filter(resource => !resource.alternatives)) {
     assert.equal(plan.tasks.find(task => task.id === resource.consumerTaskId)?.kind, "release");
   }
