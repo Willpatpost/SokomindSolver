@@ -30,9 +30,13 @@ Quality-mode whole-box repair uses its allocated state budget for work and the
 existing live estimated-memory checks for memory. It no longer inherits the
 extra 20k/35k memory-class state caps. Local-window and optimal-mode allocations
 are unchanged; shared limits, cutoff publications, and replay checks still apply.
-See [resource-policy measurements](benchmarks/quality-memory-policy.md), including
-the pre-existing Grand Hall proof-label inconsistency exposed at lower memory
-limits. Those particular proof labels are not reliable optimality evidence.
+See [resource-policy measurements](benchmarks/quality-memory-policy.md). The
+historical lower-memory Grand Hall proof claims were invalid: PI-corral pruning
+incorrectly rejected its solvable root. That rule is now disabled in exact search,
+including explicit feature overrides. Updated runs retain unknown optimality and
+bounded proof metadata. Sokomind 1.2.0 / exact A* and IDA* 2.2.0 supersede the
+affected versions; IDA* schema 3 rejects older checkpoints, including direct API
+resume. Previously emitted claims must not be treated as current proof evidence.
 
 Rescheduling publishes complete improvements during repair. The coordinator
 independently replays these under the same pre/post-verification budget checks,

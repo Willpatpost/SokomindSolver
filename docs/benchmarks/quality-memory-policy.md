@@ -90,7 +90,7 @@ The before files were captured before the resource-policy edit. Running current
 code reproduces the hybrid policy, not the before policy. No route, fixture ID,
 box label, or benchmark measurement enters production ordering.
 
-## Pre-existing proof-label inconsistency
+## Historical invalid proof labels — corrected
 
 *At 384 and 768 MiB, both before and hybrid runs return an `optimal` proof and
 `proven` solution label after only one proof expansion. Those claims conflict
@@ -102,12 +102,53 @@ the diagnostic. This resource-policy change does not modify exact search,
 proof handoff, or proof-result acceptance. Investigating this inconsistency is a
 separate correctness priority, even if existing frozen-optimum regressions pass.
 
-## Validation
+The follow-up identified a concrete cause: `PiCorralDetector.check` returns true
+on Grand Hall's replay-solvable root (`piDeadlocks = 1`). Exact search treated that
+local false positive as exhaustive elimination of all better routes. A local
+corral's currently available pushes are not a sufficient proof that the whole
+state is deadlocked; other box moves can change which pushes are available.
+
+PI-corral hard pruning is now disabled in the shared exact-feature resolver,
+including attempts to explicitly enable the flag. The detector remains available
+for diagnostic tests; it cannot prune either exact A* or IDA*. Solver metadata
+versions changed to Sokomind 1.2.0 and classic exact A*/IDA* 2.2.0, and IDA*
+checkpoint schema changed from 2 to 3. Direct resume also rejects old schemas,
+so previously exhausted contours cannot carry this unsound assumption forward.
+Valid exact proofs on other puzzles remain supported.
+
+The new public runs use the same requests as above:
+
+| Memory allowance | Moves / pushes | Expanded | Peak estimated bytes | Elapsed seconds | Optimality / proof | Lower bound |
+| --- | --- | --- | --- | --- | --- | --- |
+| 384 MiB | 673 / 242 | 79,748 | 73,254,518 | 44.999 | unknown / bounded | 214 |
+| 768 MiB | 573 / 248 | 154,933 | 158,513,635 | 45.000 | unknown / bounded | 0 |
+
+Both stop at the elapsed budget instead of falsely completing a proof. Proof
+work is time-dependent, so these expanded counts and timings are descriptive
+single samples. Evidence: [384 corrected](quality-memory-384-proof-safe.json),
+[768 corrected](quality-memory-768-proof-safe.json). Historical files above are
+preserved for comparison, not valid proof certificates. The diagnostic now
+records elapsed overrun explicitly rather than discarding a valid cutoff result
+for cooperative deadline-check/reporting latency; the request limit and external
+watchdog are unchanged.
+
+## Resource-policy validation before the proof correction
 
 Passed all 2,385 unit tests and all three coverage gates; typecheck, lint,
 generated-engine/catalog consistency, documentation validation, build and nine
 static checks; 33 frozen-optimum cases and parallel proof; four multi-puzzle
 guardrails; Huge in base/mirrored/rotated orientations; and nine focused browser
 worker tests across Chromium, Firefox, and WebKit. The complete application
-browser suite was not rerun. Frozen-optimum success does not resolve the
-Grand Hall proof-label inconsistency described above.
+browser suite was not rerun. Those passes alone did not establish correctness of
+the historical Grand Hall proof labels; the counterexample and pruning correction
+above address the identified cause.
+
+## Proof-correction validation
+
+All 2,386 unit tests and all three coverage gates pass, including the solvable
+root counterexample, forced-flag protection, and obsolete-checkpoint rejection.
+The 33 frozen-optimum cases and parallel-proof regression pass. Typecheck, lint,
+generated reference checks, build, and nine static checks also pass.
+All 12 focused browser-worker tests pass across Chromium, Firefox, and WebKit,
+including an explicit unknown-optimality assertion at 384 MiB. The complete
+application browser suite was not rerun.

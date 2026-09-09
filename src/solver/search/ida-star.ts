@@ -483,6 +483,9 @@ export async function runIdaStarSearch(
 ): Promise<SolverResult> {
   const startedAt = context.now();
   const features = resolveExactSearchFeatures(options?.features);
+  if (options?.checkpoint && options.checkpoint.schemaVersion !== IDA_STAR_CHECKPOINT_SCHEMA_VERSION) {
+    throw new Error("IDA* checkpoint schema is obsolete; restart proof search.");
+  }
   const featureTelemetry = createExactSearchFeatureTelemetry();
   if (
     !isDefaultExactSearchFeatures(features) &&

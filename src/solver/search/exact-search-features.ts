@@ -32,7 +32,9 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   interactionBoost: true,
   patternDatabase: true,
   forcedPushMacros: true,
-  piCorralPruning: true,
+  // The local detector can reject solvable states (including Grand Hall's
+  // root). It is not a proof-safe hard prune, even when explicitly requested.
+  piCorralPruning: false,
   patternDeadlockPruning: true,
   deadlockTablePruning: true,
   goalCommitmentPruning: true,
@@ -62,7 +64,7 @@ export function resolveExactSearchFeatures(
       throw new TypeError(`Exact-search feature '${key}' must be boolean.`);
     }
   }
-  return Object.freeze({ ...DEFAULT_EXACT_SEARCH_FEATURES, ...overrides });
+  return Object.freeze({ ...DEFAULT_EXACT_SEARCH_FEATURES, ...overrides, piCorralPruning: false });
 }
 
 export function exactSearchFeatureFingerprint(

@@ -121,7 +121,7 @@ describe("solve-sokomind CLI JSONL output", () => {
     assert.equal(status, 0);
 
     const record = JSON.parse(stdout.trim());
-    assert.equal(record.configuration.solverVersion, "1.1.0");
+    assert.equal(record.configuration.solverVersion, "1.2.0");
   });
 
   it("mode reflects CLI argument", () => {

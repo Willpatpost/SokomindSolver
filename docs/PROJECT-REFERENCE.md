@@ -240,14 +240,14 @@ fails when the generated facts below differ from source.
 |---|---:|---|
 | `classic-dfs` | `1.0.0` | first-found |
 | `classic-greedy` | `1.0.0` | first-found |
-| `classic-astar` | `2.1.0` | move-optimal proof |
-| `classic-ida-star` | `2.1.0` | move-optimal proof |
-| `sokomind-solver` | `1.1.0` | bounded discovery/rewrite/proof portfolio |
+| `classic-astar` | `2.2.0` | move-optimal proof |
+| `classic-ida-star` | `2.2.0` | move-optimal proof |
+| `sokomind-solver` | `1.2.0` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
 - Outer worker protocol: `1`
-- IDA* checkpoint schema: `2`
+- IDA* checkpoint schema: `3`
 - Sokomind mode: `fast`
 - Proof algorithm: `auto`; proof parallelism: **1**
 - Maximum harvested incumbents: **4**; harvest window: **5,000 ms**
@@ -260,7 +260,7 @@ fails when the generated facts below differ from source.
 - `interactionBoost`: enabled by default
 - `patternDatabase`: enabled by default
 - `forcedPushMacros`: enabled by default
-- `piCorralPruning`: enabled by default
+- `piCorralPruning`: disabled by default
 - `patternDeadlockPruning`: enabled by default
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default

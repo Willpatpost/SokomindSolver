@@ -117,6 +117,28 @@ cases and parallel proof, multi-puzzle/Huge guardrails, and nine focused browser
 worker cases across Chromium, Firefox, and WebKit. Full application browser
 coverage was not rerun.
 
+### Proof-claim correction
+
+The lower-memory anomaly was traced to PI-corral hard pruning: its detector
+incorrectly classifies Grand Hall's replay-solvable root as deadlocked. That
+eliminated the entire search and turned an arbitrary incumbent into an apparent
+optimum. The shared exact-feature resolver now disables this rule even when
+explicitly enabled. Both A* and IDA* have a regression using a verified shorter
+route as a counterexample; valid exact proofs remain supported.
+
+Sokomind 1.2.0, exact A*/IDA* 2.2.0, and IDA* checkpoint schema 3 supersede the
+affected versions. Old schemas are rejected by both normal loading and direct
+resume. New public runs at 384/768 MiB retain 673/242 and 573/248, now with
+unknown optimality and bounded proof metadata at the elapsed cutoff. The old
+claims are preserved only as explicitly invalid historical benchmark evidence.
+See [corrected results](benchmarks/quality-memory-policy.md).
+
+Correction validation passed all 2,386 unit tests and three coverage gates,
+33 frozen-optimum cases and parallel proof, build/static/typecheck/lint/docs
+checks, and 12 focused browser-worker tests. The 384 MiB unknown-optimality
+regression passes in Chromium, Firefox, and WebKit. Full application browser
+coverage was not rerun.
+
 ## 1. Purpose of this document
 
 This document captures a full-project technical review of SokomindSolver, with special attention to the flagship **Sokomind Solver** implementation.

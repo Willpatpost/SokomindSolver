@@ -2,7 +2,8 @@ import type { GameSnapshot, ParsedBoard } from "../../core/model.ts";
 import type { SolverObjective, SolverSolution } from "../contracts.ts";
 import { isSolverSolution } from "../validation.ts";
 
-export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 2 as const;
+// Earlier contours may have exhausted branches using the unsound PI-corral prune.
+export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 3 as const;
 
 export interface IdaStarCheckpointCounters {
   readonly expanded: number;
