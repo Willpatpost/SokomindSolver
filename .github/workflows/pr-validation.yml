@@ -71,9 +71,19 @@ jobs:
         run: ${{ matrix.command }}
 
   solver-correctness:
-    name: Solver correctness
+    name: Solver (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: multi
+            command: npm run test:solver:multi
+          - suite: known-optima
+            command: npm run test:solver:known
+          - suite: parallel-proof
+            command: npm run test:solver:parallel
 
     # deploy-pages.yml owns the PR build, static artifact checks, browser
     # matrix, and Huge gate. This job owns representative solver correctness.
@@ -90,8 +100,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Multi-puzzle solver regression
-        run: npm run test:solver:multi
-
-      - name: Frozen optimum and parallel proof regressions
-        run: npm run test:solver:proof-regressions
+      - name: Run solver gate
+        run: ${{ matrix.command }}
