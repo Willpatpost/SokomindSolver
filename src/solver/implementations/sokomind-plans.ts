@@ -476,11 +476,8 @@ export function solutionImprovementPlan(
   });
 }
 
-/** Whole-journey repair is currently supported for individually labeled boxes. */
 export function supportsBoxRescheduling(state: LegacyState): boolean {
-  const counts = new Map<string, number>();
-  for (const [, label] of state.boxes) counts.set(label, (counts.get(label) ?? 0) + 1);
-  return [...counts.values()].some(count => count === 1);
+  return state.boxes.length >= 1;
 }
 
 export function solutionReschedulingPlan(

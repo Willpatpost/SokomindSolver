@@ -188,8 +188,9 @@ function solutionBoxRescheduleSearch(payload) {
   };
   const labels = new Map();
   initial.boxes.forEach((box, index) => labels.set(box[2], [...(labels.get(box[2]) || []), index]));
-  const eligible = [...labels].filter(([, indices]) => indices.length === 1)
-    .sort(([left], [right]) => left.localeCompare(right)).map(([, indices]) => indices[0]);
+  const eligible = [...labels]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([, indices]) => indices);
   const requested = payload.rescheduleBoxIndices;
   const selected = Array.isArray(requested) ? eligible.filter(index => requested.includes(index)) : eligible;
   const attempts = [];

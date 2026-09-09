@@ -64,6 +64,22 @@ test("exhausted rescheduling budgets preserve a verified incumbent",()=>{
   assert.ok((bounded.visited??0)<=1);assert.ok((bounded.generated??0)<=1);assert.ok(bounded.path);
   events(bounded.path);
 });
+const repeatedSession = createSession({id:"reschedule-repeated",title:"Repeated labels",difficulty:"tutorial",boxes:2,
+  rows:["OOOOOOO","O  R  O","O X S O","O X S O","O     O","OOOOOOO"]});
+const repeatedRequest = {board:repeatedSession.board,snapshot:repeatedSession.snapshot,objective:{kind:"moves" as const}};
+const repeatedIncumbent = [..."DDDLLUURRDDLLURR"].map(code => ({L:"Left",R:"Right",U:"Up",D:"Down"})[code]!);
+test("repeated-label boxes are eligible for rescheduling",()=>{
+  const result=search({algorithm:"solution-box-reschedule",state:toLegacyState(repeatedRequest),solutionPath:repeatedIncumbent,
+    rescheduleRounds:2,maxVisited:20000,maxGenerated:80000});
+  assert.equal(result.status,"solved");
+  assert.ok(result.path);
+  assert.ok(result.path.length<=repeatedIncumbent.length);
+  const solution=solutionFromLegacyPath(repeatedRequest,result.path);
+  assert.ok(solution&&verifySolverSolution(repeatedRequest,solution).valid);
+  assert.ok((result as Record<string,unknown>).boxRescheduling);
+  const rescheduling = (result as Record<string,unknown>).boxRescheduling as {attempts:unknown[]};
+  assert.ok(rescheduling.attempts.length>0);
+});
 test("an incomplete or illegal incumbent cannot become a claimed solution",()=>{
   for(const path of [[],["Up"],["invented"]]){
     const result=search({algorithm:"solution-box-reschedule",state:toLegacyState(request),solutionPath:path});

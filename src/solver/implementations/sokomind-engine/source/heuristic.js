@@ -155,8 +155,10 @@ function heuristicWithInteractions(boxes, board, includeInteractions) {
     }
     const grouped = boxesByLabelWithIndices(boxes);
     const lcBoost = linearConflictFromGrouped(grouped, board, lcAssignments);
+    const assignmentValue = detail.cost + lcBoost;
+    const pdb = board.pdbPartitions?.length ? pdbHeuristic(boxes, board) : 0;
     metrics.heuristicMs += now() - started;
-    return memoizeBounded(heuristicMemo, signature, detail.cost + lcBoost);
+    return memoizeBounded(heuristicMemo, signature, Math.max(assignmentValue, pdb));
   }
   const grouped = boxesByLabelWithIndices(boxes);
   const changedEntries = [...grouped.values()].find(entries =>
@@ -202,8 +204,9 @@ function heuristicWithInteractions(boxes, board, includeInteractions) {
     total += interactionHeuristicBoost(boxes, board, assignmentCosts);
   }
   total += linearConflictFromGrouped(grouped, board, lcAssignments);
+  const pdb = board.pdbPartitions?.length ? pdbHeuristic(boxes, board) : 0;
   metrics.heuristicMs += now() - started;
-  return memoizeBounded(heuristicMemo, signature, total);
+  return memoizeBounded(heuristicMemo, signature, Math.max(total, pdb));
 }
 
 function heuristic(boxes, board) {

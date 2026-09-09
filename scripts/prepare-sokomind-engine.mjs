@@ -22,6 +22,7 @@ const SOURCE_FILES = Object.freeze([
   "metrics.js",
   "topology.js",
   "board.js",
+  "pdb.js",
   "heuristic.js",
   "deadlock.js",
   "analysis.js",

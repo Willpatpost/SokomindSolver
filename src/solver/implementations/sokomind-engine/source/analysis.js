@@ -247,6 +247,7 @@ function analyzePuzzleForSearch(data, options = {}) {
     useMilestoneReverse: difficulty === "complex" || difficulty === "extreme",
     checkpointLimit: difficulty === "extreme" ? 12 : 8,
   };
+  board.pdbPartitions = buildPdbPartitions(board);
   const preparedBoard = createPreparedBoardSeed(board);
   const strategicPlan = options.strategicAnalysis ? buildStrategicPlan(data, {
     ...options.strategicAnalysis,

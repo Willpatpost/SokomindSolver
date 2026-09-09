@@ -345,6 +345,7 @@ function createPreparedBoardSeed(board) {
     roomPatternTables: board.roomPatternTables,
     pairConflictTables: board.pairConflictTables,
     capacityPatternTables: board.capacityPatternTables,
+    pdbPartitions: board.pdbPartitions || [],
     graphNodes: board.metrics.graphNodes,
     graphEdges: board.metrics.graphEdges,
   };
@@ -434,6 +435,7 @@ function hydratePreparedBoard(data, seed, metrics) {
     roomPatternTables: new Map(seed.roomPatternTables || []),
     pairConflictTables: new Map(seed.pairConflictTables || []),
     capacityPatternTables: new Map(seed.capacityPatternTables || []),
+    pdbPartitions: seed.pdbPartitions || [],
     shortestCorridorMemo: new Map(),
     localCorralMemo: new Map(),
     doorwayFlowMemo: new Map(),
@@ -540,6 +542,7 @@ function parse(data) {
     roomPatternTables: new Map(),
     pairConflictTables: new Map(),
     capacityPatternTables: new Map(),
+    pdbPartitions: [],
     shortestCorridorMemo: new Map(),
     localCorralMemo: new Map(),
     doorwayFlowMemo: new Map(),

@@ -12,6 +12,7 @@ const SOURCE_FILES = [
   "metrics.js",
   "topology.js",
   "board.js",
+  "pdb.js",
   "heuristic.js",
   "deadlock.js",
   "analysis.js",
@@ -83,6 +84,9 @@ interface TestEngine {
     cacheBudgetBytes: number;
     capacities: Record<string, number>;
   } | null;
+  buildPdbPartitions(board: EngineBoard): PdbPartition[];
+  pdbLookup(partition: PdbPartition, boxCellIds: number[]): number;
+  pdbHeuristic(boxes: EngineState["boxes"], board: EngineBoard): number;
   search(payload: Record<string, unknown>): {
     status: string;
     path?: string[];
@@ -90,6 +94,14 @@ interface TestEngine {
     generated?: number;
     performance?: Record<string, unknown>;
   };
+}
+
+interface PdbPartition {
+  readonly k: number;
+  readonly table: Uint16Array;
+  readonly tableSize: number;
+  readonly regionCellIds: number[];
+  readonly label: string;
 }
 
 interface RoomGeometry {
@@ -167,6 +179,7 @@ async function loadSourceEngine(): Promise<TestEngine> {
       boardCacheMemorySnapshot, configureBoardCaches,
       search,
       doorwayCrossingReachable,
+      buildPdbPartitions, pdbLookup, pdbHeuristic,
     };`, context);
   return (context as unknown as { __engineTest: TestEngine }).__engineTest;
 }
@@ -446,6 +459,42 @@ describe("Sokomind engine dense hot paths", () => {
       assert.ok(memory.cacheEntries >= 2);
       assert.ok(memory.cacheBytes >= doorwayBytes + analysisBytes);
     }
+  });
+
+  it("builds PDB partitions and returns admissible push-distance lower bounds", async () => {
+    const engine = await loadSourceEngine();
+    const twoBoxRows = [
+      "OOOOOOO",
+      "O  R  O",
+      "O X S O",
+      "O X S O",
+      "O     O",
+      "OOOOOOO",
+    ];
+    const board = engine.parse({ rows: twoBoxRows });
+    const partitions = engine.buildPdbPartitions(board);
+    (board as unknown as Record<string, unknown>).pdbPartitions = partitions;
+    assert.ok(partitions.length >= 1);
+    const xPartition = partitions.find(p => p.label === "X");
+    assert.ok(xPartition);
+    assert.equal(xPartition.k, 2);
+    assert.ok(xPartition.tableSize > 0);
+    assert.ok(xPartition.table.length === xPartition.tableSize);
+
+    const solvedBoxes: EngineState["boxes"] = [[2, 4, "X"], [3, 4, "X"]];
+    const solvedCost = engine.pdbHeuristic(solvedBoxes, board);
+    assert.equal(solvedCost, 0);
+
+    const startBoxes: EngineState["boxes"] = [[2, 2, "X"], [3, 2, "X"]];
+    const startCost = engine.pdbHeuristic(startBoxes, board);
+    assert.ok(startCost > 0);
+
+    const singleBoxBoard = engine.parse({ rows: ROWS });
+    const singlePartitions = engine.buildPdbPartitions(singleBoxBoard);
+    assert.ok(singlePartitions.length >= 1);
+    const singleP = singlePartitions.find(p => p.label === "X");
+    assert.ok(singleP);
+    assert.equal(singleP.k, 1);
   });
 
   it("solves through the dense deadlock path under a bounded cache budget", async () => {
