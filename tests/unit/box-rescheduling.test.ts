@@ -64,6 +64,27 @@ test("exhausted rescheduling budgets preserve a verified incumbent",()=>{
   assert.ok((bounded.visited??0)<=1);assert.ok((bounded.generated??0)<=1);assert.ok(bounded.path);
   events(bounded.path);
 });
+test("live memory stops retained-state growth independently of generous work limits", () => {
+  const payload = {algorithm: "solution-box-reschedule", state: toLegacyState(request),
+    solutionPath: incumbent, rescheduleBoxIndices: [0], rescheduleRounds: 1,
+    maxVisited: 300000, maxGenerated: 2000000};
+  const metadata = (result: ReturnType<typeof search>) => result.boxRescheduling as
+    {peakEstimatedBytes: number; memoryExhausted: boolean};
+  const preflight = search({...payload, maxMemoryBytes: 1});
+  // Allow a few retained nodes beyond the measured table/scratch reservation.
+  const memoryLimit = metadata(preflight).peakEstimatedBytes + 3 * 768;
+  const bounded = search({...payload, maxMemoryBytes: memoryLimit});
+  const ample = search({...payload, maxMemoryBytes: memoryLimit + 1024 * 1024});
+  assert.equal(metadata(bounded).memoryExhausted, true);
+  assert.ok((bounded.generated ?? 0) > 0);
+  assert.ok((bounded.visited ?? 0) < payload.maxVisited);
+  assert.ok((bounded.generated ?? 0) < payload.maxGenerated);
+  assert.equal(metadata(ample).memoryExhausted, false);
+  assert.ok((ample.generated ?? 0) > (bounded.generated ?? 0));
+  assert.ok(bounded.path && ample.path);
+  events(bounded.path); events(ample.path);
+});
+
 const repeatedSession = createSession({id:"reschedule-repeated",title:"Repeated labels",difficulty:"tutorial",boxes:2,
   rows:["OOOOOOO","O  R  O","O X S O","O X S O","O     O","OOOOOOO"]});
 const repeatedRequest = {board:repeatedSession.board,snapshot:repeatedSession.snapshot,objective:{kind:"moves" as const}};

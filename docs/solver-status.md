@@ -26,6 +26,14 @@ restricted optimization is not a global optimality proof. See the
 [Grand Hall evidence](benchmarks/grand-hall-rescheduling.md) for isolated repair
 and public-adapter results with their separate inputs and limits.
 
+Quality-mode whole-box repair uses its allocated state budget for work and the
+existing live estimated-memory checks for memory. It no longer inherits the
+extra 20k/35k memory-class state caps. Local-window and optimal-mode allocations
+are unchanged; shared limits, cutoff publications, and replay checks still apply.
+See [resource-policy measurements](benchmarks/quality-memory-policy.md), including
+the pre-existing Grand Hall proof-label inconsistency exposed at lower memory
+limits. Those particular proof labels are not reliable optimality evidence.
+
 Rescheduling publishes complete improvements during repair. The coordinator
 independently replays these under the same pre/post-verification budget checks,
 retains only the best published route, and continues bounded repair. If a later

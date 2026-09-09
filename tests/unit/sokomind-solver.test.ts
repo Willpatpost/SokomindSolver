@@ -417,8 +417,8 @@ describe("Sokomind Solver adapter", () => {
     assert.ok(phases.includes("improving"));
   });
 
-  for (const memoryMiB of [384, 768, 1536]) {
-    it(`funds rescheduling from remaining work at ${memoryMiB} MiB while preserving its memory share`, async () => {
+  for (const memoryMiB of [384, 768, 1536]) for (const mode of ["quality", "optimal"] as const) {
+    it(`preserves ${mode} work and memory allocation at ${memoryMiB} MiB`, async () => {
       const commands: WorkerCommand[] = [];
       const adapter = createSokomindSolverAdapter({
         hardwareConcurrency: 2, improvementMinimumMoves: 0,
@@ -432,7 +432,7 @@ describe("Sokomind Solver adapter", () => {
         }),
       });
       const request = requestFor(ONE_TYPED_BOX, {
-        options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0}},
+        options: {"sokomind-solver": {mode, maximumIncumbents: 1, harvestElapsedMs: 0}},
         limits: {maxExpandedStates: 120_000, maxGeneratedStates: 200_000, maxMemoryBytes: memoryMiB * 1024 ** 2},
       });
       const result = await adapter.solve(request, context());
@@ -441,7 +441,8 @@ describe("Sokomind Solver adapter", () => {
       assert.ok(window && repair);
       const windowWork = memoryMiB === 384 ? 20_000 : memoryMiB === 768 ? 35_000 : 50_000;
       assert.equal(window.payload.maxVisited, windowWork);
-      assert.equal(repair.payload.maxVisited, 119_999 - windowWork);
+      assert.equal(repair.payload.maxVisited, mode === "quality" ? 119_999 - windowWork :
+        Math.min(119_999 - windowWork, memoryMiB === 384 ? 20_000 : memoryMiB === 768 ? 35_000 : Infinity));
       assert.equal(repair.payload.maxGenerated, 199_994);
       assert.ok(Number(repair.payload.maxMemoryBytes) > 0);
       assert.ok(Number(repair.payload.maxMemoryBytes) <= request.limits!.maxMemoryBytes!);
@@ -449,6 +450,34 @@ describe("Sokomind Solver adapter", () => {
       if (result.status === "solved") assert.ok(verifySolverSolution(request, result.solution).valid);
     });
   }
+
+  it("retains a replayed repair publication when live memory stops the worker", async () => {
+    const workers: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2, improvementMinimumMoves: 0, improvementMaxVisited: 150_000,
+      createWorker: () => {
+        const worker = new ScriptedWorker((self, command) => queueMicrotask(() => {
+          if (command.payload.algorithm === "solution-box-reschedule") {
+            self.emit({type: "progress", visited: 21_000, generated: 22_000, retained: 22_000, path: ["Down"]});
+            self.emit({type: "progress", visited: 22_000, generated: 300_000, retained: 300_000});
+          } else {
+            self.emit({type: "done", status: "solved", path: ["Left", "Right", "Down"], visited: 1, generated: 3});
+          }
+        }));
+        workers.push(worker); return worker;
+      },
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0}},
+      limits: {maxExpandedStates: 200_000, maxGeneratedStates: 2_000_000, maxMemoryBytes: 384 * 1024 ** 2},
+    });
+    const result = await adapter.solve(request, context());
+    assert.equal(result.status, "solved");
+    assert.equal(result.metrics.counters?.bestSolutionMoves, 1);
+    assert.ok(Number(result.metrics.counters?.peakEstimatedMemoryBytes) >= request.limits!.maxMemoryBytes!);
+    assert.ok(workers.every(worker => worker.terminated));
+    if (result.status === "solved") assert.ok(verifySolverSolution(request, result.solution).valid);
+  });
 
   for (const publication of ["valid", "invalid", "at-limit"] as const) {
     it(`handles a ${publication} repair publication before shared-budget termination`, async () => {

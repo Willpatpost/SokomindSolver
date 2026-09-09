@@ -90,6 +90,33 @@ has not been shown to recover the improved route.
 
 ---
 
+### Resource-policy follow-up beyond the original roadmap
+
+Inspection confirmed that quality-mode whole-box rescheduling still inherited
+20k/35k memory-class work caps despite its existing retained-memory guard and
+the coordinator's live shared-memory checks. Quality rescheduling now uses its
+allocated work budget and those memory checks independently. Window/optimal-mode
+allocations, fast mode, replay, deadlines, generated limits, and cutoff handling
+are unchanged. No constants were simply raised.
+
+Public Grand Hall measurements at 384/768/1536 MiB improve 713/248 to 673/242,
+693/248 to 573/248, and retain 520/242 respectively. Overall estimated peaks stay
+69.86/83.04/117.74 MiB; the benefit is additional productive work, not substantially
+greater simultaneous memory use. See [full results, stop sequences, and safety
+analysis](benchmarks/quality-memory-policy.md).
+
+The lower-memory before and after runs expose a pre-existing proof-label
+inconsistency: they claim optimality despite shorter verified routes. This work
+preserves exact-proof behavior as requested and records the anomaly explicitly.
+Investigating those proof claims is a correctness priority separate from further
+planner/resource-policy experiments.
+
+Validation passed 2,385 unit tests and all three coverage gates, typecheck,
+lint, documentation/generated checks, build/static checks, 33 frozen-optimum
+cases and parallel proof, multi-puzzle/Huge guardrails, and nine focused browser
+worker cases across Chromium, Firefox, and WebKit. Full application browser
+coverage was not rerun.
+
 ## 1. Purpose of this document
 
 This document captures a full-project technical review of SokomindSolver, with special attention to the flagship **Sokomind Solver** implementation.

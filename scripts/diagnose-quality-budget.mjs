@@ -96,6 +96,8 @@ try {
   assert.ok(verifySolverSolution(request, result.solution).valid);
   assert.ok(result.metrics.expandedStates <= request.limits.maxExpandedStates);
   assert.ok(result.metrics.generatedStates <= request.limits.maxGeneratedStates);
+  assert.ok(result.metrics.counters?.peakEstimatedMemoryBytes <= request.limits.maxMemoryBytes);
+  assert.ok(result.metrics.elapsedMs <= request.limits.maxElapsedMs);
   const evidence = { capturedAt: new Date().toISOString(), node: process.version,
     engineSha256: createHash("sha256").update(readFileSync(new URL("../src/solver/implementations/sokomind-engine/engine.generated.js", import.meta.url))).digest("hex"),
     adapterSha256: createHash("sha256").update(readFileSync(new URL("../src/solver/implementations/sokomind-solver.ts", import.meta.url))).digest("hex"),
