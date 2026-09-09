@@ -278,10 +278,10 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **418,000 gzip bytes**
+- All scripts and styles: **420,000 gzip bytes**
 - Largest asset: **80,000 gzip bytes**
 - Solver worker: **60,000 gzip bytes**
-- Nested engine worker: **71,000 gzip bytes**
+- Nested engine worker: **73,000 gzip bytes**
 
 <!-- SOURCE_FACTS:END -->
 
