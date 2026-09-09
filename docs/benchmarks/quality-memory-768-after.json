@@ -1,0 +1,5512 @@
+{
+  "capturedAt": "2026-09-09T19:42:42.801Z",
+  "node": "v24.14.0",
+  "engineSha256": "ca81b66255dc952c4acec86041f5293713ca43fc528e2cfc6847fe7361bf1129",
+  "adapterSha256": "f738aec0d1befebf0e33c2b8d086188898e75ec1809e21975b9abfa199940aba",
+  "fixture": "huge",
+  "windowCap": null,
+  "requestLimits": {
+    "maxElapsedMs": 45000,
+    "maxExpandedStates": 200000,
+    "maxGeneratedStates": 2000000,
+    "maxMemoryBytes": 805306368
+  },
+  "options": {
+    "sokomind-solver": {
+      "mode": "quality",
+      "deterministic": true,
+      "maximumIncumbents": 1,
+      "harvestElapsedMs": 0
+    }
+  },
+  "replayVerified": true,
+  "phases": [
+    {
+      "algorithm": "analyze-puzzle",
+      "startedAt": 113.5924,
+      "publications": [],
+      "limits": {
+        "maxMemoryBytes": 805306368
+      },
+      "result": {
+        "path": null,
+        "visited": 0,
+        "generated": 44
+      },
+      "elapsedMs": 161.8521
+    },
+    {
+      "algorithm": "plan-macro-beam",
+      "startedAt": 277.3324,
+      "publications": [],
+      "limits": {
+        "maxVisited": 6000,
+        "maxGenerated": 60000,
+        "maxMemoryBytes": 801754058
+      },
+      "lastProgress": {
+        "type": "progress",
+        "visited": 1232,
+        "bestEstimate": 25,
+        "bestPushes": 237,
+        "bestMoves": 775,
+        "depth": 40,
+        "frontier": 32,
+        "generated": 7329,
+        "retained": 2365,
+        "performance": {
+          "schemaVersion": 4,
+          "totalMs": 4279.639,
+          "heapSupported": false,
+          "heapUsedBytes": null,
+          "heapPeakBytes": null,
+          "heapDeltaBytes": null,
+          "heapSamples": 0,
+          "parseMs": 0.728,
+          "graphCompileMs": 0,
+          "graphNodes": 130,
+          "graphEdges": 286,
+          "denseCells": 127,
+          "denseBuildMs": 0,
+          "denseLayoutBuilds": 15886,
+          "denseLayoutDerivations": 131009,
+          "denseTransitionCacheHits": 236489,
+          "denseTransitionCacheEvictions": 121009,
+          "denseDistanceTables": 133,
+          "denseDistanceCells": 16891,
+          "denseDistanceBytes": 16891,
+          "denseIdentityUpdates": 131009,
+          "occupancyWordsBuilt": 63544,
+          "occupancyWordCopies": 0,
+          "signatureCalls": 532725,
+          "signatureCacheHits": 412004,
+          "signatureCharacters": 6034147,
+          "signatureMs": 48.401,
+          "packedIdentityCalls": 17654,
+          "packedIdentityCacheHits": 6237,
+          "packedIdentityValues": 194089,
+          "preparedBoardReuses": 1,
+          "preparedBoardFallbacks": 0,
+          "preparedBoardHydrateMs": 0.231,
+          "preparedSeedBytes": 2503734,
+          "preparedPlayerDistanceTables": 17,
+          "cacheBudgetBytes": 100663296,
+          "cacheCapacityEntries": 210000,
+          "cacheConfigurationSkips": 0,
+          "heuristicCalls": 26407,
+          "heuristicCacheHits": 2978,
+          "heuristicMs": 415.174,
+          "pdbBuildMs": 0,
+          "pdbPartitionCount": 0,
+          "pdbTotalEntries": 0,
+          "commitmentCalls": 0,
+          "commitmentCacheHits": 0,
+          "commitmentBoxLocks": 0,
+          "commitmentMs": 0,
+          "strategicOrderingEvaluations": 0,
+          "strategicOrderingSkips": 0,
+          "strategicOrderingChanges": 0,
+          "strategicOrderingUseful": 0,
+          "strategicOrderingCooldowns": 0,
+          "relevanceOrderingEvaluations": 0,
+          "relevanceOrderingChanges": 0,
+          "relevanceAssignmentUses": 0,
+          "relevanceDependencyUses": 0,
+          "relevanceBottleneckUses": 0,
+          "relevanceRecentUses": 0,
+          "relevanceDoorwayUses": 0,
+          "relevanceRestorationUses": 0,
+          "relevanceGoalAccessUses": 0,
+          "strategicSignalEvaluations": 0,
+          "strategicSignalSkips": 0,
+          "strategicSignalUseful": 0,
+          "supportDependencyCalls": 0,
+          "supportDependencyCacheHits": 0,
+          "supportDependencyOptions": 0,
+          "supportDependencyBlockers": 0,
+          "supportDependencyMs": 0,
+          "localRoomCalls": 0,
+          "localRoomCacheHits": 0,
+          "localRoomStates": 0,
+          "reversePackingBuilds": 0,
+          "reversePackingStates": 0,
+          "reversePackingHits": 0,
+          "roomPatternBuilds": 0,
+          "roomPatternStates": 0,
+          "roomPatternHits": 0,
+          "roomPatternBoost": 0,
+          "pairConflictBuilds": 0,
+          "pairConflictStates": 0,
+          "pairConflictCandidates": 0,
+          "pairConflictHits": 0,
+          "pairConflictBoost": 0,
+          "capacityPatternBuilds": 0,
+          "capacityPatternStates": 0,
+          "capacityPatternHits": 0,
+          "capacityPatternBoost": 0,
+          "patternSelectionCutoffs": 0,
+          "goalCutCertificates": 0,
+          "goalCutComponents": 0,
+          "beamFeatureCells": 0,
+          "beamFeatureSelections": 0,
+          "beamBandSelections": 0,
+          "localRoomMs": 0,
+          "localCorralCalls": 0,
+          "localCorralCacheHits": 0,
+          "localCorralStates": 0,
+          "localCorralMs": 0,
+          "localExactProofs": 0,
+          "localExactCutoffs": 0,
+          "localExactOversized": 0,
+          "localExactDeadlockProofs": 0,
+          "localExactStateBoundPeak": 0,
+          "localExactDecompositions": 0,
+          "doorwayFlowCalls": 0,
+          "doorwayFlowCacheHits": 0,
+          "doorwayFlowMs": 0,
+          "doorwayScheduleCalls": 23552,
+          "doorwayScheduleCacheHits": 2856,
+          "doorwayScheduleMs": 306.435,
+          "roomEvacuationCalls": 0,
+          "roomEvacuationMs": 0,
+          "goalAccessCalls": 11538,
+          "goalAccessCacheHits": 0,
+          "goalAccessBlockedGoals": 1453,
+          "goalAccessMs": 32.290999999993005,
+          "assignmentCalls": 201859,
+          "incrementalAssignmentCalls": 16127,
+          "incrementalAssignmentFallbacks": 6,
+          "incrementalAssignmentRowsReused": 161270,
+          "pushDistanceCalls": 218907,
+          "pushDistanceCacheHits": 218808,
+          "pushDistanceMs": 1.803,
+          "goalTableBuilds": 17,
+          "goalTableStates": 1430,
+          "goalTableHits": 2185870,
+          "goalTableMs": 0,
+          "reachabilityCalls": 169213,
+          "reachabilityCacheHits": 44155,
+          "reachabilityCells": 11793724,
+          "reachabilityMs": 463.125,
+          "pushNeighborCalls": 1232,
+          "pushCandidates": 29818,
+          "pushesRetained": 22544,
+          "macroIntermediateStates": 317455,
+          "macroHardDeadlockRejections": 236,
+          "macroDiscoveryRejections": 0,
+          "macroEgressRejections": 0,
+          "macroPackingRejections": 0,
+          "macroGoalAccessRejections": 0,
+          "macroTargetUnreachableStates": 2611,
+          "macroCheapExpansions": 0,
+          "macroFullExpansions": 8203,
+          "macroWidenings": 0,
+          "macroEndpointsRetained": 11964,
+          "macroTargetBoundCutoffs": 2,
+          "planAnalysisCacheHits": 18959,
+          "planAnalysisCacheMisses": 26407,
+          "planAnalysisCacheEvictions": 0,
+          "staticDeadPrunes": 4116,
+          "dynamicDeadPrunes": 3158,
+          "dynamicDeadlockCalls": 95902,
+          "dynamicDeadlockCacheHits": 287481,
+          "dynamicDeadlockMs": 416.165,
+          "dynamicDeadlockRuleHits": {
+            "2x2": 7138
+          },
+          "patternDeadlockCalls": 0,
+          "patternDeadlockBypasses": 0,
+          "patternDeadlockBoardBypasses": 95902,
+          "patternDeadlockCacheHits": 0,
+          "patternDeadlockStates": 0,
+          "patternDeadlockPrunes": 0,
+          "patternCanonicalizations": 0,
+          "patternEligibleCells": 0,
+          "patternIneligibleCells": 127,
+          "recursiveFreezeChecks": 88764,
+          "recursiveFreezeBoxes": 1960,
+          "zobristFullRecomputations": 15886,
+          "zobristIncrementalUpdates": 131009,
+          "tokenFullSorts": 15886,
+          "tokenIncrementalInsertions": 131009,
+          "workspaceAllocations": 115766,
+          "workspacePoolReuses": 131009,
+          "memory": {
+            "supported": false,
+            "source": null,
+            "usedBytes": null,
+            "peakBytes": null,
+            "deltaBytes": null,
+            "samples": 0,
+            "gcControlled": false
+          },
+          "engineMemory": {
+            "boardBytes": 359813,
+            "cacheEntries": 106059,
+            "peakCacheEntries": 106059,
+            "cacheBytes": 25869528,
+            "cacheBreakdownBytes": {
+              "heuristicMemo": 160,
+              "discoveryHeuristicMemo": 5154444,
+              "playerPushDistances": 33356,
+              "deadlockMemo": 4450160,
+              "patternDeadlockMemo": 160,
+              "patternWindowMemo": 64,
+              "commitmentMemo": 64,
+              "stateCommitmentMemo": 64,
+              "commitmentPushDistances": 64,
+              "supportDependencyMemo": 64,
+              "goalAccessMemo": 64,
+              "localRoomMemo": 64,
+              "shortestCorridorMemo": 64,
+              "localCorralMemo": 64,
+              "doorwayFlowMemo": 64,
+              "reachabilityMemo": 1079680,
+              "pushTransitionMemo": 5890160,
+              "goalRoomPackingTables": 64,
+              "roomPatternTables": 3840160,
+              "pairConflictTables": 64,
+              "capacityPatternTables": 160,
+              "planDoorwayScheduleMemo": 2025160,
+              "planAnalysisCache": 3395160
+            },
+            "currentBytes": 26229341,
+            "peakBytes": 26229341
+          }
+        }
+      },
+      "result": {
+        "status": "solved",
+        "path": [
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left"
+        ],
+        "visited": 1333,
+        "generated": 8521,
+        "terminationReason": "solution"
+      },
+      "elapsedMs": 4737.7375999999995
+    },
+    {
+      "algorithm": "solution-window-rewrite",
+      "startedAt": 5023.4957,
+      "publications": [],
+      "limits": {
+        "maxVisited": 35000,
+        "maxGenerated": 1991435,
+        "permutationVisited": 3500,
+        "perPermutationWindowVisited": 1500,
+        "windowVisited": 12000,
+        "windowTotalVisited": 17500,
+        "moveWindowVisited": 14000,
+        "perMoveWindowVisited": 4000,
+        "maxMemoryBytes": 801754058
+      },
+      "inputMoves": 893,
+      "result": {
+        "status": "solved",
+        "path": [
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left"
+        ],
+        "visited": 25000,
+        "generated": 89434,
+        "terminationReason": "solution"
+      },
+      "elapsedMs": 5624.727
+    },
+    {
+      "algorithm": "solution-box-reschedule",
+      "startedAt": 10652.381,
+      "publications": [
+        {
+          "moves": 707,
+          "visited": 7032,
+          "generated": 17194
+        },
+        {
+          "moves": 693,
+          "visited": 20010,
+          "generated": 36813
+        },
+        {
+          "moves": 685,
+          "visited": 35185,
+          "generated": 57593
+        },
+        {
+          "moves": 669,
+          "visited": 46497,
+          "generated": 77717
+        },
+        {
+          "moves": 667,
+          "visited": 52432,
+          "generated": 83792
+        },
+        {
+          "moves": 651,
+          "visited": 68160,
+          "generated": 108916
+        },
+        {
+          "moves": 635,
+          "visited": 76296,
+          "generated": 123146
+        },
+        {
+          "moves": 633,
+          "visited": 76559,
+          "generated": 123414
+        },
+        {
+          "moves": 625,
+          "visited": 77673,
+          "generated": 124818
+        },
+        {
+          "moves": 621,
+          "visited": 80130,
+          "generated": 127356
+        },
+        {
+          "moves": 611,
+          "visited": 81470,
+          "generated": 128972
+        },
+        {
+          "moves": 589,
+          "visited": 92637,
+          "generated": 146989
+        },
+        {
+          "moves": 587,
+          "visited": 100460,
+          "generated": 155231
+        },
+        {
+          "moves": 577,
+          "visited": 111956,
+          "generated": 171708
+        },
+        {
+          "moves": 573,
+          "visited": 119744,
+          "generated": 181043
+        }
+      ],
+      "limits": {
+        "maxVisited": 128600,
+        "maxGenerated": 1902001,
+        "rescheduleMaxMs": 34459,
+        "maxMemoryBytes": 801754058
+      },
+      "inputMoves": 799,
+      "lastProgress": {
+        "type": "progress",
+        "visited": 128600,
+        "generated": 190917,
+        "frontier": 0,
+        "peakFrontier": 10103,
+        "retained": 25125,
+        "performance": {
+          "schemaVersion": 4,
+          "totalMs": 469.245,
+          "heapSupported": false,
+          "heapUsedBytes": null,
+          "heapPeakBytes": null,
+          "heapDeltaBytes": null,
+          "heapSamples": 0,
+          "parseMs": 2.614,
+          "graphCompileMs": 0,
+          "graphNodes": 130,
+          "graphEdges": 286,
+          "denseCells": 127,
+          "denseBuildMs": 0,
+          "denseLayoutBuilds": 21,
+          "denseLayoutDerivations": 9163,
+          "denseTransitionCacheHits": 0,
+          "denseTransitionCacheEvictions": 0,
+          "denseDistanceTables": 68,
+          "denseDistanceCells": 8636,
+          "denseDistanceBytes": 8636,
+          "denseIdentityUpdates": 9163,
+          "occupancyWordsBuilt": 84,
+          "occupancyWordCopies": 0,
+          "signatureCalls": 0,
+          "signatureCacheHits": 0,
+          "signatureCharacters": 0,
+          "signatureMs": 0,
+          "packedIdentityCalls": 1600,
+          "packedIdentityCacheHits": 1058,
+          "packedIdentityValues": 9214,
+          "preparedBoardReuses": 2,
+          "preparedBoardFallbacks": 0,
+          "preparedBoardHydrateMs": 0.375,
+          "preparedSeedBytes": 2503734,
+          "preparedPlayerDistanceTables": 17,
+          "cacheBudgetBytes": 100663296,
+          "cacheCapacityEntries": 210000,
+          "cacheConfigurationSkips": 0,
+          "heuristicCalls": 0,
+          "heuristicCacheHits": 0,
+          "heuristicMs": 0,
+          "pdbBuildMs": 0,
+          "pdbPartitionCount": 0,
+          "pdbTotalEntries": 0,
+          "commitmentCalls": 0,
+          "commitmentCacheHits": 0,
+          "commitmentBoxLocks": 0,
+          "commitmentMs": 0,
+          "strategicOrderingEvaluations": 0,
+          "strategicOrderingSkips": 0,
+          "strategicOrderingChanges": 0,
+          "strategicOrderingUseful": 0,
+          "strategicOrderingCooldowns": 0,
+          "relevanceOrderingEvaluations": 0,
+          "relevanceOrderingChanges": 0,
+          "relevanceAssignmentUses": 0,
+          "relevanceDependencyUses": 0,
+          "relevanceBottleneckUses": 0,
+          "relevanceRecentUses": 0,
+          "relevanceDoorwayUses": 0,
+          "relevanceRestorationUses": 0,
+          "relevanceGoalAccessUses": 0,
+          "strategicSignalEvaluations": 0,
+          "strategicSignalSkips": 0,
+          "strategicSignalUseful": 0,
+          "supportDependencyCalls": 0,
+          "supportDependencyCacheHits": 0,
+          "supportDependencyOptions": 0,
+          "supportDependencyBlockers": 0,
+          "supportDependencyMs": 0,
+          "localRoomCalls": 0,
+          "localRoomCacheHits": 0,
+          "localRoomStates": 0,
+          "reversePackingBuilds": 0,
+          "reversePackingStates": 0,
+          "reversePackingHits": 0,
+          "roomPatternBuilds": 0,
+          "roomPatternStates": 0,
+          "roomPatternHits": 0,
+          "roomPatternBoost": 0,
+          "pairConflictBuilds": 0,
+          "pairConflictStates": 0,
+          "pairConflictCandidates": 0,
+          "pairConflictHits": 0,
+          "pairConflictBoost": 0,
+          "capacityPatternBuilds": 0,
+          "capacityPatternStates": 0,
+          "capacityPatternHits": 0,
+          "capacityPatternBoost": 0,
+          "patternSelectionCutoffs": 0,
+          "goalCutCertificates": 0,
+          "goalCutComponents": 0,
+          "beamFeatureCells": 0,
+          "beamFeatureSelections": 0,
+          "beamBandSelections": 0,
+          "localRoomMs": 0,
+          "localCorralCalls": 0,
+          "localCorralCacheHits": 0,
+          "localCorralStates": 0,
+          "localCorralMs": 0,
+          "localExactProofs": 0,
+          "localExactCutoffs": 0,
+          "localExactOversized": 0,
+          "localExactDeadlockProofs": 0,
+          "localExactStateBoundPeak": 0,
+          "localExactDecompositions": 0,
+          "doorwayFlowCalls": 0,
+          "doorwayFlowCacheHits": 0,
+          "doorwayFlowMs": 0,
+          "doorwayScheduleCalls": 0,
+          "doorwayScheduleCacheHits": 0,
+          "doorwayScheduleMs": 0,
+          "roomEvacuationCalls": 0,
+          "roomEvacuationMs": 0,
+          "goalAccessCalls": 0,
+          "goalAccessCacheHits": 0,
+          "goalAccessBlockedGoals": 0,
+          "goalAccessMs": 0,
+          "assignmentCalls": 0,
+          "incrementalAssignmentCalls": 0,
+          "incrementalAssignmentFallbacks": 0,
+          "incrementalAssignmentRowsReused": 0,
+          "pushDistanceCalls": 96,
+          "pushDistanceCacheHits": 96,
+          "pushDistanceMs": 0,
+          "goalTableBuilds": 17,
+          "goalTableStates": 1430,
+          "goalTableHits": 0,
+          "goalTableMs": 0,
+          "reachabilityCalls": 270,
+          "reachabilityCacheHits": 0,
+          "reachabilityCells": 27356,
+          "reachabilityMs": 1.756,
+          "pushNeighborCalls": 0,
+          "pushCandidates": 0,
+          "pushesRetained": 0,
+          "macroIntermediateStates": 0,
+          "macroHardDeadlockRejections": 0,
+          "macroDiscoveryRejections": 0,
+          "macroEgressRejections": 0,
+          "macroPackingRejections": 0,
+          "macroGoalAccessRejections": 0,
+          "macroTargetUnreachableStates": 0,
+          "macroCheapExpansions": 0,
+          "macroFullExpansions": 0,
+          "macroWidenings": 0,
+          "macroEndpointsRetained": 0,
+          "macroTargetBoundCutoffs": 0,
+          "planAnalysisCacheHits": 0,
+          "planAnalysisCacheMisses": 0,
+          "planAnalysisCacheEvictions": 0,
+          "staticDeadPrunes": 0,
+          "dynamicDeadPrunes": 0,
+          "dynamicDeadlockCalls": 0,
+          "dynamicDeadlockCacheHits": 0,
+          "dynamicDeadlockMs": 0,
+          "dynamicDeadlockRuleHits": {},
+          "patternDeadlockCalls": 0,
+          "patternDeadlockBypasses": 0,
+          "patternDeadlockBoardBypasses": 0,
+          "patternDeadlockCacheHits": 0,
+          "patternDeadlockStates": 0,
+          "patternDeadlockPrunes": 0,
+          "patternCanonicalizations": 0,
+          "patternEligibleCells": 0,
+          "patternIneligibleCells": 127,
+          "recursiveFreezeChecks": 0,
+          "recursiveFreezeBoxes": 0,
+          "zobristFullRecomputations": 21,
+          "zobristIncrementalUpdates": 9163,
+          "tokenFullSorts": 21,
+          "tokenIncrementalInsertions": 9163,
+          "workspaceAllocations": 5255,
+          "workspacePoolReuses": 9163,
+          "memory": {
+            "supported": false,
+            "source": null,
+            "usedBytes": null,
+            "peakBytes": null,
+            "deltaBytes": null,
+            "samples": 0,
+            "gcControlled": false
+          },
+          "engineMemory": {
+            "boardBytes": 359813,
+            "cacheEntries": 12019,
+            "peakCacheEntries": 12019,
+            "cacheBytes": 3846799,
+            "cacheBreakdownBytes": {
+              "heuristicMemo": 160,
+              "discoveryHeuristicMemo": 64,
+              "playerPushDistances": 4943,
+              "deadlockMemo": 160,
+              "patternDeadlockMemo": 160,
+              "patternWindowMemo": 64,
+              "commitmentMemo": 64,
+              "stateCommitmentMemo": 64,
+              "commitmentPushDistances": 64,
+              "supportDependencyMemo": 64,
+              "goalAccessMemo": 64,
+              "localRoomMemo": 64,
+              "shortestCorridorMemo": 64,
+              "localCorralMemo": 64,
+              "doorwayFlowMemo": 64,
+              "reachabilityMemo": 64,
+              "pushTransitionMemo": 160,
+              "goalRoomPackingTables": 64,
+              "roomPatternTables": 3840160,
+              "pairConflictTables": 64,
+              "capacityPatternTables": 160
+            },
+            "currentBytes": 4206612,
+            "peakBytes": 4206612
+          }
+        }
+      },
+      "result": {
+        "status": "solved",
+        "path": [
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Down",
+          "Down",
+          "Right",
+          "Up",
+          "Down",
+          "Right",
+          "Right",
+          "Up",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Right",
+          "Up",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Left",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Left",
+          "Left",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Up",
+          "Right",
+          "Right",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Up",
+          "Up",
+          "Left",
+          "Left",
+          "Right",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Down",
+          "Left",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Up",
+          "Right",
+          "Right",
+          "Down",
+          "Left",
+          "Right",
+          "Down",
+          "Down",
+          "Left",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Down",
+          "Right",
+          "Down",
+          "Down",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Right",
+          "Down",
+          "Right",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Left",
+          "Up",
+          "Right",
+          "Down",
+          "Down",
+          "Down",
+          "Down",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Left",
+          "Down",
+          "Left",
+          "Up",
+          "Up",
+          "Up",
+          "Up",
+          "Right",
+          "Up",
+          "Left",
+          "Right",
+          "Right"
+        ],
+        "visited": 128600,
+        "generated": 190917,
+        "boxRescheduling": {
+          "attempts": [
+            {
+              "boxIndex": 8,
+              "label": "H",
+              "beforeMoves": 799,
+              "afterMoves": 707,
+              "expanded": 7032,
+              "generated": 17194
+            },
+            {
+              "boxIndex": 16,
+              "label": "A",
+              "beforeMoves": 707,
+              "afterMoves": 693,
+              "expanded": 12978,
+              "generated": 19619
+            },
+            {
+              "boxIndex": 11,
+              "label": "B",
+              "beforeMoves": 693,
+              "afterMoves": 685,
+              "expanded": 15175,
+              "generated": 20780
+            },
+            {
+              "boxIndex": 0,
+              "label": "C",
+              "beforeMoves": 685,
+              "afterMoves": 669,
+              "expanded": 11312,
+              "generated": 20124
+            },
+            {
+              "boxIndex": 1,
+              "label": "D",
+              "beforeMoves": 669,
+              "afterMoves": 667,
+              "expanded": 5935,
+              "generated": 6075
+            },
+            {
+              "boxIndex": 7,
+              "label": "G",
+              "beforeMoves": 667,
+              "afterMoves": 651,
+              "expanded": 15728,
+              "generated": 25124
+            },
+            {
+              "boxIndex": 8,
+              "label": "H",
+              "beforeMoves": 651,
+              "afterMoves": 635,
+              "expanded": 8136,
+              "generated": 14230
+            },
+            {
+              "boxIndex": 2,
+              "label": "X",
+              "beforeMoves": 635,
+              "afterMoves": 633,
+              "expanded": 263,
+              "generated": 268
+            },
+            {
+              "boxIndex": 3,
+              "label": "X",
+              "beforeMoves": 633,
+              "afterMoves": 625,
+              "expanded": 1114,
+              "generated": 1404
+            },
+            {
+              "boxIndex": 4,
+              "label": "X",
+              "beforeMoves": 625,
+              "afterMoves": 625,
+              "expanded": 1704,
+              "generated": 1703
+            },
+            {
+              "boxIndex": 5,
+              "label": "X",
+              "beforeMoves": 625,
+              "afterMoves": 625,
+              "expanded": 0,
+              "generated": 0
+            },
+            {
+              "boxIndex": 6,
+              "label": "X",
+              "beforeMoves": 625,
+              "afterMoves": 621,
+              "expanded": 753,
+              "generated": 835
+            },
+            {
+              "boxIndex": 9,
+              "label": "X",
+              "beforeMoves": 621,
+              "afterMoves": 611,
+              "expanded": 1340,
+              "generated": 1616
+            },
+            {
+              "boxIndex": 10,
+              "label": "X",
+              "beforeMoves": 611,
+              "afterMoves": 611,
+              "expanded": 2671,
+              "generated": 2819
+            },
+            {
+              "boxIndex": 12,
+              "label": "X",
+              "beforeMoves": 611,
+              "afterMoves": 589,
+              "expanded": 8496,
+              "generated": 15198
+            },
+            {
+              "boxIndex": 13,
+              "label": "X",
+              "beforeMoves": 589,
+              "afterMoves": 587,
+              "expanded": 7823,
+              "generated": 8242
+            },
+            {
+              "boxIndex": 14,
+              "label": "X",
+              "beforeMoves": 587,
+              "afterMoves": 577,
+              "expanded": 11496,
+              "generated": 16477
+            },
+            {
+              "boxIndex": 15,
+              "label": "X",
+              "beforeMoves": 577,
+              "afterMoves": 573,
+              "expanded": 7788,
+              "generated": 9335
+            },
+            {
+              "boxIndex": 16,
+              "label": "A",
+              "beforeMoves": 573,
+              "afterMoves": 573,
+              "expanded": 6895,
+              "generated": 7175
+            },
+            {
+              "boxIndex": 11,
+              "label": "B",
+              "beforeMoves": 573,
+              "afterMoves": 573,
+              "expanded": 1961,
+              "generated": 2699
+            }
+          ],
+          "originalMoves": 799,
+          "finalMoves": 573,
+          "peakEstimatedBytes": 41556015,
+          "memoryExhausted": false,
+          "budgetExhausted": true
+        },
+        "terminationReason": "solution"
+      },
+      "elapsedMs": 530.7961000000014
+    }
+  ],
+  "result": {
+    "status": "solved",
+    "solution": {
+      "steps": [
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "down",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "up",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "up",
+          "kind": "walk"
+        },
+        {
+          "direction": "left",
+          "kind": "push"
+        },
+        {
+          "direction": "right",
+          "kind": "walk"
+        },
+        {
+          "direction": "right",
+          "kind": "push"
+        }
+      ],
+      "moves": 573,
+      "pushes": 248,
+      "objective": {
+        "kind": "moves"
+      },
+      "objectiveScore": 573,
+      "optimality": "proven"
+    },
+    "metrics": {
+      "elapsedMs": 36453.0443,
+      "expandedStates": 154934,
+      "generatedStates": 288916,
+      "peakFrontierSize": 32,
+      "counters": {
+        "uniqueStates": 154933,
+        "duplicateStates": 133983,
+        "retainedStates": 0,
+        "peakRetainedStates": 52663,
+        "deadlockPrunes": 120750,
+        "infeasiblePrunes": 0,
+        "heuristicCalls": 28840,
+        "reachabilityFloods": 512202,
+        "estimatedMemoryBytes": 53327371,
+        "currentEstimatedMemoryBytes": 53327371,
+        "peakEstimatedMemoryBytes": 87078518,
+        "currentWorkerMemoryBytes": 0,
+        "currentCoordinatorMemoryBytes": 0,
+        "currentPreparedBoardMemoryBytes": 3552310,
+        "workerRuntimeMemoryBytes": 0,
+        "workerBoardMemoryBytes": 0,
+        "workerRetainedMemoryBytes": 0,
+        "workerFrontierMemoryBytes": 0,
+        "workerCacheMemoryBytes": 0,
+        "workerArenaMemoryBytes": 0,
+        "workerRecordMemoryBytes": 0,
+        "workerIsolateSampleBytes": 0,
+        "browserProcessMemoryBytes": 0,
+        "peakBrowserProcessMemoryBytes": 0,
+        "workersCompleted": 4,
+        "rejectedCandidates": 0,
+        "phaseTimeouts": 0,
+        "watchdogTimeouts": 0,
+        "coordinatorRecords": 0,
+        "peakCoordinatorRecords": 0,
+        "initialSolutionMoves": 893,
+        "bestSolutionMoves": 573,
+        "solutionImprovements": 2,
+        "memoryCurrentPrepareBoardBytes": 0,
+        "memoryPeakPrepareBoardBytes": 22080832,
+        "memoryCurrentPrepareBoardProcessBytes": 0,
+        "memoryPeakPrepareBoardProcessBytes": 0,
+        "memoryPrepareBoardRetainedStates": 0,
+        "memoryPrepareBoardFrontierStates": 0,
+        "memoryPrepareBoardCacheBytes": 0,
+        "memoryCurrentStructuralPlanBytes": 0,
+        "memoryPeakStructuralPlanBytes": 62855232,
+        "memoryCurrentStructuralPlanProcessBytes": 0,
+        "memoryPeakStructuralPlanProcessBytes": 0,
+        "memoryStructuralPlanRetainedStates": 0,
+        "memoryStructuralPlanFrontierStates": 0,
+        "memoryStructuralPlanCacheBytes": 0,
+        "memoryCurrentSolutionRewriteC0P1Bytes": 0,
+        "memoryPeakSolutionRewriteC0P1Bytes": 83526208,
+        "memoryCurrentSolutionRewriteC0P1ProcessBytes": 0,
+        "memoryPeakSolutionRewriteC0P1ProcessBytes": 0,
+        "memorySolutionRewriteC0P1RetainedStates": 0,
+        "memorySolutionRewriteC0P1FrontierStates": 0,
+        "memorySolutionRewriteC0P1CacheBytes": 0,
+        "memoryCurrentSolutionRescheduleC100Bytes": 0,
+        "memoryPeakSolutionRescheduleC100Bytes": 60642880,
+        "memoryCurrentSolutionRescheduleC100ProcessBytes": 0,
+        "memoryPeakSolutionRescheduleC100ProcessBytes": 0,
+        "memorySolutionRescheduleC100RetainedStates": 0,
+        "memorySolutionRescheduleC100FrontierStates": 0,
+        "memorySolutionRescheduleC100CacheBytes": 0,
+        "proof.uniqueStates": 1,
+        "proof.retainedStates": 1,
+        "proof.duplicateStates": 0,
+        "proof.deadlockPrunes": 0,
+        "proof.patternDeadlockPrunes": 0,
+        "proof.corralPrunes": 0,
+        "proof.piCorralPrunes": 1,
+        "proof.deadlockTablePrunes": 0,
+        "proof.commitmentSkips": 0,
+        "proof.interactionBoostTotal": 0,
+        "proof.infeasiblePrunes": 0,
+        "proof.reopens": 0,
+        "proof.reachabilityFloods": 1,
+        "proof.identityFloods": 0,
+        "proof.heuristicCalls": 2,
+        "proof.heuristicCacheHits": 1,
+        "proof.frontierSize": 0,
+        "proof.maxDepth": 0,
+        "proof.estimatedMemoryBytes": 53327371,
+        "proof.currentEstimatedMemoryBytes": 53327371,
+        "proof.peakEstimatedMemoryBytes": 53331734,
+        "proof.memoryStaticBytes": 53326227,
+        "proof.memoryTranspositionBytes": 448,
+        "proof.memoryHeuristicCacheBytes": 568,
+        "proof.memoryDfsStackBytes": 128,
+        "proof.memoryReachabilitySnapshotBytes": 0,
+        "proof.idaStarIterations": 1,
+        "proof.forcedPushMacroApplications": 0,
+        "proof.exactFeatureMask": 1023,
+        "proof.incrementalAssignmentRepairs": 0,
+        "proof.linearConflictEvaluations": 2,
+        "proof.linearConflictTotal": 4,
+        "proof.interactionBoostEvaluations": 2,
+        "proof.interactionBoostApplicable": 1,
+        "proof.interactionBoostRetainedBytes": 3457666,
+        "proof.interactionBoostSearchCacheRetainedBytes": 1026,
+        "proof.pdbBuildTimeMs": 23270.990900000004,
+        "proof.pdbTableEntries": 18684253,
+        "proof.pdbRetainedBytes": 37388862,
+        "proof.pdbEvaluations": 2,
+        "proof.forcedPushMacroChecks": 0,
+        "proof.piCorralChecks": 1,
+        "proof.patternDeadlockChecks": 0,
+        "proof.patternDeadlockApplicable": 0,
+        "proof.deadlockTableBuildTimeMs": 2001,
+        "proof.deadlockTableRegions": 5,
+        "proof.deadlockTablePatterns": 97234,
+        "proof.deadlockTableRetainedBytes": 12448184,
+        "proof.preprocessingRetainedBytes": 53293686,
+        "proof.deadlockTableChecks": 0,
+        "proof.goalCommitmentChecks": 0,
+        "proof.goalCommitments": 0,
+        "proof.goalCommitmentApplicable": 1,
+        "proof.tunnelMacroChecks": 0,
+        "proof.tunnelMacroApplications": 0,
+        "proofExpandedStates": 1,
+        "proofGeneratedStates": 0
+      }
+    },
+    "proof": {
+      "objective": {
+        "kind": "moves"
+      },
+      "kind": "optimal",
+      "algorithm": "move-ida-star",
+      "lowerBound": 573,
+      "upperBound": 573,
+      "gap": 0
+    }
+  }
+}

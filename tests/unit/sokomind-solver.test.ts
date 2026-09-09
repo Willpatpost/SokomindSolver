@@ -417,6 +417,39 @@ describe("Sokomind Solver adapter", () => {
     assert.ok(phases.includes("improving"));
   });
 
+  for (const memoryMiB of [384, 768, 1536]) {
+    it(`funds rescheduling from remaining work at ${memoryMiB} MiB while preserving its memory share`, async () => {
+      const commands: WorkerCommand[] = [];
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2, improvementMinimumMoves: 0,
+        improvementMaxVisited: 150_000, improvementMaxElapsedMs: 1000,
+        createWorker: () => new ScriptedWorker((self, command) => {
+          commands.push(command);
+          queueMicrotask(() => self.emit({type: "done", status: "solved",
+            path: ["Left", "Right", "Down"],
+            visited: command.payload.algorithm === "solution-window-rewrite" ? Number(command.payload.maxVisited) : 1,
+            generated: 3}));
+        }),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0}},
+        limits: {maxExpandedStates: 120_000, maxGeneratedStates: 200_000, maxMemoryBytes: memoryMiB * 1024 ** 2},
+      });
+      const result = await adapter.solve(request, context());
+      const window = commands.find(command => command.payload.algorithm === "solution-window-rewrite");
+      const repair = commands.find(command => command.payload.algorithm === "solution-box-reschedule");
+      assert.ok(window && repair);
+      const windowWork = memoryMiB === 384 ? 20_000 : memoryMiB === 768 ? 35_000 : 50_000;
+      assert.equal(window.payload.maxVisited, windowWork);
+      assert.equal(repair.payload.maxVisited, 119_999 - windowWork);
+      assert.equal(repair.payload.maxGenerated, 199_994);
+      assert.ok(Number(repair.payload.maxMemoryBytes) > 0);
+      assert.ok(Number(repair.payload.maxMemoryBytes) <= request.limits!.maxMemoryBytes!);
+      assert.equal(result.status, "solved");
+      if (result.status === "solved") assert.ok(verifySolverSolution(request, result.solution).valid);
+    });
+  }
+
   for (const publication of ["valid", "invalid", "at-limit"] as const) {
     it(`handles a ${publication} repair publication before shared-budget termination`, async () => {
       const workers: ScriptedWorker[] = [];

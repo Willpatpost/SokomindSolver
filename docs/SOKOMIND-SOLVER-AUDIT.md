@@ -52,8 +52,41 @@ Huge guardrails, the 27 focused browser runs, typecheck, lint, build/static
 checks, generated-engine consistency, and documentation validation. The full
 application browser suite was not rerun.
 
-Next: trace where improved-route alternatives are lost in structural discovery,
-as described in Appendix D; the 503/236 isolated result remains a separate target.
+### Follow-up: offline structural route recoverability
+
+`diagnose:planner-route` now observes first-push ranking/selection, returned macro
+endpoints, outer pruning, and beam retention without supplying the reference to
+the solver. The reviewed 503/236 Grand Hall route loses its opening push at
+first-push selection: rank 21 of 27, with eight pushes selected and none moving
+that box. The observed and control searches have identical routes and deterministic
+work; the planner's own 893/278 route passes a full positive-control trace.
+See [route recoverability evidence and limitations](benchmarks/planner-route-recoverability.md).
+
+Validation passed all 2,377 unit tests and all three coverage gates, typecheck,
+lint, generated-engine/documentation checks, build/static checks, Huge and
+multi-puzzle guardrails, 33 frozen-optimum cases and parallel proof, and all nine
+focused strategic worker browser cases across Chromium, Firefox, and WebKit.
+The complete application browser suite was not rerun.
+
+### Follow-up: reject simple branch widening
+
+A five-fixture sweep of branch allowances 6, 8, 10, 12, and 16 found no route
+improvement. Grand Hall worsens from 893/278 to 1,116/292 at eight; ten and twelve
+exhaust the bounded frontier, and sixteen exhausts the 60,000 generated-state
+budget without a solution. The sixteen-branch root selection represents the
+reference's opening box but still excludes its required direction. The later
+trace is capped, so it provides no complete later-search classification.
+See [branch-diversity evidence and reproduction](benchmarks/planner-branch-diversity.md).
+
+Production defaults remain unchanged. The offline diagnostic now accepts a
+branch allowance and can trace an external reference when its control is unsolved.
+All 2,377 unit tests, typecheck, lint, and documentation checks passed for this
+follow-up; browser and performance guardrails were not rerun.
+
+Next: evaluate fixed-width direction diversity or walk-to-support ordering,
+including a disabled control and broader-corpus checks. Distinct-box coverage
+alone does not preserve useful directions, and selecting the reference opening
+has not been shown to recover the improved route.
 
 ---
 

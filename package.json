@@ -40,6 +40,8 @@
     "test:solver:multi": "node --experimental-strip-types --test tests/performance/sokomind-solver-multi.test.ts",
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
     "diagnose:quality-budget": "node --experimental-strip-types scripts/diagnose-quality-budget.mjs",
+    "diagnose:planner-route": "node --experimental-strip-types scripts/diagnose-planner-route.ts",
+    "benchmark:planner-branches": "node --experimental-strip-types scripts/benchmark-planner-branches.ts",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
     "benchmark:solver:memory": "node --experimental-strip-types scripts/benchmark-solver-memory.ts",
     "benchmark:solver:analyzer": "node --experimental-strip-types scripts/benchmark-strategic-analyzer.mjs",

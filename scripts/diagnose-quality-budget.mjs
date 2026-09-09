@@ -13,7 +13,9 @@ const args = new Map(process.argv.slice(2).map(arg => {
   assert.ok(match, `Expected --name=value: ${arg}`);
   return [match[1], match[2]];
 }));
-for (const key of args.keys()) assert.ok(["fixture", "window-cap", "output"].includes(key), `Unknown argument: ${key}`);
+for (const key of args.keys()) assert.ok(["fixture", "window-cap", "memory-mib", "output"].includes(key), `Unknown argument: ${key}`);
+const memoryMiB = args.has("memory-mib") ? Number(args.get("memory-mib")) : 2048;
+assert.ok(Number.isSafeInteger(memoryMiB) && memoryMiB > 0, "memory-mib must be a positive integer");
 const fixture = args.get("fixture") ?? "huge";
 assert.ok(PUZZLE_BY_ID[fixture], `Unknown fixture: ${fixture}`);
 const windowCap = args.has("window-cap") ? Number(args.get("window-cap")) : undefined;
@@ -24,7 +26,7 @@ const session = createSession(PUZZLE_BY_ID[fixture]);
 const request = {
   board: session.board, snapshot: session.snapshot, objective: { kind: "moves" },
   options: { "sokomind-solver": { mode: "quality", deterministic: true, maximumIncumbents: 1, harvestElapsedMs: 0 } },
-  limits: { maxElapsedMs: 45000, maxExpandedStates: 200000, maxGeneratedStates: 2000000, maxMemoryBytes: 2 * 1024 ** 3 },
+  limits: { maxElapsedMs: 45000, maxExpandedStates: 200000, maxGeneratedStates: 2000000, maxMemoryBytes: memoryMiB * 1024 ** 2 },
 };
 const adapter = createNodeSolverAdapter({
   hardwareConcurrency: 2,

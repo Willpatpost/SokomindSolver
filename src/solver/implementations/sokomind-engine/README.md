@@ -87,3 +87,9 @@ and unused quality budgets are available.
 Eligible first local passes are capped at 50,000 states and three quarters of the
 quality time envelope, reserving time for rescheduling. Fast mode is unchanged.
 See [integration evidence](../../../../docs/benchmarks/grand-hall-rescheduling.md).
+
+The internal structural planner accepts an optional read-only observer used by
+the offline Node VM route diagnostic. It is not exported and cannot be configured
+through worker payloads. Normal solving leaves it null and allocates no events.
+See [recoverability methodology](../../../../docs/benchmarks/planner-route-recoverability.md)
+for matched-state semantics, bounds, and known visibility limits.

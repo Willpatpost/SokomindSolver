@@ -1221,8 +1221,16 @@ async function improveIncumbent(
   );
   const memoryLimit = run.request.limits?.maxMemoryBytes ?? Infinity;
   const scaledDefault = defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes);
+  // Whole-box quality repair bounds retained memory inside the engine, and
+  // runPhase supplies its live memory share after coordinator reserves. Its
+  // allocated state budget bounds work, not memory. Keep window/optimal policy
+  // unchanged; all repair still charges the shared request envelope below.
+  const liveMemoryRescheduling = repair === "box" &&
+    extractSokomindOptions(run.request).mode === "quality";
   const memoryVisitedCap =
-    memoryLimit <= 384 * 1024 * 1024
+    liveMemoryRescheduling
+      ? Infinity
+      : memoryLimit <= 384 * 1024 * 1024
       ? 20_000
       : memoryLimit <= 768 * 1024 * 1024
         ? 35_000
