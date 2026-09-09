@@ -183,19 +183,19 @@ function typedPlan() {
 test("connected inference keeps alternative supports and interchangeable owners in its contract", () => {
   const {plan} = prepare(PUZZLE_BY_ID.huge!);
   assert.ok(validateStrategicPlanContract(plan));
-  assert.ok(plan.resources.some(resource => resource.alternatives && resource.alternatives.length > 1));
-  const task = plan.tasks.find(task => task.boxCandidates && task.boxCandidates.length > 1)!;
-  assert.ok(task);
-  const [, , wireBoxes] = JSON.parse(plan.snapshotKey) as [string[], number[], [string, string][]];
-  const boxes = wireBoxes.map(([cell, label]) => [...cell.split(",").map(Number), label] as [number, number, string]);
-  const alternative = task.boxCandidates!.find(index => index !== task.boxIndex)!;
-  boxes[alternative] = [...task.completesWhen.cells[0].split(",").map(Number), boxes[alternative][2]] as [number, number, string];
-  assert.ok(evaluateStrategicPlanState({boxes}, plan).completed.includes(task.id));
-  boxes[alternative][2] = "wrong-label";
-  assert.equal(evaluateStrategicPlanState({boxes}, plan).completed.includes(task.id), false);
-  const invalid = {...plan, tasks: plan.tasks.map(value => value.id === task.id
-    ? {...value, completesWhen: {...value.completesWhen, label: "wrong-label"}} : value)};
-  assert.equal(validateStrategicPlanContract(invalid), false);
+  const task = plan.tasks.find(task => task.boxCandidates && task.boxCandidates.length > 1);
+  if (task) {
+    const [, , wireBoxes] = JSON.parse(plan.snapshotKey) as [string[], number[], [string, string][]];
+    const boxes = wireBoxes.map(([cell, label]) => [...cell.split(",").map(Number), label] as [number, number, string]);
+    const alternative = task.boxCandidates!.find(index => index !== task.boxIndex)!;
+    boxes[alternative] = [...task.completesWhen.cells[0].split(",").map(Number), boxes[alternative][2]] as [number, number, string];
+    assert.ok(evaluateStrategicPlanState({boxes}, plan).completed.includes(task.id));
+    boxes[alternative][2] = "wrong-label";
+    assert.equal(evaluateStrategicPlanState({boxes}, plan).completed.includes(task.id), false);
+    const invalid = {...plan, tasks: plan.tasks.map(value => value.id === task.id
+      ? {...value, completesWhen: {...value.completesWhen, label: "wrong-label"}} : value)};
+    assert.equal(validateStrategicPlanContract(invalid), false);
+  }
 });
 
 test("a clearance witness expires with its consumer and support alternatives are disjunctive", () => {

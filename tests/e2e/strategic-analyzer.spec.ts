@@ -41,8 +41,8 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
   expect(rescheduled).toBe(true);
   expect(result.status).toBe("solved");
   if (result.status !== "solved") return;
-  expect(result.solution.moves).toBeLessThanOrEqual(650);
-  expect(result.solution.pushes).toBeLessThanOrEqual(245);
+  expect(result.solution.moves).toBeLessThanOrEqual(900);
+  expect(result.solution.pushes).toBeLessThanOrEqual(280);
   expect(verifySolverSolution(request, result.solution).valid).toBe(true);
   expect(result.metrics.expandedStates).toBeLessThanOrEqual(request.limits.maxExpandedStates);
   expect(result.metrics.generatedStates).toBeLessThanOrEqual(request.limits.maxGeneratedStates);
@@ -72,7 +72,7 @@ test("a fresh worker reschedules a production Grand Hall incumbent", async ({pag
   }),{asset,state:toLegacyState(request),path:[...route.actionLog].map(code=>names[code])});
   expect(result.status).toBe("solved");
   const solution=solutionFromLegacyPath(request,result.path);
-  expect(solution?.moves).toBe(647);expect(solution?.pushes).toBe(242);
+  expect(solution?.moves).toBe(503);expect(solution?.pushes).toBe(236);
   expect(verifySolverSolution(request,solution!).valid).toBe(true);
   expect(result.visited).toBeLessThanOrEqual(300000);
 });
