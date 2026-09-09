@@ -41,6 +41,7 @@ interface EngineResultPayload {
   readonly moveVisited?: number;
   readonly moveImprovements?: number;
   readonly moveWindowAdaptiveStop?: boolean;
+  /** Complete candidate on done; repair progress may publish an incumbent for replay. */
   readonly path?: readonly string[] | null;
   /** Opt-in, bounded structural-plan trace; absent from normal solver runs. */
   readonly planDiagnostics?: unknown;

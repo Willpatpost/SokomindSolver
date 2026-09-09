@@ -11,7 +11,7 @@ const puzzle: PuzzleDefinition = {
   rows: ["OOOOOOO", "O  R  O", "O A X O", "O a S O", "O     O", "OOOOOOO"],
 };
 
-test("the public quality worker solves Grand Hall through automatic rescheduling", async ({page}) => {
+test("the public quality worker solves Grand Hall through automatic rescheduling", async ({page}, testInfo) => {
   test.setTimeout(90000);
   const assets = await readdir(new URL("../../dist/assets/", import.meta.url));
   const asset = assets.find(name => /^solver\.worker-.*\.js$/.test(name));
@@ -38,14 +38,23 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
       worker.postMessage({type: "solver/run", protocolVersion: 1, jobId: "quality-rescheduling",
         solverId: "sokomind-solver", request});
     }), {asset, request});
+  await testInfo.attach("grand-hall-public-quality.json", {
+    body: JSON.stringify({project: testInfo.project.name, requestLimits: request.limits,
+      options: request.options, rescheduled, result}, null, 2),
+    contentType: "application/json",
+  });
   expect(rescheduled).toBe(true);
   expect(result.status).toBe("solved");
   if (result.status !== "solved") return;
-  expect(result.solution.moves).toBeLessThanOrEqual(900);
-  expect(result.solution.pushes).toBeLessThanOrEqual(280);
+  // Retain replay-verified repair publications before the shared budget cutoff.
+  // The public 520/242 result remains distinct from isolated 503/236 repair.
+  expect(result.solution.moves).toBeLessThanOrEqual(550);
+  expect(result.solution.pushes).toBeLessThanOrEqual(245);
+  expect(result.solution.optimality).toBe("unknown");
   expect(verifySolverSolution(request, result.solution).valid).toBe(true);
   expect(result.metrics.expandedStates).toBeLessThanOrEqual(request.limits.maxExpandedStates);
   expect(result.metrics.generatedStates).toBeLessThanOrEqual(request.limits.maxGeneratedStates);
+  expect(result.metrics.counters?.peakEstimatedMemoryBytes).toBeLessThanOrEqual(request.limits.maxMemoryBytes);
 });
 
 test("a fresh worker reschedules a production Grand Hall incumbent", async ({page}) => {

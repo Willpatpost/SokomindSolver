@@ -62,22 +62,28 @@ because current quality results are mixed. Kernel experiments can disable it wit
 `strategicExecution` evaluation, enabled/completed, advancement, and recovery counts.
 
 The `solution-box-reschedule` search command accepts `state` and a
-replay-valid `solutionPath`. It frees one uniquely labeled box's entire schedule
-while retaining every other box's push order. It uses exact keeper travel and
+replay-valid `solutionPath`. It frees one physical box's entire schedule,
+including boxes in repeated-label groups, while retaining every other box's
+push order and identity. It uses exact keeper travel and
 bounded A*, verifies each accepted candidate and the unchanged push sequence,
 and retains the incumbent when interrupted by its work/time budgets. It is a
 post-solution repair command, not pre-search analysis or a global optimality proof.
+Each accepted improvement is also published as a complete `path` on a progress
+message. The adapter independently replays and retains the best publication
+before checking later work, so a subsequent shared-budget cutoff cannot discard
+an already verified improvement. Publication does not end the repair phase.
 
 `maxVisited` (default 300,000), `maxGenerated` (2,000,000), and
 `rescheduleMaxMs` (10,000) are shared across all repairs. `rescheduleRounds`
 defaults to two; zero disables repair. Optional `rescheduleBoxIndices` restricts
-the eligible unique-label roles. Otherwise the largest observed push detour is
+the eligible physical box indices. Otherwise the largest observed push detour is
 tried first, followed by alphabetical sweeps. Temporary occupancy tables are
 capped at four million cells. `boxRescheduling` reports per-attempt counters and
 budget exhaustion. A supplied `maxMemoryBytes` also bounds estimated table and
 node memory; progress reports expose work and retained-state accounting.
 The public quality/optimal pipeline automatically selects this command for its
-final refinement when unique-label roles and unused quality budgets are available.
+final refinement when at least one box, a sufficiently long verified incumbent,
+and unused quality budgets are available.
 Eligible first local passes are capped at 50,000 states and three quarters of the
 quality time envelope, reserving time for rescheduling. Fast mode is unchanged.
 See [integration evidence](../../../../docs/benchmarks/grand-hall-rescheduling.md).

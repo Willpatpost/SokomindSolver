@@ -417,6 +417,44 @@ describe("Sokomind Solver adapter", () => {
     assert.ok(phases.includes("improving"));
   });
 
+  for (const publication of ["valid", "invalid", "at-limit"] as const) {
+    it(`handles a ${publication} repair publication before shared-budget termination`, async () => {
+      const workers: ScriptedWorker[] = [];
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2, improvementMinimumMoves: 0,
+        improvementMaxVisited: 100, improvementMaxElapsedMs: 1000,
+        createWorker: () => {
+          const worker = new ScriptedWorker((self, command) => queueMicrotask(() => {
+            if (command.payload.algorithm === "solution-box-reschedule") {
+              self.emit({type: "progress", visited: publication === "at-limit" ? 59 : 10,
+                generated: 10, path: publication === "invalid" ? ["Up"] : ["Down"]});
+              // No terminal route is delivered: the coordinator must stop at the
+              // aggregate limit and retain only candidates replayed before it.
+              self.emit({type: "progress", visited: 59, generated: 20});
+            } else {
+              self.emit({type: "done", status: "solved", path: ["Left", "Right", "Down"],
+                visited: command.payload.algorithm === "ultimate" ? 1 : 40, generated: 3});
+            }
+          }));
+          workers.push(worker);
+          return worker;
+        },
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0}},
+        limits: {maxExpandedStates: 100, maxGeneratedStates: 120},
+      });
+      const result = await adapter.solve(request, context());
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.moves, publication === "valid" ? 1 : 3);
+      assert.equal(result.metrics.counters?.bestSolutionMoves, publication === "valid" ? 1 : 3);
+      assert.equal(result.metrics.expandedStates, 100);
+      assert.equal(verifySolverSolution(request, result.solution).valid, true);
+      assert.ok(workers.every(worker => worker.terminated));
+    });
+  }
+
   for (const repairOutcome of ["better", "unchanged", "invalid", "failed", "timeout", "cancelled"] as const) {
     it(`retains a verified incumbent and shared budgets when rescheduling is ${repairOutcome}`, async () => {
       const commands: WorkerCommand[] = [];

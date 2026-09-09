@@ -39,6 +39,7 @@
     "test:solver:proof-regressions": "npm run test:solver:known && npm run test:solver:parallel",
     "test:solver:multi": "node --experimental-strip-types --test tests/performance/sokomind-solver-multi.test.ts",
     "benchmark:solver": "node --experimental-strip-types scripts/benchmark-sokomind-solver.ts",
+    "diagnose:quality-budget": "node --experimental-strip-types scripts/diagnose-quality-budget.mjs",
     "benchmark:solver:v2": "node --experimental-strip-types scripts/benchmark-solver-v2.ts",
     "benchmark:solver:memory": "node --experimental-strip-types scripts/benchmark-solver-memory.ts",
     "benchmark:solver:analyzer": "node --experimental-strip-types scripts/benchmark-strategic-analyzer.mjs",

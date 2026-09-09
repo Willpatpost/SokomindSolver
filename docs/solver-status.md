@@ -18,6 +18,22 @@ The shipped solver has three layers:
 All worker results pass structural validation and core replay before return.
 Discovery quality never substitutes for proof.
 
+Quality and optimal modes can refine a complete incumbent with whole-box
+rescheduling. Every physical box is eligible, including repeated-label boxes;
+route-length and remaining-budget checks still govern execution. Each repair
+frees one box while preserving the other boxes' push order and identity. This
+restricted optimization is not a global optimality proof. See the
+[Grand Hall evidence](benchmarks/grand-hall-rescheduling.md) for isolated repair
+and public-adapter results with their separate inputs and limits.
+
+Rescheduling publishes complete improvements during repair. The coordinator
+independently replays these under the same pre/post-verification budget checks,
+retains only the best published route, and continues bounded repair. If a later
+work/time cutoff or worker failure prevents the terminal message, the already
+verified improvement survives. Cancellation still returns cancelled, and a
+candidate first received at the limit is not accepted. This preserves useful
+work without extending the shared limits or changing proof semantics.
+
 The adapter is split by responsibility: `sokomind-legacy.ts` converts legacy
 data and validates replay, `sokomind-plans.ts` builds worker payloads and divides
 rewrite budgets, and `sokomind-solver.ts` coordinates execution.

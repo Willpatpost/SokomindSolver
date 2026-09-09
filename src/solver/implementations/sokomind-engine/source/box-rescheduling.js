@@ -179,11 +179,12 @@ function solutionBoxRescheduleSearch(payload) {
     maxGenerated: strategicLimit(payload.maxGenerated, 2000000, 5000000),
     deadline: startedAt + strategicLimit(payload.rescheduleMaxMs, 10000, 120000)};
   let lastReportAt = startedAt;
-  budget.report = (frontier, force = false) => {
+  budget.report = (frontier, force = false, incumbent = null) => {
     if (!force && now() - lastReportAt < 250) return;
     lastReportAt = now();
     if (typeof postMessage === "function") postMessage({type: "progress", visited: budget.expanded,
       generated: budget.generated, frontier, peakFrontier: budget.peak, retained: budget.peakRetained,
+      ...(incumbent ? {path: incumbent} : {}),
       performance: performanceSnapshot(board.metrics)});
   };
   const labels = new Map();
@@ -204,13 +205,16 @@ function solutionBoxRescheduleSearch(payload) {
       const fixed = events => events.filter(event => event.boxIndex !== boxIndex);
       if (replayed && JSON.stringify(fixed(replayed.events)) === JSON.stringify(fixed(trace.events))) {
         path = candidate; trace = replayed;
+        // Publish verified improvements before later work can exhaust the shared
+        // request budget and cause the coordinator to terminate this worker.
+        budget.report(0, true, path);
       }
     }
     attempts.push({boxIndex, label: initial.boxes[boxIndex][2], beforeMoves, afterMoves: path.length,
       expanded: budget.expanded - expanded, generated: budget.generated - generated});
     budget.report(0, true);
   };
-  // Start with the largest observed push detour, then revisit every unique role.
+  // Start with the largest observed push detour, then revisit every eligible box.
   // No puzzle name, box label, or reference-derived order enters this policy.
   const detour = index => {
     const box = initial.boxes[index], target = trace.details.state.boxes[index];

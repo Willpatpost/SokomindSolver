@@ -721,6 +721,7 @@ async function runPhase(
     const collectedSolutions: SolverSolution[] = [];
     const collectedSolutionKeys = new Set<string>();
     const collectedCheckpoints: LegacySearchCheckpoint[] = [];
+    let publishedSolution: SolverSolution | undefined;
 
     const cleanupWorker = (id: string) => {
       const entry = active.get(id);
@@ -777,6 +778,8 @@ async function runPhase(
           ? { checkpoints: Object.freeze([...collectedCheckpoints]) }
           : {}),
         ...outcome,
+        ...(publishedSolution && (!outcome.solution || isSolutionBetter(publishedSolution, outcome.solution))
+          ? { solution: publishedSolution } : {}),
         cutoff,
         startedWorkers,
         failedWorkers,
@@ -836,7 +839,7 @@ async function runPhase(
       }, timerDelay);
     }
 
-    const acceptPath = (path: readonly unknown[], label: string): boolean => {
+    const acceptPath = (path: readonly unknown[], label: string, retainOnly = false): boolean => {
       try {
         const limitBeforeReplay = reachedLimit(run);
         if (limitBeforeReplay) {
@@ -858,6 +861,12 @@ async function runPhase(
         if (limitAfterReplay) {
           stopForLimit(limitAfterReplay);
           return true;
+        }
+        if (retainOnly) {
+          if (!publishedSolution || isSolutionBetter(solution, publishedSolution)) {
+            publishedSolution = solution;
+          }
+          return false;
         }
         if (options.collectSolutions) {
           const key = solution.steps
@@ -1016,6 +1025,13 @@ async function runPhase(
             if (limit) {
               stopForLimit(limit);
               return;
+            }
+            // Repair may publish a complete route before its terminal message.
+            // Replay it under the unchanged budget checks and retain only the
+            // best candidate, without stopping the remaining bounded repair.
+            if (message.type === "progress" && plan.payload.algorithm === "solution-box-reschedule") {
+              const path = asLegacyPath(message.path);
+              if (path && acceptPath(path, plan.label, true)) return;
             }
             if (
               message.type === "records" &&
@@ -1615,7 +1631,7 @@ async function harvestAndImprove(
 
   // Whole-journey repair can succeed even when local windows made no progress.
   // Give it the best verified route, with only the unspent shared quality budget.
-  // Interchangeable-only puzzles keep the existing local refinement policy.
+  // Repeated-label boxes participate too; each repair preserves physical identity.
   const productive = rewrittenCandidates.filter((candidate) => candidate.improved);
   const refinementCandidates = reschedule ? rewrittenCandidates : productive;
   if (refinementCandidates.length && !run.context.signal.aborted) {

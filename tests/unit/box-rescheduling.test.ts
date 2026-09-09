@@ -68,6 +68,30 @@ const repeatedSession = createSession({id:"reschedule-repeated",title:"Repeated 
   rows:["OOOOOOO","O  R  O","O X S O","O X S O","O     O","OOOOOOO"]});
 const repeatedRequest = {board:repeatedSession.board,snapshot:repeatedSession.snapshot,objective:{kind:"moves" as const}};
 const repeatedIncumbent = [..."DDDLLUURRDDLLURR"].map(code => ({L:"Left",R:"Right",U:"Up",D:"Down"})[code]!);
+test("repair publishes independently replayable improvements before its terminal result",()=>{
+  const original = globalThis.postMessage;
+  const publications: Array<{path: string[]; visited: number; generated: number}> = [];
+  globalThis.postMessage = ((data: {type: string; path?: string[]; visited: number; generated: number}) => {
+    if (data.type === "progress" && data.path) publications.push({...data, path: [...data.path]});
+  }) as typeof globalThis.postMessage;
+  try {
+    const result = search({algorithm: "solution-box-reschedule", state: toLegacyState(request),
+      solutionPath: incumbent, rescheduleRounds: 2, maxVisited: 10000, maxGenerated: 40000});
+    assert.ok(publications.length > 0);
+    let previousMoves = incumbent.length;
+    for (const publication of publications) {
+      const solution = solutionFromLegacyPath(request, publication.path);
+      assert.ok(solution && verifySolverSolution(request, solution).valid);
+      assert.ok(publication.path.length < previousMoves);
+      assert.ok(publication.visited <= 10000 && publication.generated <= 40000);
+      previousMoves = publication.path.length;
+    }
+    assert.equal(previousMoves, result.path?.length);
+  } finally {
+    globalThis.postMessage = original;
+  }
+});
+
 test("repeated-label boxes are eligible for rescheduling",()=>{
   const result=search({algorithm:"solution-box-reschedule",state:toLegacyState(repeatedRequest),solutionPath:repeatedIncumbent,
     rescheduleRounds:2,maxVisited:20000,maxGenerated:80000});

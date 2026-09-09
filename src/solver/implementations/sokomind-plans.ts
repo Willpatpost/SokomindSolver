@@ -476,6 +476,7 @@ export function solutionImprovementPlan(
   });
 }
 
+/** Every physical box is eligible, including boxes in repeated-label groups. */
 export function supportsBoxRescheduling(state: LegacyState): boolean {
   return state.boxes.length >= 1;
 }
