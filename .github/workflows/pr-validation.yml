@@ -39,10 +39,20 @@ jobs:
       - name: Doc path validation
         run: npm run lint:docs
 
-  unit-coverage:
-    name: Unit tests and coverage
+  coverage:
+    name: Coverage (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: typed
+            command: npm run test:coverage:typed
+          - suite: focused
+            command: npm run test:coverage:typed:focused
+          - suite: engine
+            command: npm run test:coverage:engine
 
     steps:
       - name: Check out repository
@@ -58,7 +68,7 @@ jobs:
         run: npm ci
 
       - name: Coverage gate
-        run: npm run test:coverage
+        run: ${{ matrix.command }}
 
   solver-correctness:
     name: Solver correctness
