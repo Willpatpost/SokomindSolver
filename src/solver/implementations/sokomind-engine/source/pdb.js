@@ -125,7 +125,7 @@ function pdbPartitionGoals(board) {
   const partitions = [];
   for (const [label, goals] of board.goalsByLabel) {
     const goalCellIds = goals.map(pos => board.dense.idByKey.get(pos)).filter(id => id >= 0);
-    if (goalCellIds.length === 0 || goalCellIds.length > PDB_MAX_K) continue;
+    if (goalCellIds.length === 0) continue;
     if (goalCellIds.length <= PDB_MAX_PARTITION_SIZE) {
       partitions.push({label, goalCellIds});
     } else {

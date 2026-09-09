@@ -249,6 +249,7 @@ function analyzePuzzleForSearch(data, options = {}) {
   };
   board.pdbPartitions = buildPdbPartitions(board);
   const preparedBoard = createPreparedBoardSeed(board);
+  board.pdbPartitions = [];
   const strategicPlan = options.strategicAnalysis ? buildStrategicPlan(data, {
     ...options.strategicAnalysis,
     maxMs: Math.max(0, strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) -
