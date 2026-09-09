@@ -14,13 +14,10 @@ concurrency:
 
 jobs:
   build:
-    name: Build and verify
+    name: Build
     if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      pages: read
+    timeout-minutes: 10
     env:
       VITE_PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
 
@@ -40,25 +37,123 @@ jobs:
       - name: Audit dependencies
         run: npm run audit
 
-      # On PRs, lint/test/coverage/solver:multi are handled by PR Validation.
-      # On push-to-main and workflow_dispatch, this workflow is the only gate.
-
-      - name: Lint
-        if: github.event_name != 'pull_request'
-        run: npm run lint
-
-      - name: Doc path validation
-        if: github.event_name != 'pull_request'
-        run: npm run lint:docs
-
-      # Coverage below executes the complete unit suite. Keep artifact
-      # production/static verification on every event without repeating them.
       - name: Build and verify static artifact
         run: npm run build && npm run test:static
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+
+  lint:
+    name: Lint and typecheck
+    if: github.event_name != 'pull_request' && (github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Doc path validation
+        run: npm run lint:docs
+
+  unit-coverage:
+    name: Unit tests and coverage
+    if: github.event_name != 'pull_request' && (github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Coverage gate
-        if: github.event_name != 'pull_request'
         run: npm run test:coverage
+
+  solver:
+    name: Solver performance gates
+    if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Multi-puzzle solver performance gate
+        if: github.event_name != 'pull_request'
+        run: npm run test:solver:multi
+
+      - name: Frozen optimum and parallel proof regressions
+        if: github.event_name != 'pull_request'
+        run: npm run test:solver:proof-regressions
+
+      - name: Grand Hall solver performance gate
+        run: npm run test:solver:huge
+
+  browser:
+    name: Browser and accessibility tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pages: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: dist
 
       - name: Install browsers
         run: npx playwright install --with-deps
@@ -75,31 +170,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Multi-puzzle solver performance gate
-        if: github.event_name != 'pull_request'
-        run: npm run test:solver:multi
-
-      - name: Frozen optimum and parallel proof regressions
-        if: github.event_name != 'pull_request'
-        run: npm run test:solver:proof-regressions
-
-      - name: Grand Hall solver performance gate
-        run: npm run test:solver:huge
-
-      - name: Configure GitHub Pages
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
-      - name: Upload static site
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: dist
-
   deploy:
     name: Deploy
-    needs: build
-    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [build, lint, unit-coverage, solver, browser]
+    if: |
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.build.result == 'success' &&
+      needs.browser.result == 'success' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.unit-coverage.result == 'success' || needs.unit-coverage.result == 'skipped') &&
+      (needs.solver.result == 'success' || needs.solver.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -110,6 +192,20 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: dist
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

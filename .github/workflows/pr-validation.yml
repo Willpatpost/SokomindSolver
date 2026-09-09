@@ -12,14 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  solver-correctness:
-    name: Solver correctness
+  lint:
+    name: Lint and typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
-    # deploy-pages.yml owns the PR build, static artifact checks, browser
-    # matrix, and Huge gate. This job owns source, coverage, and representative
-    # solver correctness.
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,11 +39,46 @@ jobs:
       - name: Doc path validation
         run: npm run lint:docs
 
-      # The coverage command executes the complete unit suite while enforcing
-      # all-source, focused-source, and generated-engine floors. Running the
-      # same suite in a separate step only duplicated work.
+  unit-coverage:
+    name: Unit tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Coverage gate
         run: npm run test:coverage
+
+  solver-correctness:
+    name: Solver correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # deploy-pages.yml owns the PR build, static artifact checks, browser
+    # matrix, and Huge gate. This job owns representative solver correctness.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Multi-puzzle solver regression
         run: npm run test:solver:multi
