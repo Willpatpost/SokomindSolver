@@ -14,6 +14,15 @@ import type { SokomindTuningProfile } from "./sokomind-tuning.ts";
 
 export const DEFAULT_MAX_ENGINE_WORKERS = 6;
 
+export const MEMORY_TIER_LOW = 384 * 1024 * 1024;
+export const MEMORY_TIER_MEDIUM = 768 * 1024 * 1024;
+export const MEMORY_TIER_HIGH = 1_536 * 1024 * 1024;
+
+export const TRANSPOSITION_LIMIT_LOW = 24_000;
+export const TRANSPOSITION_LIMIT_MEDIUM = 36_000;
+export const TRANSPOSITION_LIMIT_HIGH = 48_000;
+export const TRANSPOSITION_LIMIT_FULL = 60_000;
+
 export function defaultImprovementMaxVisited(maxMemoryBytes?: number): number {
   if (maxMemoryBytes === undefined || !Number.isFinite(maxMemoryBytes)) {
     return 50_000;
@@ -85,13 +94,13 @@ export function structuralPlan(
 ): EnginePlan {
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
   const transpositionLimit =
-    memoryLimit <= 384 * 1024 * 1024
-      ? 24_000
-      : memoryLimit <= 768 * 1024 * 1024
-        ? 36_000
-        : memoryLimit <= 1_536 * 1024 * 1024
-          ? 48_000
-          : 60_000;
+    memoryLimit <= MEMORY_TIER_LOW
+      ? TRANSPOSITION_LIMIT_LOW
+      : memoryLimit <= MEMORY_TIER_MEDIUM
+        ? TRANSPOSITION_LIMIT_MEDIUM
+        : memoryLimit <= MEMORY_TIER_HIGH
+          ? TRANSPOSITION_LIMIT_HIGH
+          : TRANSPOSITION_LIMIT_FULL;
   return Object.freeze({
     id: "structural-plan",
     label: "Structural plan search",
@@ -126,13 +135,13 @@ export function sokomindDiscoveryBeamWidth(
 ): number {
   const moderate = boxCount >= 5 || floorCount >= 45;
   if (!moderate) return 320;
-  if (maxMemoryBytes <= 384 * 1024 * 1024) {
+  if (maxMemoryBytes <= MEMORY_TIER_LOW) {
     return boxCount >= 8 ? 32 : 128;
   }
-  if (maxMemoryBytes <= 768 * 1024 * 1024) {
+  if (maxMemoryBytes <= MEMORY_TIER_MEDIUM) {
     return boxCount >= 8 ? 64 : 256;
   }
-  if (maxMemoryBytes <= 1_536 * 1024 * 1024) {
+  if (maxMemoryBytes <= MEMORY_TIER_HIGH) {
     return boxCount >= 8 ? 128 : 384;
   }
   return boxCount >= 8 ? 256 : 700;
@@ -151,12 +160,12 @@ export function discoveryPlans(
   const moderate = boxes >= 5 || request.board.floor.length >= 45;
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
   const directVisitedFallback = moderate
-    ? memoryLimit <= 384 * 1024 * 1024
+    ? memoryLimit <= MEMORY_TIER_LOW
       ? 60_000
-      : memoryLimit <= 768 * 1024 * 1024
+      : memoryLimit <= MEMORY_TIER_MEDIUM
         ? 120_000
         : 180_000
-    : memoryLimit <= 384 * 1024 * 1024
+    : memoryLimit <= MEMORY_TIER_LOW
       ? 40_000
       : 80_000;
   const recommendedVisited = analysisPlan?.recommendations.beamVisited;
@@ -167,14 +176,14 @@ export function discoveryPlans(
         Math.min(directVisitedFallback, Math.floor(recommendedVisited)),
       );
   const directGeneratedFallback = moderate
-    ? memoryLimit <= 384 * 1024 * 1024
+    ? memoryLimit <= MEMORY_TIER_LOW
       ? 200_000
-      : memoryLimit <= 768 * 1024 * 1024
+      : memoryLimit <= MEMORY_TIER_MEDIUM
         ? 600_000
-        : memoryLimit <= 1_536 * 1024 * 1024
+        : memoryLimit <= MEMORY_TIER_HIGH
           ? 900_000
           : 1_200_000
-    : memoryLimit <= 384 * 1024 * 1024
+    : memoryLimit <= MEMORY_TIER_LOW
       ? 150_000
       : 300_000;
   const directBudget = remainingStateBudget(
@@ -202,13 +211,13 @@ export function discoveryPlans(
   );
   const transpositionLimit = !moderate
     ? 30_000
-    : memoryLimit <= 384 * 1024 * 1024
-      ? 24_000
-      : memoryLimit <= 768 * 1024 * 1024
-        ? 36_000
-        : memoryLimit <= 1_536 * 1024 * 1024
-          ? 48_000
-          : 60_000;
+    : memoryLimit <= MEMORY_TIER_LOW
+      ? TRANSPOSITION_LIMIT_LOW
+      : memoryLimit <= MEMORY_TIER_MEDIUM
+        ? TRANSPOSITION_LIMIT_MEDIUM
+        : memoryLimit <= MEMORY_TIER_HIGH
+          ? TRANSPOSITION_LIMIT_HIGH
+          : TRANSPOSITION_LIMIT_FULL;
   const direct: EnginePlan = Object.freeze({
     id: "direct-portfolio",
     label: "Guided push portfolio",
@@ -417,9 +426,9 @@ export function sokomindRewriteConcurrency(
   const candidates = Math.max(0, Math.floor(candidateCount));
   if (candidates === 0) return 0;
   const memory = maxMemoryBytes ?? Infinity;
-  const memoryBound = memory <= 768 * 1024 * 1024
+  const memoryBound = memory <= MEMORY_TIER_MEDIUM
     ? 1
-    : memory <= 1_536 * 1024 * 1024
+    : memory <= MEMORY_TIER_HIGH
       ? 2
       : DEFAULT_MAX_ENGINE_WORKERS;
   return Math.max(1, Math.min(workers, memoryBound, candidates));

@@ -50,6 +50,9 @@ import {
   DEFAULT_IMPROVEMENT_MINIMUM_MOVES,
   DEFAULT_MAX_ENGINE_WORKERS,
   DEFAULT_REWRITE_BUDGET_ALLOCATION,
+  MEMORY_TIER_LOW,
+  MEMORY_TIER_MEDIUM,
+  MEMORY_TIER_HIGH,
   adaptiveRewriteAllocation,
   bidirectionalPlans,
   checkpointContinuationPlans,
@@ -192,6 +195,8 @@ interface SearchRunState {
   initialSolutionMoves: number;
   bestSolutionMoves: number;
   solutionImprovements: number;
+  suppressedImprovementErrors: number;
+  suppressedHarvestErrors: number;
 }
 
 interface PhaseOutcome {
@@ -434,12 +439,20 @@ function aggregate(run: SearchRunState): AggregateSnapshot {
 
 function metrics(run: SearchRunState): SolverRunMetrics {
   const snapshot = aggregate(run);
+  const suppressedErrors =
+    run.suppressedImprovementErrors + run.suppressedHarvestErrors;
   return Object.freeze({
     elapsedMs: elapsed(run),
     expandedStates: snapshot.expandedStates,
     generatedStates: snapshot.generatedStates,
     peakFrontierSize: snapshot.peakFrontierSize,
-    counters: snapshot.counters,
+    counters: Object.freeze({
+      ...snapshot.counters,
+      ...(suppressedErrors > 0 ? {
+        suppressedImprovementErrors: run.suppressedImprovementErrors,
+        suppressedHarvestErrors: run.suppressedHarvestErrors,
+      } : {}),
+    }),
   });
 }
 
@@ -1231,9 +1244,9 @@ async function improveIncumbent(
   const memoryVisitedCap =
     liveMemoryRescheduling
       ? Infinity
-      : memoryLimit <= 384 * 1024 * 1024
+      : memoryLimit <= MEMORY_TIER_LOW
       ? 20_000
-      : memoryLimit <= 768 * 1024 * 1024
+      : memoryLimit <= MEMORY_TIER_MEDIUM
         ? 35_000
         : scaledDefault;
   const configuredVisited = Math.min(
@@ -1346,9 +1359,13 @@ async function improveIncumbent(
           ? candidate.moves
           : Math.min(run.bestSolutionMoves, candidate.moves);
       if (outcome.phaseTimedOut || outcome.stopReason) break;
-    } catch {
-      // Improvement is opportunistic. A verified incumbent must survive an
-      // optional worker failure or unsupported nested-worker environment.
+    } catch (error) {
+      run.suppressedImprovementErrors += 1;
+      report(
+        run,
+        `Improvement pass suppressed: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
       break;
     }
   }
@@ -1513,7 +1530,13 @@ async function harvestAndImprove(
       harvestRound += 1;
       if (outcome.stopReason === "cancelled" || run.context.signal.aborted) break;
       if (unproductiveRounds >= 2) break;
-    } catch {
+    } catch (error) {
+      run.suppressedHarvestErrors += 1;
+      report(
+        run,
+        `Harvest round suppressed: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
       break;
     }
   }
@@ -1739,10 +1762,10 @@ function configuredWorkerCount(
     )?.deviceMemory;
   const declaredMemoryBytes = request.limits?.maxMemoryBytes ?? Infinity;
   const memoryBound =
-    declaredMemoryBytes <= 768 * 1024 * 1024 ||
+    declaredMemoryBytes <= MEMORY_TIER_MEDIUM ||
     (memoryGb !== undefined && memoryGb <= 4)
       ? 1
-      : declaredMemoryBytes <= 1_536 * 1024 * 1024 ||
+      : declaredMemoryBytes <= MEMORY_TIER_HIGH ||
           (memoryGb !== undefined && memoryGb <= 8)
         ? 2
         : DEFAULT_MAX_ENGINE_WORKERS;
@@ -2071,6 +2094,8 @@ export function createSokomindSolverAdapter(
         initialSolutionMoves: 0,
         bestSolutionMoves: 0,
         solutionImprovements: 0,
+        suppressedImprovementErrors: 0,
+        suppressedHarvestErrors: 0,
       };
 
       if (context.signal.aborted) {
