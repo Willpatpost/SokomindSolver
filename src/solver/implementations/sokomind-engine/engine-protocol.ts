@@ -45,6 +45,8 @@ interface EngineResultPayload {
   readonly path?: readonly string[] | null;
   /** Opt-in, bounded structural-plan trace; absent from normal solver runs. */
   readonly planDiagnostics?: unknown;
+  /** Opt-in per-box schedule trace from rescheduling; absent unless diagnostics requested. */
+  readonly scheduleTrace?: unknown;
   readonly peakFrontier?: number;
   readonly performance?: Readonly<Record<string, unknown>>;
   readonly permutationVisited?: number;

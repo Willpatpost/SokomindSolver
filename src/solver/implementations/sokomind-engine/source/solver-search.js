@@ -1805,6 +1805,7 @@ function planMacroBeamSearch(payload, observe = null) {
           firstPushes.map(next => next.pushedFrom),
         ).size;
       }
+      const firstPushWalkWeight = payload.firstPushWalkWeight ?? 0;
       const rankedFirst = firstPushes.map(next => {
         const analysis = structuralAnalysis(next.boxes);
         const estimate = analysis.estimate;
@@ -1818,10 +1819,15 @@ function planMacroBeamSearch(payload, observe = null) {
         const completesEvacuation = hasEvacuationPlan &&
           current.doorwaySchedule.pendingExports > 0 &&
           schedule.pendingExports === 0;
+        let walkToSupport = 0;
+        if (firstPushWalkWeight > 0 && Number.isInteger(next.pathSupportId) && reachable._parents) {
+          for (let c = next.pathSupportId; reachable._parents[c] !== -1; c = reachable._parents[c]) walkToSupport++;
+        }
         const recoveryScore = estimateWeight * estimate + 5 * accessDelta + 0.08 * evacuation +
             4 * (schedule.penalty - current.doorwaySchedule.penalty) -
             (completesEvacuation ? evacuationCompletionBonus : 0) -
-            12 * blockerProgress;
+            12 * blockerProgress +
+            firstPushWalkWeight * walkToSupport;
         let score = recoveryScore;
         if (strategicPlan) {
           const preference = taskPreference(current, next);
@@ -1974,7 +1980,8 @@ function planMacroBeamSearch(payload, observe = null) {
               payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
             paretoLimit: payload.macroParetoLimit,
-            reserveAlternateApproach: payload.macroApproachDiversity === true},
+            reserveAlternateApproach: payload.macroApproachDiversity === true,
+            macroIntermediateQuota: payload.macroIntermediateQuota ?? 0},
           );
         let expanded;
         if (payload.adaptiveMacroEffort === false) {

@@ -50,6 +50,35 @@ The adapter is split by responsibility: `sokomind-legacy.ts` converts legacy
 data and validates replay, `sokomind-plans.ts` builds worker payloads and divides
 rewrite budgets, and `sokomind-solver.ts` coordinates execution.
 
+## Tuning-controlled search experiments
+
+Three tuning parameters control experimental search behavior. All are soft
+ordering or candidate-generation changes; none affect legality, deadlock
+rejection, replay verification, or resource limits.
+
+- `firstPushWalkWeight` (default 0.05): adds exact keeper walk-to-support
+  distance as a penalty term in the structural planner's first-push ranking.
+  Set to 0 to disable. Active in the `planMacroBeamSearch` recovery score.
+
+- `moveAwareDiscovery` (default 0, disabled): when >= 0.5, discovery beam
+  search uses `BoundedKeeperArrivalMap` for transpositions instead of
+  depth-only dedup, retaining states with distinct keeper approach directions.
+  Quality-mode discovery plans set `planMoveAwareTranspositions: true` when
+  enabled.
+
+- `macroIntermediateQuota` (default 0, disabled): retains up to this many
+  non-endpoint intermediate states per macro expansion, selected by shortest
+  path and side diversity. Intermediates are tagged with `intermediateOf` for
+  beam dedup.
+
+Quality-mode rescheduling is gated by `predictRescheduleValue()` in
+`sokomind-reschedule-predictor.ts`. Puzzles with low walk-push ratio and few
+boxes skip whole-box repair. Optimal mode always reschedules when eligible.
+
+Override any parameter at runtime via `SOKOMIND_TUNING_JSON`, e.g.
+`SOKOMIND_TUNING_JSON='{"moveAwareDiscovery":1}'`. The SLURM benchmark script
+`scripts/slurm-p1-benchmark.sh` runs controlled A/B pairs for each parameter.
+
 ## Exact-search safeguards
 
 - A* and IDA* minimize moves and independently replay accepted routes.

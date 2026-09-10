@@ -170,6 +170,9 @@ function solutionBoxRescheduleSearch(payload) {
   const validation = validateSearchSolution(payload, payload.solutionPath);
   if (!validation.valid) return {path: null, failed: true, terminationReason: "invalid-rescheduling-incumbent", visited: 0};
   let path = validation.path, trace = boxReschedulingTrace(payload, path, board);
+  const boxLabels = initial.boxes.map(box => box[2]);
+  const originalSchedule = payload.diagnostics
+    ? extractScheduleTrace(trace.events, trace.details.boundaries, boxLabels) : null;
   const boardMemory = boardCacheMemorySnapshot(board);
   const budget = {expanded: 0, generated: 0, peak: 0, peakRetained: 0, peakEstimatedBytes: 0, memoryExhausted: false,
     baseMemoryBytes: 16 * 1024 * 1024 + boardMemory.boardBytes + boardMemory.cacheBytes +
@@ -228,9 +231,14 @@ function solutionBoxRescheduleSearch(payload) {
     for (const index of selected) attempt(index);
     if (before === path.length) break;
   }
+  const scheduleTrace = originalSchedule
+    ? buildScheduleTraceDiff(originalSchedule,
+        extractScheduleTrace(trace.events, trace.details.boundaries, boxLabels))
+    : undefined;
   return {path, visited: budget.expanded, generated: budget.generated, peakFrontier: budget.peak,
     retained: budget.peakRetained, frontier: 0,
     improvements: attempts.filter(attempt => attempt.afterMoves < attempt.beforeMoves).length,
+    ...(scheduleTrace ? {scheduleTrace} : {}),
     boxRescheduling: {attempts, originalMoves: validation.path.length, finalMoves: path.length,
       peakEstimatedBytes: budget.peakEstimatedBytes, memoryExhausted: budget.memoryExhausted,
       budgetExhausted: budget.memoryExhausted || budget.expanded >= budget.maxExpanded || budget.generated >= budget.maxGenerated || now() >= budget.deadline}};

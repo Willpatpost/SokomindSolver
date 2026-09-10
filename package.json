@@ -53,6 +53,8 @@
     "verify:generator-quality": "node --experimental-strip-types --test tests/unit/generated-quality-samples.test.ts",
     "verify:generator-tiers": "node --experimental-strip-types --test tests/unit/generated-tier-quality.test.ts",
     "solve": "node --experimental-strip-types scripts/solve-sokomind.ts",
+    "diagnose:solver-route": "node --experimental-strip-types scripts/diagnose-solver-route.ts",
+    "diagnose:schedule-trace": "node --experimental-strip-types scripts/diagnose-schedule-trace.ts",
     "test:static": "node --test tests/static-build.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

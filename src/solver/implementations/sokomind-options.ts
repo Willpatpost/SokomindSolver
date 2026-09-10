@@ -15,6 +15,7 @@ export interface SokomindRequestOptions {
   readonly proofParallelism: number;
   readonly idaReachabilitySnapshots: "all" | "periodic" | "none";
   readonly idaSnapshotPeriod: number;
+  readonly diagnostics: boolean;
 }
 
 export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
@@ -29,6 +30,7 @@ export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
     proofParallelism: 1,
     idaReachabilitySnapshots: "periodic",
     idaSnapshotPeriod: 4,
+    diagnostics: false,
   });
 
 const VALID_MODES: ReadonlySet<string> = new Set(["fast", "quality", "optimal"]);
@@ -155,6 +157,9 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
       1,
       64,
     );
+  }
+  if ("diagnostics" in obj) {
+    validated.diagnostics = validateBoolean("diagnostics", obj.diagnostics);
   }
 
   const result = Object.freeze({

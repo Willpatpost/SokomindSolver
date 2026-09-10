@@ -74,6 +74,7 @@ import {
   type ProofCheckpointOptions,
   type SokomindProofWorker,
 } from "./sokomind-proof.ts";
+import { predictRescheduleValue } from "./sokomind-reschedule-predictor.ts";
 import {
   resolveSokomindTuning,
   sokomindTuningPayload,
@@ -1309,6 +1310,7 @@ async function improveIncumbent(
           repair === "box" ? solutionReschedulingPlan(
             state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
             Math.floor(remainingImprovementMs), candidateIndex,
+            extractSokomindOptions(run.request).diagnostics,
           ) : solutionImprovementPlan(
             state,
             best,
@@ -1522,7 +1524,10 @@ async function harvestAndImprove(
 
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
-  const reschedule = supportsBoxRescheduling(state);
+  const rescheduleEligible = supportsBoxRescheduling(state);
+  const reschedule = rescheduleEligible &&
+    (sokomindOptions.mode !== "quality" || rewriteCandidates.length === 0 ||
+      predictRescheduleValue(state, selectBest(rewriteCandidates)).recommendation !== "skip");
   const rewriteAllocation = adaptiveRewriteAllocation(run.request);
 
   run.progressPhase = "improving";

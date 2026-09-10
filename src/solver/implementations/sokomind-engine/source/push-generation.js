@@ -425,11 +425,39 @@ function expandPushSequences(
     options.reserveAlternateApproach === true,
   );
   if (metrics) metrics.macroEndpointsRetained += selected.length;
+  const intermediateQuota = options.macroIntermediateQuota ?? 0;
+  const intermediates = [];
+  if (intermediateQuota > 0 && queue.length > 1) {
+    const endpointSignatures = new Set([
+      exactPushKey(initial, board),
+      ...selected.map(ep => exactPushKey(ep, board)),
+    ]);
+    const candidates = queue
+      .filter(s => s.pushes > 1 && !endpointSignatures.has(exactPushKey(s, board)))
+      .sort((a, b) => a.macroPath.length - b.macroPath.length);
+    const seenSides = new Set();
+    for (const candidate of candidates) {
+      if (intermediates.length >= intermediateQuota) break;
+      const side = candidate.pushedTo;
+      if (intermediates.length > 0 && seenSides.has(side)) continue;
+      seenSides.add(side);
+      intermediates.push(candidate);
+    }
+    if (metrics) {
+      metrics.macroIntermediatesGenerated = (metrics.macroIntermediatesGenerated || 0) + candidates.length;
+      metrics.macroIntermediatesRetained = (metrics.macroIntermediatesRetained || 0) + intermediates.length;
+    }
+  }
   return [
     materializeMacroPath(initial),
     ...selected
       .filter(endpoint => exactPushKey(endpoint, board) !== exactPushKey(initial, board))
       .map(materializeMacroPath),
+    ...intermediates.map(s => {
+      const materialized = materializeMacroPath(s);
+      materialized.intermediateOf = exactPushKey(selected[0] || initial, board);
+      return materialized;
+    }),
   ];
 }
 

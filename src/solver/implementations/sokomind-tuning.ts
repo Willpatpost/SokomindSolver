@@ -45,6 +45,15 @@ export interface SokomindTuningProfile {
   // --- Improvement pass window sizes ---
   readonly rewriteWindowVisited: number;
   readonly rewriteMoveWindowScale: number;
+
+  // --- First-push ordering ---
+  readonly firstPushWalkWeight: number;
+
+  // --- Keeper-arrival experiment ---
+  readonly moveAwareDiscovery: number;
+
+  // --- Macro intermediate retention ---
+  readonly macroIntermediateQuota: number;
 }
 
 export type SokomindTuningOverrides = Readonly<
@@ -77,6 +86,9 @@ export const TUNABLE_PARAMETER_META: Readonly<
   structuralStateShare: { min: 0.2, max: 0.9, scale: "linear", description: "Fraction of state budget for structural lane" },
   rewriteWindowVisited: { min: 2000, max: 50000, scale: "log", description: "Per-window visited state budget for rewrite" },
   rewriteMoveWindowScale: { min: 0.5, max: 4.0, scale: "linear", description: "Move-window size multiplier" },
+  firstPushWalkWeight: { min: 0, max: 1, scale: "linear", description: "Keeper walk distance weight in first-push scoring" },
+  moveAwareDiscovery: { min: 0, max: 1, scale: "linear", description: "Enable move-aware transpositions in discovery (0=off, 1=on)" },
+  macroIntermediateQuota: { min: 0, max: 8, scale: "linear", description: "Non-endpoint macro intermediates retained per expansion" },
 });
 
 export const DEFAULT_SOKOMIND_TUNING: SokomindTuningProfile = Object.freeze({
@@ -106,6 +118,12 @@ export const DEFAULT_SOKOMIND_TUNING: SokomindTuningProfile = Object.freeze({
 
   rewriteWindowVisited: 12_000,
   rewriteMoveWindowScale: 1.0,
+
+  firstPushWalkWeight: 0.05,
+
+  moveAwareDiscovery: 0,
+
+  macroIntermediateQuota: 0,
 });
 
 const TUNABLE_KEYS = Object.freeze([
@@ -130,6 +148,9 @@ const TUNABLE_KEYS = Object.freeze([
   "structuralStateShare",
   "rewriteWindowVisited",
   "rewriteMoveWindowScale",
+  "firstPushWalkWeight",
+  "moveAwareDiscovery",
+  "macroIntermediateQuota",
 ] as const);
 
 type TunableKey = (typeof TUNABLE_KEYS)[number];
@@ -223,5 +244,9 @@ export function sokomindTuningPayload(
     maxPlanSegments: profile.maxPlanSegments,
     planSlack: profile.planSlack,
     sequenceMacroLimit: profile.sequenceMacroLimit,
+    firstPushWalkWeight: profile.firstPushWalkWeight,
+    moveAwareDiscovery: profile.moveAwareDiscovery,
+    macroIntermediateQuota: profile.macroIntermediateQuota,
   });
 }
+

@@ -6958,11 +6958,39 @@ function expandPushSequences(
     options.reserveAlternateApproach === true,
   );
   if (metrics) metrics.macroEndpointsRetained += selected.length;
+  const intermediateQuota = options.macroIntermediateQuota ?? 0;
+  const intermediates = [];
+  if (intermediateQuota > 0 && queue.length > 1) {
+    const endpointSignatures = new Set([
+      exactPushKey(initial, board),
+      ...selected.map(ep => exactPushKey(ep, board)),
+    ]);
+    const candidates = queue
+      .filter(s => s.pushes > 1 && !endpointSignatures.has(exactPushKey(s, board)))
+      .sort((a, b) => a.macroPath.length - b.macroPath.length);
+    const seenSides = new Set();
+    for (const candidate of candidates) {
+      if (intermediates.length >= intermediateQuota) break;
+      const side = candidate.pushedTo;
+      if (intermediates.length > 0 && seenSides.has(side)) continue;
+      seenSides.add(side);
+      intermediates.push(candidate);
+    }
+    if (metrics) {
+      metrics.macroIntermediatesGenerated = (metrics.macroIntermediatesGenerated || 0) + candidates.length;
+      metrics.macroIntermediatesRetained = (metrics.macroIntermediatesRetained || 0) + intermediates.length;
+    }
+  }
   return [
     materializeMacroPath(initial),
     ...selected
       .filter(endpoint => exactPushKey(endpoint, board) !== exactPushKey(initial, board))
       .map(materializeMacroPath),
+    ...intermediates.map(s => {
+      const materialized = materializeMacroPath(s);
+      materialized.intermediateOf = exactPushKey(selected[0] || initial, board);
+      return materialized;
+    }),
   ];
 }
 
@@ -8275,6 +8303,9 @@ function solutionBoxRescheduleSearch(payload) {
   const validation = validateSearchSolution(payload, payload.solutionPath);
   if (!validation.valid) return {path: null, failed: true, terminationReason: "invalid-rescheduling-incumbent", visited: 0};
   let path = validation.path, trace = boxReschedulingTrace(payload, path, board);
+  const boxLabels = initial.boxes.map(box => box[2]);
+  const originalSchedule = payload.diagnostics
+    ? extractScheduleTrace(trace.events, trace.details.boundaries, boxLabels) : null;
   const boardMemory = boardCacheMemorySnapshot(board);
   const budget = {expanded: 0, generated: 0, peak: 0, peakRetained: 0, peakEstimatedBytes: 0, memoryExhausted: false,
     baseMemoryBytes: 16 * 1024 * 1024 + boardMemory.boardBytes + boardMemory.cacheBytes +
@@ -8333,12 +8364,81 @@ function solutionBoxRescheduleSearch(payload) {
     for (const index of selected) attempt(index);
     if (before === path.length) break;
   }
+  const scheduleTrace = originalSchedule
+    ? buildScheduleTraceDiff(originalSchedule,
+        extractScheduleTrace(trace.events, trace.details.boundaries, boxLabels))
+    : undefined;
   return {path, visited: budget.expanded, generated: budget.generated, peakFrontier: budget.peak,
     retained: budget.peakRetained, frontier: 0,
     improvements: attempts.filter(attempt => attempt.afterMoves < attempt.beforeMoves).length,
+    ...(scheduleTrace ? {scheduleTrace} : {}),
     boxRescheduling: {attempts, originalMoves: validation.path.length, finalMoves: path.length,
       peakEstimatedBytes: budget.peakEstimatedBytes, memoryExhausted: budget.memoryExhausted,
       budgetExhausted: budget.memoryExhausted || budget.expanded >= budget.maxExpanded || budget.generated >= budget.maxGenerated || now() >= budget.deadline}};
+}
+
+/* ===== schedule-trace.js ===== */
+function extractScheduleTrace(events, boundaries, boxLabels) {
+  const boxCount = boxLabels.length;
+  const entries = new Array(boxCount);
+  for (let i = 0; i < boxCount; i++) {
+    entries[i] = {
+      boxIndex: i,
+      label: boxLabels[i],
+      pushCount: 0,
+      phaseCount: 0,
+      firstPushIndex: -1,
+      lastPushIndex: -1,
+      prePushWalking: 0,
+    };
+  }
+  let lastPushedBox = -1;
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    const entry = entries[event.boxIndex];
+    entry.pushCount++;
+    if (entry.firstPushIndex === -1) entry.firstPushIndex = i;
+    entry.lastPushIndex = i;
+    if (lastPushedBox !== event.boxIndex) {
+      entry.phaseCount++;
+      lastPushedBox = event.boxIndex;
+    }
+    if (i + 1 < boundaries.length) {
+      const walkBefore = boundaries[i + 1].moveIndex -
+        (i > 0 ? boundaries[i].moveIndex : 0) - 1;
+      if (walkBefore > 0) entry.prePushWalking += walkBefore;
+    }
+  }
+  return entries;
+}
+
+function buildScheduleTraceDiff(originalEntries, repairedEntries) {
+  return originalEntries.map((original, index) => {
+    const repaired = repairedEntries ? repairedEntries[index] : null;
+    return {
+      boxIndex: original.boxIndex,
+      label: original.label,
+      original: {
+        pushCount: original.pushCount,
+        phaseCount: original.phaseCount,
+        firstPushIndex: original.firstPushIndex,
+        lastPushIndex: original.lastPushIndex,
+        prePushWalking: original.prePushWalking,
+      },
+      repaired: repaired ? {
+        pushCount: repaired.pushCount,
+        phaseCount: repaired.phaseCount,
+        firstPushIndex: repaired.firstPushIndex,
+        lastPushIndex: repaired.lastPushIndex,
+        prePushWalking: repaired.prePushWalking,
+      } : null,
+      improvement: repaired ? {
+        pushesDelta: original.pushCount - repaired.pushCount,
+        phasesDelta: original.phaseCount - repaired.phaseCount,
+        walkingDelta: original.prePushWalking - repaired.prePushWalking,
+      } : null,
+    };
+  });
 }
 
 /* ===== solver-search.js ===== */
@@ -10149,6 +10249,7 @@ function planMacroBeamSearch(payload, observe = null) {
           firstPushes.map(next => next.pushedFrom),
         ).size;
       }
+      const firstPushWalkWeight = payload.firstPushWalkWeight ?? 0;
       const rankedFirst = firstPushes.map(next => {
         const analysis = structuralAnalysis(next.boxes);
         const estimate = analysis.estimate;
@@ -10162,10 +10263,15 @@ function planMacroBeamSearch(payload, observe = null) {
         const completesEvacuation = hasEvacuationPlan &&
           current.doorwaySchedule.pendingExports > 0 &&
           schedule.pendingExports === 0;
+        let walkToSupport = 0;
+        if (firstPushWalkWeight > 0 && Number.isInteger(next.pathSupportId) && reachable._parents) {
+          for (let c = next.pathSupportId; reachable._parents[c] !== -1; c = reachable._parents[c]) walkToSupport++;
+        }
         const recoveryScore = estimateWeight * estimate + 5 * accessDelta + 0.08 * evacuation +
             4 * (schedule.penalty - current.doorwaySchedule.penalty) -
             (completesEvacuation ? evacuationCompletionBonus : 0) -
-            12 * blockerProgress;
+            12 * blockerProgress +
+            firstPushWalkWeight * walkToSupport;
         let score = recoveryScore;
         if (strategicPlan) {
           const preference = taskPreference(current, next);
@@ -10318,7 +10424,8 @@ function planMacroBeamSearch(payload, observe = null) {
               payload.incrementalMacroGuard === false ? undefined : intermediateGuard,
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
             paretoLimit: payload.macroParetoLimit,
-            reserveAlternateApproach: payload.macroApproachDiversity === true},
+            reserveAlternateApproach: payload.macroApproachDiversity === true,
+            macroIntermediateQuota: payload.macroIntermediateQuota ?? 0},
           );
         let expanded;
         if (payload.adaptiveMacroEffort === false) {

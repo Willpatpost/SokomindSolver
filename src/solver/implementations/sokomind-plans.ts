@@ -231,6 +231,8 @@ export function discoveryPlans(
       progressIntervalMs: 1_000,
       ...tuning,
       ...(firstSolutionOnly ? { beamSolutionComparisonBudget: 0 } : {}),
+      ...((tuning.moveAwareDiscovery ?? 0) >= 0.5
+        ? { planMoveAwareTranspositions: true } : {}),
     }),
   });
 
@@ -488,6 +490,7 @@ export function solutionReschedulingPlan(
   maxGenerated: number,
   maxElapsedMs: number,
   candidateIndex: number,
+  diagnostics = false,
 ): EnginePlan {
   return Object.freeze({
     id: `solution-reschedule-c${candidateIndex}`,
@@ -501,6 +504,7 @@ export function solutionReschedulingPlan(
       maxGenerated,
       rescheduleMaxMs: maxElapsedMs,
       rescheduleRounds: 2,
+      ...(diagnostics ? { diagnostics: true } : {}),
     }),
   });
 }
