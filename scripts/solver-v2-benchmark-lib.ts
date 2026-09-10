@@ -17,6 +17,7 @@ import {
   parseSokomindOptions,
   type SokomindRequestOptions,
 } from "../src/solver/implementations/sokomind-options.ts";
+import { DEFAULT_MAX_ENGINE_WORKERS } from "../src/solver/implementations/sokomind-plans.ts";
 import { sokomindSolverMetadata } from "../src/solver/implementations/sokomind-solver.ts";
 import {
   resolveSokomindTuning,
@@ -67,7 +68,7 @@ export const SOKOMIND_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxElapsedMs: 180_000,
   maxExpandedStates: 500_000,
   maxGeneratedStates: 5_000_000,
-  maxMemoryBytes: 768 * 1024 * 1024,
+  maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
 export const BENCHMARK_PROFILE_IDS = Object.freeze([
@@ -101,7 +102,7 @@ function productionSokomindOptions(
     ...DEFAULT_SOKOMIND_REQUEST_OPTIONS,
     mode,
     proofAlgorithm,
-    deterministic: true,
+    deterministic: false,
     proofParallelism: 1,
   });
 }
@@ -113,8 +114,8 @@ export const BENCHMARK_PROFILES: Readonly<
     id: "sokomind-fast",
     solverId: sokomindSolverMetadata.id,
     solverVersion: sokomindSolverMetadata.version,
-    deterministic: true,
-    workerCount: 1,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
     requiresKnownOptimum: false,
     classicEligibleOnly: false,
     limits: SOKOMIND_LIMITS,
@@ -124,8 +125,8 @@ export const BENCHMARK_PROFILES: Readonly<
     id: "sokomind-quality",
     solverId: sokomindSolverMetadata.id,
     solverVersion: sokomindSolverMetadata.version,
-    deterministic: true,
-    workerCount: 1,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
     requiresKnownOptimum: false,
     classicEligibleOnly: false,
     limits: SOKOMIND_LIMITS,
@@ -135,8 +136,8 @@ export const BENCHMARK_PROFILES: Readonly<
     id: "sokomind-optimal-astar",
     solverId: sokomindSolverMetadata.id,
     solverVersion: sokomindSolverMetadata.version,
-    deterministic: true,
-    workerCount: 1,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
     requiresKnownOptimum: true,
     classicEligibleOnly: true,
     limits: CLASSIC_LIMITS,
@@ -146,8 +147,8 @@ export const BENCHMARK_PROFILES: Readonly<
     id: "sokomind-optimal-ida",
     solverId: sokomindSolverMetadata.id,
     solverVersion: sokomindSolverMetadata.version,
-    deterministic: true,
-    workerCount: 1,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
     requiresKnownOptimum: true,
     classicEligibleOnly: true,
     limits: CLASSIC_LIMITS,
@@ -456,7 +457,7 @@ function profileAdapter(profileId: BenchmarkProfileId): SolverAdapter {
     case "sokomind-quality":
     case "sokomind-optimal-astar":
     case "sokomind-optimal-ida":
-      return createNodeSolverAdapter({ hardwareConcurrency: 2 });
+      return createNodeSolverAdapter();
   }
 }
 
@@ -722,7 +723,8 @@ export function summarizeBenchmarkSamples(
     throw new Error("Cannot summarize samples with different run identities");
   }
   const signatures = new Set(samples.map(deterministicSignature));
-  const consistent = signatures.size === 1;
+  const isDeterministic = first.configuration.deterministic;
+  const consistent = isDeterministic ? signatures.size === 1 : true;
   const elapsed = samples.map((sample) => sample.elapsedMs);
   const elapsedMedian = median(elapsed);
   const representative = [...samples].sort(
