@@ -77,8 +77,9 @@ const DELIVERY_BUDGETS = Object.freeze({
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
   solverWorkerGzipBytes: 60_000,
-  // Includes V2 predicates, task evaluation, replayed continuation, and PDB discovery (72,048).
-  engineWorkerGzipBytes: 73_000,
+  // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
+  // schedule trace, and macro intermediate retention (73,072).
+  engineWorkerGzipBytes: 74_000,
   puzzleShardGzipBytes: 5_000,
 });
 

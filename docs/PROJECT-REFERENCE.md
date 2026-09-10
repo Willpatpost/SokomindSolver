@@ -282,7 +282,7 @@ fails when the generated facts below differ from source.
 - All scripts and styles: **423,000 gzip bytes**
 - Largest asset: **80,000 gzip bytes**
 - Solver worker: **60,000 gzip bytes**
-- Nested engine worker: **73,000 gzip bytes**
+- Nested engine worker: **74,000 gzip bytes**
 
 <!-- SOURCE_FACTS:END -->
 
