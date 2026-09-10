@@ -119,7 +119,7 @@ export const DEFAULT_SOKOMIND_TUNING: SokomindTuningProfile = Object.freeze({
   rewriteWindowVisited: 12_000,
   rewriteMoveWindowScale: 1.0,
 
-  firstPushWalkWeight: 0.05,
+  firstPushWalkWeight: 0,
 
   moveAwareDiscovery: 0,
 

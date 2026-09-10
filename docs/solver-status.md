@@ -56,9 +56,9 @@ Three tuning parameters control experimental search behavior. All are soft
 ordering or candidate-generation changes; none affect legality, deadlock
 rejection, replay verification, or resource limits.
 
-- `firstPushWalkWeight` (default 0.05): adds exact keeper walk-to-support
+- `firstPushWalkWeight` (default 0, disabled): adds exact keeper walk-to-support
   distance as a penalty term in the structural planner's first-push ranking.
-  Set to 0 to disable. Active in the `planMacroBeamSearch` recovery score.
+  Active in the `planMacroBeamSearch` recovery score. Set to 0.05 to enable.
 
 - `moveAwareDiscovery` (default 0, disabled): when >= 0.5, discovery beam
   search uses `BoundedKeeperArrivalMap` for transpositions instead of
