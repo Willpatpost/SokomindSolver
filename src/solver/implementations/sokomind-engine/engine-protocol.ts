@@ -7,11 +7,115 @@ export const ENGINE_MODES = Object.freeze([
 ] as const);
 
 export type EngineMode = (typeof ENGINE_MODES)[number];
-export type EnginePayload = Readonly<Record<string, unknown>>;
+
+interface EnginePayloadBase {
+  readonly state: unknown;
+  readonly maxMemoryBytes?: number;
+  readonly [key: string]: unknown;
+}
+
+export interface AnalyzePuzzlePayload extends EnginePayloadBase {
+  readonly algorithm: "analyze-puzzle";
+  readonly strategicAnalysis?: Readonly<{
+    maxMs: number;
+    inferenceWork?: number;
+    maxExpanded?: number;
+    maxGenerated?: number;
+  }>;
+}
+
+export interface PlanMacroBeamPayload extends EnginePayloadBase {
+  readonly algorithm: "plan-macro-beam";
+  readonly maxDepth?: number;
+  readonly maxVisited?: number;
+  readonly maxGenerated?: number;
+  readonly transpositionLimit?: number;
+  readonly sequenceMacroExplored?: number;
+  readonly sequenceMacroResults?: number;
+  readonly targetedMacroExplored?: number;
+  readonly progressIntervalMs?: number;
+  readonly strategicPlan?: unknown;
+  readonly planStrategicExecution?: boolean;
+  readonly planSolutionComparisonBudget?: number;
+  readonly planDiagnostics?: boolean;
+}
+
+export interface UltimateSearchPayload extends EnginePayloadBase {
+  readonly algorithm: "ultimate";
+  readonly maxDepth?: number;
+  readonly maxVisited?: number;
+  readonly maxGenerated?: number;
+  readonly beamWidth?: number;
+  readonly beamProfile?: string;
+  readonly transpositionLimit?: number;
+  readonly sequenceMacros?: boolean;
+  readonly checkpointLimit?: number;
+  readonly progressInterval?: number;
+  readonly progressIntervalMs?: number;
+  readonly beamSolutionComparisonBudget?: number;
+  readonly planMoveAwareTranspositions?: boolean;
+  readonly seed?: number;
+  readonly diversity?: number;
+  readonly planMoveWeight?: number;
+  readonly strategicContinuation?: Readonly<{
+    root: unknown;
+    path: readonly unknown[];
+  }>;
+}
+
+export interface WindowRewritePayload extends EnginePayloadBase {
+  readonly algorithm: "solution-window-rewrite";
+  readonly solutionPath: readonly unknown[];
+  readonly maxVisited: number;
+  readonly maxGenerated?: number;
+  readonly permutationVisited?: number;
+  readonly permutationWindowPushes?: readonly number[];
+  readonly perPermutationWindowVisited?: number;
+  readonly windowPushes?: readonly number[];
+  readonly windowVisited?: number;
+  readonly windowTotalVisited?: number;
+  readonly frontierLimit?: number;
+  readonly moveWindowVisited?: number;
+  readonly moveWindowPushes?: readonly number[];
+  readonly moveWindowAttempts?: number;
+  readonly perMoveWindowVisited?: number;
+  readonly moveWindowExtraPushes?: number;
+  readonly moveWindowMinimumOverhead?: number;
+  readonly adaptiveMoveWindows?: boolean;
+  readonly adaptiveMoveMinimumPriorImprovements?: number;
+  readonly moveWindowMissLimit?: number;
+  readonly progressIntervalMs?: number;
+}
+
+export interface BoxReschedulePayload extends EnginePayloadBase {
+  readonly algorithm: "solution-box-reschedule";
+  readonly solutionPath?: readonly unknown[];
+  readonly maxVisited?: number;
+  readonly maxGenerated?: number;
+  readonly rescheduleMaxMs?: number;
+  readonly rescheduleRounds?: number;
+  readonly diagnostics?: boolean;
+}
+
+export interface BidirectionalSidePayload extends EnginePayloadBase {
+  readonly maxVisited?: number;
+  readonly frontierLimit?: number;
+  readonly landmarkLimit?: number;
+  readonly reverseShard?: Readonly<{ index: number; count: number }>;
+}
+
+export type SearchPayload =
+  | AnalyzePuzzlePayload
+  | PlanMacroBeamPayload
+  | UltimateSearchPayload
+  | WindowRewritePayload
+  | BoxReschedulePayload;
+
+export type EnginePayload = SearchPayload | BidirectionalSidePayload;
 
 export interface EngineCommand {
   readonly mode: EngineMode;
-  readonly payload: EnginePayload;
+  readonly payload: Readonly<Record<string, unknown>>;
 }
 
 export type EngineResultType =
@@ -22,6 +126,24 @@ export type EngineResultType =
   | "progress"
   | "records"
   | "reverse-starts";
+
+export interface EnginePerformance {
+  readonly heuristicCalls?: number;
+  readonly reachabilityCalls?: number;
+  readonly staticDeadPrunes?: number;
+  readonly dynamicDeadPrunes?: number;
+  readonly patternDeadlockPrunes?: number;
+  readonly macroDiscoveryRejections?: number;
+  readonly macroPackingRejections?: number;
+  readonly macroGoalAccessRejections?: number;
+  readonly pushCandidates?: number;
+  readonly heapUsedBytes?: number;
+  readonly heapPeakBytes?: number;
+  readonly engineMemory?: Readonly<Record<string, unknown>>;
+  readonly memory?: Readonly<Record<string, unknown>>;
+  readonly totalMs?: number;
+  readonly [key: string]: unknown;
+}
 
 /** Fields returned by search or consumed from incremental worker telemetry. */
 interface EngineResultPayload {
@@ -48,7 +170,7 @@ interface EngineResultPayload {
   /** Opt-in per-box schedule trace from rescheduling; absent unless diagnostics requested. */
   readonly scheduleTrace?: unknown;
   readonly peakFrontier?: number;
-  readonly performance?: Readonly<Record<string, unknown>>;
+  readonly performance?: EnginePerformance;
   readonly permutationVisited?: number;
   readonly pushWindowImprovements?: number;
   readonly retained?: number;
@@ -73,8 +195,8 @@ export interface EngineResult extends EngineResultPayload {
 }
 
 export interface EngineRuntime {
-  search(payload: EnginePayload): EngineSearchResult;
-  bidirectionalSide(payload: EnginePayload): void;
+  search(payload: SearchPayload): EngineSearchResult;
+  bidirectionalSide(payload: BidirectionalSidePayload & { readonly mode: EngineMode }): void;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -314,13 +436,13 @@ export function dispatchEngineCommand(
 
     if (value.mode === "bidir-forward" || value.mode === "bidir-reverse") {
       runtime.bidirectionalSide({
-        ...value.payload,
+        ...(value.payload as BidirectionalSidePayload),
         mode: value.mode,
       });
       return null;
     }
 
-    const payload = runtime.search(value.payload);
+    const payload = runtime.search(value.payload as SearchPayload);
     if (!isRecord(payload)) {
       return failedResult(
         "worker-exception",

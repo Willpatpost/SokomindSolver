@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
-import type { EnginePayload, EngineSearchResult } from "../../src/solver/implementations/sokomind-engine/engine-protocol.ts";
+import type { EngineSearchResult } from "../../src/solver/implementations/sokomind-engine/engine-protocol.ts";
 import type { LegacyState } from "../../src/solver/implementations/sokomind-legacy.ts";
 
 export interface PlanTraceState {
@@ -47,7 +47,7 @@ export function createPlanTraceRuntime() {
     }
   `, sandbox, { timeout: 10000 });
   return {
-    run(payload: EnginePayload, observer?: (event: PlanTraceEvent) => void, timeoutMs = 120000): EngineSearchResult {
+    run(payload: Readonly<Record<string, unknown>>, observer?: (event: PlanTraceEvent) => void, timeoutMs = 120000): EngineSearchResult {
       sandbox.payload = structuredClone(payload);
       sandbox.observer = observer;
       try {

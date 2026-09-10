@@ -5,16 +5,15 @@
  * See scripts/prepare-sokomind-engine.mjs and the README.md in this directory.
  */
 import type {
-  EnginePayload,
   EngineSearchResult,
 } from "./engine-protocol.ts";
 
 export function search(
-  payload: EnginePayload,
+  payload: Readonly<Record<string, unknown>>,
 ): EngineSearchResult;
 
 export function bidirectionalSide(
-  payload: EnginePayload,
+  payload: Readonly<Record<string, unknown>>,
 ): void;
 
 export function validateStrategicPlanContract(value: unknown): value is import("../sokomind-strategic-contract.ts").StrategicPlanV2;
