@@ -47,6 +47,7 @@ export function rotateRows(rows: readonly string[]): readonly string[] {
 // Canonical catalog snapshots
 // ---------------------------------------------------------------------------
 
+// #1
 export const ULTRA_TINY = freeze({
   fixtureId: "ultra-tiny",
   catalogId: "ultra-tiny",
@@ -79,6 +80,7 @@ export const TUTORIAL_CORNER = freeze({
   rows: ["OOOOOO", "O    O", "O RX O", "O  S O", "O    O", "OOOOOO"],
 });
 
+// #5
 export const TUTORIAL_AROUND = freeze({
   fixtureId: "tutorial-around",
   catalogId: "tutorial-around",
@@ -119,6 +121,7 @@ export const GARDEN_1 = freeze({
   rows: ["OOOOOOOOO", "O   R   O", "O A B C O", "O       O", "O a b c O", "OOOOOOOOO"],
 });
 
+// #10
 export const BOX_5X5_A = freeze({
   fixtureId: "box-5x5-a",
   catalogId: "box-5x5-a",
@@ -159,6 +162,7 @@ export const GARDEN_2 = freeze({
   rows: ["OOOOOOOOOOO", "O    R    O", "O OOO OOO O", "O A     B O", "O OOO OOO O", "O  b   a  O", "O OO O OO O", "O         O", "OOOOOOOOOOO"],
 });
 
+// #15
 export const WORKSHOP_1 = freeze({
   fixtureId: "workshop-1",
   catalogId: "workshop-1",
@@ -199,6 +203,7 @@ export const ADV_ROTARY = freeze({
   rows: ["OOOOOOOOOOO", "OOa  ROOOOO", "OO  OO  bOO", "O A    B  O", "O   OO    O", "OOOOOOOOOOO"],
 });
 
+// #20
 export const ADV_FOUR_COLOR = freeze({
   fixtureId: "adv-four-color",
   catalogId: "adv-four-color",
@@ -239,6 +244,7 @@ export const THEME_LIBRARY = freeze({
   rows: ["OOOOOOOOOOO", "OaaO R ObbO", "O  O   O  O", "O  OO OO  O", "O   A B   O", "O  A   B  O", "O         O", "OOOOOOOOOOO"],
 });
 
+// #25
 export const THEME_PARKING = freeze({
   fixtureId: "theme-parking",
   catalogId: "theme-parking",
@@ -329,6 +335,7 @@ export const EXPERT_TETRIS = freeze({
   rows: ["OOOOOOOOO", "O   R   O", "O  X X  O", "OOX   XOO", "OO     OO", "OO X X OO", "OOSSSSSOO", "OO  S  OO", "OOOOOOOOO"],
 });
 
+// #30
 export const THEME_MUSEUM = freeze({
   fixtureId: "theme-museum",
   catalogId: "theme-museum",
@@ -429,6 +436,8 @@ export const V2_MICROBAN_146 = freeze({
   ],
 });
 
+
+// #35
 // Caleb 022 — 4-box puzzle with room partitions and a corridor;
 // exercises the solver's room-decomposition and macro-push logic.
 export const V2_CALEB_022 = freeze({
@@ -525,6 +534,8 @@ export const V2_WIDE_MULTI_ENTRY = freeze({
   ],
 });
 
+
+// #40
 // Loop-heavy — pillar grid creates many independent floor-graph cycles.
 // Stresses reachability flood performance and duplicate-state detection
 // in the presence of a high branching factor.
