@@ -83,6 +83,7 @@ be disabled internally for controlled comparisons:
 - pattern database;
 - forced-push macros;
 - PI-corral pruning;
+- corral ordering;
 - pattern-deadlock pruning;
 - deadlock-table pruning;
 - goal-commitment pruning; and
@@ -97,6 +98,12 @@ timing shows no material regression.
 Tunnel macros add look-ahead successors at safe stopping points while retaining
 the ordinary single-push successor. Replacing the single step is unsound on
 short tunnels where the robot can reach the opposite side.
+
+Corral ordering reuses the PI-corral flood to identify boundary pushes into
+unreachable regions containing off-goal boxes and reorders IDA* child generation
+to try those pushes first. It never prunes branches, so proof correctness is
+unaffected. PI-corral pruning itself remains disabled because its deadlock
+classification is unsound.
 
 Mixed-label deadlock tables enumerate the complete label assignment product
 within the existing construction budget. Deeper PI-corral boundary-table checks
