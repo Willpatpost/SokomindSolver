@@ -31,6 +31,9 @@ import {
   PiCorralDetector,
 } from "./pi-corral.ts";
 import {
+  CorralOrderingAnalyzer,
+} from "./corral-ordering.ts";
+import {
   findProvenCommitments,
   GoalCommitmentDetector,
   hasPotentialGoalCommitment,
@@ -325,6 +328,9 @@ export async function runExactMoveAStar(
     const corralDetector = features.piCorralPruning
       ? new PiCorralDetector(cellCount)
       : null;
+    const corralOrderer = features.corralOrdering
+      ? new CorralOrderingAnalyzer(cellCount)
+      : null;
     const commitmentDetector =
       features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
       ? new GoalCommitmentDetector()
@@ -499,6 +505,8 @@ export async function runExactMoveAStar(
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
+      corralOrderingChecks: corralOrderer?.stats.checks ?? 0,
+      corralOrderingReorders: corralOrderer?.stats.reorders ?? 0,
       patternDeadlockChecks: patternCache?.stats.checks ?? 0,
       patternDeadlockApplicable: patternCache === null ? 0 : 1,
       deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
@@ -951,6 +959,10 @@ export async function runExactMoveAStar(
         : new Set<number>();
 
       const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
+
+      if (corralOrderer) {
+        corralOrderer.analyze(board, expansionBoxes, occupied, reachable);
+      }
 
       // Forced push macro: if exactly one legal push, skip full successor generation
       const fpResult = macroDetector?.detect(expansionBoxes, occupied, reachable);

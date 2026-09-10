@@ -5,6 +5,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "patternDatabase",
   "forcedPushMacros",
   "piCorralPruning",
+  "corralOrdering",
   "patternDeadlockPruning",
   "deadlockTablePruning",
   "goalCommitmentPruning",
@@ -20,6 +21,7 @@ export interface ExactSearchFeatures {
   readonly patternDatabase: boolean;
   readonly forcedPushMacros: boolean;
   readonly piCorralPruning: boolean;
+  readonly corralOrdering: boolean;
   readonly patternDeadlockPruning: boolean;
   readonly deadlockTablePruning: boolean;
   readonly goalCommitmentPruning: boolean;
@@ -35,6 +37,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   // The local detector can reject solvable states (including Grand Hall's
   // root). It is not a proof-safe hard prune, even when explicitly requested.
   piCorralPruning: false,
+  corralOrdering: true,
   patternDeadlockPruning: true,
   deadlockTablePruning: true,
   goalCommitmentPruning: true,

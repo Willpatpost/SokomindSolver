@@ -36,6 +36,10 @@ import {
   PiCorralDetector,
 } from "./pi-corral.ts";
 import {
+  buildCorralChildOrder,
+  CorralOrderingAnalyzer,
+} from "./corral-ordering.ts";
+import {
   findProvenCommitments,
   GoalCommitmentDetector,
   hasPotentialGoalCommitment,
@@ -143,6 +147,8 @@ interface StackFrame {
   committedBoxes: ReadonlySet<number> | null;
   /** Which (boxIndex * 4 + directionIndex) to try next. */
   childCursor: number;
+  /** Corral-priority child ordering (null = natural linear scan). */
+  childOrder: Uint16Array | null;
   tunnelMacro: {
     readonly stops: readonly import("./tunnel-macros.ts").TunnelMacroStop[];
     readonly boxIndex: number;
@@ -613,6 +619,9 @@ export async function runIdaStarSearch(
     const corralDetector = features.piCorralPruning
       ? new PiCorralDetector(board.cellCount)
       : null;
+    const corralOrderer = features.corralOrdering
+      ? new CorralOrderingAnalyzer(board.cellCount)
+      : null;
     const commitmentDetector =
       features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
       ? new GoalCommitmentDetector()
@@ -761,6 +770,8 @@ export async function runIdaStarSearch(
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
+      corralOrderingChecks: corralOrderer?.stats.checks ?? 0,
+      corralOrderingReorders: corralOrderer?.stats.reorders ?? 0,
       patternDeadlockChecks: patternCache?.stats.checks ?? 0,
       patternDeadlockApplicable: patternCache === null ? 0 : 1,
       deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
@@ -1120,6 +1131,7 @@ export async function runIdaStarSearch(
         frozenBoxes: null,
         committedBoxes: null,
         childCursor: 0,
+        childOrder: null,
         tunnelMacro: null,
         expanded: false,
         h: 0,
@@ -1464,6 +1476,17 @@ export async function runIdaStarSearch(
         const boxCount = frame.boxes.length;
         const totalChildren = boxCount * SEARCH_DIRECTIONS.length;
 
+        if (frame.childCursor === 0 && frame.childOrder === null && corralOrderer) {
+          const corralResult = corralOrderer.analyze(
+            board, frame.boxes, occupancyBuffer, reachable,
+          );
+          if (corralResult.hasCorral) {
+            frame.childOrder = buildCorralChildOrder(
+              boxCount, SEARCH_DIRECTIONS.length, corralResult,
+            );
+          }
+        }
+
         // Forced push macro: if exactly one legal push, skip child generation
         if (frame.childCursor === 0) {
           const fpResult = macroDetector?.detect(
@@ -1532,6 +1555,7 @@ export async function runIdaStarSearch(
               frozenBoxes: null,
               committedBoxes: null,
               childCursor: 0,
+              childOrder: null,
               expanded: false,
               h: 0,
               minChildF: Number.POSITIVE_INFINITY,
@@ -1607,6 +1631,7 @@ export async function runIdaStarSearch(
                 frozenBoxes: null,
                 committedBoxes: null,
                 childCursor: 0,
+                childOrder: null,
                 tunnelMacro: null,
                 expanded: false,
                 h: 0,
@@ -1631,8 +1656,11 @@ export async function runIdaStarSearch(
           const cursor = frame.childCursor;
           frame.childCursor += 1;
 
-          const boxIndex = Math.floor(cursor / SEARCH_DIRECTIONS.length);
-          const directionIndex = cursor % SEARCH_DIRECTIONS.length;
+          const mappedCursor = frame.childOrder !== null
+            ? frame.childOrder[cursor]
+            : cursor;
+          const boxIndex = Math.floor(mappedCursor / SEARCH_DIRECTIONS.length);
+          const directionIndex = mappedCursor % SEARCH_DIRECTIONS.length;
 
           if (frozenBoxes[boxIndex]) continue;
           if (committedBoxes.has(boxIndex)) {
@@ -1757,6 +1785,7 @@ export async function runIdaStarSearch(
             frozenBoxes: null,
             committedBoxes: null,
             childCursor: 0,
+            childOrder: null,
             expanded: false,
             h: 0,
             minChildF: Number.POSITIVE_INFINITY,

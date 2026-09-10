@@ -65,7 +65,7 @@ describe("exact-search feature configuration", () => {
       exactSearchFeatureFingerprint(resolveExactSearchFeatures()),
       exactSearchFeatureFingerprint(resolveExactSearchFeatures({})),
     );
-    assert.equal(exactSearchFeatureMask(resolved), 0b11_1101_1111);
+    assert.equal(exactSearchFeatureMask(resolved), 0b111_1101_1111);
     assert.equal(resolveExactSearchFeatures({piCorralPruning: true}).piCorralPruning, false);
   });
 
@@ -110,6 +110,7 @@ describe("exact-search feature configuration", () => {
       assert.equal(result.metrics.counters?.deadlockTableChecks, 0);
       assert.equal(result.metrics.counters?.forcedPushMacroChecks, 0);
       assert.equal(result.metrics.counters?.piCorralChecks, 0);
+      assert.equal(result.metrics.counters?.corralOrderingChecks, 0);
       assert.equal(result.metrics.counters?.patternDeadlockChecks, 0);
       assert.equal(result.metrics.counters?.goalCommitmentChecks, 0);
     }

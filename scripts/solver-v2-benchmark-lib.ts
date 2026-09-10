@@ -676,6 +676,7 @@ const FEATURE_EXERCISE_COUNTER: Readonly<
   patternDatabase: "pdbEvaluations",
   forcedPushMacros: "forcedPushMacroChecks",
   piCorralPruning: "piCorralChecks",
+  corralOrdering: "corralOrderingChecks",
   patternDeadlockPruning: "patternDeadlockChecks",
   deadlockTablePruning: "deadlockTableChecks",
   goalCommitmentPruning: "goalCommitmentChecks",
