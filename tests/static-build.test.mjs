@@ -70,8 +70,9 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Sprint 9 progression/cosmetics, and Sprint 10 Solver Lab. Cold Home and
   // Play route budgets stay fixed because the Lab remains route-split.
   // Persistent-plan V2 adds bounded validation and worker execution/rebinding.
-  // Measured total: 419,161 bytes; cold-route and outer-worker caps stay fixed.
-  allScriptsAndStylesGzipBytes: 420_000,
+  // Corral-based move ordering adds CorralOrderingAnalyzer to both search engines.
+  // Measured total: 421,788 bytes; cold-route and outer-worker caps stay fixed.
+  allScriptsAndStylesGzipBytes: 423_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
