@@ -22,6 +22,7 @@ import { runPhase } from "./sokomind-phase-runner.ts";
 import {
   aggregate,
   elapsed,
+  invalidateAggregate,
   metrics,
   report,
   withRemainingLimits,
@@ -58,6 +59,7 @@ export async function improveIncumbent(
     run.bestSolutionMoves === 0
       ? incumbent.moves
       : Math.min(run.bestSolutionMoves, incumbent.moves);
+  invalidateAggregate(run);
 
   const minimumMoves = configuredBudget(
     options.improvementMinimumMoves,
@@ -180,6 +182,7 @@ export async function improveIncumbent(
       if (!candidate || !isSolutionBetter(candidate, best)) break;
       best = candidate;
       run.solutionImprovements += 1;
+      invalidateAggregate(run);
       run.bestSolutionMoves =
         run.bestSolutionMoves === 0
           ? candidate.moves
@@ -230,6 +233,7 @@ export async function solvedWithImprovement(
       run.bestSolutionMoves === 0
         ? incumbent.moves
         : Math.min(run.bestSolutionMoves, incumbent.moves);
+    invalidateAggregate(run);
     return Object.freeze({
       status: "solved" as const,
       solution: incumbent,

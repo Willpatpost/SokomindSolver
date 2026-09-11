@@ -41,6 +41,7 @@ import {
   ZobristTable,
   type DenseBox,
 } from "./model.ts";
+import { ForcedPushMacroDetector } from "./forced-push-macros.ts";
 import { TunnelMacroDetector } from "./tunnel-macros.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import {
@@ -316,6 +317,7 @@ export async function runClassicSearch(
     const reachability = new KeeperReachability(board);
     const childReachability = new KeeperReachability(board);
     const tunnelDetector = new TunnelMacroDetector(board);
+    const forcedPushDetector = new ForcedPushMacroDetector(board);
     const staticBytes = estimateStaticSearchBytes(board);
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -543,7 +545,9 @@ export async function runClassicSearch(
     const deadlockOccupancyBuffer = new Int32Array(board.cellCount);
     deadlockOccupancyBuffer.fill(-1);
 
-    searchLoop: while (frontier.size > 0) {
+    let forcedNextIndex: number | undefined;
+
+    searchLoop: while (frontier.size > 0 || forcedNextIndex !== undefined) {
       throwIfSolverCancelled(context.signal);
       if (elapsedLimitReached()) {
         limitDetail = "Maximum elapsed time reached.";
@@ -569,8 +573,15 @@ export async function runClassicSearch(
         }
       }
 
-      const nodeIndex = frontier.pop();
-      if (nodeIndex === undefined) break;
+      let nodeIndex: number;
+      if (forcedNextIndex !== undefined) {
+        nodeIndex = forcedNextIndex;
+        forcedNextIndex = undefined;
+      } else {
+        const popped = frontier.pop();
+        if (popped === undefined) break;
+        nodeIndex = popped;
+      }
       const node = nodes[nodeIndex];
       if (!node) continue;
 
@@ -633,6 +644,124 @@ export async function runClassicSearch(
       const occupied = occupancyBuffer;
       const reachable = reachability.flood(node.robot, occupied);
       counters.reachabilityFloods += 1;
+
+      const fpResult = forcedPushDetector.detect(node.boxes, occupied, reachable);
+      if (fpResult.forced) {
+        const fpBoxIdx = fpResult.boxIndex!;
+        const fpDir = fpResult.direction!;
+        const fpBox = node.boxes[fpBoxIdx];
+        const fpNeighbors = board.neighbors[fpBox.cell];
+        const fpDest = fpNeighbors?.[fpDir] ?? -1;
+
+        if (fpDest >= 0 && !isStaticDeadCell(board, fpDest, fpBox.label)) {
+          const maxGenerated = request.limits?.maxGeneratedStates;
+          if (maxGenerated !== undefined && counters.generated >= maxGenerated) {
+            limitDetail = "Maximum generated-state count reached.";
+            break searchLoop;
+          }
+          counters.generated += 1;
+          workSinceYield += 1;
+
+          const fpBoxes = movedBoxes(node.boxes, fpBoxIdx, fpDest);
+          for (let bi = 0; bi < fpBoxes.length; bi++) deadlockOccupancyBuffer[fpBoxes[bi].cell] = bi;
+          const fpHas2x2 = createsFullyBlockedTwoByTwoDeadlock(board, fpBoxes, fpDest, deadlockOccupancyBuffer);
+          const fpHasFreeze = !fpHas2x2 && hasFreezeDeadlock(board, fpBoxes, deadlockOccupancyBuffer);
+          for (let bi = 0; bi < fpBoxes.length; bi++) deadlockOccupancyBuffer[fpBoxes[bi].cell] = -1;
+
+          if (!fpHas2x2 && !fpHasFreeze) {
+            const fpOpposite = OPPOSITE_DIRECTION[fpDir];
+            const fpSupport = fpOpposite === undefined ? -1 : (fpNeighbors?.[fpOpposite] ?? -1);
+            const fpDistance = reachable.distanceTo(fpSupport);
+            if (fpDistance < 0) {
+              throw new Error("Forced push support cell has no keeper distance.");
+            }
+            const fpMoves = node.moves + fpDistance + 1;
+            const fpPushes = node.pushes + 1;
+
+            let fpChildKey: StateKey;
+            let fpSkipDuplicate = false;
+            if (exactCodec) {
+              fpChildKey = exactKey(fpBox.cell, fpBoxes);
+              const bestIndex = bestNodeByKey.get(fpChildKey);
+              const best = bestIndex === undefined ? undefined : nodes[bestIndex];
+              if (best && fpMoves >= best.moves) {
+                fpSkipDuplicate = true;
+                counters.duplicates += 1;
+              }
+            } else {
+              fpChildKey = zobrist.stateKey(fpBox.cell, fpBoxes);
+            }
+
+            if (!fpSkipDuplicate) {
+              const fpPushBound = heuristic.evaluate(fpBoxes);
+              const fpLC = heuristic.lastLinearConflict(fpBoxes);
+              if (Number.isFinite(fpPushBound)) {
+                if (!exactCodec) {
+                  fillOccupancy(childOccupancyBuffer, fpBoxes);
+                  const fpChildReachable = childReachability.flood(fpBox.cell, childOccupancyBuffer);
+                  counters.reachabilityFloods += 1;
+                  const fpCanonical = fpChildReachable.canonicalCell;
+                  fpChildKey = zobrist.stateKey(fpCanonical, fpBoxes);
+                  if (discovered.has(fpChildKey)) {
+                    counters.duplicates += 1;
+                    fpSkipDuplicate = true;
+                  }
+                } else {
+                  counters.avoidedReachabilityFloods += 1;
+                }
+
+                if (!fpSkipDuplicate) {
+                  const fpWalkBound = exactCodec
+                    ? minimumManhattanWalkToPotentialPush(board, fpBox.cell, fpBoxes)
+                    : 0;
+                  const fpH = fpPushBound + fpLC + fpWalkBound;
+                  const [fp0, fp1, fp2] = nodePriority(configuration.strategy, fpMoves, fpH);
+                  const fpCandidate: SearchNode = {
+                    robot: fpBox.cell,
+                    boxes: fpBoxes,
+                    key: fpChildKey,
+                    parentIndex: nodeIndex,
+                    push: { boxCell: fpBox.cell, directionIndex: fpDir },
+                    moves: fpMoves,
+                    pushes: fpPushes,
+                    depth: node.depth + 1,
+                    p0: fp0,
+                    p1: fp1,
+                    p2: fp2,
+                    estimatedBytes: estimateNodeBytes(fpBoxes.length, fpChildKey),
+                  };
+                  const fpChildIndex = nodes.length;
+                  nodes.push(fpCandidate);
+                  counters.retainedBytes += fpCandidate.estimatedBytes;
+                  counters.maxDepth = Math.max(counters.maxDepth, fpCandidate.depth);
+
+                  if (configuration.strategy === "astar") {
+                    const fpPrevious = bestNodeByKey.get(fpChildKey);
+                    if (fpPrevious === undefined) {
+                      uniqueStates += 1;
+                    } else if (closed.delete(fpChildKey)) {
+                      counters.reopens += 1;
+                    }
+                    bestNodeByKey.set(fpChildKey, fpChildIndex);
+                  } else {
+                    discovered.add(fpChildKey);
+                    uniqueStates += 1;
+                  }
+                  forcedNextIndex = fpChildIndex;
+                  continue;
+                }
+              } else {
+                counters.infeasiblePrunes += 1;
+              }
+            }
+          } else {
+            counters.deadlockPrunes += 1;
+          }
+        } else if (fpDest >= 0) {
+          counters.deadlockPrunes += 1;
+        }
+      }
+
       const children: number[] = [];
 
       for (let boxIndex = 0; boxIndex < node.boxes.length; boxIndex += 1) {

@@ -444,6 +444,8 @@ export function createSokomindSolverAdapter(
         solutionImprovements: 0,
         suppressedImprovementErrors: 0,
         suppressedHarvestErrors: 0,
+        aggregateGeneration: 1,
+        cachedAggregate: null,
       };
 
       if (context.signal.aborted) {

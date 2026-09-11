@@ -54,6 +54,8 @@ export interface SearchRunState {
   solutionImprovements: number;
   suppressedImprovementErrors: number;
   suppressedHarvestErrors: number;
+  aggregateGeneration: number;
+  cachedAggregate: AggregateSnapshot | null;
 }
 
 export function elapsed(run: SearchRunState): number {
@@ -75,7 +77,16 @@ function laneCounterStem(id: string): string {
     .join("");
 }
 
+export function invalidateAggregate(run: SearchRunState): void {
+  run.aggregateGeneration += 1;
+}
+
 export function aggregate(run: SearchRunState): AggregateSnapshot {
+  if (run.cachedAggregate !== null && run.aggregateGeneration === 0) {
+    return run.cachedAggregate;
+  }
+  run.aggregateGeneration = 0;
+
   let expandedStates = 0;
   let generatedStates = 0;
   let frontierSize = 0;
@@ -174,7 +185,7 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
     currentMemory,
     historicalPeakCandidate,
   );
-  return Object.freeze({
+  const snapshot = Object.freeze({
     expandedStates,
     generatedStates,
     frontierSize,
@@ -220,6 +231,8 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
       ...laneCounters,
     }),
   });
+  run.cachedAggregate = snapshot;
+  return snapshot;
 }
 
 export function metrics(run: SearchRunState): SolverRunMetrics {
@@ -268,6 +281,7 @@ export function updateTelemetry(
 ): void {
   const telemetry = run.registry.get(id);
   if (!telemetry) return;
+  invalidateAggregate(run);
   if (Array.isArray(message.records)) {
     telemetry.publishedRecords += message.records.length;
   }

@@ -22,6 +22,7 @@ import {
   aggregate,
   elapsed,
   reachedLimit,
+  invalidateAggregate,
   report,
   retainLegacyRecord,
   updateTelemetry,
@@ -192,6 +193,7 @@ class PhaseRunner {
             this.failedWorkers += silentWorkers;
             this.cutoff = true;
             this.run.watchdogTimeouts += 1;
+            invalidateAggregate(this.run);
             this.errors.push(
               `${silentWorkers} engine worker${silentWorkers === 1 ? "" : "s"} stopped reporting progress.`,
             );
@@ -214,6 +216,7 @@ class PhaseRunner {
             this.stopForLimit("elapsed");
           } else {
             this.run.phaseTimeouts += 1;
+            invalidateAggregate(this.run);
             this.finish({ phaseTimedOut: true });
           }
         }, timerDelay);
@@ -280,6 +283,7 @@ class PhaseRunner {
     entry.worker.terminate();
     this.run.registry.deactivate(id);
     this.run.completedWorkers += 1;
+    invalidateAggregate(this.run);
   }
 
   private finish(
@@ -343,6 +347,7 @@ class PhaseRunner {
       const solution = solutionFromLegacyPath(this.run.request, path);
       if (!solution) {
         this.run.rejectedCandidates += 1;
+        invalidateAggregate(this.run);
         report(this.run, `${label} returned a candidate that failed replay.`, true);
         return false;
       }

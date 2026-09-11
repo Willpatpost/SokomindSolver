@@ -39,6 +39,7 @@ import { predictRescheduleValue } from "./sokomind-reschedule-predictor.ts";
 import { improveIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
 import {
   aggregate,
+  invalidateAggregate,
   metrics,
   report,
   withRemainingLimits,
@@ -96,6 +97,7 @@ export async function harvestAndImprove(
     run.bestSolutionMoves === 0
       ? firstIncumbent.moves
       : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
+  invalidateAggregate(run);
   collector.offer(
     firstIncumbent,
     semanticDiversityTrace(run.request, firstIncumbent),
@@ -156,6 +158,7 @@ export async function harvestAndImprove(
         (bestBefore === undefined || isSolutionBetter(bestAfter, bestBefore));
       if (bestAfter) {
         run.bestSolutionMoves = Math.min(run.bestSolutionMoves, bestAfter.moves);
+        invalidateAggregate(run);
       }
       if (accepted > 0) {
         report(
@@ -349,6 +352,7 @@ export async function harvestAndImprove(
 
   const bestSolution = selectBest(rewrittenCandidates);
   run.bestSolutionMoves = bestSolution.moves;
+  invalidateAggregate(run);
 
   if (run.context.signal.aborted) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
