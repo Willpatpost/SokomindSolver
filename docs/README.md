@@ -17,6 +17,7 @@ over prose. Git history preserves superseded plans and dated reports.
 | Solver contracts and adapters | [Solver integration](solver-integration.md) |
 | Solver behavior and proof safeguards | [Solver status](solver-status.md) |
 | Solver performance and experiment history | [Solver benchmarks](solver-benchmarks.md) |
+| P1 tuning parameter A/B results | [P1 tuning experiments](p1-tuning-experiments.md) |
 | Solver Lab UI | [Solver Lab](solver-lab.md) |
 | Generator measurements, qualification, and workers | [Generator benchmarks](generator-benchmarks.md) |
 | Generator evidence and acceptance rules | [Solution-story contract](generator-solution-story-contract.md) |
