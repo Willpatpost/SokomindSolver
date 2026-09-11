@@ -779,6 +779,8 @@
 
   .headerActions {
     gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .mobileMoveCue {
@@ -915,6 +917,12 @@
   .backButton {
     width: 48px;
     height: 48px;
+  }
+
+  .breadcrumb a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 }
 

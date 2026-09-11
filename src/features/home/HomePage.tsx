@@ -27,20 +27,21 @@ import {
 import styles from "./HomePage.module.css";
 import { DailyChallengeCard } from "./DailyChallengeCard";
 
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
 function timeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "just now";
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) return rtf.format(-seconds, "second");
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return rtf.format(-minutes, "minute");
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return rtf.format(-hours, "hour");
   const days = Math.floor(hours / 24);
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return rtf.format(-days, "day");
   const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
+  if (months < 12) return rtf.format(-months, "month");
+  return rtf.format(-Math.floor(months / 12), "year");
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {

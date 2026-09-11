@@ -23,6 +23,7 @@ import {
 import { STORAGE_KEYS } from "@/src/shared/storage";
 import { puzzleRevisionFingerprint } from "@/src/core/puzzle-revision";
 import { useExperience } from "@/src/features/experience";
+import { triggerHaptic } from "@/src/features/experience/haptics";
 import { detectDeadlock } from "@/src/solver/deadlock-bridge";
 import {
   describeMoveExperience,
@@ -173,6 +174,7 @@ export function usePlayController(
       ...event,
       sequence: ++experienceSequenceRef.current,
     });
+    if (!reducedMotion) triggerHaptic(event.kind);
     const audioPresentation = createMovementAudioPresentation(event);
     if (event.kind !== "solved") {
       void playCue(audioPresentation.cue, audioPresentation.options);
@@ -244,7 +246,7 @@ export function usePlayController(
       setDeadlockedBoxIds(EMPTY_BOX_SET);
     }
     return true;
-  }, [commitSession, optimalCache, playCue, recordSolvedSession, sessionRef]);
+  }, [commitSession, optimalCache, playCue, reducedMotion, recordSolvedSession, sessionRef]);
 
   // --- Solver playback (delegated) ---
 

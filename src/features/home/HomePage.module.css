@@ -447,6 +447,13 @@
   }
 }
 
+@media (pointer: coarse) {
+  .recentItem {
+    min-height: 44px;
+    padding-block: 10px;
+  }
+}
+
 @media (forced-colors: active) {
   .card {
     border: 2px solid ButtonBorder;

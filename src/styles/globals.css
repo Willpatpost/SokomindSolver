@@ -114,7 +114,7 @@ body {
   color: var(--ink-950);
   background: var(--app-background);
   font-family:
-    "Avenir Next", Avenir, "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, sans-serif;
   text-rendering: optimizeLegibility;
 }
 

@@ -65,6 +65,16 @@
   background: rgb(26 28 25 / 0.92);
 }
 
+:global(html[data-theme="dark"][data-theme-family="midnight-neon"]) .nav {
+  border-top-color: rgb(110 222 238 / 0.1);
+  background: rgb(8 11 24 / 0.94);
+}
+
+:global(html[data-theme="dark"][data-theme-family="minimal-ink"]) .nav {
+  border-top-color: rgb(243 244 241 / 0.06);
+  background: rgb(17 18 18 / 0.94);
+}
+
 @media (prefers-contrast: more) {
   .nav {
     border-top-width: 2px;

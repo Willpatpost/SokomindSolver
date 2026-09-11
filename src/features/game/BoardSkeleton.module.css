@@ -1,0 +1,53 @@
+.skeleton {
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  background: var(--ink-950);
+}
+
+.cell {
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--paper-200) 25%,
+    var(--paper-100) 50%,
+    var(--paper-200) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+:global(html[data-motion="reduced"]) .cell {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .cell {
+    animation: none;
+  }
+}
+
+:global(html[data-theme="dark"]) .cell {
+  background: linear-gradient(
+    90deg,
+    rgb(40 42 38) 25%,
+    rgb(50 52 48) 50%,
+    rgb(40 42 38) 75%
+  );
+  background-size: 200% 100%;
+}

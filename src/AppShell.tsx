@@ -93,7 +93,8 @@ export function AppShell() {
         route.page === "home" ||
         event.defaultPrevented ||
         event.key !== "Escape" ||
-        document.querySelector("dialog[open], [role='dialog']")
+        document.querySelector("dialog[open], [role='dialog']") ||
+        document.activeElement?.closest("dialog, [role='dialog']")
       ) {
         return;
       }
