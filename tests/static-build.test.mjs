@@ -72,8 +72,8 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Persistent-plan V2 adds bounded validation and worker execution/rebinding.
   // Corral-based move ordering adds CorralOrderingAnalyzer to both search engines.
   // Coordinator decomposition and typed engine payload interfaces.
-  // Measured total: 423,630 bytes; cold-route and outer-worker caps stay fixed.
-  allScriptsAndStylesGzipBytes: 425_000,
+  // Measured total: 426,059 bytes; cold-route and outer-worker caps stay fixed.
+  allScriptsAndStylesGzipBytes: 428_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,

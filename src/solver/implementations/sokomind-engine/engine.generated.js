@@ -4932,7 +4932,7 @@ function reachablePaths(state, board) {
   const start = cellId(state.robot[0], state.robot[1], dense);
   // Reachability geometry is permutation-invariant, but occupied cell values are
   // box indices consumed by push generation. Keep the order-sensitive layout key.
-  const cacheKey = `${start}|${layout.orderedSignature}`;
+  const cacheKey = `${start}|${ensureOrderedSignature(layout)}`;
   const memoLimit = board.reachabilityMemoLimit || 0;
   const cached = memoLimit ? memoLookup(board.reachabilityMemo, cacheKey) : null;
   if (cached) {
