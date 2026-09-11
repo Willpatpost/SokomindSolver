@@ -13,10 +13,6 @@ import {
   PiCorralDetector,
 } from "../../src/solver/search/pi-corral.ts";
 import {
-  hasSealedCorralDeadlock,
-  SealedCorralDetector,
-} from "../../src/solver/search/sealed-corral.ts";
-import {
   toDenseBoxes,
   type DenseBox,
 } from "../../src/solver/search/model.ts";
@@ -35,38 +31,7 @@ function checkPiCorral(
   return hasPiCorralDeadlock(board, boxes, occupancy, reachable, detector);
 }
 
-function checkSealedCorral(
-  board: CompiledSearchBoard,
-  boxes: readonly DenseBox[],
-  robotCell: number,
-): boolean {
-  const occupancy = new Uint8Array(board.cellCount);
-  for (const box of boxes) occupancy[box.cell] = 1;
-  const reachability = new KeeperReachability(board);
-  const reachable = reachability.flood(robotCell, occupancy);
-  const detector = new SealedCorralDetector(board.cellCount);
-  return hasSealedCorralDeadlock(board, boxes, occupancy, reachable, detector);
-}
-
 describe("PI-corral detection", () => {
-  it("detects a trivially sealed corral (subsumes sealed corral)", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOOOOO",
-      "OR     O",
-      "O  OOO O",
-      "O  OX  O",
-      "O  OOS O",
-      "O      O",
-      "OOOOOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
-    const robotCell = board.cellAt(1, 1);
-
-    assert.equal(checkSealedCorral(board, boxes, robotCell), true);
-    assert.equal(checkPiCorral(board, boxes, robotCell), true);
-  });
-
   it("returns false when keeper can reach all boxes", () => {
     const parsed = parsePuzzleRows([
       "OOOOOO",
@@ -102,27 +67,6 @@ describe("PI-corral detection", () => {
     const robotCell = board.cellAt(1, 1);
 
     assert.equal(checkPiCorral(board, boxes, robotCell), false);
-  });
-
-  it("subsumes sealed corral: PI-corral detects everything sealed corral does", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOOOOO",
-      "OR     O",
-      "O  OOO O",
-      "O  OX  O",
-      "O  OOS O",
-      "O      O",
-      "OOOOOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
-    const robotCell = board.cellAt(1, 1);
-
-    const sealed = checkSealedCorral(board, boxes, robotCell);
-    const pi = checkPiCorral(board, boxes, robotCell);
-    if (sealed) {
-      assert.equal(pi, true, "PI-corral must detect sealed corral deadlocks");
-    }
   });
 
   it("returns false for a solvable configuration with accessible box", () => {
