@@ -1573,7 +1573,7 @@ function planMacroBeamSearch(payload, observe = null) {
     if (payload.planDoorwayScheduleMemo === false) {
       return doorwayScheduleState(boxes, board, rootDoorwayTasks, layout);
     }
-    const signature = layout.orderedSignature;
+    const signature = ensureOrderedSignature(layout);
     const cached = doorwayScheduleMemo.get(signature);
     if (cached !== undefined) {
       board.metrics.doorwayScheduleCacheHits++;

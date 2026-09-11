@@ -35,7 +35,7 @@ function packedIdentityFromTokens(tokens, board) {
     zobristHi: zHi,
     zobristLo: zLo,
     sortedTokens: sorted,
-    signature: [...sorted].map(value => value.toString(36)).join("."),
+    signature: null,
   };
 }
 
@@ -87,7 +87,7 @@ function packedIdentityIncremental(parentPacked, oldToken, newToken, board) {
     zobristHi: zHi,
     zobristLo: zLo,
     sortedTokens: sorted,
-    signature: [...sorted].map(value => value.toString(36)).join("."),
+    signature: null,
   };
 }
 
@@ -122,7 +122,7 @@ function denseBoxLayout(boxes, board) {
     cells,
     labels,
     tokens,
-    orderedSignature: tokens.join("."),
+    orderedSignature: null,
     indexByCell,
     occupancyBits,
     valid,
@@ -173,7 +173,7 @@ function deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, b
     cells,
     labels,
     tokens,
-    orderedSignature: tokens.join("."),
+    orderedSignature: null,
     indexByCell: null,
     parentIndexByCell: parent.indexByCell,
     previousCell: previousId,
@@ -190,7 +190,7 @@ function deriveDenseBoxLayout(parentBoxes, boxes, changedIndex, destinationId, b
 
 function cachedPushedBoxes(parentBoxes, changedIndex, destinationId, label, board) {
   const parentLayout = denseBoxLayout(parentBoxes, board);
-  const key = `${parentLayout.orderedSignature}|${changedIndex}|${destinationId}`;
+  const key = `${ensureOrderedSignature(parentLayout)}|${changedIndex}|${destinationId}`;
   const cached = memoLookup(board.pushTransitionMemo, key);
   if (cached) {
     board.metrics.denseTransitionCacheHits++;
@@ -210,6 +210,20 @@ function cachedPushedBoxes(parentBoxes, changedIndex, destinationId, label, boar
   return boxes;
 }
 
+function ensureSignature(layout) {
+  if (layout.signature === null && layout.sortedTokens) {
+    layout.signature = [...layout.sortedTokens].map(value => value.toString(36)).join(".");
+  }
+  return layout.signature;
+}
+
+function ensureOrderedSignature(layout) {
+  if (layout.orderedSignature === null && layout.tokens) {
+    layout.orderedSignature = layout.tokens.join(".");
+  }
+  return layout.orderedSignature;
+}
+
 function boxSignature(boxes, board = null) {
   const metrics = board?.metrics;
   if (metrics) metrics.signatureCalls++;
@@ -220,7 +234,7 @@ function boxSignature(boxes, board = null) {
   const started = metrics ? now() : 0;
   let signature = null;
   if (board) {
-    signature = denseBoxLayout(boxes, board).signature;
+    signature = ensureSignature(denseBoxLayout(boxes, board));
   }
   signature ??= boxSignatureReference(boxes);
   if (board) board.boxSignatureMemo.set(boxes, signature);
@@ -287,6 +301,8 @@ const SokomindState = {
   denseBoxLayout,
   deriveDenseBoxLayout,
   ensureIndexByCell,
+  ensureSignature,
+  ensureOrderedSignature,
   cachedPushedBoxes,
   boxSignature,
   packedBoxIdentity,

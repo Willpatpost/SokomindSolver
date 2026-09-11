@@ -25,7 +25,6 @@ import {
   comparePriority,
   estimatedMemoryBytes,
   estimateNodeBytes,
-  fillDeadlockOccupancy,
   fillOccupancy,
   isSolved,
   objectiveScore,
@@ -42,6 +41,7 @@ import {
   ZobristTable,
   type DenseBox,
 } from "./model.ts";
+import { TunnelMacroDetector } from "./tunnel-macros.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import {
   StablePriorityQueue,
@@ -315,6 +315,7 @@ export async function runClassicSearch(
     const heuristic = new AssignmentHeuristic(board);
     const reachability = new KeeperReachability(board);
     const childReachability = new KeeperReachability(board);
+    const tunnelDetector = new TunnelMacroDetector(board);
     const staticBytes = estimateStaticSearchBytes(board);
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
@@ -368,12 +369,13 @@ export async function runClassicSearch(
       ? exactKey(initialRobot, initialBoxes)
       : zobrist.stateKey(initialIdentityRobot, initialBoxes);
     const initialPushBound = heuristic.evaluate(initialBoxes);
+    const initialLinearConflict = heuristic.lastLinearConflict(initialBoxes);
     // A* walk augmentation: spec 8.3 requires h = push lower bound + walk lower bound.
     // Walk augmentation is only added for A* (exact proof); DFS/Greedy don't need it.
     const initialWalkBound = exactCodec
       ? minimumManhattanWalkToPotentialPush(board, initialRobot, initialBoxes)
       : 0;
-    const initialHeuristic = initialPushBound + initialWalkBound;
+    const initialHeuristic = initialPushBound + initialLinearConflict + initialWalkBound;
     const [ip0, ip1, ip2] = nodePriority(
       configuration.strategy,
       0,
@@ -539,6 +541,7 @@ export async function runClassicSearch(
     const occupancyBuffer = new Uint8Array(board.cellCount);
     const childOccupancyBuffer = new Uint8Array(board.cellCount);
     const deadlockOccupancyBuffer = new Int32Array(board.cellCount);
+    deadlockOccupancyBuffer.fill(-1);
 
     searchLoop: while (frontier.size > 0) {
       throwIfSolverCancelled(context.signal);
@@ -673,15 +676,11 @@ export async function runClassicSearch(
           }
 
           const boxes = movedBoxes(node.boxes, boxIndex, destination);
-          fillDeadlockOccupancy(deadlockOccupancyBuffer, boxes);
-          if (
-            createsFullyBlockedTwoByTwoDeadlock(board, boxes, destination, deadlockOccupancyBuffer)
-          ) {
-            counters.deadlockPrunes += 1;
-            continue;
-          }
-
-          if (hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer)) {
+          for (let bi = 0; bi < boxes.length; bi++) deadlockOccupancyBuffer[boxes[bi].cell] = bi;
+          const has2x2Deadlock = createsFullyBlockedTwoByTwoDeadlock(board, boxes, destination, deadlockOccupancyBuffer);
+          const hasFreezeDeadlockResult = !has2x2Deadlock && hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer);
+          for (let bi = 0; bi < boxes.length; bi++) deadlockOccupancyBuffer[boxes[bi].cell] = -1;
+          if (has2x2Deadlock || hasFreezeDeadlockResult) {
             counters.deadlockPrunes += 1;
             continue;
           }
@@ -710,6 +709,7 @@ export async function runClassicSearch(
           }
 
           const pushLowerBound = heuristic.evaluate(boxes);
+          const linearConflict = heuristic.lastLinearConflict(boxes);
           const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
           if (
             maxMemoryAfterHeuristic !== undefined &&
@@ -753,7 +753,7 @@ export async function runClassicSearch(
           const walkBound = exactCodec
             ? minimumManhattanWalkToPotentialPush(board, box.cell, boxes)
             : 0;
-          const heuristic_h = pushLowerBound + walkBound;
+          const heuristic_h = pushLowerBound + linearConflict + walkBound;
 
           const [cp0, cp1, cp2] = nodePriority(
             configuration.strategy,
@@ -810,6 +810,110 @@ export async function runClassicSearch(
             uniqueStates += 1;
           }
           children.push(childIndex);
+
+          // Tunnel macro: generate additional children at multi-push stops.
+          // The single-push child is always retained for soundness.
+          const tunnelStops = tunnelDetector.resolve(
+            destination, directionIndex, occupied,
+            board.goalLabelByCell, box.label,
+          );
+          if (tunnelStops) {
+            for (const stop of tunnelStops) {
+              if (stop.pushCount <= 1) continue;
+              if (isStaticDeadCell(board, stop.finalCell, box.label)) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+
+              counters.generated += 1;
+              workSinceYield += 1;
+
+              const tBoxes = movedBoxes(node.boxes, boxIndex, stop.finalCell);
+              for (let bi = 0; bi < tBoxes.length; bi++) deadlockOccupancyBuffer[tBoxes[bi].cell] = bi;
+              const tHas2x2 = createsFullyBlockedTwoByTwoDeadlock(board, tBoxes, stop.finalCell, deadlockOccupancyBuffer);
+              const tHasFreeze = !tHas2x2 && hasFreezeDeadlock(board, tBoxes, deadlockOccupancyBuffer);
+              for (let bi = 0; bi < tBoxes.length; bi++) deadlockOccupancyBuffer[tBoxes[bi].cell] = -1;
+              if (tHas2x2 || tHasFreeze) {
+                counters.deadlockPrunes += 1;
+                continue;
+              }
+
+              const tMoves = node.moves + distance + stop.pushCount;
+              const tPushes = node.pushes + stop.pushCount;
+
+              let tChildKey: StateKey;
+              if (exactCodec) {
+                tChildKey = exactKey(stop.robotCell, tBoxes);
+                const tBestIndex = bestNodeByKey.get(tChildKey);
+                const tBest = tBestIndex === undefined ? undefined : nodes[tBestIndex];
+                if (tBest && tMoves >= tBest.moves) {
+                  counters.duplicates += 1;
+                  continue;
+                }
+              } else {
+                tChildKey = zobrist.stateKey(stop.robotCell, tBoxes);
+              }
+
+              const tPushBound = heuristic.evaluate(tBoxes);
+              const tLC = heuristic.lastLinearConflict(tBoxes);
+              if (!Number.isFinite(tPushBound)) {
+                counters.infeasiblePrunes += 1;
+                continue;
+              }
+
+              if (!exactCodec) {
+                fillOccupancy(childOccupancyBuffer, tBoxes);
+                const tChildReachable = childReachability.flood(stop.robotCell, childOccupancyBuffer);
+                counters.reachabilityFloods += 1;
+                tChildKey = zobrist.stateKey(tChildReachable.canonicalCell, tBoxes);
+                if (discovered.has(tChildKey)) {
+                  counters.duplicates += 1;
+                  continue;
+                }
+              } else {
+                counters.avoidedReachabilityFloods += 1;
+              }
+
+              const tWalkBound = exactCodec
+                ? minimumManhattanWalkToPotentialPush(board, stop.robotCell, tBoxes)
+                : 0;
+              const tH = tPushBound + tLC + tWalkBound;
+              const [tp0, tp1, tp2] = nodePriority(configuration.strategy, tMoves, tH);
+              const tCandidate: SearchNode = {
+                robot: stop.robotCell,
+                boxes: tBoxes,
+                key: tChildKey,
+                parentIndex: nodeIndex,
+                push: { boxCell: box.cell, directionIndex, pushCount: stop.pushCount },
+                moves: tMoves,
+                pushes: tPushes,
+                depth: node.depth + 1,
+                p0: tp0,
+                p1: tp1,
+                p2: tp2,
+                estimatedBytes: estimateNodeBytes(tBoxes.length, tChildKey),
+              };
+
+              const tChildIndex = nodes.length;
+              nodes.push(tCandidate);
+              counters.retainedBytes += tCandidate.estimatedBytes;
+              counters.maxDepth = Math.max(counters.maxDepth, tCandidate.depth);
+
+              if (configuration.strategy === "astar") {
+                const tPrevious = bestNodeByKey.get(tChildKey);
+                if (tPrevious === undefined) {
+                  uniqueStates += 1;
+                } else if (closed.delete(tChildKey)) {
+                  counters.reopens += 1;
+                }
+                bestNodeByKey.set(tChildKey, tChildIndex);
+              } else {
+                discovered.add(tChildKey);
+                uniqueStates += 1;
+              }
+              children.push(tChildIndex);
+            }
+          }
         }
       }
 

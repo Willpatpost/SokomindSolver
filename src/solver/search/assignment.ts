@@ -73,12 +73,13 @@ export function minimumAssignment(
   const columnPotential = new Float64Array(columnCount + 1);
   const matchedRowByColumn = new Int32Array(columnCount + 1);
   const predecessorColumn = new Int32Array(columnCount + 1);
+  const minimumReducedCost = new Float64Array(columnCount + 1);
+  const used = new Uint8Array(columnCount + 1);
 
   for (let row = 1; row <= rowCount; row += 1) {
     matchedRowByColumn[0] = row;
-    const minimumReducedCost = new Float64Array(columnCount + 1);
     minimumReducedCost.fill(Number.POSITIVE_INFINITY);
-    const used = new Uint8Array(columnCount + 1);
+    used.fill(0);
     let currentColumn = 0;
 
     do {
@@ -183,12 +184,13 @@ export function minimumAssignmentWithState(
   const columnPotential = new Float64Array(columnCount + 1);
   const matchedRowByColumn = new Int32Array(columnCount + 1);
   const predecessorColumn = new Int32Array(columnCount + 1);
+  const minimumReducedCost = new Float64Array(columnCount + 1);
+  const used = new Uint8Array(columnCount + 1);
 
   for (let row = 1; row <= rowCount; row += 1) {
     matchedRowByColumn[0] = row;
-    const minimumReducedCost = new Float64Array(columnCount + 1);
     minimumReducedCost.fill(Number.POSITIVE_INFINITY);
-    const used = new Uint8Array(columnCount + 1);
+    used.fill(0);
     let currentColumn = 0;
 
     do {

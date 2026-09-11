@@ -156,7 +156,10 @@ export function reconstructSolution(
     for (const direction of walk) {
       steps.push({ direction, kind: "walk" });
     }
-    steps.push({ direction: pushDirection, kind: "push" });
+    const pushCount = push.pushCount ?? 1;
+    for (let p = 0; p < pushCount; p++) {
+      steps.push({ direction: pushDirection, kind: "push" });
+    }
   }
   return steps;
 }
