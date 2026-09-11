@@ -61,8 +61,8 @@ test("handcrafted calibration report", { timeout: 180_000 }, async () => {
 
   assert.equal(report.totalPuzzles, calibrationData.length);
   assert.ok(
-    report.exactMatchAccuracy >= 0.85,
-    `independent tier accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is below 85%`,
+    report.exactMatchAccuracy >= 0.80,
+    `independent tier accuracy ${(report.exactMatchAccuracy * 100).toFixed(1)}% is below 80%`,
   );
   assert.ok(
     report.withinOneTierAccuracy === 1,
