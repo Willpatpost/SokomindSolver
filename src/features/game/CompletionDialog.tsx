@@ -28,6 +28,10 @@ interface CompletionDialogProps {
   readonly onCompareReplay?: () => void;
   readonly onNext: () => void;
   readonly onNextUnsolved?: () => void;
+  readonly tierCompleted?: boolean;
+  readonly tierLabel?: string;
+  readonly nextTierLabel?: string;
+  readonly onStartNextTier?: () => void;
 }
 
 function buildShareText(
@@ -101,6 +105,10 @@ export function CompletionDialog({
   onCompareReplay,
   onNext,
   onNextUnsolved,
+  tierCompleted,
+  tierLabel,
+  nextTierLabel,
+  onStartNextTier,
 }: CompletionDialogProps) {
   const [copied, setCopied] = useState(false);
   const existingRating = useMemo(() => loadRatings()[puzzleId], [puzzleId]);
@@ -236,6 +244,17 @@ export function CompletionDialog({
             ) : null}
           </section>
         ) : null}
+        {tierCompleted && tierLabel ? (
+          <div className={styles.tierCelebration}>
+            <h3>{tierLabel} tier complete!</h3>
+            <p>
+              You solved every {tierLabel.toLowerCase()} puzzle.
+              {nextTierLabel
+                ? ` Ready for ${nextTierLabel.toLowerCase()}?`
+                : " You've mastered them all."}
+            </p>
+          </div>
+        ) : null}
         <div className={styles.stats}>
           <div>
             <strong>{moves}</strong>
@@ -324,28 +343,44 @@ export function CompletionDialog({
             <span>Timeline, divergence markers, and optional ghost</span>
           </button>
         ) : null}
-        <div className={styles.actions} data-has-replay={onReplay ? "" : undefined}>
-          <button type="button" onClick={onClose}>
-            Study board
-          </button>
-          {onReplay ? (
-            <button type="button" accessKey="p" onClick={onReplay}>
-              Replay
+        {tierCompleted && onStartNextTier ? (
+          <div className={styles.tierActions}>
+            <button type="button" onClick={onClose}>
+              Study board
             </button>
-          ) : null}
-          <button type="button" data-autofocus onClick={onNext}>
-            {nextLabel}
-          </button>
-        </div>
-        {onNextUnsolved ? (
-          <button
-            type="button"
-            className={styles.nextUnsolved}
-            onClick={onNextUnsolved}
-          >
-            Skip to next unsolved &#8250;
-          </button>
-        ) : null}
+            <button type="button" onClick={onNext}>
+              Browse puzzles
+            </button>
+            <button type="button" data-autofocus onClick={onStartNextTier}>
+              Start {nextTierLabel?.toLowerCase()} puzzles
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className={styles.actions} data-has-replay={onReplay ? "" : undefined}>
+              <button type="button" onClick={onClose}>
+                Study board
+              </button>
+              {onReplay ? (
+                <button type="button" accessKey="p" onClick={onReplay}>
+                  Replay
+                </button>
+              ) : null}
+              <button type="button" data-autofocus onClick={onNext}>
+                {nextLabel}
+              </button>
+            </div>
+            {onNextUnsolved ? (
+              <button
+                type="button"
+                className={styles.nextUnsolved}
+                onClick={onNextUnsolved}
+              >
+                Skip to next unsolved &#8250;
+              </button>
+            ) : null}
+          </>
+        )}
         <button
           type="button"
           className={styles.shareResult}

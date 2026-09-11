@@ -199,6 +199,25 @@ export function ExperienceProvider({ children }: ExperienceProviderProps) {
   );
 
   useEffect(() => {
+    const prefs = latestPreferences.current;
+    if (!prefs.soundEnabled || !prefs.musicEnabled) return;
+
+    const handler = () => {
+      void ensureAudio().unlock();
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+
+    window.addEventListener("pointerdown", handler, { once: true });
+    window.addEventListener("keydown", handler, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+  }, [ensureAudio]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (
         event.defaultPrevented ||

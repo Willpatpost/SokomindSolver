@@ -7,6 +7,7 @@ import {
   type Direction,
   type PuzzleDefinition,
 } from "@/src/core";
+import { DIFFICULTIES } from "@/src/core/model";
 import { decodeActionLog } from "@/src/core/action-log";
 import type { SolutionStep } from "@/src/solver";
 import { toLocalDateKey } from "@/src/shared/progress";
@@ -111,6 +112,7 @@ export function usePlayController(
     useState<PresentedGameExperienceEvent | null>(null);
   const experienceSequenceRef = useRef(0);
   const [deadlockModalOpen, setDeadlockModalOpen] = useState(false);
+  const [tierCompleted, setTierCompleted] = useState(false);
   const hintCancelRef = useRef<() => void>(() => {});
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resetConfirmOpen = resetConfirmPuzzleId === session.puzzle.id;
@@ -225,6 +227,13 @@ export function usePlayController(
         clearTimeout(toastTimerRef.current);
         toastTimerRef.current = setTimeout(() => setToast(`Achievement unlocked: ${names}`), 1200);
       }
+      const tierPuzzles = PUZZLE_METADATA.filter(
+        (p) => p.difficulty === next.puzzle.difficulty,
+      );
+      const allTierCompleted = tierPuzzles.every(
+        (p) => result.progress.completed[p.id],
+      );
+      setTierCompleted(allTierCompleted);
     } else if (event.movedBox) {
       const result = detectDeadlock(
         next.board,
@@ -414,18 +423,34 @@ export function usePlayController(
     setExperienceEvent(null);
     setResetConfirmPuzzleId(null);
     setSolverPuzzleId(null);
+    setTierCompleted(false);
     timerResetRef.current();
   }, [stopSolutionPlayback]);
 
   const {
     puzzleIndex,
     totalPuzzles,
+    tierLabel,
     nextPuzzle,
     nextUnsolvedPuzzle,
     selectPuzzle,
     selectPreviousPuzzle,
     selectNextPuzzle,
   } = usePuzzleNavigation(session.puzzle.id, onBeforeNavigate, completedIds);
+
+  const nextTierInfo = useMemo(() => {
+    const diffIndex = DIFFICULTIES.indexOf(session.puzzle.difficulty);
+    const nextDifficulty = diffIndex >= 0 && diffIndex < DIFFICULTIES.length - 1
+      ? DIFFICULTIES[diffIndex + 1]
+      : undefined;
+    const firstOfNextTier = nextDifficulty
+      ? PUZZLE_METADATA.find((p) => p.difficulty === nextDifficulty)
+      : undefined;
+    const label = nextDifficulty
+      ? nextDifficulty.charAt(0).toUpperCase() + nextDifficulty.slice(1)
+      : undefined;
+    return { nextDifficulty, firstOfNextTier, label };
+  }, [session.puzzle.difficulty]);
 
   // --- Sharing (delegated) ---
 
@@ -576,6 +601,10 @@ export function usePlayController(
     resetMessage: `Restarting removes ${countLabel(session.moves, "move")} in this attempt. Your completed personal best is not affected.`,
     totalPuzzles,
     puzzleIndex,
+    tierLabel,
+    tierCompleted,
+    nextTierLabel: nextTierInfo.label,
+    firstPuzzleOfNextTier: nextTierInfo.firstOfNextTier,
     nextPuzzle,
     nextUnsolvedPuzzle,
     selectNextUnsolved,

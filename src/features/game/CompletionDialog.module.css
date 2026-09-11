@@ -377,6 +377,59 @@
   color: var(--ink-muted);
 }
 
+.tierCelebration {
+  margin: 18px 0;
+  padding: 16px;
+  border: 2px solid var(--amber-400);
+  border-radius: 12px;
+  background: rgb(229 166 75 / 0.08);
+  text-align: center;
+}
+
+.tierCelebration h3 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink-950);
+}
+
+.tierCelebration p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.tierActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 8px;
+}
+
+.tierActions button {
+  min-height: 46px;
+  border: 1px solid var(--paper-300);
+  border-radius: 12px;
+  background: var(--paper-50);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tierActions button:last-child {
+  border-color: var(--amber-500);
+  color: var(--paper-50);
+  background: var(--amber-500);
+}
+
+.tierActions button:hover {
+  border-color: var(--sage-500);
+}
+
+.tierActions button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1.4fr;
@@ -551,6 +604,14 @@
   .actions button:last-child {
     grid-column: 1 / -1;
   }
+
+  .tierActions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .tierActions button:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 400px) {
@@ -651,7 +712,17 @@
   background: rgb(86 110 89 / 0.15);
 }
 
-:global(html[data-theme="dark"]) .actions button {
+:global(html[data-theme="dark"]) .tierCelebration {
+  border-color: rgb(229 166 75 / 0.3);
+  background: rgb(229 166 75 / 0.08);
+}
+
+:global(html[data-theme="dark"]) .tierCelebration h3 {
+  color: var(--paper-50);
+}
+
+:global(html[data-theme="dark"]) .actions button,
+:global(html[data-theme="dark"]) .tierActions button {
   border-color: rgb(255 255 255 / 0.1);
   background: rgb(34 36 32 / 0.6);
 }
@@ -661,7 +732,13 @@
   background: var(--sage-700);
 }
 
-:global(html[data-theme="dark"]) .actions button:hover {
+:global(html[data-theme="dark"]) .tierActions button:last-child {
+  border-color: var(--amber-500);
+  background: var(--amber-500);
+}
+
+:global(html[data-theme="dark"]) .actions button:hover,
+:global(html[data-theme="dark"]) .tierActions button:hover {
   border-color: var(--sage-500);
 }
 
@@ -730,15 +807,21 @@
     background: Highlight;
   }
 
-  .actions button {
+  .actions button,
+  .tierActions button {
     border: 2px solid ButtonText;
   }
 
-  .actions button:last-child {
+  .actions button:last-child,
+  .tierActions button:last-child {
     forced-color-adjust: none;
     border: 2px solid Highlight;
     color: HighlightText;
     background: Highlight;
+  }
+
+  .tierCelebration {
+    border: 2px solid Highlight;
   }
 
   .feedbackButton {

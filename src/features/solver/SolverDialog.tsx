@@ -59,6 +59,11 @@ export function SolverDialog({
     (solver.counters?.deadlockPrunes ?? 0) +
     (solver.counters?.infeasiblePrunes ?? 0);
 
+  const reversedLog = useMemo(
+    () => [...solver.logEntries].reverse(),
+    [solver.logEntries],
+  );
+
   const srAnnouncement = useMemo(() => {
     switch (solver.uiPhase) {
       case "running":
@@ -541,7 +546,7 @@ export function SolverDialog({
             </div>
 
             <ol className={styles.log}>
-              {solver.logEntries.map((entry) => (
+              {reversedLog.map((entry) => (
                 <li data-tone={entry.tone} key={entry.id}>
                   <time>{formatDuration(entry.elapsedMs)}</time>
                   <span>{entry.message}</span>

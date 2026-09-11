@@ -480,7 +480,7 @@ function ValidatedPlayPage({
               <h1 id="puzzle-title">{puzzle.title}</h1>
             </div>
             <div className={styles.levelPosition}>
-              Puzzle
+              {game.tierLabel}
               <strong>
                 {String(game.puzzleIndex + 1).padStart(2, "0")} / {game.totalPuzzles}
               </strong>
@@ -664,6 +664,14 @@ function ValidatedPlayPage({
         puzzleId={puzzle.id}
         pushes={session.pushes}
         title={puzzle.title}
+        tierCompleted={game.tierCompleted}
+        tierLabel={game.tierLabel}
+        nextTierLabel={game.nextTierLabel}
+        onStartNextTier={
+          game.firstPuzzleOfNextTier
+            ? () => game.selectPuzzle(game.firstPuzzleOfNextTier!.id)
+            : undefined
+        }
       />
 
       {replayComparisonOpen ? (
