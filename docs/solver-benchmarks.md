@@ -426,44 +426,51 @@ reward most of the requested quality improvement or any successful-run speedup.
 The V2 harness reports raw timing and route quality separately and does not
 depend on that scalar fitness.
 
-### Recommended implementation sequence
+For current open work and promotion criteria, see the
+[active solver plan](plans/solver.md).
 
-1. **Use the verified quality reference and establish deadline measurements.**
-   Compare the saved 626-move route's box transfers, parking locations, room
-   revisits, keeper walks, and arrival sides against 893/833/789.
-   Record best verified moves at 0.5/1/2/3/5 seconds, including worker startup and
-   verification. Replace the older fitness with explicit solve-rate, moves,
-   deadline, and memory comparisons before using it for automated tuning.
-2. **Recover CPU time without changing the search.** Integrate the measured
-   doorway traversal prototype first. Then investigate allocation-free corral
-   component/boundary traversal and bounded reuse of corral analysis keyed by
-   full labeled occupancy and keeper region. Preserve existing deadlock rules
-   and deterministic neighbor order; profile allocation as well as CPU time.
-3. **Add a bounded cheap improvement stage.** Trial the measured permutation
-   rewrite after first solution under the remaining global deadline. Reuse
-   prepared board data where practical. Return the best verified incumbent when
-   time expires; do not assume the current full rewrite fits a 3-second budget.
-4. **Make a separate discovery lane optimize moves throughout.** Trial
-   move-cost single-box macro search with keeper approach distance, preserve
-   useful exit sides, and retain a small minimum-moves reserve at structural
-   milestones. Make transposition dominance consistent with that lane's move
-   objective. Keep the reliable structural lane while measuring whether the
-   extra work pays for itself; do not enable broad Pareto expansion by default.
-5. **Optimize longer schedules around a verified incumbent.** Search a bounded
-   neighborhood of box configurations across room-transfer milestones, allowing
-   limited parking changes and reordered box work. Rank candidate regions by
-   avoidable travel and expected gain rather than merely trying windows in
-   chronological order. JSoko's documented
-   [vicinity optimizer](https://jsokoapplet.sourceforge.io/help/help/help/how-the-optimizer-works.html)
-   is a useful precedent for incumbent-centered neighborhood search; it does
-   not establish a 3-second guarantee for this typed puzzle.
+## Consolidated experiment conclusions
 
-Proving 626 optimal is a separate project. The immediate product goal is finding
-a short, verified solution quickly, using 626 as a verified upper bound.
-Acceptance should cover Grand Hall base/mirror/rotation and
-the structural room/packing corpus, measured in a fixed browser environment
-with both cold and warm workers, repeated timing samples, and memory tracking.
-Do not ship a Grand Hall-specific cached route as evidence of better search.
+### Grand Hall diagnosis (removed doc)
+
+The 267-move gap between discovery (893) and reference (626) is 30 pushes plus
+237 walks. Keeper pathfinding is already optimal within each route's fixed push
+sequence — the gap requires different box positions, push directions, or task
+ordering. Box H is the primary divergence: 46 pushes versus 14 in the
+reference due to premature commitment and costly un-fill/re-fill. No
+single-push checkpoint intervention tested produced an improvement. Heuristic
+changes must not be promoted until an independently generated continuation
+demonstrates a real cost reduction. Reproduce with
+`scripts/report-grand-hall-diagnosis.mjs`.
+
+### Grand Hall route accounting (removed doc)
+
+Three routes verified: discovery 893/278, rewrite 789/270, reference 626/248
+(moves/pushes). Shortest keeper paths within each fixed push sequence show
+zero excess walking for discovery and rewrite. H is the dominant cost driver
+(46 pushes/95 walks in discovery versus 14/15 in reference). Individual
+per-label differences are not independently recoverable savings. The reference
+is a witness, not an optimality proof. Reproduce with
+`scripts/diagnose-grand-hall.mjs`.
+
+### Planner branch diversity (removed doc)
+
+Widening the structural planner's first-push branch allowance beyond the
+default of 6 does not help Grand Hall and actively harms it: allowance 8
+yields 1,116 moves; allowances 10/12/16 exhaust the frontier or budget. The
+reference's opening direction ranks 21st of 27 candidates at 16 branches and
+is never selected. Wider branching is not monotonic — new macro candidates
+displace useful states. Not accepted as a production default.
+
+### P1 tuning experiments (removed doc)
+
+Three controlled A/B experiments across the 43-fixture corpus, each toggling
+one parameter. All three leave solution quality (moves, pushes, solve status)
+identical — only timing changes. **macroIntermediateQuota**: no measurable
+effect. **moveAwareDiscovery**: mixed — 6.1% faster on large typed-grid
+puzzles but +19.1% regression on maze-style; worth investigating
+class-specific activation. **firstPushWalkWeight**: net negative, +4.6%
+aggregate slowdown. All three remain correctly defaulted to disabled.
 
 ## Schema 3
 

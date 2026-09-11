@@ -152,24 +152,6 @@ function classifyV4Difficulty(
   return "tutorial";
 }
 
-/** Classify measured player difficulty independently from the requested board size. */
-export function classifyDifficultyFromMetrics(ev: PuzzleEvaluationVector): Difficulty {
-  const structuralScale = computeStructuralScale(ev);
-  const solutionDepth = computeSolutionDepthScore(ev);
-  const humanReasoningComplexity = computeHumanReasoningComplexity(ev);
-  const tediumPenalty = computeTediumPenalty(ev);
-  const composite = structuralScale + solutionDepth + humanReasoningComplexity -
-    tediumPenalty * 7;
-  return classifyV4Difficulty(
-    ev,
-    structuralScale,
-    solutionDepth,
-    humanReasoningComplexity,
-    tediumPenalty,
-    composite,
-  );
-}
-
 export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfile {
   const structuralScale = computeStructuralScale(ev);
   const solutionDepth = computeSolutionDepthScore(ev);

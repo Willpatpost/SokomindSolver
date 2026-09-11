@@ -2,7 +2,6 @@
 // Reverse-push BFS over combinadic-encoded k-box configurations within
 // bounded floor regions around goal cells.
 
-const PDB_MAX_K = 5;
 const PDB_MAX_ENTRIES = 2_000_000;
 const PDB_REGION_DISTANCE = 8;
 const PDB_MAX_PARTITION_SIZE = 5;

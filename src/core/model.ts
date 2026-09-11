@@ -17,9 +17,6 @@ export const DIFFICULTIES = [
 
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
-/** Backwards-friendly descriptive alias for catalog consumers. */
-export type PuzzleDifficulty = Difficulty;
-
 export interface PuzzleDefinition {
   readonly id: string;
   readonly title: string;

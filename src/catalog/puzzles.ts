@@ -195,8 +195,6 @@ export const PUZZLES: readonly PuzzleDefinition[] = assertUniquePuzzleIds([
   ...validatedGeneratedPuzzles,
 ], "Combined puzzle catalog");
 
-export type PuzzleId = string;
-
 const puzzleIndexById = new Map<string, number>();
 for (let index = 0; index < PUZZLES.length; index += 1) {
   const puzzle = PUZZLES[index];

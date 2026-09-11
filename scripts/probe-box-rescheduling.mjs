@@ -1,7 +1,7 @@
 // Exact A* within a restricted repair space: keep all other box pushes in order,
 // and choose this box's entire schedule freely. Reference routes are excluded.
 import assert from "node:assert/strict";
-import {readFileSync, writeFileSync} from "node:fs";
+import {mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {PUZZLE_BY_ID} from "../src/catalog/puzzles.ts";
 import {createSession, stepSnapshot} from "../src/core/index.ts";
@@ -150,5 +150,6 @@ const result={schemaVersion:1,route:routeName,label,orientation,sourceMoves:rout
   status:solution?"solved":expanded>=maxExpanded?"state-budget":performance.now()>=deadline?"time-budget":"no-improvement-in-restricted-space",
   optimalWithinFixedOtherPushes:Boolean(solution),verified:Boolean(solution),moves:path?.length,pushes:solutionPushes,
   actionLog:path?.map(move=>move[0]).join("")};
-writeFileSync(`docs/benchmarks/grand-hall-reschedule-${tag}-${label}.json`,JSON.stringify(result,null,2)+"\n");
+const outDir="results/rescheduling";mkdirSync(outDir,{recursive:true});
+writeFileSync(`${outDir}/grand-hall-reschedule-${tag}-${label}.json`,JSON.stringify(result,null,2)+"\n");
 console.log(JSON.stringify({...result,actionLog:undefined}));

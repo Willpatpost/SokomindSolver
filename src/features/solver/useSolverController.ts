@@ -1,14 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import type { GameSession } from "@/src/core";
-import type { SolutionStep } from "@/src/solver";
 import { useSolverLog } from "./use-solver-log";
 import { useSolverProgress } from "./use-solver-progress";
 import { useSolverWorker } from "./use-solver-worker";
 import { fingerprintFor, fingerprintKey } from "./solver-internals";
-import type {
-  SolverRunFingerprint,
-  SolverUiPhase,
-} from "./solver-ui-types";
+import type { SolverUiPhase } from "./solver-ui-types";
 
 export const TIME_LIMIT_OPTIONS = Object.freeze([
   { value: 5_000, label: "5 seconds" },
@@ -155,8 +151,3 @@ export function useSolverController({
     retryConnection,
   } as const;
 }
-
-export type SolverPlaybackRequest = Readonly<{
-  steps: readonly SolutionStep[];
-  fingerprint: SolverRunFingerprint;
-}>;

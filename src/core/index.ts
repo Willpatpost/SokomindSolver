@@ -13,7 +13,6 @@ export {
   type ParsedBoard,
   type Position,
   type PuzzleDefinition,
-  type PuzzleDifficulty,
   type PuzzleValidationCode,
   type PuzzleValidationIssue,
   type PuzzleValidationResult,

@@ -2,6 +2,8 @@ node_modules/
 dist/
 coverage/
 test-results/
+results/rescheduling/
+results/*.jsonl
 playwright-report/
 review-catalog/
 .env*

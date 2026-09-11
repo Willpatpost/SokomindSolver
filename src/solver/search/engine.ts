@@ -126,10 +126,6 @@ export function sortedBoxes(boxes: readonly DenseBox[]): readonly DenseBox[] {
   return [...boxes].sort(compareBoxes);
 }
 
-export function stateKey(robot: number, boxSignature: string): string {
-  return `${String(robot)}|${boxSignature}`;
-}
-
 function nodePriority(
   strategy: ClassicSearchStrategy,
   moves: number,
