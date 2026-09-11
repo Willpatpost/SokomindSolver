@@ -71,12 +71,13 @@ overall peak memory utilization. It removes an artificial work restriction;
 it does not deliberately retain unnecessary states to fill memory. The remaining
 work-allocation policy would require a separate measured experiment to change.
 
-Evidence: [384 before](quality-memory-384-before.json),
-[384 hybrid](quality-memory-384-after.json),
-[768 before](quality-memory-768-before.json),
-[768 hybrid](quality-memory-768-after.json),
-[1536 before](quality-memory-1536-before.json),
-[1536 hybrid](quality-memory-1536-after.json).
+Historical before/hybrid measurements are summarized in the table above; raw
+captures were removed after the proof correction below superseded the 384 and
+768 MiB hybrid files. Retained evidence:
+[1536 hybrid](quality-memory-1536-after.json) (1536 MiB before and hybrid were
+identical),
+[384 corrected](quality-memory-384-proof-safe.json),
+[768 corrected](quality-memory-768-proof-safe.json).
 
 Reproduce the hybrid results from the repository root:
 
@@ -126,8 +127,7 @@ The new public runs use the same requests as above:
 Both stop at the elapsed budget instead of falsely completing a proof. Proof
 work is time-dependent, so these expanded counts and timings are descriptive
 single samples. Evidence: [384 corrected](quality-memory-384-proof-safe.json),
-[768 corrected](quality-memory-768-proof-safe.json). Historical files above are
-preserved for comparison, not valid proof certificates. The diagnostic now
+[768 corrected](quality-memory-768-proof-safe.json). The diagnostic now
 records elapsed overrun explicitly rather than discarding a valid cutoff result
 for cooperative deadline-check/reporting latency; the request limit and external
 watchdog are unchanged.

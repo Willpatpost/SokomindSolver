@@ -25,7 +25,7 @@ test("a PI-corral false positive cannot certify a known nonoptimal Grand Hall ro
     assert.ok(solution && verifySolverSolution(request, solution).valid);
     return solution;
   };
-  const incumbent = loadSolution("quality-memory-384-after.json");
+  const incumbent = loadSolution("quality-memory-384-proof-safe.json");
   const shorter = loadSolution("quality-memory-1536-after.json");
   await assert.rejects(runIdaStarSearch(request, {signal: new AbortController().signal,
     now: () => performance.now(), reportProgress() {}}, {

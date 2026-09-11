@@ -27,9 +27,9 @@ ineligible. This changes result delivery, not search order, pruning, or proof.
 
 These are single-run descriptive Node timings, not evidence of a speedup. The
 window-cap ablation was rejected; production allocation remains unchanged.
-Raw [baseline](quality-budget-baseline.json),
-[publication run](quality-budget-published-incumbent.json), and
-[window-cap control](quality-budget-window-10000.json) preserve phase evidence.
+Raw [publication run](quality-budget-published-incumbent.json) preserves phase
+evidence. Historical baseline and window-cap control measurements are
+summarized in the table above.
 The 503/236 isolated result still uses a different incumbent and repair budget.
 
 The public browser gate is tightened to **550 moves / 245 pushes**. All three
