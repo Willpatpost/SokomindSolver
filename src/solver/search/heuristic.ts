@@ -6,6 +6,7 @@ import {
 import type {
   CompiledSearchBoard,
 } from "./compiled-board.ts";
+import { OPPOSITE_DIRECTION } from "./exact-search-types.ts";
 import { computeLinearConflict } from "./linear-conflict.ts";
 import {
   canonicalBoxSignature,
@@ -166,8 +167,7 @@ export function minimumManhattanWalkToPotentialPush(
       const supportCell = neighbors[d];
       if (supportCell === undefined || supportCell < 0) continue;
 
-      const oppositeD = d ^ 1;
-      const destCell = neighbors[oppositeD];
+      const destCell = neighbors[OPPOSITE_DIRECTION[d]];
       if (destCell === undefined || destCell < 0) continue;
 
       if (occupancy && occupancy[destCell] !== 0) continue;
@@ -219,8 +219,7 @@ export function minimumReachableWalkToLegalPush(
       const supportCell = neighbors[d];
       if (supportCell === undefined || supportCell < 0) continue;
 
-      const oppositeD = d ^ 1;
-      const destCell = neighbors[oppositeD];
+      const destCell = neighbors[OPPOSITE_DIRECTION[d]];
       if (destCell === undefined || destCell < 0) continue;
 
       if (occupancy[destCell] !== 0) continue;

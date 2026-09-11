@@ -123,7 +123,7 @@ export class PiCorralDetector {
         return true;
       }
 
-      if (componentBoxIndices.length > MAX_BOUNDARY_BOXES) continue;
+      if (boundaryPushes.length > MAX_BOUNDARY_BOXES) continue;
 
       if (this.#allPushesDeadlock(board, boxes, boundaryPushes)) {
         this.#piDeadlocks += 1;

@@ -44,13 +44,16 @@ function packedIdentityIncremental(parentPacked, oldToken, newToken, board) {
   const sorted = new Uint32Array(parentSorted.length);
   board.metrics.tokenIncrementalInsertions++;
 
-  let removePos = 0;
+  let removePos = -1;
   let lo = 0, hi = parentSorted.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >>> 1;
     if (parentSorted[mid] < oldToken) lo = mid + 1;
     else if (parentSorted[mid] > oldToken) hi = mid - 1;
     else { removePos = mid; break; }
+  }
+  if (removePos < 0 || parentSorted[removePos] !== oldToken) {
+    throw new Error(`packedIdentityIncremental: oldToken ${oldToken} not found in sorted tokens`);
   }
 
   let tempIdx = 0;

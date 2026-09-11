@@ -1,4 +1,5 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
+import { OPPOSITE_DIRECTION } from "./exact-search-types.ts";
 
 export interface TunnelMacroStop {
   readonly finalCell: number;
@@ -62,7 +63,7 @@ export class TunnelMacroDetector {
     if (this.#tunnelAxis[destination] !== pushAxis) return null;
 
     const board = this.#board;
-    const opposite = pushDirection ^ 1;
+    const opposite = OPPOSITE_DIRECTION[pushDirection];
     const stops: TunnelMacroStop[] = [];
     let current = destination;
     let pushCount = 1;
