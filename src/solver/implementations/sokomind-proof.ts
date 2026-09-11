@@ -388,32 +388,51 @@ export async function runConcurrentProof(
     workerQueues.get(trackers[i].worker)!.push(i);
   }
 
-  const perPartitionLimits = proofLimits === undefined
+  const perWorkerMemoryLimit = proofLimits?.maxMemoryBytes === undefined
     ? undefined
-    : {
-        ...proofLimits,
-        ...(proofLimits.maxExpandedStates === undefined
-          ? {}
-          : {
-              maxExpandedStates: Math.floor(
-                proofLimits.maxExpandedStates / partitions.length,
+    : Math.floor(proofLimits.maxMemoryBytes / workerCount);
+
+  function dynamicPartitionLimits(): typeof proofLimits {
+    if (proofLimits === undefined) return undefined;
+    const remaining = trackers.filter((t) => !t.completed && !t.failed);
+    const remainingCount = remaining.length;
+    if (remainingCount === 0) return proofLimits;
+    const consumedExpanded = trackers.reduce(
+      (sum, t) => sum + ((t.completed || t.failed) ? (t.metrics?.expandedStates ?? 0) : 0),
+      0,
+    );
+    const consumedGenerated = trackers.reduce(
+      (sum, t) => sum + ((t.completed || t.failed) ? (t.metrics?.generatedStates ?? 0) : 0),
+      0,
+    );
+    return {
+      ...proofLimits,
+      ...(proofLimits.maxExpandedStates === undefined
+        ? {}
+        : {
+            maxExpandedStates: Math.max(
+              1,
+              Math.floor(
+                (proofLimits.maxExpandedStates - consumedExpanded) / remainingCount,
               ),
-            }),
-        ...(proofLimits.maxGeneratedStates === undefined
-          ? {}
-          : {
-              maxGeneratedStates: Math.floor(
-                proofLimits.maxGeneratedStates / partitions.length,
+            ),
+          }),
+      ...(proofLimits.maxGeneratedStates === undefined
+        ? {}
+        : {
+            maxGeneratedStates: Math.max(
+              1,
+              Math.floor(
+                (proofLimits.maxGeneratedStates - consumedGenerated) / remainingCount,
               ),
-            }),
-        ...(proofLimits.maxMemoryBytes === undefined
-          ? {}
-          : {
-              maxMemoryBytes: Math.floor(
-                proofLimits.maxMemoryBytes / workerCount,
-              ),
-            }),
-      };
+            ),
+          }),
+      ...(perWorkerMemoryLimit === undefined
+        ? {}
+        : { maxMemoryBytes: perWorkerMemoryLimit }),
+    };
+  }
+
   const proofStartedAt = proofPlanningStartedAt;
 
   return new Promise<SolverResult>((resolve) => {
@@ -658,7 +677,7 @@ export async function runConcurrentProof(
         partitionId: partition.partitionId,
         request: {
           ...buildPartitionRequest(request, partition),
-          limits: perPartitionLimits,
+          limits: dynamicPartitionLimits(),
         },
         initialUpperBound: localU,
         prefixCost: partition.prefixCost,

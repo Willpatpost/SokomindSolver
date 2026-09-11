@@ -199,18 +199,6 @@ export class PatternDeadlockCache {
 
     if (cells.length > this.#floorLimit) {
       eligible = false;
-    } else {
-      for (const cell of cells) {
-        const neighbors = board.neighbors[cell];
-        let floorNeighborCount = 0;
-        for (let d = 0; d < 4; d++) {
-          if (neighbors[d] >= 0) floorNeighborCount++;
-        }
-        if (floorNeighborCount > 2) {
-          eligible = false;
-          break;
-        }
-      }
     }
 
     const info: WindowInfo = { cells, eligible };

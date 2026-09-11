@@ -791,10 +791,11 @@ export async function runExactMoveAStar(
     throwIfSolverCancelled(context.signal);
 
     let limitDetail: string | undefined;
+    let forcedNextIndex: number | undefined;
 
     const syncState = () => { heapSize = heap.size; };
 
-    searchLoop: while (heap.size > 0) {
+    searchLoop: while (heap.size > 0 || forcedNextIndex !== undefined) {
       throwIfSolverCancelled(context.signal);
       if (elapsedLimitReached()) {
         limitDetail = "Maximum elapsed time reached.";
@@ -830,9 +831,16 @@ export async function runExactMoveAStar(
         }
       }
 
-      const nodeIndex = heap.dequeue();
-      if (nodeIndex === undefined) break;
-      syncState();
+      let nodeIndex: number;
+      if (forcedNextIndex !== undefined) {
+        nodeIndex = forcedNextIndex;
+        forcedNextIndex = undefined;
+      } else {
+        const popped = heap.dequeue();
+        if (popped === undefined) break;
+        nodeIndex = popped;
+        syncState();
+      }
 
       arena.readBoxTokens(nodeIndex, parentTokenBuf);
       const nodeRobotCell = arena.robotCell(nodeIndex);
@@ -1065,9 +1073,7 @@ export async function runExactMoveAStar(
                   } else {
                     counters.reopens += 1;
                   }
-                  heap.enqueue(childIndex);
-                  syncState();
-                  counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
+                  forcedNextIndex = childIndex;
                 }
               } else {
                 counters.infeasiblePrunes += 1;
