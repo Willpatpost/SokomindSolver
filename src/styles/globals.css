@@ -559,7 +559,7 @@ html[data-theme-family="midnight-neon"][data-board-frame="neon-orbit"] {
 }
 
 @media (max-width: 560px) {
-  body {
+  body:has(nav[aria-label="Main navigation"]) {
     padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 }

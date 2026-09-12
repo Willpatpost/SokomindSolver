@@ -135,7 +135,7 @@ export function PuzzleListView({
 
         <nav className={styles.breadcrumb}>
           <Link href={puzzlesHash()}>Puzzles</Link>
-          <span>&rsaquo;</span>
+          <span aria-hidden="true">&rsaquo;</span>
           {directDifficultyView ? (
             <span className={styles.breadcrumbCurrent} aria-current="page">
               {DIFFICULTY_LABELS[difficulty]}
@@ -145,7 +145,7 @@ export function PuzzleListView({
               <Link href={puzzleDifficultyHash(difficulty)}>
                 {DIFFICULTY_LABELS[difficulty]}
               </Link>
-              <span>&rsaquo;</span>
+              <span aria-hidden="true">&rsaquo;</span>
               <span className={styles.breadcrumbCurrent} aria-current="page">{collection}</span>
             </>
           )}

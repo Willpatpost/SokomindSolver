@@ -9,8 +9,8 @@
 .copyButton {
   flex: 0 0 auto;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 6px;

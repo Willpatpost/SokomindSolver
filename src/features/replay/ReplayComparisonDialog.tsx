@@ -341,7 +341,7 @@ export function ReplayComparisonDialog({
                   </button>
                 ))}
               </div>
-              <div className={styles.controls} aria-label="Replay controls">
+              <div className={styles.controls} role="toolbar" aria-label="Replay controls">
                 <button type="button" onClick={() => { setPlaying(false); setStep(0); }} aria-label="Go to replay start">|&larr;</button>
                 <button type="button" onClick={() => { setPlaying(false); setStep((value) => Math.max(0, value - 1)); }} aria-label="Previous replay move">&larr;</button>
                 <button

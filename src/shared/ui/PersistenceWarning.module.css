@@ -18,8 +18,27 @@
 }
 
 .warning button {
+  width: 100%;
   margin-top: 9px;
-  min-height: 32px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgb(168 94 42 / 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--ink-950);
+  background: rgb(255 255 255 / 0.6);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.warning button:hover {
+  background: rgb(255 255 255 / 0.85);
+}
+
+.warning button:focus-visible {
+  outline: 2px solid var(--sage-500);
+  outline-offset: 2px;
 }
 
 .warning strong {

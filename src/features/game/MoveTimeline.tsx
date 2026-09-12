@@ -2,7 +2,6 @@ import { memo } from "react";
 import styles from "./MoveTimeline.module.css";
 
 interface MoveTimelineProps {
-  readonly actionLog: string;
   readonly moves: number;
   readonly pushes: number;
 }
@@ -19,7 +18,14 @@ export const MoveTimeline = memo(function MoveTimeline({
 
   return (
     <div className={styles.timeline}>
-      <div className={styles.bar}>
+      <div
+        className={styles.bar}
+        role="progressbar"
+        aria-valuenow={Math.round(pushPct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${pushes} pushes and ${walks} walks out of ${moves} moves`}
+      >
         {walkPct > 0 && (
           <span
             className={styles.segment}

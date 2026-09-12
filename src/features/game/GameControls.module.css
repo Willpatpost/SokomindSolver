@@ -172,7 +172,7 @@
 }
 
 .controls[data-variant="compact"] .dpad {
-  grid-template: repeat(3, 42px) / repeat(3, 42px);
+  grid-template: repeat(3, 44px) / repeat(3, 44px);
   margin: 0;
 }
 

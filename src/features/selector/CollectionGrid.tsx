@@ -73,7 +73,7 @@ export function CollectionGrid({
 
         <nav className={styles.breadcrumb}>
           <Link href={puzzlesHash()}>Puzzles</Link>
-          <span>&rsaquo;</span>
+          <span aria-hidden="true">&rsaquo;</span>
           <span className={styles.breadcrumbCurrent} aria-current="page">{DIFFICULTY_LABELS[difficulty]}</span>
         </nav>
 
@@ -113,7 +113,7 @@ export function CollectionGrid({
                 key={col.name}
                 type="button"
                 className={styles.collectionCard}
-                data-complete={col.count > 0 && col.solved === col.count || undefined}
+                data-complete={(col.count > 0 && col.solved === col.count) || undefined}
                 onClick={() => navigate(puzzleCollectionHash(difficulty, col.name))}
               >
                 <div className={styles.cardHeader}>

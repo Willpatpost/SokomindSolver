@@ -491,7 +491,7 @@ function LoadedSolverLab({
             <p className="sr-only" aria-live="polite">{stepDescription}</p>
             {watchedTrace ? (
               <>
-                <div className={styles.pathStrip} aria-label="Solution directions">
+                <div className={styles.pathStrip} role="img" aria-label="Solution directions">
                   {watchedSolutionLog.split("").map((action, index) => (
                     <span key={`${index}-${action}`} data-current={playback.step === index + 1 || undefined} data-past={index < playback.step || undefined}>
                       <span aria-hidden="true">{arrowFor(action)}</span>

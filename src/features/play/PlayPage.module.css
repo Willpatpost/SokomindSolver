@@ -371,6 +371,11 @@
   outline-offset: 2px;
 }
 
+.utilityButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .utilityButton[data-active] {
   border-color: var(--coral-400);
   color: var(--coral-500);
@@ -924,6 +929,11 @@
     display: inline-flex;
     align-items: center;
   }
+}
+
+:global(html[data-theme="dark"]) .loadFailure {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(30 32 28 / 0.82);
 }
 
 :global(html[data-theme="dark"]) .header {

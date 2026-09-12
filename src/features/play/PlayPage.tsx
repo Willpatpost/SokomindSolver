@@ -551,7 +551,7 @@ function ValidatedPlayPage({
           ) : (
             <>
               <MoveNotation actionLog={session.actionLog} moves={session.moves} />
-              <MoveTimeline actionLog={session.actionLog} moves={session.moves} pushes={session.pushes} />
+              <MoveTimeline moves={session.moves} pushes={session.pushes} />
             </>
           )}
 

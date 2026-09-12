@@ -65,6 +65,13 @@ export class ErrorBoundary extends Component<
         : "Sokomind hit an unexpected error. Try reloading first; your saved progress will stay intact.";
 
     return (
+      <>
+      <style>{`
+        .eb-btn:focus-visible {
+          outline: 3px solid var(--blue-500, #3b82f6);
+          outline-offset: 2px;
+        }
+      `}</style>
       <div
         role="alert"
         style={{
@@ -94,14 +101,15 @@ export class ErrorBoundary extends Component<
           }}
         >
           <button
+            className="eb-btn"
             onClick={this.#handleReload}
             type="button"
             style={{
               padding: "0.625rem 1.5rem",
               fontSize: "0.9375rem",
               fontWeight: 600,
-              color: "var(--paper-50)",
-              background: "var(--coral-500)",
+              color: "#fff",
+              background: "var(--coral-500, #c44)",
               border: "none",
               borderRadius: "10px",
               cursor: "pointer",
@@ -110,15 +118,16 @@ export class ErrorBoundary extends Component<
             Retry loading
           </button>
           <button
+            className="eb-btn"
             onClick={this.#handleReset}
             type="button"
             style={{
               padding: "0.625rem 1.5rem",
               fontSize: "0.9375rem",
               fontWeight: 600,
-              color: "var(--ink-950)",
+              color: "var(--ink-950, #222)",
               background: "transparent",
-              border: "1px solid var(--ink-muted)",
+              border: "1px solid var(--ink-muted, #888)",
               borderRadius: "10px",
               cursor: "pointer",
             }}
@@ -152,6 +161,7 @@ export class ErrorBoundary extends Component<
           </pre>
         </details>
       </div>
+      </>
     );
   }
 }
