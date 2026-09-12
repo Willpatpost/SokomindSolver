@@ -233,6 +233,12 @@
   }
 }
 
+@media (max-width: 640px) {
+  .actions button {
+    min-height: 38px;
+  }
+}
+
 @media (max-width: 560px) {
   .playtestHeading {
     display: grid;
