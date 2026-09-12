@@ -300,6 +300,7 @@ export async function runClassicSearch(
     reopens: 0,
     reachabilityFloods: 0,
     avoidedReachabilityFloods: 0,
+    incrementalCanonicalCells: 0,
     retainedBytes: 0,
     peakFrontier: 0,
     maxDepth: 0,
@@ -693,10 +694,22 @@ export async function runClassicSearch(
               const fpLC = heuristic.lastLinearConflict(fpBoxes);
               if (Number.isFinite(fpPushBound)) {
                 if (!exactCodec) {
-                  fillOccupancy(childOccupancyBuffer, fpBoxes);
-                  const fpChildReachable = childReachability.flood(fpBox.cell, childOccupancyBuffer);
-                  counters.reachabilityFloods += 1;
-                  const fpCanonical = fpChildReachable.canonicalCell;
+                  occupancyBuffer[fpBox.cell] = 0;
+                  occupancyBuffer[fpDest] = 1;
+                  const fpIncremental = reachability.incrementalCanonicalCell(
+                    fpBox.cell, fpDest, occupancyBuffer);
+                  occupancyBuffer[fpBox.cell] = 1;
+                  occupancyBuffer[fpDest] = 0;
+                  let fpCanonical: number;
+                  if (fpIncremental !== null) {
+                    fpCanonical = fpIncremental;
+                    counters.incrementalCanonicalCells += 1;
+                  } else {
+                    fillOccupancy(childOccupancyBuffer, fpBoxes);
+                    const fpChildReachable = childReachability.flood(fpBox.cell, childOccupancyBuffer);
+                    counters.reachabilityFloods += 1;
+                    fpCanonical = fpChildReachable.canonicalCell;
+                  }
                   fpChildKey = zobrist.stateKey(fpCanonical, fpBoxes);
                   if (discovered.has(fpChildKey)) {
                     counters.duplicates += 1;
@@ -855,13 +868,23 @@ export async function runClassicSearch(
             continue;
           }
 
-          // For DFS/Greedy, compute canonical-cell key via flood after
-          // pruning. A* key is already final (collision-free bigint).
           if (!exactCodec) {
-            fillOccupancy(childOccupancyBuffer, boxes);
-            const childReachable = childReachability.flood(box.cell, childOccupancyBuffer);
-            counters.reachabilityFloods += 1;
-            const canonicalRobot = childReachable.canonicalCell;
+            occupancyBuffer[box.cell] = 0;
+            occupancyBuffer[destination] = 1;
+            const incremental = reachability.incrementalCanonicalCell(
+              box.cell, destination, occupancyBuffer);
+            occupancyBuffer[box.cell] = 1;
+            occupancyBuffer[destination] = 0;
+            let canonicalRobot: number;
+            if (incremental !== null) {
+              canonicalRobot = incremental;
+              counters.incrementalCanonicalCells += 1;
+            } else {
+              fillOccupancy(childOccupancyBuffer, boxes);
+              const childReachable = childReachability.flood(box.cell, childOccupancyBuffer);
+              counters.reachabilityFloods += 1;
+              canonicalRobot = childReachable.canonicalCell;
+            }
             childKey = zobrist.stateKey(canonicalRobot, boxes);
             if (discovered.has(childKey)) {
               counters.duplicates += 1;
@@ -987,10 +1010,23 @@ export async function runClassicSearch(
               }
 
               if (!exactCodec) {
-                fillOccupancy(childOccupancyBuffer, tBoxes);
-                const tChildReachable = childReachability.flood(stop.robotCell, childOccupancyBuffer);
-                counters.reachabilityFloods += 1;
-                tChildKey = zobrist.stateKey(tChildReachable.canonicalCell, tBoxes);
+                occupancyBuffer[box.cell] = 0;
+                occupancyBuffer[stop.finalCell] = 1;
+                const tIncremental = reachability.incrementalCanonicalCell(
+                  box.cell, stop.finalCell, occupancyBuffer);
+                occupancyBuffer[box.cell] = 1;
+                occupancyBuffer[stop.finalCell] = 0;
+                let tCanonical: number;
+                if (tIncremental !== null) {
+                  tCanonical = tIncremental;
+                  counters.incrementalCanonicalCells += 1;
+                } else {
+                  fillOccupancy(childOccupancyBuffer, tBoxes);
+                  const tChildReachable = childReachability.flood(stop.robotCell, childOccupancyBuffer);
+                  counters.reachabilityFloods += 1;
+                  tCanonical = tChildReachable.canonicalCell;
+                }
+                tChildKey = zobrist.stateKey(tCanonical, tBoxes);
                 if (discovered.has(tChildKey)) {
                   counters.duplicates += 1;
                   continue;

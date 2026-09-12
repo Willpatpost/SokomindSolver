@@ -256,6 +256,7 @@ export async function runExactMoveAStar(
     reopens: 0,
     reachabilityFloods: 0,
     avoidedReachabilityFloods: 0,
+    incrementalCanonicalCells: 0,
     retainedBytes: 0,
     peakFrontier: 0,
     maxDepth: 0,

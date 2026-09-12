@@ -372,3 +372,247 @@ describe("KeeperReachability", () => {
     assert.equal(path.length, result.distanceTo(target));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Incremental canonical cell
+// ---------------------------------------------------------------------------
+
+describe("incrementalCanonicalCell", () => {
+  it("matches full flood for a push in an open room", () => {
+    const cols = 4;
+    const topology = gridTopology(4, cols);
+    const reachability = new KeeperReachability(topology);
+    const verify = new KeeperReachability(topology);
+
+    const boxCell = cell(1, 1, cols);
+    const destination = cell(1, 2, cols);
+    const robotCell = cell(1, 0, cols);
+
+    const parentOccupancy = new Uint8Array(topology.cellCount);
+    parentOccupancy[boxCell] = 1;
+    reachability.flood(robotCell, parentOccupancy);
+
+    parentOccupancy[boxCell] = 0;
+    parentOccupancy[destination] = 1;
+    const incremental = reachability.incrementalCanonicalCell(
+      boxCell, destination, parentOccupancy);
+    const fullResult = verify.flood(boxCell, parentOccupancy);
+    parentOccupancy[boxCell] = 1;
+    parentOccupancy[destination] = 0;
+
+    assert.notEqual(incremental, null, "should succeed without fallback");
+    assert.equal(incremental, fullResult.canonicalCell);
+  });
+
+  it("freed cell lowers canonical cell below parent canonical", () => {
+    // 4x3 grid, walls at (2,0) and (2,2) create a corridor at (2,1).
+    // Box at (2,1)=7, robot at (3,1)=10. Push up: box to (1,1)=4.
+    // Parent reachable: {10, 9, 11}. Canonical = 9.
+    // After push: freedCell=7 is newly reachable, canonical drops to 7.
+    const rows = 4;
+    const cols = 3;
+    const walls = new Set([cell(2, 0, cols), cell(2, 2, cols)]);
+    const topology = gridTopology(rows, cols, walls);
+    const reachability = new KeeperReachability(topology);
+    const verify = new KeeperReachability(topology);
+
+    const boxCell = cell(2, 1, cols);
+    const destination = cell(1, 1, cols);
+    const robotCell = cell(3, 1, cols);
+
+    const parentOccupancy = occupiedFromWalls(topology.cellCount, walls);
+    parentOccupancy[boxCell] = 1;
+    reachability.flood(robotCell, parentOccupancy);
+
+    parentOccupancy[boxCell] = 0;
+    parentOccupancy[destination] = 1;
+    const incremental = reachability.incrementalCanonicalCell(
+      boxCell, destination, parentOccupancy);
+    const fullResult = verify.flood(boxCell, parentOccupancy);
+    parentOccupancy[boxCell] = 1;
+    parentOccupancy[destination] = 0;
+
+    assert.notEqual(incremental, null);
+    assert.equal(incremental, fullResult.canonicalCell);
+    assert.equal(incremental, 7, "freed cell 7 < parent canonical 9");
+  });
+
+  it("returns null when blockedCell equals parentCanonical", () => {
+    const cols = 3;
+    const topology = gridTopology(3, cols);
+    const reachability = new KeeperReachability(topology);
+
+    const boxCell = cell(0, 1, cols);
+    const destination = cell(0, 0, cols);
+    const robotCell = cell(1, 1, cols);
+
+    const parentOccupancy = new Uint8Array(topology.cellCount);
+    parentOccupancy[boxCell] = 1;
+    reachability.flood(robotCell, parentOccupancy);
+
+    parentOccupancy[boxCell] = 0;
+    parentOccupancy[destination] = 1;
+    const result = reachability.incrementalCanonicalCell(
+      boxCell, destination, parentOccupancy);
+    parentOccupancy[boxCell] = 1;
+    parentOccupancy[destination] = 0;
+
+    assert.equal(result, null);
+  });
+
+  it("uses fast path when blockedCell is not parent-reachable", () => {
+    // 4x3 grid with walls at (1,0) and (1,2). Robot below, box pushed down.
+    const cols = 3;
+    const walls = new Set([cell(1, 0, cols), cell(1, 2, cols)]);
+    const topology = gridTopology(4, cols, walls);
+    const reachability = new KeeperReachability(topology);
+    const verify = new KeeperReachability(topology);
+
+    const boxCell = cell(2, 1, cols);
+    const destination = cell(3, 1, cols);
+    const actualRobot = cell(2, 0, cols);
+
+    const parentOccupancy = occupiedFromWalls(topology.cellCount, walls);
+    parentOccupancy[boxCell] = 1;
+    reachability.flood(actualRobot, parentOccupancy);
+
+    parentOccupancy[boxCell] = 0;
+    parentOccupancy[destination] = 1;
+    const incremental = reachability.incrementalCanonicalCell(
+      boxCell, destination, parentOccupancy);
+    const fullResult = verify.flood(boxCell, parentOccupancy);
+    parentOccupancy[boxCell] = 1;
+    parentOccupancy[destination] = 0;
+
+    assert.notEqual(incremental, null);
+    assert.equal(incremental, fullResult.canonicalCell);
+  });
+
+  it("returns null for potential articulation point", () => {
+    // 3x5 grid + dangling cell 15 connected only to cell 1.
+    // Robot at 10, box at 6. Push up: box to 1. Cell 15 has no
+    // alternative neighbor besides blockedCell 1 -> articulation.
+    const artGridCols = 5;
+    const artGridRows = 3;
+    const artGridCellCount = artGridRows * artGridCols + 1;
+    const artGridNeighborsList: number[][] = [];
+    for (let r = 0; r < artGridRows; r++) {
+      for (let c = 0; c < artGridCols; c++) {
+        const idx = r * artGridCols + c;
+        const up = r > 0 ? (r - 1) * artGridCols + c : (idx === 1 ? 15 : -1);
+        const down = r < artGridRows - 1 ? (r + 1) * artGridCols + c : -1;
+        const left = c > 0 ? r * artGridCols + (c - 1) : -1;
+        const right = c < artGridCols - 1 ? r * artGridCols + (c + 1) : -1;
+        artGridNeighborsList.push([up, down, left, right]);
+      }
+    }
+    artGridNeighborsList.push([-1, 1, -1, -1]);
+    artGridNeighborsList[1] = [15, 6, 0, 2];
+
+    const artGridTopo: ReachabilityTopology = {
+      cellCount: artGridCellCount,
+      neighbors: artGridNeighborsList,
+    };
+    const artGridReach = new KeeperReachability(artGridTopo);
+
+    const artOccupancy = new Uint8Array(artGridCellCount);
+    artOccupancy[6] = 1;
+    artGridReach.flood(10, artOccupancy);
+
+    artOccupancy[6] = 0;
+    artOccupancy[1] = 1;
+    const artResult = artGridReach.incrementalCanonicalCell(6, 1, artOccupancy);
+    artOccupancy[6] = 1;
+    artOccupancy[1] = 0;
+
+    assert.equal(artResult, null, "should detect potential articulation point");
+  });
+
+  it("succeeds for non-articulation point with multiple reachable neighbors", () => {
+    // 3x5 open grid (no dangling cell). Robot at 10, box at 6.
+    // Push up: box to 1. Cell 1 is not an articulation point.
+    const cols = 5;
+    const topology = gridTopology(3, cols);
+    const reachability = new KeeperReachability(topology);
+    const verify = new KeeperReachability(topology);
+
+    const occupancy = new Uint8Array(topology.cellCount);
+    occupancy[6] = 1;
+    reachability.flood(10, occupancy);
+
+    occupancy[6] = 0;
+    occupancy[1] = 1;
+    const incremental = reachability.incrementalCanonicalCell(6, 1, occupancy);
+    const fullResult = verify.flood(6, occupancy);
+    occupancy[6] = 1;
+    occupancy[1] = 0;
+
+    assert.notEqual(incremental, null, "should not fall back");
+    assert.equal(incremental, fullResult.canonicalCell);
+  });
+
+  it("matches full flood exhaustively on a small board", () => {
+    const cols = 4;
+    const topology = gridTopology(4, cols);
+    const n = topology.cellCount;
+    const dirs = [
+      [-1, 0], [1, 0], [0, -1], [0, 1],
+    ] as const;
+
+    let tested = 0;
+    let incremental_hits = 0;
+    let fallbacks = 0;
+    let mismatches = 0;
+
+    for (let robot = 0; robot < n; robot++) {
+      for (let boxCell = 0; boxCell < n; boxCell++) {
+        if (boxCell === robot) continue;
+        for (let d = 0; d < 4; d++) {
+          const br = Math.floor(boxCell / cols);
+          const bc = boxCell % cols;
+          const [dr, dc] = dirs[d];
+          const destR = br + dr;
+          const destC = bc + dc;
+          const suppR = br - dr;
+          const suppC = bc - dc;
+          if (destR < 0 || destR >= 4 || destC < 0 || destC >= cols) continue;
+          if (suppR < 0 || suppR >= 4 || suppC < 0 || suppC >= cols) continue;
+          const destination = destR * cols + destC;
+          const support = suppR * cols + suppC;
+          if (destination === robot) continue;
+
+          const reachability = new KeeperReachability(topology);
+          const verify = new KeeperReachability(topology);
+
+          const occupancy = new Uint8Array(n);
+          occupancy[boxCell] = 1;
+          const parentResult = reachability.flood(robot, occupancy);
+
+          if (!parentResult.isReachable(support)) continue;
+          if (occupancy[destination] !== 0) continue;
+
+          occupancy[boxCell] = 0;
+          occupancy[destination] = 1;
+          const inc = reachability.incrementalCanonicalCell(
+            boxCell, destination, occupancy);
+          const full = verify.flood(boxCell, occupancy);
+          occupancy[boxCell] = 1;
+          occupancy[destination] = 0;
+
+          tested++;
+          if (inc !== null) {
+            incremental_hits++;
+            if (inc !== full.canonicalCell) mismatches++;
+          } else {
+            fallbacks++;
+          }
+        }
+      }
+    }
+
+    assert.equal(mismatches, 0,
+      `incremental must match full flood (${tested} tested, ${incremental_hits} hits, ${fallbacks} fallbacks)`);
+    assert.ok(tested > 100, `should test a meaningful number of cases (got ${tested})`);
+    assert.ok(incremental_hits > 0, "should have at least some incremental hits");
+  });
+});

@@ -37,12 +37,15 @@ export interface ReachabilitySnapshot {
  */
 export class KeeperReachability {
   readonly #topology: ReachabilityTopology;
+  readonly #flatNeighbors: Int32Array;
   readonly #seenEpoch: Uint32Array;
   readonly #distance: Int32Array;
   readonly #predecessor: Int32Array;
   readonly #predecessorDirection: Int8Array;
   readonly #queue: Int32Array;
+  readonly #scratchVisited: Uint8Array;
   #epoch = 0;
+  #lastCanonicalCell = -1;
 
   constructor(topology: ReachabilityTopology) {
     if (
@@ -53,11 +56,21 @@ export class KeeperReachability {
       throw new RangeError("Reachability topology dimensions are inconsistent.");
     }
     this.#topology = topology;
-    this.#seenEpoch = new Uint32Array(topology.cellCount);
-    this.#distance = new Int32Array(topology.cellCount);
-    this.#predecessor = new Int32Array(topology.cellCount);
-    this.#predecessorDirection = new Int8Array(topology.cellCount);
-    this.#queue = new Int32Array(topology.cellCount);
+    const n = topology.cellCount;
+    this.#flatNeighbors = new Int32Array(n * 4);
+    for (let cell = 0; cell < n; cell++) {
+      const row = topology.neighbors[cell];
+      const base = cell << 2;
+      for (let d = 0; d < 4; d++) {
+        this.#flatNeighbors[base + d] = row?.[d] ?? -1;
+      }
+    }
+    this.#seenEpoch = new Uint32Array(n);
+    this.#distance = new Int32Array(n);
+    this.#predecessor = new Int32Array(n);
+    this.#predecessorDirection = new Int8Array(n);
+    this.#queue = new Int32Array(n);
+    this.#scratchVisited = new Uint8Array(n);
   }
 
   flood(
@@ -88,20 +101,15 @@ export class KeeperReachability {
     this.#predecessor[start] = -1;
     this.#predecessorDirection[start] = -1;
 
+    const flatNeighbors = this.#flatNeighbors;
     while (head < tail) {
       const cell = this.#queue[head];
       head += 1;
-      if (cell === undefined) break;
       if (cell < canonicalCell) canonicalCell = cell;
 
-      const neighbors = this.#topology.neighbors[cell];
-      if (!neighbors) continue;
-      for (
-        let directionIndex = 0;
-        directionIndex < DIRECTIONS.length;
-        directionIndex += 1
-      ) {
-        const next = neighbors[directionIndex] ?? -1;
+      const base = cell << 2;
+      for (let d = 0; d < 4; d++) {
+        const next = flatNeighbors[base + d];
         if (
           next < 0 ||
           occupied[next] !== 0 ||
@@ -112,12 +120,13 @@ export class KeeperReachability {
         this.#seenEpoch[next] = epoch;
         this.#distance[next] = this.#distance[cell] + 1;
         this.#predecessor[next] = cell;
-        this.#predecessorDirection[next] = directionIndex;
+        this.#predecessorDirection[next] = d;
         this.#queue[tail] = next;
         tail += 1;
       }
     }
 
+    this.#lastCanonicalCell = canonicalCell;
     const isReachable = (cell: number) =>
       cell >= 0 &&
       cell < this.#topology.cellCount &&
@@ -146,6 +155,95 @@ export class KeeperReachability {
         return reversed;
       },
     };
+  }
+
+  /**
+   * Compute the canonical cell for a child state without a full BFS.
+   * Precondition: the most recent `flood()` on this instance is the parent.
+   * Returns the canonical cell, or `null` when a full flood is needed.
+   */
+  incrementalCanonicalCell(
+    freedCell: number,
+    blockedCell: number,
+    occupancy: ArrayLike<number>,
+  ): number | null {
+    const epoch = this.#epoch;
+    const seenEpoch = this.#seenEpoch;
+    const flatNeighbors = this.#flatNeighbors;
+    const scratch = this.#scratchVisited;
+    const queue = this.#queue;
+    const parentCanonical = this.#lastCanonicalCell;
+
+    if (parentCanonical === blockedCell) return null;
+
+    let candidate = freedCell;
+
+    // Mini-BFS from freedCell through cells not reachable in parent.
+    let head = 0;
+    let tail = 0;
+    const fBase = freedCell << 2;
+    for (let d = 0; d < 4; d++) {
+      const next = flatNeighbors[fBase + d];
+      if (
+        next >= 0 &&
+        occupancy[next] === 0 &&
+        seenEpoch[next] !== epoch &&
+        scratch[next] === 0
+      ) {
+        scratch[next] = 1;
+        queue[tail++] = next;
+        if (next < candidate) candidate = next;
+      }
+    }
+    while (head < tail) {
+      const cell = queue[head++];
+      const base = cell << 2;
+      for (let d = 0; d < 4; d++) {
+        const next = flatNeighbors[base + d];
+        if (
+          next >= 0 &&
+          occupancy[next] === 0 &&
+          seenEpoch[next] !== epoch &&
+          scratch[next] === 0
+        ) {
+          scratch[next] = 1;
+          queue[tail++] = next;
+          if (next < candidate) candidate = next;
+        }
+      }
+    }
+
+    // Clean up scratch marks.
+    for (let i = 0; i < tail; i++) scratch[queue[i]] = 0;
+
+    // If blockedCell was not reachable in parent, blocking it changes nothing.
+    if (seenEpoch[blockedCell] !== epoch) {
+      return Math.min(parentCanonical, candidate);
+    }
+
+    // blockedCell was reachable. Check if it might be an articulation point:
+    // any reachable neighbor (other than freedCell) that has NO alternative
+    // free+reachable neighbor would be stranded.
+    const bBase = blockedCell << 2;
+    for (let d = 0; d < 4; d++) {
+      const neighbor = flatNeighbors[bBase + d];
+      if (neighbor < 0 || neighbor === freedCell) continue;
+      if (seenEpoch[neighbor] !== epoch) continue;
+      // This neighbor was reachable via parent — does it have an alternative?
+      let hasAlternative = false;
+      const nBase = neighbor << 2;
+      for (let d2 = 0; d2 < 4; d2++) {
+        const nn = flatNeighbors[nBase + d2];
+        if (nn >= 0 && nn !== blockedCell && occupancy[nn] === 0 &&
+            (seenEpoch[nn] === epoch || nn === freedCell)) {
+          hasAlternative = true;
+          break;
+        }
+      }
+      if (!hasAlternative) return null;
+    }
+
+    return Math.min(parentCanonical, candidate);
   }
 
   saveState(): ReachabilitySnapshot {
