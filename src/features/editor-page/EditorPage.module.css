@@ -624,6 +624,19 @@
   .playtestContent {
     grid-template-rows: 1fr;
   }
+
+  .sidebar:first-child .fields input,
+  .sidebar:first-child .fields select {
+    min-height: 38px;
+  }
+
+  .sizeControls input {
+    min-height: 36px;
+  }
+
+  .sidebar:first-child .actions button {
+    min-height: 36px;
+  }
 }
 
 :global(html[data-theme="dark"]) .backButton {
