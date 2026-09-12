@@ -109,7 +109,7 @@
 }
 
 .recoveryNotice button {
-  min-height: 32px;
+  min-height: 44px;
 }
 
 .starterGuide {
@@ -152,7 +152,7 @@
 }
 
 .starterActions button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--sage-700);
   border-radius: 9px;
@@ -199,7 +199,7 @@
 
 .sizeControls input {
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 9px;
@@ -251,7 +251,7 @@
 .fields select,
 .fields textarea {
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 10px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 9px;
@@ -296,7 +296,7 @@
 }
 
 .undoRedo button {
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 9px;
@@ -326,7 +326,7 @@
 
 .fillToggle {
   width: 100%;
-  min-height: 34px;
+  min-height: 44px;
   margin-bottom: 8px;
   padding: 0 10px;
   border: 1px solid rgb(23 25 22 / 0.1);
@@ -361,7 +361,7 @@
 }
 
 .actions button {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid rgb(23 25 22 / 0.12);
   border-radius: 11px;
@@ -445,7 +445,7 @@
 
 .shareResult input {
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 9px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 9px;
@@ -512,7 +512,7 @@
 }
 
 .importActions button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   border: 1px solid rgb(23 25 22 / 0.12);
   border-radius: 11px;
@@ -739,6 +739,11 @@
 
 :global(html[data-theme="dark"]) .fillToggle:hover {
   border-color: var(--sage-500);
+}
+
+:global(html[data-theme="dark"]) .recoveryNotice {
+  border-color: rgb(180 130 45 / 0.25);
+  background: rgb(50 42 25 / 0.8);
 }
 
 @media (prefers-contrast: more) {

@@ -60,7 +60,7 @@
 }
 
 .exportButton {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid rgb(23 25 22 / 0.12);
   border-radius: 9px;
@@ -329,7 +329,7 @@
 }
 
 .resetButton {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--coral-500);
   border-radius: 9px;
@@ -359,7 +359,7 @@
 }
 
 .resetCancel {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid rgb(23 25 22 / 0.12);
   border-radius: 9px;
@@ -398,7 +398,7 @@
 .resetInput {
   width: 100%;
   max-width: 200px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--coral-500);
   border-radius: 9px;

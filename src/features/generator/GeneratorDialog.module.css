@@ -155,7 +155,7 @@
 .fields select,
 .fields input[type="number"] {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid rgb(23 25 22 / 0.16);
   border-radius: var(--radius-sm);
@@ -201,7 +201,7 @@
 }
 
 .primaryActions button {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: var(--radius-sm);
   font-size: 0.76rem;
@@ -324,7 +324,7 @@
 
 .accept {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   margin-top: 13px;
   padding: 0 16px;
   border: 1px solid var(--sage-700);

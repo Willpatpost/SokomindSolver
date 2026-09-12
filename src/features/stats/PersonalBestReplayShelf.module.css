@@ -91,7 +91,7 @@
 
 .list button {
   flex: 0 0 auto;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 11px;
   border: 1px solid var(--sage-500);
   border-radius: 9px;

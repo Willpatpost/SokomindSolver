@@ -7,8 +7,8 @@
 
 .iconButton {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   place-items: center;
   border: 1px solid var(--border-medium);
@@ -117,6 +117,7 @@
 }
 
 .closeButton {
+  min-height: 44px;
   padding: 6px 0;
   border: 0;
   color: var(--ink-700);
@@ -389,7 +390,7 @@
 }
 
 .previewButton {
-  min-height: 30px;
+  min-height: 44px;
   padding: 0 9px;
   border: 1px solid var(--paper-300);
   border-radius: 8px;
@@ -446,7 +447,7 @@
 
 .motionSetting select {
   max-width: 148px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 28px 0 9px;
   border: 1px solid var(--paper-300);
   border-radius: 9px;

@@ -113,7 +113,7 @@
 }
 
 .puzzleControls > a {
-  min-height: 39px;
+  min-height: 44px;
   padding: 10px 13px;
   border: 1px solid var(--sage-600);
   border-radius: var(--radius-sm);
@@ -207,7 +207,7 @@
 .compareSelectors select,
 .playbackControls select {
   width: 100%;
-  min-height: 39px;
+  min-height: 44px;
   padding: 7px 30px 7px 9px;
   border: 1px solid var(--border-medium);
   border-radius: 8px;
@@ -279,7 +279,7 @@
 .playbackControls button,
 .routeError button,
 .routeError a {
-  min-height: 38px;
+  min-height: 44px;
   padding: 8px 12px;
   border: 1px solid var(--border-medium);
   border-radius: 8px;

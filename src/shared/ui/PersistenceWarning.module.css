@@ -20,7 +20,7 @@
 .warning button {
   width: 100%;
   margin-top: 9px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid rgb(168 94 42 / 0.35);
   border-radius: var(--radius-sm);

@@ -33,8 +33,8 @@
   --tool-active-bg: var(--sage-700);
 
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   padding: 0;
   border: 1px solid var(--tool-border-color);
@@ -96,7 +96,7 @@
   --select-bg: var(--paper-50);
 
   min-width: 72px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 26px 0 10px;
   border: 1px solid var(--select-border-color);
   border-radius: 8px;

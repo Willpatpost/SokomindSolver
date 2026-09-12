@@ -91,7 +91,7 @@
 
 .routeSelectors select,
 .speed select {
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--paper-300);
   border-radius: 10px;
   color: var(--ink-900);
@@ -181,8 +181,8 @@
 }
 
 .controls > button {
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--paper-300);
   border-radius: 10px;
   color: var(--ink-800);
@@ -205,7 +205,7 @@
 }
 
 .speed select {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 8px;
 }
 

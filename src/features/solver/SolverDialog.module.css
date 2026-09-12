@@ -224,7 +224,7 @@
 
 .fields select {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 30px 0 10px;
   border: 1px solid rgb(23 25 22 / 0.16);
   border-radius: var(--radius-sm);
@@ -272,7 +272,7 @@
 .labLink,
 .retry,
 .play {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: var(--radius-sm);
   font-size: 0.76rem;

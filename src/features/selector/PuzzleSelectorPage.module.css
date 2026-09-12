@@ -89,7 +89,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 44px;
   margin-bottom: 24px;
   padding: 0 18px;
   border: none;
@@ -144,7 +144,7 @@
 }
 
 .recentPuzzle a {
-  min-height: 36px;
+  min-height: 44px;
   padding: 9px 12px;
   border-radius: 9px;
   color: var(--paper-50);
@@ -336,7 +336,7 @@
 }
 
 .filterChip {
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 8px;
@@ -388,7 +388,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 9px;
@@ -446,8 +446,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  min-height: 34px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0 9px;
   border: 1px solid rgb(23 25 22 / 0.1);
   border-radius: 8px;
