@@ -171,8 +171,10 @@ function pdbSplitByProximity(dense, goalCellIds, maxSize) {
   return result;
 }
 
-function buildPdbPartitions(board) {
+function buildPdbPartitions(board, options) {
   const started = now();
+  const maxMs = Number.isFinite(options?.maxMs) && options.maxMs >= 0
+    ? options.maxMs : 500;
   const goalPartitions = pdbPartitionGoals(board);
   const partitions = [];
   for (const {label, goalCellIds} of goalPartitions) {
@@ -180,7 +182,7 @@ function buildPdbPartitions(board) {
     const pdb = pdbBuildTable(board.dense, goalCellIds, regionCellIds);
     if (!pdb) continue;
     partitions.push({...pdb, label});
-    if (now() - started > 500) break;
+    if (now() - started > maxMs) break;
   }
   board.metrics.pdbBuildMs = now() - started;
   board.metrics.pdbPartitionCount = partitions.length;

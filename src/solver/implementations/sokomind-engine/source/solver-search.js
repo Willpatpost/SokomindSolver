@@ -1,3 +1,19 @@
+function validPrecomputedDoorwayTasks(payload, board) {
+  const tasks = payload.precomputedDoorwayTasks;
+  if (!Array.isArray(tasks) || !tasks.length) return null;
+  const roomCount = board.topology.rooms.length;
+  for (const task of tasks) {
+    if (typeof task.boxIndex !== "number" || task.boxIndex < 0) return null;
+    if (typeof task.label !== "string") return null;
+    if (typeof task.target !== "string") return null;
+    if (task.direction !== "export" && task.direction !== "import") return null;
+    if (typeof task.roomIndex !== "number" || task.roomIndex < 0 ||
+        task.roomIndex >= roomCount) return null;
+    if (typeof task.gate !== "string") return null;
+  }
+  return tasks;
+}
+
 function flushRecords(records, telemetry = {}) {
   if (records.length) {
     postMessage({
@@ -1135,7 +1151,8 @@ function fessSearch(payload) {
   };
   const context = {
     packingOrder: fessPackingOrder(board),
-    doorwayTasks: assignmentDoorwayPlan(initial.boxes, board, true).tasks,
+    doorwayTasks: validPrecomputedDoorwayTasks(payload, board)
+      || assignmentDoorwayPlan(initial.boxes, board, true).tasks,
     accessMemo: new Map(),
   };
   const cells = new Map(), cellOrder = [];
@@ -1520,7 +1537,8 @@ function planMacroBeamSearch(payload, observe = null) {
   const progressIntervalMs = payload.progressIntervalMs || 5000;
   let trackedThrough = payload.trackedSignatures ? 0 : undefined;
   const rootDoorwayTasks = payload.planDoorwaySchedule === false
-    ? [] : assignmentDoorwayPlan(initial.boxes, board, true).tasks;
+    ? [] : (validPrecomputedDoorwayTasks(payload, board)
+        || assignmentDoorwayPlan(initial.boxes, board, true).tasks);
   const rootDoorwayTaskByBoxIndex = new Map(
     rootDoorwayTasks.map(task => [task.boxIndex, task]),
   );

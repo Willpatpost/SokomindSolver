@@ -147,6 +147,33 @@ export function sokomindDiscoveryBeamWidth(
   return boxCount >= 8 ? 256 : 700;
 }
 
+function effectiveMoveAwareDiscovery(
+  tuning: Readonly<Record<string, number>>,
+  analysisPlan?: SokomindAnalysisPlan,
+): number {
+  if ((tuning.moveAwareDiscovery ?? 0) > 0) return tuning.moveAwareDiscovery;
+  return analysisPlan?.recommendations.moveAwareDiscovery ?? 0;
+}
+
+function analyzerRecommendedTuningDefaults(
+  tuning: Readonly<Record<string, number>>,
+  analysisPlan?: SokomindAnalysisPlan,
+): Readonly<Record<string, number>> {
+  const rec = analysisPlan?.recommendations;
+  if (!rec) return {};
+  const overrides: Record<string, number> = {};
+  if ((tuning.firstPushWalkWeight ?? 0) === 0 && rec.firstPushWalkWeight !== undefined && rec.firstPushWalkWeight > 0) {
+    overrides.firstPushWalkWeight = rec.firstPushWalkWeight;
+  }
+  if ((tuning.moveAwareDiscovery ?? 0) === 0 && rec.moveAwareDiscovery !== undefined && rec.moveAwareDiscovery > 0) {
+    overrides.moveAwareDiscovery = rec.moveAwareDiscovery;
+  }
+  if ((tuning.macroIntermediateQuota ?? 0) === 0 && rec.macroIntermediateQuota !== undefined && rec.macroIntermediateQuota > 0) {
+    overrides.macroIntermediateQuota = rec.macroIntermediateQuota;
+  }
+  return overrides;
+}
+
 export function discoveryPlans(
   state: LegacyState,
   request: SolverRequest,
@@ -239,8 +266,12 @@ export function discoveryPlans(
       progressInterval: 1_000,
       progressIntervalMs: 1_000,
       ...tuning,
+      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan),
+      ...(analysisPlan?.structuralConclusions
+        ? { precomputedDoorwayTasks: analysisPlan.structuralConclusions.doorwayTasks }
+        : {}),
       ...(firstSolutionOnly ? { beamSolutionComparisonBudget: 0 } : {}),
-      ...((tuning.moveAwareDiscovery ?? 0) >= 0.5
+      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan) >= 0.5
         ? { planMoveAwareTranspositions: true } : {}),
     }),
   });

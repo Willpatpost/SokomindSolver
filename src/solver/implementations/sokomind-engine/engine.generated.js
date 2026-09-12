@@ -2402,8 +2402,10 @@ function pdbSplitByProximity(dense, goalCellIds, maxSize) {
   return result;
 }
 
-function buildPdbPartitions(board) {
+function buildPdbPartitions(board, options) {
   const started = now();
+  const maxMs = Number.isFinite(options?.maxMs) && options.maxMs >= 0
+    ? options.maxMs : 500;
   const goalPartitions = pdbPartitionGoals(board);
   const partitions = [];
   for (const {label, goalCellIds} of goalPartitions) {
@@ -2411,7 +2413,7 @@ function buildPdbPartitions(board) {
     const pdb = pdbBuildTable(board.dense, goalCellIds, regionCellIds);
     if (!pdb) continue;
     partitions.push({...pdb, label});
-    if (now() - started > 500) break;
+    if (now() - started > maxMs) break;
   }
   board.metrics.pdbBuildMs = now() - started;
   board.metrics.pdbPartitionCount = partitions.length;
@@ -4514,15 +4516,33 @@ function analyzePuzzleForSearch(data, options = {}) {
     useFess: boxes.length >= 4 && difficulty !== "extreme",
     useMilestoneReverse: difficulty === "complex" || difficulty === "extreme",
     checkpointLimit: difficulty === "extreme" ? 12 : 8,
+    firstPushWalkWeight: mandatoryDoorwayExports > 0 && board.topology.rooms.length > 2 ? 0.05 : 0,
+    moveAwareDiscovery: (difficulty === "complex" || difficulty === "extreme") && board.topology.rooms.length > 1 ? 1 : 0,
+    macroIntermediateQuota: board.topology.tunnels.size > 4 ? 2 : 0,
   };
-  board.pdbPartitions = buildPdbPartitions(board);
+  const totalAnalysisBudgetMs = options.strategicAnalysis
+    ? strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) : 0;
+  const pdbBudgetMs = options.strategicAnalysis
+    ? strategicLimit(options.strategicAnalysis.pdbBudgetMs,
+        Math.min(Math.floor(totalAnalysisBudgetMs * 0.15), 200), 500)
+    : 500;
+  board.pdbPartitions = buildPdbPartitions(board, {maxMs: pdbBudgetMs});
   const preparedBoard = createPreparedBoardSeed(board);
   board.pdbPartitions = [];
-  const strategicPlan = options.strategicAnalysis ? buildStrategicPlan(data, {
-    ...options.strategicAnalysis,
-    maxMs: Math.max(0, strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) -
-      (now() - analysisStarted)),
-  }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit}) : undefined;
+  const ambiguousBoxCount = doorwayPlan.proof.boxDomains.filter(
+    domain => domain.allowedTargets.length > 1).length;
+  const adaptiveScheduleChoices = ambiguousBoxCount === 0 ? 0
+    : ambiguousBoxCount <= 8 ? Math.min(3, ambiguousBoxCount) : 1;
+  const strategicPlan = options.strategicAnalysis
+    ? buildStrategicPlan(data, {
+        ...options.strategicAnalysis,
+        maxMs: Math.max(0, totalAnalysisBudgetMs - (now() - analysisStarted)),
+        ...(options.strategicAnalysis.scheduleChoices === undefined
+          ? {scheduleChoices: adaptiveScheduleChoices} : {}),
+      }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit})
+    : buildStrategicPlan(data, {
+        maxMs: 0, inferenceWork: 512, skipSimulation: true,
+      }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit});
   return {
     dimensions: {rows: data.rows.length, columns: Math.max(...data.rows.map(row => row.length))},
     floorCells: board.floor.size,
@@ -4542,6 +4562,7 @@ function analyzePuzzleForSearch(data, options = {}) {
       ...doorwayPlan.proof,
       tasks: doorwayPlan.tasks.map(task => ({
         box: task.box,
+        boxIndex: task.boxIndex,
         label: task.label,
         target: task.target,
         allowedTargets: [...(task.allowedTargets || [task.target].filter(Boolean))],
@@ -7927,7 +7948,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     status: "partial"};
   const budget = {expanded: 0, generated: 0, groupWidenings: 0, deadline: started + options.maxMs,
     distanceTables: new Map(), distanceEntries: 0, distanceCacheHits: 0, taskObstructions: new Map()};
-  if (!options.maxMs || !options.maxExpanded || !options.maxGenerated || !options.width || !options.layers) {
+  if (!config.skipSimulation && (!options.maxMs || !options.maxExpanded || !options.maxGenerated || !options.width || !options.layers)) {
     plan.statistics.elapsedMs = now() - started;
     return plan;
   }
@@ -7970,6 +7991,11 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     }
   }
   if (options.inferenceWork) inferStrategicDependencies(plan, initial, board, options.inferenceWork);
+  if (config.skipSimulation) {
+    plan.statistics.elapsedMs = now() - started;
+    plan.statistics.skippedSimulation = true;
+    return plan;
+  }
   let beam = [{...initial, path: [], pushes: 0, tasks: [], staging: []}];
   const retained = new Map();
   // Repeated parking/clearing cycles are the same physical plan state, not new
@@ -8054,29 +8080,46 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     beam = [];
     const represented = new Set();
     const taskKinds = new Set();
+    const bestScoreByFirstTask = new Map();
     for (const child of candidates) {
       const kind = child.tasks[0].split(":")[0];
       if (taskKinds.has(kind)) continue;
       taskKinds.add(kind);
       represented.add(child.tasks[0]);
+      bestScoreByFirstTask.set(child.tasks[0], child.score);
       beam.push(child);
       if (beam.length >= options.width) break;
     }
-    // Once first-task diversity is represented, retain distinct physical
-    // continuations. Previously a shared first task discarded every later
-    // approach/owner alternative even when beam slots remained unused.
+    // Tier 2: per represented first-task, retain a secondary candidate if
+    // its physical state differs and its score is within 1.5x of the best.
+    const beamStates = new Set(beam.map(child => JSON.stringify([child.robot, child.boxes])));
+    let retainedPerFirstTask = 0;
+    for (const child of candidates) {
+      if (beam.length >= options.width) break;
+      if (!represented.has(child.tasks[0])) continue;
+      const key = JSON.stringify([child.robot, child.boxes]);
+      if (beamStates.has(key)) continue;
+      const bestScore = bestScoreByFirstTask.get(child.tasks[0]) ?? child.score;
+      if (bestScore > 0 && child.score > bestScore * 1.5) continue;
+      beamStates.add(key);
+      beam.push(child);
+      retainedPerFirstTask++;
+    }
+    if (retainedPerFirstTask) {
+      plan.statistics.retainedPerFirstTask =
+        (plan.statistics.retainedPerFirstTask || 0) + retainedPerFirstTask;
+    }
+    // Tier 3: schedule-choices physical states and unreserved first-tasks.
     if (options.scheduleChoices) {
-      const states = new Set(beam.map(child => JSON.stringify([child.robot, child.boxes])));
       for (const child of candidates) {
         if (beam.length >= options.width) break;
         const key = JSON.stringify([child.robot, child.boxes]);
-        if (states.has(key)) continue;
-        states.add(key); beam.push(child);
+        if (beamStates.has(key)) continue;
+        beamStates.add(key); beam.push(child);
       }
     }
     for (const child of candidates) {
       if (beam.length >= options.width) break;
-      // Keep distinct first tasks before spending slots on similar schedules.
       if (represented.has(child.tasks[0])) continue;
       represented.add(child.tasks[0]);
       beam.push(child);
@@ -8460,6 +8503,22 @@ function buildScheduleTraceDiff(originalEntries, repairedEntries) {
 }
 
 /* ===== solver-search.js ===== */
+function validPrecomputedDoorwayTasks(payload, board) {
+  const tasks = payload.precomputedDoorwayTasks;
+  if (!Array.isArray(tasks) || !tasks.length) return null;
+  const roomCount = board.topology.rooms.length;
+  for (const task of tasks) {
+    if (typeof task.boxIndex !== "number" || task.boxIndex < 0) return null;
+    if (typeof task.label !== "string") return null;
+    if (typeof task.target !== "string") return null;
+    if (task.direction !== "export" && task.direction !== "import") return null;
+    if (typeof task.roomIndex !== "number" || task.roomIndex < 0 ||
+        task.roomIndex >= roomCount) return null;
+    if (typeof task.gate !== "string") return null;
+  }
+  return tasks;
+}
+
 function flushRecords(records, telemetry = {}) {
   if (records.length) {
     postMessage({
@@ -9597,7 +9656,8 @@ function fessSearch(payload) {
   };
   const context = {
     packingOrder: fessPackingOrder(board),
-    doorwayTasks: assignmentDoorwayPlan(initial.boxes, board, true).tasks,
+    doorwayTasks: validPrecomputedDoorwayTasks(payload, board)
+      || assignmentDoorwayPlan(initial.boxes, board, true).tasks,
     accessMemo: new Map(),
   };
   const cells = new Map(), cellOrder = [];
@@ -9982,7 +10042,8 @@ function planMacroBeamSearch(payload, observe = null) {
   const progressIntervalMs = payload.progressIntervalMs || 5000;
   let trackedThrough = payload.trackedSignatures ? 0 : undefined;
   const rootDoorwayTasks = payload.planDoorwaySchedule === false
-    ? [] : assignmentDoorwayPlan(initial.boxes, board, true).tasks;
+    ? [] : (validPrecomputedDoorwayTasks(payload, board)
+        || assignmentDoorwayPlan(initial.boxes, board, true).tasks);
   const rootDoorwayTaskByBoxIndex = new Map(
     rootDoorwayTasks.map(task => [task.boxIndex, task]),
   );

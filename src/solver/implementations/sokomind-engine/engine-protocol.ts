@@ -21,6 +21,7 @@ export interface AnalyzePuzzlePayload extends EnginePayloadBase {
     inferenceWork?: number;
     maxExpanded?: number;
     maxGenerated?: number;
+    pdbBudgetMs?: number;
   }>;
 }
 

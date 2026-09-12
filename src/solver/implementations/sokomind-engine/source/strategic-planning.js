@@ -182,7 +182,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     status: "partial"};
   const budget = {expanded: 0, generated: 0, groupWidenings: 0, deadline: started + options.maxMs,
     distanceTables: new Map(), distanceEntries: 0, distanceCacheHits: 0, taskObstructions: new Map()};
-  if (!options.maxMs || !options.maxExpanded || !options.maxGenerated || !options.width || !options.layers) {
+  if (!config.skipSimulation && (!options.maxMs || !options.maxExpanded || !options.maxGenerated || !options.width || !options.layers)) {
     plan.statistics.elapsedMs = now() - started;
     return plan;
   }
@@ -225,6 +225,11 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     }
   }
   if (options.inferenceWork) inferStrategicDependencies(plan, initial, board, options.inferenceWork);
+  if (config.skipSimulation) {
+    plan.statistics.elapsedMs = now() - started;
+    plan.statistics.skippedSimulation = true;
+    return plan;
+  }
   let beam = [{...initial, path: [], pushes: 0, tasks: [], staging: []}];
   const retained = new Map();
   // Repeated parking/clearing cycles are the same physical plan state, not new
@@ -309,29 +314,46 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     beam = [];
     const represented = new Set();
     const taskKinds = new Set();
+    const bestScoreByFirstTask = new Map();
     for (const child of candidates) {
       const kind = child.tasks[0].split(":")[0];
       if (taskKinds.has(kind)) continue;
       taskKinds.add(kind);
       represented.add(child.tasks[0]);
+      bestScoreByFirstTask.set(child.tasks[0], child.score);
       beam.push(child);
       if (beam.length >= options.width) break;
     }
-    // Once first-task diversity is represented, retain distinct physical
-    // continuations. Previously a shared first task discarded every later
-    // approach/owner alternative even when beam slots remained unused.
+    // Tier 2: per represented first-task, retain a secondary candidate if
+    // its physical state differs and its score is within 1.5x of the best.
+    const beamStates = new Set(beam.map(child => JSON.stringify([child.robot, child.boxes])));
+    let retainedPerFirstTask = 0;
+    for (const child of candidates) {
+      if (beam.length >= options.width) break;
+      if (!represented.has(child.tasks[0])) continue;
+      const key = JSON.stringify([child.robot, child.boxes]);
+      if (beamStates.has(key)) continue;
+      const bestScore = bestScoreByFirstTask.get(child.tasks[0]) ?? child.score;
+      if (bestScore > 0 && child.score > bestScore * 1.5) continue;
+      beamStates.add(key);
+      beam.push(child);
+      retainedPerFirstTask++;
+    }
+    if (retainedPerFirstTask) {
+      plan.statistics.retainedPerFirstTask =
+        (plan.statistics.retainedPerFirstTask || 0) + retainedPerFirstTask;
+    }
+    // Tier 3: schedule-choices physical states and unreserved first-tasks.
     if (options.scheduleChoices) {
-      const states = new Set(beam.map(child => JSON.stringify([child.robot, child.boxes])));
       for (const child of candidates) {
         if (beam.length >= options.width) break;
         const key = JSON.stringify([child.robot, child.boxes]);
-        if (states.has(key)) continue;
-        states.add(key); beam.push(child);
+        if (beamStates.has(key)) continue;
+        beamStates.add(key); beam.push(child);
       }
     }
     for (const child of candidates) {
       if (beam.length >= options.width) break;
-      // Keep distinct first tasks before spending slots on similar schedules.
       if (represented.has(child.tasks[0])) continue;
       represented.add(child.tasks[0]);
       beam.push(child);

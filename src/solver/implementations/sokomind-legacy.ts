@@ -68,10 +68,80 @@ export interface LegacySearchCheckpoint {
   readonly estimate?: number;
 }
 
+export interface AnalyzerDoorwayTask {
+  readonly boxIndex: number;
+  readonly label: string;
+  readonly target: string;
+  readonly allowedTargets: readonly string[];
+  readonly direction: "export" | "import";
+  readonly roomIndex: number;
+  readonly gate: string;
+}
+
+export interface AnalyzerTransitPrerequisite {
+  readonly boxIndex: number;
+  readonly target: string;
+  readonly blockerBoxIndex: number;
+  readonly blockerLabel: string;
+  readonly releaseCells: readonly string[];
+}
+
+export interface AnalyzerRoomGuidance {
+  readonly roomIndex: number;
+  readonly cells: number;
+  readonly goals: number;
+  readonly boxes: number;
+  readonly surplus: number;
+  readonly forcedExports: number;
+  readonly forcedImports: number;
+  readonly interfacePhase: string;
+  readonly interfaceMinimumCrossings: number;
+  readonly interfaceMinimumExportsBeforeImport: number;
+  readonly interfaceClearanceMethod: string;
+}
+
+export interface AnalyzerMatchingDomainSummary {
+  readonly complete: boolean;
+  readonly ambiguousBoxCount: number;
+  readonly multiDomainTaskCount: number;
+  readonly eliminatedEdges: number;
+}
+
+export interface AnalyzerGoalAccessSummary {
+  readonly blockedGoalCount: number;
+  readonly accessPenalty: number;
+  readonly accessClauseCount: number;
+}
+
+export interface AnalyzerStructuralMetrics {
+  readonly legalPushes: number;
+  readonly surplusBoxes: number;
+  readonly mandatoryDoorwayExports: number;
+  readonly mandatoryDoorwayImports: number;
+  readonly dependencyCount: number;
+  readonly tunnelCells: number;
+  readonly articulationCount: number;
+  readonly searchScale: number;
+  readonly pressure: number;
+}
+
+export interface StructuralConclusions {
+  readonly doorwayTasks: readonly AnalyzerDoorwayTask[];
+  readonly transitPrerequisites: readonly AnalyzerTransitPrerequisite[];
+  readonly matchingDomainComplete: boolean;
+}
+
 export interface SokomindAnalysisPlan {
   readonly strategicPlan?: StrategicPlanV2;
   readonly difficulty?: string;
   readonly phases: readonly string[];
+  readonly doorwayTasks?: readonly AnalyzerDoorwayTask[];
+  readonly transitPrerequisites?: readonly AnalyzerTransitPrerequisite[];
+  readonly roomGuidance?: readonly AnalyzerRoomGuidance[];
+  readonly matchingDomainSummary?: AnalyzerMatchingDomainSummary;
+  readonly goalAccessSummary?: AnalyzerGoalAccessSummary;
+  readonly structuralMetrics?: AnalyzerStructuralMetrics;
+  readonly structuralConclusions?: StructuralConclusions;
   readonly recommendations: Readonly<{
     beamWidth?: number;
     beamVisited?: number;
@@ -79,6 +149,9 @@ export interface SokomindAnalysisPlan {
     reverseWorkerLimit?: number;
     sideVisitedLimit?: number;
     useSequenceMacros?: boolean;
+    firstPushWalkWeight?: number;
+    moveAwareDiscovery?: number;
+    macroIntermediateQuota?: number;
   }>;
 }
 
@@ -176,6 +249,171 @@ export function preparedBoardFromAnalysis(
   return prepared as unknown as LegacyPreparedBoard;
 }
 
+function extractDoorwayTasks(
+  analysis: Record<string, unknown>,
+): readonly AnalyzerDoorwayTask[] | undefined {
+  const assignment = objectRecord(analysis.doorwayAssignment);
+  if (!assignment || !Array.isArray(assignment.tasks)) return undefined;
+  const boxDomains = Array.isArray(assignment.boxDomains)
+    ? assignment.boxDomains
+    : [];
+  const tasks: AnalyzerDoorwayTask[] = [];
+  for (const raw of assignment.tasks) {
+    const task = objectRecord(raw);
+    if (
+      !task ||
+      typeof task.box !== "string" ||
+      typeof task.label !== "string" ||
+      typeof task.target !== "string" ||
+      !Array.isArray(task.allowedTargets) ||
+      (task.direction !== "export" && task.direction !== "import") ||
+      typeof task.roomIndex !== "number" ||
+      typeof task.gate !== "string"
+    ) continue;
+    const directIndex = typeof task.boxIndex === "number" &&
+      Number.isSafeInteger(task.boxIndex) && task.boxIndex >= 0
+      ? task.boxIndex : -1;
+    const boxIndex = directIndex >= 0 ? directIndex : boxDomains.findIndex(
+      (domain) => objectRecord(domain)?.box === task.box &&
+        objectRecord(domain)?.label === task.label,
+    );
+    tasks.push(Object.freeze({
+      boxIndex: boxIndex >= 0 ? boxIndex : -1,
+      label: task.label,
+      target: task.target,
+      allowedTargets: Object.freeze(
+        task.allowedTargets.filter((target): target is string =>
+          typeof target === "string"),
+      ),
+      direction: task.direction,
+      roomIndex: task.roomIndex,
+      gate: task.gate,
+    }));
+  }
+  return tasks.length ? Object.freeze(tasks) : undefined;
+}
+
+function extractTransitPrerequisites(
+  analysis: Record<string, unknown>,
+): readonly AnalyzerTransitPrerequisite[] | undefined {
+  const transport = objectRecord(analysis.transportPlan);
+  const transit = objectRecord(transport?.goalTransit);
+  if (!transit || !Array.isArray(transit.commitments)) return undefined;
+  const prerequisites: AnalyzerTransitPrerequisite[] = [];
+  for (const raw of transit.commitments) {
+    const commitment = objectRecord(raw);
+    if (
+      !commitment ||
+      typeof commitment.boxIndex !== "number" ||
+      typeof commitment.target !== "string" ||
+      !Array.isArray(commitment.prerequisites)
+    ) continue;
+    for (const rawPrereq of commitment.prerequisites) {
+      const prereq = objectRecord(rawPrereq);
+      if (
+        !prereq ||
+        typeof prereq.boxIndex !== "number" ||
+        typeof prereq.label !== "string" ||
+        !Array.isArray(prereq.releaseCells)
+      ) continue;
+      prerequisites.push(Object.freeze({
+        boxIndex: commitment.boxIndex,
+        target: commitment.target,
+        blockerBoxIndex: prereq.boxIndex,
+        blockerLabel: prereq.label,
+        releaseCells: Object.freeze(
+          prereq.releaseCells.filter((cell): cell is string =>
+            typeof cell === "string"),
+        ),
+      }));
+    }
+  }
+  return prerequisites.length ? Object.freeze(prerequisites) : undefined;
+}
+
+function extractRoomGuidance(
+  analysis: Record<string, unknown>,
+): readonly AnalyzerRoomGuidance[] | undefined {
+  if (!Array.isArray(analysis.rooms)) return undefined;
+  const rooms: AnalyzerRoomGuidance[] = [];
+  for (let roomIndex = 0; roomIndex < analysis.rooms.length; roomIndex++) {
+    const raw = objectRecord(analysis.rooms[roomIndex]);
+    if (!raw) continue;
+    rooms.push(Object.freeze({
+      roomIndex,
+      cells: finiteNonNegative(raw.cells),
+      goals: finiteNonNegative(raw.goals),
+      boxes: finiteNonNegative(raw.boxes),
+      surplus: finiteNonNegative(raw.surplus),
+      forcedExports: finiteNonNegative(raw.forcedExports),
+      forcedImports: finiteNonNegative(raw.forcedImports),
+      interfacePhase: typeof raw.interfacePhase === "string" ? raw.interfacePhase : "pack",
+      interfaceMinimumCrossings: finiteNonNegative(raw.interfaceMinimumCrossings),
+      interfaceMinimumExportsBeforeImport: finiteNonNegative(raw.interfaceMinimumExportsBeforeImport),
+      interfaceClearanceMethod: typeof raw.interfaceClearanceMethod === "string"
+        ? raw.interfaceClearanceMethod : "no-mixed-flow",
+    }));
+  }
+  return rooms.length ? Object.freeze(rooms) : undefined;
+}
+
+function extractMatchingDomainSummary(
+  analysis: Record<string, unknown>,
+): AnalyzerMatchingDomainSummary | undefined {
+  const assignment = objectRecord(analysis.doorwayAssignment);
+  if (!assignment || !Array.isArray(assignment.boxDomains)) return undefined;
+  let ambiguousBoxCount = 0;
+  let multiDomainTaskCount = 0;
+  for (const raw of assignment.boxDomains) {
+    const domain = objectRecord(raw);
+    if (!domain || !Array.isArray(domain.allowedTargets)) continue;
+    if (domain.allowedTargets.length > 1) ambiguousBoxCount++;
+  }
+  const tasks = Array.isArray(assignment.tasks) ? assignment.tasks : [];
+  for (const raw of tasks) {
+    const task = objectRecord(raw);
+    if (!task || !Array.isArray(task.allowedTargets)) continue;
+    if (task.allowedTargets.length > 1) multiDomainTaskCount++;
+  }
+  return Object.freeze({
+    complete: assignment.complete === true,
+    ambiguousBoxCount,
+    multiDomainTaskCount,
+    eliminatedEdges: finiteNonNegative(assignment.eliminatedEdges),
+  });
+}
+
+function extractGoalAccessSummary(
+  analysis: Record<string, unknown>,
+): AnalyzerGoalAccessSummary | undefined {
+  if (
+    typeof analysis.blockedGoalAccess !== "number" ||
+    typeof analysis.goalAccessPenalty !== "number"
+  ) return undefined;
+  return Object.freeze({
+    blockedGoalCount: finiteNonNegative(analysis.blockedGoalAccess),
+    accessPenalty: finiteNonNegative(analysis.goalAccessPenalty),
+    accessClauseCount: finiteNonNegative(analysis.goalAccessClauses),
+  });
+}
+
+function extractStructuralMetrics(
+  analysis: Record<string, unknown>,
+): AnalyzerStructuralMetrics | undefined {
+  if (typeof analysis.legalPushes !== "number") return undefined;
+  return Object.freeze({
+    legalPushes: finiteNonNegative(analysis.legalPushes),
+    surplusBoxes: finiteNonNegative(analysis.surplusBoxes),
+    mandatoryDoorwayExports: finiteNonNegative(analysis.mandatoryDoorwayExports),
+    mandatoryDoorwayImports: finiteNonNegative(analysis.mandatoryDoorwayImports),
+    dependencyCount: finiteNonNegative(analysis.dependencyCount),
+    tunnelCells: finiteNonNegative(analysis.tunnelCells),
+    articulationCount: finiteNonNegative(analysis.articulations),
+    searchScale: finiteNonNegative(analysis.searchScale),
+    pressure: finiteNonNegative(analysis.pressure),
+  });
+}
+
 export function analysisPlanFromAnalysis(
   analysisValue: unknown,
 ): SokomindAnalysisPlan | undefined {
@@ -202,11 +440,30 @@ export function analysisPlanFromAnalysis(
     Object.freeze(value);
   };
   if (strategicPlan) freezeTree(strategicPlan);
+  const doorwayTasks = extractDoorwayTasks(analysis);
+  const transitPrerequisites = extractTransitPrerequisites(analysis);
+  const roomGuidance = extractRoomGuidance(analysis);
+  const matchingDomainSummary = extractMatchingDomainSummary(analysis);
+  const goalAccessSummary = extractGoalAccessSummary(analysis);
+  const structuralMetrics = extractStructuralMetrics(analysis);
   return Object.freeze({
     difficulty:
       typeof analysis.difficulty === "string" ? analysis.difficulty : undefined,
     ...(strategicPlan ? {strategicPlan} : {}),
     phases: Object.freeze(phases),
+    ...(doorwayTasks ? {doorwayTasks} : {}),
+    ...(transitPrerequisites ? {transitPrerequisites} : {}),
+    ...(roomGuidance ? {roomGuidance} : {}),
+    ...(matchingDomainSummary ? {matchingDomainSummary} : {}),
+    ...(goalAccessSummary ? {goalAccessSummary} : {}),
+    ...(structuralMetrics ? {structuralMetrics} : {}),
+    ...(doorwayTasks && transitPrerequisites ? {
+      structuralConclusions: Object.freeze({
+        doorwayTasks,
+        transitPrerequisites,
+        matchingDomainComplete: matchingDomainSummary?.complete === true,
+      }),
+    } : {}),
     recommendations: Object.freeze({
       beamWidth: optionalNumber("beamWidth"),
       beamVisited: optionalNumber("beamVisited"),
@@ -217,6 +474,9 @@ export function analysisPlanFromAnalysis(
         typeof recommendations.useSequenceMacros === "boolean"
           ? recommendations.useSequenceMacros
           : undefined,
+      firstPushWalkWeight: optionalNumber("firstPushWalkWeight"),
+      moveAwareDiscovery: optionalNumber("moveAwareDiscovery"),
+      macroIntermediateQuota: optionalNumber("macroIntermediateQuota"),
     }),
   });
 }

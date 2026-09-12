@@ -246,15 +246,33 @@ function analyzePuzzleForSearch(data, options = {}) {
     useFess: boxes.length >= 4 && difficulty !== "extreme",
     useMilestoneReverse: difficulty === "complex" || difficulty === "extreme",
     checkpointLimit: difficulty === "extreme" ? 12 : 8,
+    firstPushWalkWeight: mandatoryDoorwayExports > 0 && board.topology.rooms.length > 2 ? 0.05 : 0,
+    moveAwareDiscovery: (difficulty === "complex" || difficulty === "extreme") && board.topology.rooms.length > 1 ? 1 : 0,
+    macroIntermediateQuota: board.topology.tunnels.size > 4 ? 2 : 0,
   };
-  board.pdbPartitions = buildPdbPartitions(board);
+  const totalAnalysisBudgetMs = options.strategicAnalysis
+    ? strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) : 0;
+  const pdbBudgetMs = options.strategicAnalysis
+    ? strategicLimit(options.strategicAnalysis.pdbBudgetMs,
+        Math.min(Math.floor(totalAnalysisBudgetMs * 0.15), 200), 500)
+    : 500;
+  board.pdbPartitions = buildPdbPartitions(board, {maxMs: pdbBudgetMs});
   const preparedBoard = createPreparedBoardSeed(board);
   board.pdbPartitions = [];
-  const strategicPlan = options.strategicAnalysis ? buildStrategicPlan(data, {
-    ...options.strategicAnalysis,
-    maxMs: Math.max(0, strategicLimit(options.strategicAnalysis.maxMs, 250, 10000) -
-      (now() - analysisStarted)),
-  }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit}) : undefined;
+  const ambiguousBoxCount = doorwayPlan.proof.boxDomains.filter(
+    domain => domain.allowedTargets.length > 1).length;
+  const adaptiveScheduleChoices = ambiguousBoxCount === 0 ? 0
+    : ambiguousBoxCount <= 8 ? Math.min(3, ambiguousBoxCount) : 1;
+  const strategicPlan = options.strategicAnalysis
+    ? buildStrategicPlan(data, {
+        ...options.strategicAnalysis,
+        maxMs: Math.max(0, totalAnalysisBudgetMs - (now() - analysisStarted)),
+        ...(options.strategicAnalysis.scheduleChoices === undefined
+          ? {scheduleChoices: adaptiveScheduleChoices} : {}),
+      }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit})
+    : buildStrategicPlan(data, {
+        maxMs: 0, inferenceWork: 512, skipSimulation: true,
+      }, {board, doorway: doorwayPlan, transit: transportPlan.goalTransit});
   return {
     dimensions: {rows: data.rows.length, columns: Math.max(...data.rows.map(row => row.length))},
     floorCells: board.floor.size,
@@ -274,6 +292,7 @@ function analyzePuzzleForSearch(data, options = {}) {
       ...doorwayPlan.proof,
       tasks: doorwayPlan.tasks.map(task => ({
         box: task.box,
+        boxIndex: task.boxIndex,
         label: task.label,
         target: task.target,
         allowedTargets: [...(task.allowedTargets || [task.target].filter(Boolean))],
