@@ -522,7 +522,13 @@ export async function runClassicSearch(
         throw new Error(`Classic solver verification failed: ${verification.message}`);
       }
       throwIfSolverCancelled(context.signal);
-      return { status: "solved", solution, metrics: metrics() };
+      return { status: "solved", solution, metrics: metrics(),
+        ...(configuration.strategy === "astar" ? { proof: {
+          kind: "optimal" as const, algorithm: "move-astar" as const,
+          objective: request.objective, lowerBound: solution.moves,
+          upperBound: solution.moves, gap: 0,
+        } } : {}),
+      };
     }
 
     if (!Number.isFinite(initialHeuristic)) {
@@ -621,7 +627,13 @@ export async function runClassicSearch(
           );
         }
         throwIfSolverCancelled(context.signal);
-        return { status: "solved", solution, metrics: metrics() };
+        return { status: "solved", solution, metrics: metrics(),
+        ...(configuration.strategy === "astar" ? { proof: {
+          kind: "optimal" as const, algorithm: "move-astar" as const,
+          objective: request.objective, lowerBound: solution.moves,
+          upperBound: solution.moves, gap: 0,
+        } } : {}),
+      };
       }
 
       const maxExpanded = request.limits?.maxExpandedStates;

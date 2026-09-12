@@ -211,6 +211,10 @@ function collectResultIssues(value: unknown): Issues {
     );
     valid = checkSolution(value.solution, "result.solution", issues) && valid;
     valid = checkMetrics(value.metrics, "result.metrics", issues) && valid;
+    if (value.proof === undefined && checkRecord(value.solution, "result.solution", []) &&
+        value.solution.optimality === "proven") {
+      valid = issue(issues, "result.proof", "proven optimality requires an optimal proof") && valid;
+    }
     if (value.proof !== undefined) {
       const proofIssues = collectProofIssues(value.proof, value.solution);
       for (const msg of proofIssues) {

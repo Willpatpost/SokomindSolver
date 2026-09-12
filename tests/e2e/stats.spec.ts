@@ -147,7 +147,7 @@ test("reset all progress preserves every non-progress ownership domain", async (
     }));
     localStorage.setItem("sokomind.experience.v2", values.experience);
     localStorage.setItem("sokomind.session.v1", values.session);
-    localStorage.setItem("sokomind.optimal.v4", values.optimal);
+    localStorage.setItem("sokomind.optimal.v5", values.optimal);
     localStorage.setItem("sokomind.ratings.v1", values.ratings);
     localStorage.setItem("sokomind.favorites.v1", values.favorites);
     localStorage.setItem("sokomind.editor-draft.v1", values.editorDraft);
@@ -179,7 +179,7 @@ test("reset all progress preserves every non-progress ownership domain", async (
       progress,
       experience: localStorage.getItem("sokomind.experience.v2"),
       session: localStorage.getItem("sokomind.session.v1"),
-      optimal: localStorage.getItem("sokomind.optimal.v4"),
+      optimal: localStorage.getItem("sokomind.optimal.v5"),
       ratings: localStorage.getItem("sokomind.ratings.v1"),
       favorites: localStorage.getItem("sokomind.favorites.v1"),
       editorDraft: localStorage.getItem("sokomind.editor-draft.v1"),

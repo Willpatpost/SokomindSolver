@@ -91,6 +91,9 @@ export function collectProofIssues(
         `bounded proof upperBound (${p.upperBound}) must equal solution.moves (${sol.moves})`,
       );
     }
+    if (sol !== null && sol.optimality !== "unknown") {
+      issues.push('bounded proof requires solution.optimality === "unknown"');
+    }
   } else if (kind === "optimal") {
     if (!isNonNegativeFinite(p.lowerBound)) {
       issues.push("optimal proof requires non-negative finite lowerBound");

@@ -25,6 +25,7 @@ export interface KeeperReachabilityResult {
 
 export interface ReachabilitySnapshot {
   readonly epoch: number;
+  readonly canonicalCell: number;
   readonly seenEpoch: Uint32Array;
   readonly distance: Int32Array;
   readonly predecessor: Int32Array;
@@ -174,7 +175,9 @@ export class KeeperReachability {
     const queue = this.#queue;
     const parentCanonical = this.#lastCanonicalCell;
 
-    if (parentCanonical === blockedCell) return null;
+    // Removing a reachable cell can disconnect a whole region even when
+    // adjacent cells have other free neighbors. Such pushes require full BFS.
+    if (parentCanonical < 0 || seenEpoch[blockedCell] === epoch) return null;
 
     let candidate = freedCell;
 
@@ -216,39 +219,13 @@ export class KeeperReachability {
     // Clean up scratch marks.
     for (let i = 0; i < tail; i++) scratch[queue[i]] = 0;
 
-    // If blockedCell was not reachable in parent, blocking it changes nothing.
-    if (seenEpoch[blockedCell] !== epoch) {
-      return Math.min(parentCanonical, candidate);
-    }
-
-    // blockedCell was reachable. Check if it might be an articulation point:
-    // any reachable neighbor (other than freedCell) that has NO alternative
-    // free+reachable neighbor would be stranded.
-    const bBase = blockedCell << 2;
-    for (let d = 0; d < 4; d++) {
-      const neighbor = flatNeighbors[bBase + d];
-      if (neighbor < 0 || neighbor === freedCell) continue;
-      if (seenEpoch[neighbor] !== epoch) continue;
-      // This neighbor was reachable via parent — does it have an alternative?
-      let hasAlternative = false;
-      const nBase = neighbor << 2;
-      for (let d2 = 0; d2 < 4; d2++) {
-        const nn = flatNeighbors[nBase + d2];
-        if (nn >= 0 && nn !== blockedCell && occupancy[nn] === 0 &&
-            (seenEpoch[nn] === epoch || nn === freedCell)) {
-          hasAlternative = true;
-          break;
-        }
-      }
-      if (!hasAlternative) return null;
-    }
-
     return Math.min(parentCanonical, candidate);
   }
 
   saveState(): ReachabilitySnapshot {
     return {
       epoch: this.#epoch,
+      canonicalCell: this.#lastCanonicalCell,
       seenEpoch: new Uint32Array(this.#seenEpoch),
       distance: new Int32Array(this.#distance),
       predecessor: new Int32Array(this.#predecessor),
@@ -258,6 +235,7 @@ export class KeeperReachability {
 
   restoreState(snapshot: ReachabilitySnapshot): void {
     this.#epoch = snapshot.epoch;
+    this.#lastCanonicalCell = snapshot.canonicalCell;
     this.#seenEpoch.set(snapshot.seenEpoch);
     this.#distance.set(snapshot.distance);
     this.#predecessor.set(snapshot.predecessor);

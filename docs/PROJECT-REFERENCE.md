@@ -202,7 +202,7 @@ fails when the generated facts below differ from source.
 | progress | `sokomind.progress.v1` |
 | experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
-| optimal | `sokomind.optimal.v4` |
+| optimal | `sokomind.optimal.v5` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |
@@ -217,7 +217,7 @@ fails when the generated facts below differ from source.
 | progress payload schema | `2` |
 | saved-session payload schema | `1` |
 | editor-draft payload schema | `2` |
-| optimal-record payload schema | `6` |
+| optimal-record payload schema | `7` |
 
 ### Bounded local data
 

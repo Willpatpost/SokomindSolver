@@ -53,8 +53,8 @@ test("verified optimal clears receive the highest milestone treatment", async ({
     ?.puzzleFingerprint;
   if (!fingerprint) throw new Error("First Steps metadata is unavailable.");
   await page.evaluate((puzzleFingerprint) => {
-    localStorage.setItem("sokomind.optimal.v4", JSON.stringify({
-      version: 6,
+    localStorage.setItem("sokomind.optimal.v5", JSON.stringify({
+      version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
       records: {
         [JSON.stringify(["ultra-tiny", puzzleFingerprint])]: { moves: 1, pushes: 1 },
       },

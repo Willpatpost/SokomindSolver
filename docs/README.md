@@ -9,6 +9,7 @@ over prose. Git history preserves superseded plans and dated reports.
 | Topic | Guide |
 |---|---|
 | Architecture and module boundaries | [Architecture](architecture.md) |
+| September 12 project audit and open findings | [Project audit](PROJECT-AUDIT-2026-09-12.md) |
 | Development and verification | [Contributing](../CONTRIBUTING.md), [Testing](testing.md) |
 | Deployment and offline delivery | [GitHub Pages](deployment.md) |
 | Puzzle rules and catalog format | [Puzzle format](puzzle-format.md) |

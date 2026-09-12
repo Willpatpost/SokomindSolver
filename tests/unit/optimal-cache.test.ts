@@ -17,7 +17,7 @@ import {
   installIndexedDB,
 } from "../support/memory-indexeddb.ts";
 
-const EMPTY_CACHE: OptimalCache = { version: 6, records: {} };
+const EMPTY_CACHE: OptimalCache = { version: 7, proofRevision: "exact-moves-post-pi-corral-v1", records: {} };
 const FIRST_FINGERPRINT = "puzzle-v1:11111111";
 const SECOND_FINGERPRINT = "puzzle-v1:22222222";
 const recordKey = (puzzleId: string, fingerprint: string) =>
@@ -46,11 +46,11 @@ test("setOptimalRecord creates, overwrites, and preserves entries", () => {
 
   assert.deepEqual(cache.records[recordKey("p1", FIRST_FINGERPRINT)], replacement);
   assert.deepEqual(cache.records[recordKey("p2", SECOND_FINGERPRINT)], other);
-  assert.equal(cache.version, 6);
+  assert.equal(cache.version, 7);
 });
 
 test("invalidates optimal records from every prior cache schema", () => {
-  for (const version of [1, 2, 3, 4, 5]) {
+  for (const version of [1, 2, 3, 4, 5, 6]) {
     assert.deepEqual(normalizeOptimalCache({
       version,
       records: {
@@ -62,7 +62,7 @@ test("invalidates optimal records from every prior cache schema", () => {
 
 test("current cache parsing drops malformed records safely", () => {
   const normalized = normalizeOptimalCache({
-    version: 6,
+    version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
       malformedKey: { moves: 9, pushes: 3 },
@@ -73,7 +73,7 @@ test("current cache parsing drops malformed records safely", () => {
   });
 
   assert.deepEqual(normalized, {
-    version: 6,
+    version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
     },
@@ -102,7 +102,7 @@ test("merges stale tab snapshots without losing either proof", () => {
   });
   assert.deepEqual(
     mergeOptimalCaches(merged, {
-      version: 6,
+      version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
       records: {
         [recordKey("p1", FIRST_FINGERPRINT)]: { moves: 18, pushes: 9 },
       },

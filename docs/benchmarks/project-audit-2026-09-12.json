@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "auditDate": "2026-09-12",
+  "commit": "0ceff3e0ecde18d295eeb06f6bac8da22197ca18",
+  "environment": { "os": "Windows", "node": "24.14.0", "npm": "11.9.0" },
+  "dfsCounterexample": {
+    "rows": ["OOOOOOO", "O O   O", "O     O", "O  RXOO", "OSSX  O", "O O   O", "OOOOOOO"],
+    "strategy": "dfs",
+    "resourceLimits": null,
+    "current": { "status": "unsolved", "reason": "exhausted", "expanded": 3, "generated": 7 },
+    "fullFloodControl": {
+      "override": "KeeperReachability.prototype.incrementalCanonicalCell = () => null; restored after the control run",
+      "status": "solved", "moves": 31,
+      "actionLog": "LDRDRRULULUURRDLULDRDLLULDRRRDL",
+      "canonicalReplayVerified": true
+    },
+    "exactAStar": { "status": "solved", "moves": 23, "reportedProofKind": "optimal", "canonicalReplayVerified": true },
+    "discovery": { "seed": "0x172934ab", "boardsChecked": 2320, "boardsWithHelperMismatches": 57, "failingTrial": 2319 }
+  },
+  "reachabilityCounterexample": {
+    "rows": ["OOOOOOOOO", "O  OR   O", "O  OX   O", "OS      O", "OOOOOOOOO"],
+    "push": "down", "incrementalCanonicalCell": 0, "fullFloodCanonicalCell": 2,
+    "incrementalCellIsReachable": false
+  },
+  "staleProofCache": {
+    "historicalSchemaFixture": true,
+    "browserUserDataInspected": false,
+    "version": 6, "puzzleId": "huge", "boardFingerprint": "puzzle-v1:9ead120a",
+    "record": { "moves": 713, "pushes": 248 },
+    "accepted": true, "isOptimalFor713Moves": true,
+    "replayedShorterReferenceMoves": 626,
+    "correctionCommit": "2729067717b62aacb0360ff56c8d55afe5f0a1c4"
+  },
+  "additionalExactDifferential": {
+    "seed": "0x23891af", "boardsChecked": 500, "solvableBoards": 31,
+    "oracleStatesExplored": 58266, "engines": ["exact A*", "IDA*"],
+    "mismatches": 0, "canonicalReplayVerifiedForAllSolutions": true
+  },
+  "typedCoverage": {
+    "command": "npm.cmd run test:coverage:typed", "passed": true,
+    "linesPercent": 73.57, "statementsPercent": 73.57,
+    "branchesPercent": 86.17, "functionsPercent": 91.72,
+    "reachabilityLinesPercent": 98.53
+  },
+  "proofBoundary": {
+    "rows": ["OOOOOO", "OR XSO", "O    O", "OOOOOO"],
+    "shortestActionLog": "RR", "suppliedActionLog": "DURR",
+    "suppliedOptimality": "proven", "canonicalReplayVerified": true,
+    "noProofAcceptedByWorkerClient": true,
+    "boundedProof": { "kind": "bounded", "algorithm": "move-astar", "objective": { "kind": "moves" }, "lowerBound": 2, "upperBound": 4, "gap": 2 },
+    "boundedProofAcceptedByWorkerClient": true,
+    "testMethod": "Injected malformed worker result through the real SolverWorkerClient; not observed output from a stock solver"
+  }
+}

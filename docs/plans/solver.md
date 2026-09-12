@@ -22,24 +22,29 @@ established. A repair requiring a complete incumbent is not pre-search success.
 
 ## Open work
 
-### P1 experiments (not started)
+### Implemented controls awaiting experimental promotion
 
-- **P1.1 Macro intermediate retention** â€” reserve a small quota of move-aware
-  intermediate states during macro expansion.
-- **P1.2 Keeper-arrival beam** â€” controlled evaluation of keeper-arrival
-  diversity as an explicit search feature.
-- **P1.3 First-push walk cost** â€” add exact walk-to-support as a soft ordering
-  term in first-push ranking.
-- **P1.4 Reschedule-derived schedule trace** â€” export compact per-box phase
-  diagnostics from repair telemetry.
+- **P1.1 Macro intermediate retention** — implemented as `macroIntermediateQuota`
+  (default 0). Controlled quality/generalization evidence is required before enabling.
+- **P1.2 Keeper-arrival beam** — implemented as `moveAwareDiscovery` (default 0).
+  Production promotion remains conditional on controlled benchmarks.
+- **P1.3 First-push walk cost** — implemented as `firstPushWalkWeight` (default 0).
+  Remains a soft ordering experiment, not a proof heuristic.
+- **P1.4 Reschedule-derived schedule trace** — implemented in repair telemetry and
+  `scripts/diagnose-schedule-trace.ts`; use the trace to evaluate partial schedules.
 
-### P2 work (not started)
+### Delivered P2 implementation
 
-- **P2.1 Reschedule-value predictor** â€” skip/light/full repair recommendation.
-- **P2.2 Route diagnosis script** â€” `diagnose:solver-route` CLI tool.
-- **P2.3 Engine modularization** â€” extract keeper-arrival/Pareto structures as
-  a first step. Wholesale engine rewrite is rejected; extract one primitive at
-  a time.
+- **P2.1 Reschedule-value predictor** — implemented in
+  `src/solver/implementations/sokomind-reschedule-predictor.ts` and used by the
+  quality-mode harvesting path. Optimal-mode eligibility is preserved.
+- **P2.2 Route diagnosis script** — available through `npm run diagnose:solver-route`.
+
+### Remaining modularization work
+
+- **P2.3 Engine modularization** — review keeper-arrival/Pareto ownership for the
+  next behavior-preserving extraction. Existing adapter lifecycle helpers are
+  already separate modules; a wholesale engine rewrite remains rejected.
 
 ### Pending experiments
 

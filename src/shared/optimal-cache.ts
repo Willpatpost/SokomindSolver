@@ -11,13 +11,17 @@ import { idbFencedGet, idbFencedUpdate } from "./idb-storage.ts";
 import { isRecord } from "../core/type-guards.ts";
 import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
+// Bump when a proof-producing algorithm or admissibility rule is corrected.
+export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-post-pi-corral-v1" as const;
+
 export interface OptimalRecord {
   readonly moves: number;
   readonly pushes: number;
 }
 
 export interface OptimalCache {
-  readonly version: 6;
+  readonly version: 7;
+  readonly proofRevision: typeof CURRENT_OPTIMAL_PROOF_REVISION;
   readonly records: Readonly<Record<string, OptimalRecord>>;
 }
 
@@ -27,7 +31,8 @@ type OptimalCacheMutationResult = StorageMutationResult & {
 };
 
 const EMPTY_CACHE: OptimalCache = Object.freeze({
-  version: 6,
+  version: 7,
+    proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
   records: Object.freeze({}),
 });
 
@@ -76,11 +81,12 @@ function isValidOptimalRecordKey(value: string): boolean {
  * could contain false IDA* optimality certificates created by path-dependent
  * backed-f transposition pruning. Version 4 could contain false certificates
  * created by the unsound goal-depth macro prune. Version 5 keyed proofs only
- * by puzzle ID, so a changed board could inherit a stale certificate.
+ * by puzzle ID, so a changed board could inherit a stale certificate. Schema 6
+ * predates the PI-corral correction and lacks proof provenance.
  */
 export function normalizeOptimalCache(value: unknown): OptimalCache {
   if (!isRecord(value) || !isRecord(value.records)) return EMPTY_CACHE;
-  if (value.version !== 6) return EMPTY_CACHE;
+  if (value.version !== 7 || value.proofRevision !== CURRENT_OPTIMAL_PROOF_REVISION) return EMPTY_CACHE;
 
   const records: Record<string, OptimalRecord> = {};
   for (const [recordKey, candidate] of Object.entries(value.records)) {
@@ -89,7 +95,8 @@ export function normalizeOptimalCache(value: unknown): OptimalCache {
     if (record) records[recordKey] = record;
   }
   return Object.freeze({
-    version: 6,
+    version: 7,
+    proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
     records: Object.freeze(records),
   });
 }
@@ -107,6 +114,9 @@ export function mergeOptimalCaches(
   first: OptimalCache,
   second: OptimalCache,
 ): OptimalCache {
+  // Stale tabs must not resurrect certificates after a proof revision changes.
+  if (first.version !== 7 || first.proofRevision !== CURRENT_OPTIMAL_PROOF_REVISION) first = EMPTY_CACHE;
+  if (second.version !== 7 || second.proofRevision !== CURRENT_OPTIMAL_PROOF_REVISION) second = EMPTY_CACHE;
   let changed = false;
   const records: Record<string, OptimalRecord> = { ...first.records };
   for (const [puzzleId, candidate] of Object.entries(second.records)) {
@@ -117,7 +127,8 @@ export function mergeOptimalCaches(
   }
   if (!changed) return first;
   return Object.freeze({
-    version: 6,
+    version: 7,
+    proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
     records: Object.freeze(records),
   });
 }
@@ -209,8 +220,9 @@ export function setOptimalRecord(
 ): OptimalCache {
   const key = optimalRecordKey(puzzleId, puzzleFingerprint);
   return {
-    version: 6,
-    records: { ...cache.records, [key]: record },
+    version: 7,
+    proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
+    records: { ...mergeOptimalCaches(EMPTY_CACHE, cache).records, [key]: record },
   };
 }
 
@@ -230,5 +242,6 @@ export function getOptimalRecord(
   puzzleId: string,
   puzzleFingerprint: string,
 ): OptimalRecord | undefined {
+  if (cache.version !== 7 || cache.proofRevision !== CURRENT_OPTIMAL_PROOF_REVISION) return undefined;
   return cache.records[optimalRecordKey(puzzleId, puzzleFingerprint)];
 }

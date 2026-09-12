@@ -400,8 +400,8 @@ describe("incrementalCanonicalCell", () => {
     parentOccupancy[boxCell] = 1;
     parentOccupancy[destination] = 0;
 
-    assert.notEqual(incremental, null, "should succeed without fallback");
-    assert.equal(incremental, fullResult.canonicalCell);
+    assert.equal(incremental, null, "reachable destinations require full flood");
+    assert.equal(fullResult.canonicalCell, 0);
   });
 
   it("freed cell lowers canonical cell below parent canonical", () => {
@@ -461,31 +461,15 @@ describe("incrementalCanonicalCell", () => {
   });
 
   it("uses fast path when blockedCell is not parent-reachable", () => {
-    // 4x3 grid with walls at (1,0) and (1,2). Robot below, box pushed down.
-    const cols = 3;
-    const walls = new Set([cell(1, 0, cols), cell(1, 2, cols)]);
-    const topology = gridTopology(4, cols, walls);
+    const topology = gridTopology(1, 5);
     const reachability = new KeeperReachability(topology);
-    const verify = new KeeperReachability(topology);
-
-    const boxCell = cell(2, 1, cols);
-    const destination = cell(3, 1, cols);
-    const actualRobot = cell(2, 0, cols);
-
-    const parentOccupancy = occupiedFromWalls(topology.cellCount, walls);
-    parentOccupancy[boxCell] = 1;
-    reachability.flood(actualRobot, parentOccupancy);
-
-    parentOccupancy[boxCell] = 0;
-    parentOccupancy[destination] = 1;
-    const incremental = reachability.incrementalCanonicalCell(
-      boxCell, destination, parentOccupancy);
-    const fullResult = verify.flood(boxCell, parentOccupancy);
-    parentOccupancy[boxCell] = 1;
-    parentOccupancy[destination] = 0;
-
-    assert.notEqual(incremental, null);
-    assert.equal(incremental, fullResult.canonicalCell);
+    const occupied = new Uint8Array(5);
+    occupied[2] = 1;
+    const parent = reachability.flood(1, occupied);
+    assert.equal(parent.isReachable(3), false);
+    occupied[2] = 0; occupied[3] = 1;
+    assert.equal(reachability.incrementalCanonicalCell(2, 3, occupied), 0);
+    assert.equal(new KeeperReachability(topology).flood(2, occupied).canonicalCell, 0);
   });
 
   it("returns null for potential articulation point", () => {
@@ -528,7 +512,7 @@ describe("incrementalCanonicalCell", () => {
     assert.equal(artResult, null, "should detect potential articulation point");
   });
 
-  it("succeeds for non-articulation point with multiple reachable neighbors", () => {
+  it("falls back for a reachable destination even with multiple neighbors", () => {
     // 3x5 open grid (no dangling cell). Robot at 10, box at 6.
     // Push up: box to 1. Cell 1 is not an articulation point.
     const cols = 5;
@@ -547,8 +531,8 @@ describe("incrementalCanonicalCell", () => {
     occupancy[6] = 1;
     occupancy[1] = 0;
 
-    assert.notEqual(incremental, null, "should not fall back");
-    assert.equal(incremental, fullResult.canonicalCell);
+    assert.equal(incremental, null);
+    assert.equal(fullResult.canonicalCell, 0);
   });
 
   it("matches full flood exhaustively on a small board", () => {
@@ -613,6 +597,6 @@ describe("incrementalCanonicalCell", () => {
     assert.equal(mismatches, 0,
       `incremental must match full flood (${tested} tested, ${incremental_hits} hits, ${fallbacks} fallbacks)`);
     assert.ok(tested > 100, `should test a meaningful number of cases (got ${tested})`);
-    assert.ok(incremental_hits > 0, "should have at least some incremental hits");
+    assert.equal(fallbacks, tested, "open-room destinations were parent-reachable");
   });
 });

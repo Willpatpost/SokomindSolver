@@ -16,7 +16,16 @@ The shipped solver has three layers:
    kernels under one run-wide resource budget.
 
 All worker results pass structural validation and core replay before return.
-Discovery quality never substitutes for proof.
+Discovery quality never substitutes for proof. Proven results require an optimal
+proof envelope; bounded proofs require unknown optimality, including at the worker
+client boundary. Classic DFS/Greedy reuse a keeper region only when the newly
+occupied cell was outside the parent region; otherwise they recompute full BFS.
+
+Persisted optimality records use schema 7 and a proof revision stamp under
+`sokomind.optimal.v5`. Schema 6 and older records are rejected in both storage tiers
+because they can predate the PI-corral correction. The separate storage key prevents
+older tabs from overwriting current certificates; progress and personal-best routes
+are preserved. Bump the proof revision after any proof-safety correction.
 
 Quality and optimal modes can refine a complete incumbent with whole-box
 rescheduling. Every physical box is eligible, including repeated-label boxes;
