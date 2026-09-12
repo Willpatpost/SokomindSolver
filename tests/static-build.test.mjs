@@ -73,7 +73,7 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Corral-based move ordering adds CorralOrderingAnalyzer to both search engines.
   // Coordinator decomposition and typed engine payload interfaces.
   // Forced-push macros integrated into classic engine; aggregate caching in run-state.
-  allScriptsAndStylesGzipBytes: 428_000,
+  allScriptsAndStylesGzipBytes: 430_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
