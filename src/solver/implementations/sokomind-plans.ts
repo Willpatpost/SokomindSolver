@@ -108,8 +108,11 @@ export function structuralPlan(
     payload: Object.freeze({
       algorithm: "plan-macro-beam",
       state,
-      ...(analysisPlan?.strategicPlan ? { strategicPlan: analysisPlan.strategicPlan,
-        planStrategicExecution: extractSokomindOptions(request).strategicPlanExecution } : {}),
+      ...(analysisPlan?.strategicPlan ? {
+        strategicPlan: analysisPlan.strategicPlan,
+        ...(extractSokomindOptions(request).strategicPlanExecution
+          ? { planStrategicExecution: true } : {}),
+      } : {}),
       maxDepth: 460,
       maxVisited: remainingStateBudget(request, 6_000, budgetDivisor),
       maxGenerated: remainingGeneratedBudget(
@@ -123,6 +126,9 @@ export function structuralPlan(
       targetedMacroExplored: 64,
       progressIntervalMs: 1_000,
       ...tuning,
+      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan),
+      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan) >= 0.5
+        ? { planMoveAwareTranspositions: true } : {}),
       ...(mode === "fast" ? { planSolutionComparisonBudget: 0 } : {}),
     }),
   });

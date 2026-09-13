@@ -178,6 +178,7 @@ function buildPdbPartitions(board, options) {
   const goalPartitions = pdbPartitionGoals(board);
   const partitions = [];
   for (const {label, goalCellIds} of goalPartitions) {
+    if (now() - started > maxMs) break;
     const regionCellIds = pdbBuildRegion(board.dense, goalCellIds, PDB_REGION_DISTANCE);
     const pdb = pdbBuildTable(board.dense, goalCellIds, regionCellIds);
     if (!pdb) continue;

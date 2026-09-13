@@ -457,10 +457,10 @@ export function analysisPlanFromAnalysis(
     ...(matchingDomainSummary ? {matchingDomainSummary} : {}),
     ...(goalAccessSummary ? {goalAccessSummary} : {}),
     ...(structuralMetrics ? {structuralMetrics} : {}),
-    ...(doorwayTasks && transitPrerequisites ? {
+    ...(doorwayTasks ? {
       structuralConclusions: Object.freeze({
         doorwayTasks,
-        transitPrerequisites,
+        transitPrerequisites: transitPrerequisites ?? Object.freeze([]),
         matchingDomainComplete: matchingDomainSummary?.complete === true,
       }),
     } : {}),

@@ -9,6 +9,13 @@ import {
 import type { SolverRequest } from "../../src/solver/contracts.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import {
+  analysisPlanFromAnalysis,
+  type SokomindAnalysisPlan,
+} from "../../src/solver/implementations/sokomind-legacy.ts";
+import {
+  structuralPlan,
+} from "../../src/solver/implementations/sokomind-plans.ts";
+import {
   solutionFromLegacyPath,
   toLegacyState,
 } from "../../src/solver/implementations/sokomind-solver.ts";
@@ -452,6 +459,136 @@ describe("vendored Sokomind engine", () => {
     );
     assert.ok(
       ((engineMemory?.currentBytes as number | undefined) ?? 0) > 0,
+    );
+  });
+
+  it("produces static strategic inference for Fast mode (no strategicAnalysis)", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const result = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+    });
+    const analysis = result.analysis as {
+      readonly strategicPlan?: {
+        readonly status: string;
+        readonly tasks: readonly unknown[];
+        readonly statistics: { readonly skippedSimulation?: boolean };
+      };
+    };
+    assert.ok(analysis.strategicPlan, "inference-only path should produce a strategic plan");
+    assert.equal(analysis.strategicPlan.statistics.skippedSimulation, true);
+    assert.ok(analysis.strategicPlan.tasks.length > 0, "inference should populate tasks");
+    assert.equal(analysis.strategicPlan.status, "partial");
+  });
+
+  it("preserves candidate diversity across first-task kinds in strategic export", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const result = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+      strategicAnalysis: {
+        maxMs: 200,
+        inferenceWork: 2048,
+        maxExpanded: 4000,
+        maxGenerated: 48000,
+      },
+    });
+    const analysis = result.analysis as {
+      readonly strategicPlan?: {
+        readonly candidates: readonly { readonly tasks: readonly string[] }[];
+      };
+    };
+    assert.ok(analysis.strategicPlan?.candidates);
+    if (analysis.strategicPlan.candidates.length >= 2) {
+      const firstTasks = analysis.strategicPlan.candidates.map(c => c.tasks[0]);
+      const unique = new Set(firstTasks);
+      assert.ok(
+        firstTasks.length >= unique.size,
+        "multiple candidates should survive export",
+      );
+    }
+  });
+
+  it("populates structuralConclusions with doorway tasks even without transit prerequisites", () => {
+    const request = requestFor(MIXED_TYPED_PUZZLE);
+    const result = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+    });
+    const plan = analysisPlanFromAnalysis(result.analysis);
+    assert.ok(plan, "analysis plan should parse");
+    if (plan.doorwayTasks && plan.doorwayTasks.length > 0) {
+      assert.ok(
+        plan.structuralConclusions,
+        "structuralConclusions should exist when doorwayTasks are present",
+      );
+      assert.deepEqual(
+        plan.structuralConclusions.doorwayTasks,
+        plan.doorwayTasks,
+      );
+    }
+  });
+
+  it("applies analyzer tuning recommendations to the structural plan payload", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const state = toLegacyState(request);
+    const result = search({algorithm: "analyze-puzzle", state});
+    const analysisPlan = analysisPlanFromAnalysis(result.analysis);
+    assert.ok(analysisPlan);
+
+    const plan = structuralPlan(
+      state,
+      request,
+      {},
+      "fast",
+      1,
+      analysisPlan,
+    );
+    const payload = plan.payload as Record<string, unknown>;
+
+    if (analysisPlan.recommendations.firstPushWalkWeight !== undefined &&
+        analysisPlan.recommendations.firstPushWalkWeight > 0) {
+      assert.equal(
+        payload.firstPushWalkWeight,
+        analysisPlan.recommendations.firstPushWalkWeight,
+        "firstPushWalkWeight should reach structural plan",
+      );
+    }
+    if (analysisPlan.recommendations.moveAwareDiscovery !== undefined &&
+        analysisPlan.recommendations.moveAwareDiscovery > 0) {
+      assert.equal(
+        payload.moveAwareDiscovery,
+        analysisPlan.recommendations.moveAwareDiscovery,
+        "moveAwareDiscovery should reach structural plan",
+      );
+    }
+    assert.equal(
+      payload.planSolutionComparisonBudget,
+      0,
+      "Fast mode should disable solution comparison",
+    );
+  });
+
+  it("respects small PDB preparation budgets", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
+    const tightResult = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+      strategicAnalysis: { maxMs: 1, pdbBudgetMs: 0 },
+    });
+    const tightAnalysis = tightResult.analysis as {
+      readonly preparedBoardStats: { readonly buildMs: number };
+    };
+    const normalResult = search({
+      algorithm: "analyze-puzzle",
+      state: toLegacyState(request),
+    });
+    const normalAnalysis = normalResult.analysis as {
+      readonly preparedBoardStats: { readonly buildMs: number };
+    };
+    assert.ok(
+      tightAnalysis.preparedBoardStats.buildMs <= normalAnalysis.preparedBoardStats.buildMs + 10,
+      "tight PDB budget should not exceed normal build time",
     );
   });
 });

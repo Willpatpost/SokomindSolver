@@ -2409,6 +2409,7 @@ function buildPdbPartitions(board, options) {
   const goalPartitions = pdbPartitionGoals(board);
   const partitions = [];
   for (const {label, goalCellIds} of goalPartitions) {
+    if (now() - started > maxMs) break;
     const regionCellIds = pdbBuildRegion(board.dense, goalCellIds, PDB_REGION_DISTANCE);
     const pdb = pdbBuildTable(board.dense, goalCellIds, regionCellIds);
     if (!pdb) continue;
@@ -4506,7 +4507,7 @@ function analyzePuzzleForSearch(data, options = {}) {
   }
   phases.push({id: "exact-proof", reason: "complete fallback after heuristic workers"});
   const recommendations = {
-    reverseWorkerLimit: difficulty === "extreme" ? 2 : difficulty === "complex" ? 2 : 3,
+    reverseWorkerLimit: difficulty === "extreme" ? 0 : 1,
     sideVisitedLimit: difficulty === "extreme" ? 100000 : difficulty === "complex" ? 200000 : 250000,
     beamAttempts: difficulty === "small" ? 1 : 2,
     beamWidth: difficulty === "extreme" ? 300 : difficulty === "complex" ? 700 : 1200,
@@ -4525,7 +4526,7 @@ function analyzePuzzleForSearch(data, options = {}) {
   const pdbBudgetMs = options.strategicAnalysis
     ? strategicLimit(options.strategicAnalysis.pdbBudgetMs,
         Math.min(Math.floor(totalAnalysisBudgetMs * 0.15), 200), 500)
-    : 500;
+    : 100;
   board.pdbPartitions = buildPdbPartitions(board, {maxMs: pdbBudgetMs});
   const preparedBoard = createPreparedBoardSeed(board);
   board.pdbPartitions = [];
@@ -8133,9 +8134,19 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     plan.statistics.completedLayers++;
   }
   const schedules = new Map();
+  const countByFirstTask = new Map();
   for (const candidate of [...retained.values()].sort((a, b) =>
     (options.inferenceWork ? a.estimatedRemainingPushes - b.estimatedRemainingPushes : b.tasks.length - a.tasks.length) || a.score - b.score)) {
-    if (!schedules.has(candidate.tasks[0])) schedules.set(candidate.tasks[0], candidate);
+    const firstTask = candidate.tasks[0];
+    const count = countByFirstTask.get(firstTask) ?? 0;
+    if (count >= 2) continue;
+    if (count > 0) {
+      const existing = [...schedules.values()].find(c => c.tasks[0] === firstTask);
+      if (existing && JSON.stringify([existing.robot, existing.boxes]) ===
+          JSON.stringify([candidate.robot, candidate.boxes])) continue;
+    }
+    schedules.set(`${firstTask}#${count}`, candidate);
+    countByFirstTask.set(firstTask, count + 1);
   }
   // Keep one witnessed parking hypothesis, not incompatible staging choices.
   const staged = new Set();

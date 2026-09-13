@@ -367,9 +367,19 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     plan.statistics.completedLayers++;
   }
   const schedules = new Map();
+  const countByFirstTask = new Map();
   for (const candidate of [...retained.values()].sort((a, b) =>
     (options.inferenceWork ? a.estimatedRemainingPushes - b.estimatedRemainingPushes : b.tasks.length - a.tasks.length) || a.score - b.score)) {
-    if (!schedules.has(candidate.tasks[0])) schedules.set(candidate.tasks[0], candidate);
+    const firstTask = candidate.tasks[0];
+    const count = countByFirstTask.get(firstTask) ?? 0;
+    if (count >= 2) continue;
+    if (count > 0) {
+      const existing = [...schedules.values()].find(c => c.tasks[0] === firstTask);
+      if (existing && JSON.stringify([existing.robot, existing.boxes]) ===
+          JSON.stringify([candidate.robot, candidate.boxes])) continue;
+    }
+    schedules.set(`${firstTask}#${count}`, candidate);
+    countByFirstTask.set(firstTask, count + 1);
   }
   // Keep one witnessed parking hypothesis, not incompatible staging choices.
   const staged = new Set();
