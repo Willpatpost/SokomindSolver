@@ -73,14 +73,16 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Corral-based move ordering adds CorralOrderingAnalyzer to both search engines.
   // Coordinator decomposition and typed engine payload interfaces.
   // Forced-push macros integrated into classic engine; aggregate caching in run-state.
-  allScriptsAndStylesGzipBytes: 430_000,
+  // Analyzer/solver boundary expansion: structural conclusions, recommended
+  // tuning defaults, precomputed doorway tasks, and PDB budget control.
+  allScriptsAndStylesGzipBytes: 432_000,
   largestAssetGzipBytes: 80_000,
   homeRouteGzipBytes: 175_000,
   playRouteGzipBytes: 200_000,
-  solverWorkerGzipBytes: 61_000,
+  solverWorkerGzipBytes: 63_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
-  // schedule trace, and macro intermediate retention (73,072).
-  engineWorkerGzipBytes: 74_000,
+  // schedule trace, macro intermediate retention, and precomputed doorway tasks.
+  engineWorkerGzipBytes: 75_000,
   puzzleShardGzipBytes: 5_000,
 });
 

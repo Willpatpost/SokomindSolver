@@ -325,8 +325,8 @@ function analyzePuzzleForSearch(data, options = {}) {
       estimatedBytes: preparedBoard.estimatedBytes,
       goalTables: preparedBoard.goalPushTables.byGoal.size,
       playerDistanceTables: preparedBoard.playerPushDistances.size,
-      graphNodes: board.metrics.graphNodes,
-      graphEdges: board.metrics.graphEdges,
+      graphNodes: preparedBoard.graphNodes,
+      graphEdges: preparedBoard.graphEdges,
       buildMs: Math.round(board.metrics.parseMs * 1000) / 1000,
     },
   };

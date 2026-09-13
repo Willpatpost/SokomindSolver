@@ -117,8 +117,11 @@ nested worker is 68,313 bytes; ceilings are now 417 KB and 69 KB respectively.
 The experimental long-range box rescheduling command increases the measured
 total to 417,308 bytes and nested worker to 70,531 bytes. Its reviewed ceilings
 are 418 KB total and 71 KB for the nested worker.
-The cold Home/Play ceilings remain unchanged. The outer solver worker ceiling
-is 61 KB after forced-push macro integration into the classic engine.
+The analyzer/solver boundary expansion (structural conclusions, recommended
+tuning defaults, precomputed doorway tasks, PDB budget control) raises the
+reviewed total to 432 KB, solver worker to 63 KB, and nested engine worker to
+75 KB.
+The cold Home/Play ceilings remain unchanged.
 Navigation responses never overwrite the known-good shell, so an online 404
 cannot poison offline startup. Runtime writes are restricted to
 manifest-declared same-scope resources and are awaited through the fetch event
