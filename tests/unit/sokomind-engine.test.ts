@@ -10,7 +10,6 @@ import type { SolverRequest } from "../../src/solver/contracts.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import {
   analysisPlanFromAnalysis,
-  type SokomindAnalysisPlan,
 } from "../../src/solver/implementations/sokomind-legacy.ts";
 import {
   structuralPlan,
