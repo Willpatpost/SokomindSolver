@@ -149,7 +149,7 @@ test("mechanism-plan: feasible mechanisms filtered by room count and passage req
     const excluded = MECHANISM_TYPES.filter((t) => !feasible.includes(t));
     for (const m of excluded) {
       const entry = MECHANISM_CATALOG[m];
-      const fails =
+      const fails: boolean =
         entry.minBoxes > 3 ||
         entry.minRooms > fb.rooms.length ||
         (entry.needsNarrowPassage && !hasNarrow) ||
@@ -490,7 +490,7 @@ test("mechanism-plan: DAG edges have valid types from the mechanism system", () 
         "edge should have a description",
       );
       // from and to should reference valid node IDs
-      const nodeIds = new Set(result.dag.nodes.map((n) => n.id));
+      const nodeIds: Set<number> = new Set(result.dag.nodes.map((n) => n.id));
       assert.ok(
         nodeIds.has(edge.from),
         `edge.from=${edge.from} should reference a valid node`,

@@ -338,7 +338,7 @@ test("goals: goal room has enough cells for assigned goals", () => {
 
   const goalRooms = solved.blueprint.rooms.filter((r) => r.role === "goal-room");
   for (const room of goalRooms) {
-    const goalsInRoom = solved.goals.filter((g) => g.roomId === room.id);
+    const goalsInRoom: SolvedBlueprint["goals"][number][] = solved.goals.filter((g) => g.roomId === room.id);
     const roomCells = room.width * room.height;
     assert.ok(
       goalsInRoom.length <= roomCells,

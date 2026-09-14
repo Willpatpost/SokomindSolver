@@ -32,7 +32,7 @@ function solution(steps: readonly SolutionStep[]): SolverSolution {
 function replay(puzzle: PuzzleDefinition, steps: readonly SolutionStep[], requireSolved = true) {
   const grid = puzzle.rows.map((row) => [...row]);
   const result = buildCanonicalSolutionTrace(grid, steps, { requireSolved, puzzleId: puzzle.id });
-  assert.equal(result.ok, true, result.ok ? undefined : result.error.message);
+  assert.equal(result.ok, true, result.ok ? "" : result.error.message);
   return { trace: result.trace, story: analyzePassiveSolutionStory(grid, result.trace) };
 }
 
@@ -234,7 +234,7 @@ test("story-aware typing splits boxes across a real gate and packing relationshi
     steps,
     { puzzleId: result.puzzle.id, requireSolved: true },
   );
-  assert.equal(traceResult.ok, true, traceResult.ok ? undefined : traceResult.error.message);
+  assert.equal(traceResult.ok, true, traceResult.ok ? "" : traceResult.error.message);
   const story = analyzePassiveSolutionStory(
     result.puzzle.rows.map((row) => [...row]),
     traceResult.trace,
@@ -305,7 +305,7 @@ test("assignment-misdirection keeps the surprising box and a nearer alternative 
     steps,
     { puzzleId: puzzle.id, requireSolved: true },
   );
-  assert.equal(genericTrace.ok, true, genericTrace.ok ? undefined : genericTrace.error.message);
+  assert.equal(genericTrace.ok, true, genericTrace.ok ? "" : genericTrace.error.message);
   const genericStory = analyzePassiveSolutionStory(
     puzzle.rows.map((row) => [...row]),
     genericTrace.trace,
@@ -357,7 +357,7 @@ test("assignment-misdirection keeps the surprising box and a nearer alternative 
     steps,
     { puzzleId: result.puzzle.id, requireSolved: true },
   );
-  assert.equal(typedTrace.ok, true, typedTrace.ok ? undefined : typedTrace.error.message);
+  assert.equal(typedTrace.ok, true, typedTrace.ok ? "" : typedTrace.error.message);
   const typedStory = analyzePassiveSolutionStory(
     result.puzzle.rows.map((row) => [...row]),
     typedTrace.trace,

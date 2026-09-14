@@ -68,7 +68,7 @@ export function fixtureTrace(fixture: CounterfactualFixture) {
   assert.ok(replay.snapshot.solved);
   const grid = fixture.puzzle.rows.map((row) => [...row]);
   const result = buildCanonicalSolutionTrace(grid, replay.steps, { requireSolved: true });
-  assert.ok(result.ok, result.ok ? undefined : result.error.message);
+  assert.ok(result.ok, result.ok ? "" : result.error.message);
   return { grid, trace: result.trace, session };
 }
 

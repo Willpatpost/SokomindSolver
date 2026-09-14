@@ -84,7 +84,7 @@ test("a maximum retained progress export can be imported again", () => {
     daily,
     activity,
   }), puzzleIds);
-  assert.equal(result.ok, true, result.ok ? undefined : result.message);
+  assert.equal(result.ok, true, result.ok ? "" : result.message);
   if (!result.ok) return;
   assert.equal(Object.values(result.progress.activity).flat().length, 10_000);
   assert.equal(Object.keys(result.progress.completed).length, 57);

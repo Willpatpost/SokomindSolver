@@ -131,7 +131,7 @@ export class ForgeWorkerPool {
         task.resolve(msg.result);
         this.dispatch();
       });
-      worker.on("error", (error) => this.fail(error));
+      worker.on("error", (error) => this.fail(error instanceof Error ? error : new Error(String(error))));
       worker.on("exit", (code) => {
         const pending = this.workers.get(worker);
         this.workers.delete(worker);

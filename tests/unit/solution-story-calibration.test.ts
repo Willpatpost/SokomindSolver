@@ -97,7 +97,7 @@ test("Grand Hall calibration is replay-valid and demonstrates its claimed story"
     steps,
     { puzzleId: puzzle.id, requireSolved: true },
   );
-  assert.equal(trace.ok, true, trace.ok ? undefined : trace.error.message);
+  assert.equal(trace.ok, true, trace.ok ? "" : trace.error.message);
   const story = analyzePassiveSolutionStory(
     puzzle.rows.map((row) => [...row]),
     trace.trace,

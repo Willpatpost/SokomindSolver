@@ -46,7 +46,7 @@ function buildTrace(
     steps,
     { puzzleId: "mixed-fixture", requireSolved: true },
   );
-  assert.equal(result.ok, true, result.ok ? undefined : result.error.message);
+  assert.equal(result.ok, true, result.ok ? "" : result.error.message);
   return result.trace;
 }
 
