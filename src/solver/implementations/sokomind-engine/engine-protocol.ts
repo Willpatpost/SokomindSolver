@@ -21,7 +21,7 @@ export interface AnalyzePuzzlePayload extends EnginePayloadBase {
     inferenceWork?: number;
     maxExpanded?: number;
     maxGenerated?: number;
-    partialScheduleEvaluation?: boolean;
+    partialScheduleEvaluation?: number;
   }>;
 }
 
