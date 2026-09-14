@@ -166,7 +166,8 @@ test("the adapter passes experimental plans through the analysis boundary", () =
   assert.equal(parseSokomindOptions({}).strategicPlanExecution, false);
   assert.equal(parseSokomindOptions({strategicPlanExecution: true}).strategicPlanExecution, true);
   assert.throws(() => parseSokomindOptions({strategicPlanExecution: "yes"}));
-  assert.equal(structuralPlan(state, request, {}, "fast", 1, converted).payload.planStrategicExecution, false);
+  assert.equal(structuralPlan(state, request, {}, "fast", 1, converted).payload.planStrategicExecution, undefined);
+  assert.equal(structuralPlan(state, request, {}, "fast", 1, converted).payload.planTaskMacros, false);
   assert.equal(parseSokomindOptions({strategicAnalysisMs: 250}).strategicAnalysisMs, 250);
   for (const invalid of [-1, 1001, NaN, "250"]) {
     assert.throws(() => parseSokomindOptions({strategicAnalysisMs: invalid}));

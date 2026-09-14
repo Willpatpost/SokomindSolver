@@ -480,114 +480,187 @@ describe("vendored Sokomind engine", () => {
     assert.equal(analysis.strategicPlan.status, "partial");
   });
 
-  it("preserves candidate diversity across first-task kinds in strategic export", () => {
-    const request = requestFor(PUZZLE_BY_ID.huge);
+  it("preserves candidate diversity: two same-first-task candidates survive export", () => {
+    const puzzle = PUZZLE_BY_ID["gen-v2-310116-594a231c"];
+    assert.ok(puzzle, "fixture puzzle must exist");
+    const request = requestFor(puzzle);
     const result = search({
       algorithm: "analyze-puzzle",
       state: toLegacyState(request),
       strategicAnalysis: {
-        maxMs: 200,
-        inferenceWork: 2048,
-        maxExpanded: 4000,
-        maxGenerated: 48000,
+        maxMs: 2000,
+        inferenceWork: 4096,
+        maxExpanded: 8000,
+        maxGenerated: 96000,
+        scheduleChoices: 3,
       },
     });
     const analysis = result.analysis as {
       readonly strategicPlan?: {
-        readonly candidates: readonly { readonly tasks: readonly string[] }[];
+        readonly candidates: readonly {
+          readonly tasks: readonly string[];
+          readonly robot: readonly number[];
+          readonly boxes: readonly unknown[];
+        }[];
       };
     };
-    assert.ok(analysis.strategicPlan?.candidates);
-    if (analysis.strategicPlan.candidates.length >= 2) {
-      const firstTasks = analysis.strategicPlan.candidates.map(c => c.tasks[0]);
-      const unique = new Set(firstTasks);
-      assert.ok(
-        firstTasks.length >= unique.size,
-        "multiple candidates should survive export",
-      );
-    }
+    assert.ok(analysis.strategicPlan?.candidates, "strategic plan should have candidates");
+    assert.ok(
+      analysis.strategicPlan.candidates.length >= 2,
+      `expected >= 2 candidates, got ${analysis.strategicPlan.candidates.length}`,
+    );
+    const firstTasks = analysis.strategicPlan.candidates.map(c => c.tasks[0]);
+    const uniqueFirstTasks = new Set(firstTasks);
+    assert.ok(
+      firstTasks.length > uniqueFirstTasks.size,
+      `expected more candidates (${firstTasks.length}) than unique first tasks ` +
+      `(${uniqueFirstTasks.size}) — diversity fix should allow same-first-task variants`,
+    );
   });
 
-  it("populates structuralConclusions with doorway tasks even without transit prerequisites", () => {
-    const request = requestFor(MIXED_TYPED_PUZZLE);
+  it("populates structuralConclusions with doorway tasks (Grand Hall has rooms)", () => {
+    const request = requestFor(PUZZLE_BY_ID.huge);
     const result = search({
       algorithm: "analyze-puzzle",
       state: toLegacyState(request),
     });
     const plan = analysisPlanFromAnalysis(result.analysis);
     assert.ok(plan, "analysis plan should parse");
-    if (plan.doorwayTasks && plan.doorwayTasks.length > 0) {
-      assert.ok(
-        plan.structuralConclusions,
-        "structuralConclusions should exist when doorwayTasks are present",
-      );
-      assert.deepEqual(
-        plan.structuralConclusions.doorwayTasks,
-        plan.doorwayTasks,
-      );
-    }
+    assert.ok(
+      plan.doorwayTasks && plan.doorwayTasks.length > 0,
+      "Grand Hall must produce doorway tasks (it has multiple rooms)",
+    );
+    assert.ok(
+      plan.structuralConclusions,
+      "structuralConclusions must exist when doorwayTasks are present",
+    );
+    assert.deepEqual(
+      plan.structuralConclusions.doorwayTasks,
+      plan.doorwayTasks,
+    );
+    assert.ok(
+      Array.isArray(plan.structuralConclusions.transitPrerequisites),
+      "transitPrerequisites should be an array (possibly empty)",
+    );
   });
 
-  it("applies analyzer tuning recommendations to the structural plan payload", () => {
-    const request = requestFor(PUZZLE_BY_ID.huge);
+  it("applies analyzer tuning: moveAwareDiscovery flows into structural plan", () => {
+    const puzzle = PUZZLE_BY_ID["gen-v2-340187-cd08a50a"];
+    assert.ok(puzzle, "fixture puzzle must exist");
+    const request = requestFor(puzzle);
     const state = toLegacyState(request);
-    const result = search({algorithm: "analyze-puzzle", state});
+    const result = search({ algorithm: "analyze-puzzle", state });
     const analysisPlan = analysisPlanFromAnalysis(result.analysis);
     assert.ok(analysisPlan);
 
-    const plan = structuralPlan(
-      state,
-      request,
-      {},
-      "fast",
+    assert.equal(
+      analysisPlan.recommendations.moveAwareDiscovery,
       1,
-      analysisPlan,
+      "complex puzzle with rooms > 1 must recommend moveAwareDiscovery 1",
     );
+
+    const plan = structuralPlan(state, request, {}, "fast", 1, analysisPlan);
     const payload = plan.payload as Record<string, unknown>;
 
-    if (analysisPlan.recommendations.firstPushWalkWeight !== undefined &&
-        analysisPlan.recommendations.firstPushWalkWeight > 0) {
-      assert.equal(
-        payload.firstPushWalkWeight,
-        analysisPlan.recommendations.firstPushWalkWeight,
-        "firstPushWalkWeight should reach structural plan",
-      );
-    }
-    if (analysisPlan.recommendations.moveAwareDiscovery !== undefined &&
-        analysisPlan.recommendations.moveAwareDiscovery > 0) {
-      assert.equal(
-        payload.moveAwareDiscovery,
-        analysisPlan.recommendations.moveAwareDiscovery,
-        "moveAwareDiscovery should reach structural plan",
-      );
-    }
+    assert.equal(
+      payload.moveAwareDiscovery,
+      1,
+      "moveAwareDiscovery must flow through to structural plan",
+    );
+    assert.equal(
+      payload.planMoveAwareTranspositions,
+      true,
+      "moveAwareDiscovery >= 0.5 must enable planMoveAwareTranspositions",
+    );
     assert.equal(
       payload.planSolutionComparisonBudget,
       0,
-      "Fast mode should disable solution comparison",
+      "Fast mode must disable solution comparison",
     );
   });
 
-  it("respects small PDB preparation budgets", () => {
+  it("respects PDB budgets: zero budget produces fewer partitions", () => {
     const request = requestFor(PUZZLE_BY_ID.huge);
+    const state = toLegacyState(request);
     const tightResult = search({
       algorithm: "analyze-puzzle",
-      state: toLegacyState(request),
+      state,
       strategicAnalysis: { maxMs: 1, pdbBudgetMs: 0 },
     });
-    const tightAnalysis = tightResult.analysis as {
-      readonly preparedBoardStats: { readonly buildMs: number };
-    };
+    const tightPerf = tightResult.performance as Record<string, number>;
+
     const normalResult = search({
       algorithm: "analyze-puzzle",
-      state: toLegacyState(request),
+      state,
     });
-    const normalAnalysis = normalResult.analysis as {
-      readonly preparedBoardStats: { readonly buildMs: number };
-    };
+    const normalPerf = normalResult.performance as Record<string, number>;
+
     assert.ok(
-      tightAnalysis.preparedBoardStats.buildMs <= normalAnalysis.preparedBoardStats.buildMs + 10,
-      "tight PDB budget should not exceed normal build time",
+      normalPerf.pdbPartitionCount > 0,
+      `normal analysis must build PDB partitions, got ${normalPerf.pdbPartitionCount}`,
+    );
+    assert.ok(
+      tightPerf.pdbPartitionCount <= normalPerf.pdbPartitionCount,
+      `tight budget partitions (${tightPerf.pdbPartitionCount}) should not exceed ` +
+      `normal (${normalPerf.pdbPartitionCount})`,
+    );
+    assert.ok(
+      tightPerf.pdbBuildMs <= normalPerf.pdbBuildMs + 5,
+      `tight budget build time (${tightPerf.pdbBuildMs}) should not exceed ` +
+      `normal (${normalPerf.pdbBuildMs})`,
+    );
+  });
+
+  it("Fast structural plan uses strategic guidance with task macros disabled", () => {
+    const puzzle = PUZZLE_BY_ID["gen-v2-340187-cd08a50a"];
+    assert.ok(puzzle, "fixture puzzle must exist");
+    const request = requestFor(puzzle);
+    const state = toLegacyState(request);
+    const analyzeResult = search({ algorithm: "analyze-puzzle", state });
+    const analysisPlan = analysisPlanFromAnalysis(analyzeResult.analysis);
+    assert.ok(analysisPlan?.strategicPlan, "analysis must produce a strategic plan");
+
+    const plan = structuralPlan(state, request, {}, "fast", 1, analysisPlan);
+    const payload = plan.payload as Record<string, unknown>;
+    assert.ok(
+      payload.strategicPlan,
+      "structural plan payload must include the strategic plan",
+    );
+    assert.equal(
+      payload.planStrategicExecution,
+      undefined,
+      "Fast mode must not set planStrategicExecution (would block the plan if false)",
+    );
+    assert.equal(
+      payload.planTaskMacros,
+      false,
+      "Fast mode must explicitly disable task macros",
+    );
+
+    const searchResult = search({
+      ...payload,
+      maxVisited: 500,
+      maxGenerated: 5000,
+      planDiagnostics: true,
+    });
+    const diagnostics = searchResult.planDiagnostics as {
+      readonly strategicExecution?: {
+        readonly evaluations: number;
+        readonly taskMacros: number;
+      };
+    } | undefined;
+    assert.ok(
+      diagnostics?.strategicExecution,
+      "plan-macro-beam must produce strategicExecution diagnostics when strategic plan is active",
+    );
+    assert.ok(
+      diagnostics.strategicExecution.evaluations > 0,
+      `strategic scoring must run (evaluations: ${diagnostics.strategicExecution.evaluations})`,
+    );
+    assert.equal(
+      diagnostics.strategicExecution.taskMacros,
+      0,
+      "task macros must remain zero when planTaskMacros is false",
     );
   });
 });

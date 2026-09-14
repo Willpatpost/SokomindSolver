@@ -4507,7 +4507,7 @@ function analyzePuzzleForSearch(data, options = {}) {
   }
   phases.push({id: "exact-proof", reason: "complete fallback after heuristic workers"});
   const recommendations = {
-    reverseWorkerLimit: difficulty === "extreme" ? 0 : 1,
+    reverseWorkerLimit: 1,
     sideVisitedLimit: difficulty === "extreme" ? 100000 : difficulty === "complex" ? 200000 : 250000,
     beamAttempts: difficulty === "small" ? 1 : 2,
     beamWidth: difficulty === "extreme" ? 300 : difficulty === "complex" ? 700 : 1200,
