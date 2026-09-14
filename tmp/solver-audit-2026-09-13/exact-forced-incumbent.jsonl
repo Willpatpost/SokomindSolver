@@ -1,2 +1,0 @@
-{"incumbentMoves":9,"incumbentReplay":true,"resultMoves":7,"proof":{"objective":{"kind":"moves"},"kind":"optimal","algorithm":"move-astar","lowerBound":7,"upperBound":7,"gap":0}}
-{"incumbentMoves":11,"incumbentReplay":true,"resultMoves":9,"proof":{"objective":{"kind":"moves"},"kind":"optimal","algorithm":"move-astar","lowerBound":9,"upperBound":9,"gap":0}}
