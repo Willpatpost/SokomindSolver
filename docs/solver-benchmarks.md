@@ -372,7 +372,7 @@ the 650-move/3-second target.
 The analyzer now has an experimental path through task simulation, adaptive
 interaction groups, serialized verified prefixes, and structural search.
 Production defaults remain unchanged. See
-[the integration contract](solver-integration.md#experimental-strategic-planning).
+[the integration contract](solver-integration.md#strategic-planning).
 
 Run isolated Node kernel comparisons with separate analysis and search timing:
 

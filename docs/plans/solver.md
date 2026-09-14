@@ -24,12 +24,11 @@ established. A repair requiring a complete incumbent is not pre-search success.
 
 ### Implemented controls awaiting experimental promotion
 
-The September 2026 audit corrections restore A* global frontier ordering,
-invalidate earlier proof certificates, enforce discovery budgets, honor explicit
-strategic opt-outs, and pass validated tuning through benchmark workers. These
-are correctness and measurement prerequisites, not route-quality promotions.
-The historical P1 comparisons used a driver whose treatments were ignored;
-repeat activation witnesses and controlled experiments before interpreting them.
+The September 2026 audit corrections restore A* memory-aware allocation,
+enforce discovery generated-state budgets, and add aggregate cache invalidation.
+Strategic analysis is promoted for quality mode (auto-injected at 500 ms with
+plan execution). The remaining P1 controls below are correctness and
+measurement prerequisites, not route-quality promotions.
 
 - **P1.1 Macro intermediate retention** - implemented as `macroIntermediateQuota`
   (default 0) for untargeted macros only. Targeted handoff retention and provenance
@@ -97,7 +96,7 @@ repeat activation witnesses and controlled experiments before interpreting them.
 | Scalar tuning | Deferred to P3 | Cannot fix missing states; improve candidate retention first. |
 | Hard pruning from heuristic deadlock | Rejected | Requires proof-level safety argument + counterexample tests. |
 | Machine learning | Deferred | Needs clean fact/task/resource/plan representations first. |
-| Increased `strategicAnalysisMs` | Rejected | Goal is better deduction per unit work, not more preprocessing. |
+| Increased `strategicAnalysisMs` beyond auto | Rejected | Auto-strategic injects 500 ms for quality mode; further increases trade deduction quality for preprocessing time. |
 | Persistent learning / reverse workers | Deferred | Until measurements identify a specific need. |
 | Persistent resume support | Deferred | Until short-budget path is evaluated. |
 | Pair-pattern tables | Deferred | Until profiling shows repeated interaction-cost bottleneck. |
@@ -111,9 +110,10 @@ repeat activation witnesses and controlled experiments before interpreting them.
   production 893/278). Expert maze regressed from 107 to 127 moves.
 - **Sprint 3 (local approach repair):** Grand Hall exhausted frontier. 61
   choices attempted, 60 failures. Eager enumeration also unsuccessful.
-- **Strategic plan execution:** Grand Hall regresses with
-  `strategicPlanExecution: true`. 789→780 in Node but search-time target not
-  reached.
+- **Strategic plan execution (early attempts):** Initial integration regressed
+  Grand Hall (789→780 in Node, search-time target not reached). Later promoted
+  for quality mode after the full pipeline (discovery + strategic rewrite)
+  produced 515-move Grand Hall solutions in under 15 seconds.
 
 ## Invariants
 

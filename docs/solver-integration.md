@@ -92,13 +92,18 @@ without this additive data compile it during hydration. The richer transport
 agenda is analysis output for future move-aware ordering experiments; it does
 not yet change the production beam's ordering or its returned route.
 
-### Experimental strategic planning
+### Strategic planning
 
-The opt-in request option
-`options["sokomind-solver"].strategicAnalysisMs` accepts an integer from 0 to
-1,000; zero is the default and preserves the reviewed search configuration.
-Timed strategic planning is incompatible with `deterministic: true` and is
-rejected rather than silently weakening that guarantee.
+Quality mode automatically enables strategic analysis (500 ms) and plan
+execution on structural puzzles unless the caller explicitly sets a nonzero
+`strategicAnalysisMs` or enables `deterministic: true`. This auto-injection
+produces Grand Hall solutions of ~515 moves within 15 seconds.
+
+The request option `options["sokomind-solver"].strategicAnalysisMs` accepts an
+integer from 0 to 1,000. When set to a nonzero value it overrides the
+quality-mode default. Timed strategic planning is incompatible with
+`deterministic: true` and is rejected rather than silently weakening that
+guarantee.
 
 When enabled on structural puzzles, analysis constructs version-1 canonical
 plan packages. It simulates export, delivery, and transit-release tasks on the
@@ -115,7 +120,7 @@ rejects invalid or stale candidates, and adds valid prefixes alongside its
 normal root state. A complete verified plan can finish without discovery
 expansions. These are full-state prefixes, not certificates that every remaining
 task can be completed. Valid but strategically poor prefixes can still regress
-a bounded beam, which is why the feature remains experimental.
+a bounded beam.
 
 Planning has shared expansion/generation limits, and its actual work is reported
 to the adapter's request budget. Existing public request elapsed limits still
