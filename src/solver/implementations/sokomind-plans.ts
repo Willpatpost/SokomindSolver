@@ -92,7 +92,7 @@ export function structuralPlan(
   budgetDivisor = 1,
   analysisPlan?: SokomindAnalysisPlan,
 ): EnginePlan {
-  const rich = useRichAnalyzerGuidance(request);
+  const rich = richAnalyzerGuidanceEnabled(request);
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
   const transpositionLimit =
     memoryLimit <= MEMORY_TIER_LOW
@@ -158,7 +158,7 @@ export function sokomindDiscoveryBeamWidth(
   return boxCount >= 8 ? 256 : 700;
 }
 
-export function useRichAnalyzerGuidance(request: SolverRequest): boolean {
+export function richAnalyzerGuidanceEnabled(request: SolverRequest): boolean {
   return extractSokomindOptions(request).strategicPlanExecution;
 }
 
@@ -201,7 +201,7 @@ export function discoveryPlans(
   analysisPlan?: SokomindAnalysisPlan,
   firstSolutionOnly = false,
 ): readonly EnginePlan[] {
-  const rich = useRichAnalyzerGuidance(request);
+  const rich = richAnalyzerGuidanceEnabled(request);
   const boxes = request.snapshot.boxes.length;
   const moderate = boxes >= 5 || request.board.floor.length >= 45;
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;

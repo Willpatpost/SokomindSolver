@@ -5,7 +5,7 @@ import { createSession, stepSnapshot, type PuzzleDefinition } from "../../src/co
 import { search, validateStrategicPlanContract, evaluateStrategicPlanState, rebaseStrategicPlan } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
 import { analysisPlanFromAnalysis } from "../../src/solver/implementations/sokomind-legacy.ts";
-import { preparationPlan, structuralPlan, checkpointContinuationPlans, discoveryPlans, useRichAnalyzerGuidance } from "../../src/solver/implementations/sokomind-plans.ts";
+import { preparationPlan, structuralPlan, checkpointContinuationPlans, discoveryPlans, richAnalyzerGuidanceEnabled } from "../../src/solver/implementations/sokomind-plans.ts";
 import { parseSokomindOptions } from "../../src/solver/implementations/sokomind-options.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
@@ -357,7 +357,7 @@ test("normal Quality mode does not receive expensive analyzer hints", () => {
   const {request, state, analysis} = prepare();
   const converted = analysisPlanFromAnalysis(analysis);
   assert.ok(converted);
-  assert.equal(useRichAnalyzerGuidance(request), false);
+  assert.equal(richAnalyzerGuidanceEnabled(request), false);
   const structural = structuralPlan(state, request, {}, "quality", 1, converted);
   const sp = structural.payload as Record<string, unknown>;
   assert.equal(sp.precomputedDoorwayTasks, undefined, "Quality must not get precomputedDoorwayTasks");
@@ -389,7 +389,7 @@ test("explicit strategicPlanExecution enables rich analyzer path", () => {
   const converted = analysisPlanFromAnalysis(analysis);
   assert.ok(converted);
   const richRequest = {...requestFor(), options: {"sokomind-solver": {strategicPlanExecution: true}}};
-  assert.equal(useRichAnalyzerGuidance(richRequest), true);
+  assert.equal(richAnalyzerGuidanceEnabled(richRequest), true);
   const structural = structuralPlan(state, richRequest, {}, "quality", 1, converted);
   const sp = structural.payload as Record<string, unknown>;
   assert.equal(sp.planStrategicExecution, true, "Must set planStrategicExecution with explicit opt-in");
