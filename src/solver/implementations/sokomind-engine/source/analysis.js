@@ -672,8 +672,11 @@ function reachablePaths(state, board) {
     return cached;
   }
   const parents = new Int32Array(dense.keys.length), parentMoves = new Int8Array(dense.keys.length);
+  const distances = new Int16Array(dense.keys.length);
   parents.fill(-2);
+  distances.fill(-1);
   parents[start] = -1;
+  distances[start] = 0;
   const queue = new Int32Array(dense.keys.length);
   queue[0] = start;
   let tail = 1, regionId = start;
@@ -684,6 +687,7 @@ function reachablePaths(state, board) {
       if (next < 0 || parents[next] !== -2 || occupied[next] >= 0) continue;
       parents[next] = current;
       parentMoves[next] = direction;
+      distances[next] = distances[current] + 1;
       queue[tail++] = next;
       regionId = Math.min(regionId, next);
     }
@@ -705,6 +709,11 @@ function reachablePaths(state, board) {
       return id !== undefined && parents[id] !== -2;
     },
     hasId: id => id >= 0 && parents[id] !== -2,
+    distanceTo: position => {
+      const id = dense.idByKey.get(position);
+      return id !== undefined ? distances[id] : -1;
+    },
+    distanceToId: id => id >= 0 ? distances[id] : -1,
     get: position => pathToId(dense.idByKey.get(position)),
     getId: pathToId,
     keys: function* () {
@@ -718,6 +727,7 @@ function reachablePaths(state, board) {
     // instead of recursively charging every memo entry for the shared board.
     _parents: parents,
     _parentMoves: parentMoves,
+    _distances: distances,
     _queue: queue,
   };
   Object.defineProperty(result, "board", {
@@ -2145,10 +2155,16 @@ function exactLocalCorralAnalyses(state, board, reachable = reachablePaths(state
 function createsSealedCorralDeadlock(state, board, reachable) {
   const {dense} = board;
   const layout = denseBoxLayout(state.boxes, board);
-  const occupied = new Map(state.boxes.map(([y, x, label]) => [pkey(y, x), label]));
+  const indexByCell = ensureIndexByCell(layout, board);
   for (const component of inaccessibleFloorComponents(reachable, board)) {
-    const componentBoxes = [...component].filter(position => occupied.has(position));
-    if (!componentBoxes.some(position => board.goals.get(position) !== occupied.get(position))) continue;
+    const componentBoxes = [...component].filter(position => {
+      const id = dense.idByKey.get(position);
+      return id !== undefined && indexByCell[id] >= 0;
+    });
+    if (!componentBoxes.some(position => {
+      const id = dense.idByKey.get(position);
+      return board.goals.get(position) !== state.boxes[indexByCell[id]][2];
+    })) continue;
     const canOpen = componentBoxes.some(position => {
       const box = dense.idByKey.get(position);
       return DIRECTION_ENTRIES.some((_, direction) => {

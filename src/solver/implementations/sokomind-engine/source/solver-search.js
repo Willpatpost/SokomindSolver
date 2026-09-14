@@ -171,12 +171,12 @@ function keeperApproachProfile(state, board, reachable) {
       const support = pkey(y - dy, x - dx);
       if (!board.floor.has(destination) || occupied.has(destination) ||
           occupied.has(support)) continue;
-      if (!reachable.has(support)) continue;
-      const walk = reachable.get(support);
+      const walkDistance = reachable.distanceTo(support);
+      if (walkDistance < 0) continue;
       const candidateSide = `${dy},${dx}`;
-      if (walk.length < distance ||
-          (walk.length === distance && candidateSide < side)) {
-        distance = walk.length;
+      if (walkDistance < distance ||
+          (walkDistance === distance && candidateSide < side)) {
+        distance = walkDistance;
         side = candidateSide;
       }
     }
