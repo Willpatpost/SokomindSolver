@@ -393,10 +393,29 @@ export function createSokomindSolverAdapter(
   return Object.freeze({
     metadata: sokomindSolverMetadata,
     async solve(
-      request: SolverRequest,
+      originalRequest: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
-      const structural = isStructuralPuzzle(request);
+      const originalOptions = extractSokomindOptions(originalRequest);
+      const structural = isStructuralPuzzle(originalRequest);
+      const autoStrategic =
+        originalOptions.mode === "quality" &&
+        structural &&
+        !originalOptions.deterministic &&
+        originalOptions.strategicAnalysisMs === 0;
+      const request = autoStrategic
+        ? Object.freeze({
+            ...originalRequest,
+            options: Object.freeze({
+              ...originalRequest.options,
+              "sokomind-solver": Object.freeze({
+                ...(originalRequest.options?.["sokomind-solver"] as Record<string, unknown> | undefined),
+                strategicAnalysisMs: 500,
+                strategicPlanExecution: true,
+              }),
+            }),
+          })
+        : originalRequest;
       const sokomindOptions = extractSokomindOptions(request);
       const startedAt = context.now();
       const maxElapsed = request.limits?.maxElapsedMs;
