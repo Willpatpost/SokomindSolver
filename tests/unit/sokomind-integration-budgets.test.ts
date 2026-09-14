@@ -72,8 +72,11 @@ describe("Sokomind integration resource contracts", () => {
         queueMicrotask(() => controller.abort());
       }) });
       await adapter.solve({ ...requestFor(LARGE_ROOM), options: { "sokomind-solver": options } }, context(controller.signal));
-      const expected = options.strategicAnalysisMs
-        ? { maxMs: options.strategicAnalysisMs, inferenceWork: options.strategicPlanExecution ? 2048 : 0 }
+      const autoStrategic = options.mode === "quality" && !options.strategicAnalysisMs;
+      const effectiveMs = autoStrategic ? 500 : (options.strategicAnalysisMs || 0);
+      const effectiveExec = autoStrategic || Boolean(options.strategicPlanExecution);
+      const expected = effectiveMs
+        ? { maxMs: effectiveMs, inferenceWork: effectiveExec ? 2048 : 0 }
         : undefined;
       assert.deepEqual(commands[0]?.payload.strategicAnalysis, expected);
     });
