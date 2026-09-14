@@ -171,6 +171,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     pathLimit: strategicLimit(config.pathLimit, 512, 4096),
     inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
     scheduleChoices: strategicLimit(config.scheduleChoices, 0, 8),
+    partialScheduleEvaluation: !!config.partialScheduleEvaluation,
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
@@ -362,11 +363,24 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
       consumer.dependsOn.push(id); consumer.evidence.sourceIds.push(id);
     }
   }
-  plan.candidates = [...schedules.values()].slice(0, options.width).map(candidate => ({path: candidate.path,
+  let finalCandidates = [...schedules.values()];
+  if (options.partialScheduleEvaluation && finalCandidates.length) {
+    for (const candidate of finalCandidates) {
+      candidate._scheduleCost = evaluatePartialScheduleCost(board, initial, candidate.path);
+    }
+    finalCandidates.sort((a, b) => {
+      const aCost = a._scheduleCost?.feasible ? a._scheduleCost.estimatedTotalMoves : Infinity;
+      const bCost = b._scheduleCost?.feasible ? b._scheduleCost.estimatedTotalMoves : Infinity;
+      return aCost - bCost || a.score - b.score;
+    });
+    plan.statistics.partialScheduleEvaluations = finalCandidates.length;
+  }
+  plan.candidates = finalCandidates.slice(0, options.width).map(candidate => ({path: candidate.path,
       moves: candidate.path.length, pushes: candidate.pushes, tasks: candidate.tasks,
       endpoint: {robot: candidate.robot, boxes: candidate.boxes},
       solved: goal(candidate.boxes, board.goals),
-      estimatedRemainingPushes: candidate.estimatedRemainingPushes}));
+      estimatedRemainingPushes: candidate.estimatedRemainingPushes,
+      ...(candidate._scheduleCost ? {scheduleCost: candidate._scheduleCost} : {})}));
   if (plan.candidates.some(candidate => candidate.solved)) plan.status = "solved";
   plan.statistics.expanded = budget.expanded;
   plan.statistics.generated = budget.generated;

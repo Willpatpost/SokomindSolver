@@ -7961,6 +7961,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     pathLimit: strategicLimit(config.pathLimit, 512, 4096),
     inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
     scheduleChoices: strategicLimit(config.scheduleChoices, 0, 8),
+    partialScheduleEvaluation: !!config.partialScheduleEvaluation,
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
@@ -8152,11 +8153,24 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
       consumer.dependsOn.push(id); consumer.evidence.sourceIds.push(id);
     }
   }
-  plan.candidates = [...schedules.values()].slice(0, options.width).map(candidate => ({path: candidate.path,
+  let finalCandidates = [...schedules.values()];
+  if (options.partialScheduleEvaluation && finalCandidates.length) {
+    for (const candidate of finalCandidates) {
+      candidate._scheduleCost = evaluatePartialScheduleCost(board, initial, candidate.path);
+    }
+    finalCandidates.sort((a, b) => {
+      const aCost = a._scheduleCost?.feasible ? a._scheduleCost.estimatedTotalMoves : Infinity;
+      const bCost = b._scheduleCost?.feasible ? b._scheduleCost.estimatedTotalMoves : Infinity;
+      return aCost - bCost || a.score - b.score;
+    });
+    plan.statistics.partialScheduleEvaluations = finalCandidates.length;
+  }
+  plan.candidates = finalCandidates.slice(0, options.width).map(candidate => ({path: candidate.path,
       moves: candidate.path.length, pushes: candidate.pushes, tasks: candidate.tasks,
       endpoint: {robot: candidate.robot, boxes: candidate.boxes},
       solved: goal(candidate.boxes, board.goals),
-      estimatedRemainingPushes: candidate.estimatedRemainingPushes}));
+      estimatedRemainingPushes: candidate.estimatedRemainingPushes,
+      ...(candidate._scheduleCost ? {scheduleCost: candidate._scheduleCost} : {})}));
   if (plan.candidates.some(candidate => candidate.solved)) plan.status = "solved";
   plan.statistics.expanded = budget.expanded;
   plan.statistics.generated = budget.generated;
@@ -8346,6 +8360,54 @@ function fixedOrderBoxReschedule(board, initial, events, selected, targetCell, u
     if (budget.expanded % 256 === 0) budget.report(heap.length);
   }
   return null;
+}
+
+function evaluatePartialScheduleCost(board, initial, path) {
+  if (!path.length) return {feasible: true, moves: 0, pushes: 0, remainingPushEstimate: 0};
+  let state = {robot: initial.robot, boxes: initial.boxes};
+  let pushes = 0, lastPushMove = -1;
+  const events = [];
+  for (let index = 0; index < path.length; index++) {
+    const next = neighbors(state, board, false).find(n => n.move === path[index]);
+    if (!next) return {feasible: false, reason: "invalid-move", moveIndex: index};
+    if (next.boxes !== state.boxes) {
+      const boxIndex = state.boxes.findIndex((box, i) =>
+        box[0] !== next.boxes[i][0] || box[1] !== next.boxes[i][1]);
+      if (boxIndex < 0) return {feasible: false, reason: "no-box-moved", moveIndex: index};
+      events.push({boxIndex, moveIndex: index, walkCost: index - lastPushMove - 1});
+      pushes++;
+      lastPushMove = index;
+    }
+    state = {robot: next.robot, boxes: next.boxes};
+  }
+  let remainingPushEstimate = 0;
+  for (let boxIndex = 0; boxIndex < state.boxes.length; boxIndex++) {
+    const [y, x, label] = state.boxes[boxIndex];
+    const position = pkey(y, x);
+    if (board.goals.get(position) === label) continue;
+    const targets = [...board.goals].filter(([, kind]) => kind === label);
+    let bestDistance = Infinity;
+    for (const [target] of targets) {
+      const d = compiledGoalPushDistance(board, position, target);
+      if (Number.isFinite(d) && d < bestDistance) bestDistance = d;
+    }
+    if (!Number.isFinite(bestDistance)) {
+      remainingPushEstimate += 100;
+    } else {
+      remainingPushEstimate += bestDistance;
+    }
+  }
+  const keeperWalkEstimate = remainingPushEstimate > 0
+    ? Math.max(0, remainingPushEstimate - 1) * 2
+    : 0;
+  return {
+    feasible: true,
+    moves: path.length,
+    pushes,
+    pushEvents: events.length,
+    remainingPushEstimate,
+    estimatedTotalMoves: path.length + remainingPushEstimate + keeperWalkEstimate,
+  };
 }
 
 function boxReschedulingTrace(payload, path, board) {

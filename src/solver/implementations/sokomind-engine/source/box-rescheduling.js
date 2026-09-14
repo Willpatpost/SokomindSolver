@@ -152,6 +152,54 @@ function fixedOrderBoxReschedule(board, initial, events, selected, targetCell, u
   return null;
 }
 
+function evaluatePartialScheduleCost(board, initial, path) {
+  if (!path.length) return {feasible: true, moves: 0, pushes: 0, remainingPushEstimate: 0};
+  let state = {robot: initial.robot, boxes: initial.boxes};
+  let pushes = 0, lastPushMove = -1;
+  const events = [];
+  for (let index = 0; index < path.length; index++) {
+    const next = neighbors(state, board, false).find(n => n.move === path[index]);
+    if (!next) return {feasible: false, reason: "invalid-move", moveIndex: index};
+    if (next.boxes !== state.boxes) {
+      const boxIndex = state.boxes.findIndex((box, i) =>
+        box[0] !== next.boxes[i][0] || box[1] !== next.boxes[i][1]);
+      if (boxIndex < 0) return {feasible: false, reason: "no-box-moved", moveIndex: index};
+      events.push({boxIndex, moveIndex: index, walkCost: index - lastPushMove - 1});
+      pushes++;
+      lastPushMove = index;
+    }
+    state = {robot: next.robot, boxes: next.boxes};
+  }
+  let remainingPushEstimate = 0;
+  for (let boxIndex = 0; boxIndex < state.boxes.length; boxIndex++) {
+    const [y, x, label] = state.boxes[boxIndex];
+    const position = pkey(y, x);
+    if (board.goals.get(position) === label) continue;
+    const targets = [...board.goals].filter(([, kind]) => kind === label);
+    let bestDistance = Infinity;
+    for (const [target] of targets) {
+      const d = compiledGoalPushDistance(board, position, target);
+      if (Number.isFinite(d) && d < bestDistance) bestDistance = d;
+    }
+    if (!Number.isFinite(bestDistance)) {
+      remainingPushEstimate += 100;
+    } else {
+      remainingPushEstimate += bestDistance;
+    }
+  }
+  const keeperWalkEstimate = remainingPushEstimate > 0
+    ? Math.max(0, remainingPushEstimate - 1) * 2
+    : 0;
+  return {
+    feasible: true,
+    moves: path.length,
+    pushes,
+    pushEvents: events.length,
+    remainingPushEstimate,
+    estimatedTotalMoves: path.length + remainingPushEstimate + keeperWalkEstimate,
+  };
+}
+
 function boxReschedulingTrace(payload, path, board) {
   const details = replaySolutionDetails(payload, path, board);
   if (!details || !goal(details.state.boxes, board.goals)) return null;
