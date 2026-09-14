@@ -21,7 +21,7 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
   const memoryBytes = 2048 * 1024 ** 2;
   const request = {board: session.board, snapshot: session.snapshot, objective: {kind: "moves" as const},
     options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0, deterministic: true}},
-    limits: {maxElapsedMs: 60000, maxExpandedStates: 400000, maxGeneratedStates: 4000000,
+    limits: {maxElapsedMs: 60000, maxExpandedStates: 1000000, maxGeneratedStates: 10000000,
       maxMemoryBytes: memoryBytes}};
   await page.goto("./#/play/ultra-tiny");
   const {result, rescheduled} = await page.evaluate(async ({asset, request}) =>
@@ -49,9 +49,9 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
   expect(result.status).toBe("solved");
   if (result.status !== "solved") return;
   // Quality improvement is time-bounded; CI browser environments (headless
-  // Chromium) may not complete enough rewrite passes to match local results
-  // (520/242). Discovery alone produces ~893/563; bounds accommodate the
-  // slowest observed CI environment while confirming rescheduling ran.
+  // Chromium) may not complete enough rewrite passes to match local results.
+  // With reverse workers enabled, discovery runs 3 parallel plans consuming
+  // more states; bounds accommodate the slowest observed CI environment.
   expect(result.solution.moves).toBeLessThanOrEqual(950);
   expect(result.solution.pushes).toBeLessThanOrEqual(600);
   expect(result.solution.optimality).toBe("unknown");
