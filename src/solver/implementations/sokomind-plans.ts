@@ -113,7 +113,8 @@ export function structuralPlan(
         strategicPlan: analysisPlan.strategicPlan,
         ...(rich
           ? { planStrategicExecution: true, planTaskMacros: false }
-          : mode === "fast" ? { planTaskMacros: false } : {}),
+          : mode === "fast" ? { planTaskMacros: false }
+          : { planStrategicExecution: false }),
       } : {}),
       maxDepth: 460,
       maxVisited: remainingStateBudget(request, 6_000, budgetDivisor),

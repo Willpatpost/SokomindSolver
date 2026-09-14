@@ -361,7 +361,7 @@ test("normal Quality mode does not receive expensive analyzer hints", () => {
   const structural = structuralPlan(state, request, {}, "quality", 1, converted);
   const sp = structural.payload as Record<string, unknown>;
   assert.equal(sp.precomputedDoorwayTasks, undefined, "Quality must not get precomputedDoorwayTasks");
-  assert.equal(sp.planStrategicExecution, undefined, "Quality must not set planStrategicExecution");
+  assert.equal(sp.planStrategicExecution, false, "Quality must explicitly disable strategic execution");
   assert.equal(sp.planTaskMacros, undefined, "Quality must not set planTaskMacros");
   const discovery = discoveryPlans(state, request, 1, {}, 1, converted);
   const dp = discovery[0].payload as Record<string, unknown>;
