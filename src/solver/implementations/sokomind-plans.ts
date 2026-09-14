@@ -128,9 +128,6 @@ export function structuralPlan(
       progressIntervalMs: 1_000,
       ...tuning,
       ...analyzerRecommendedTuningDefaults(tuning, analysisPlan),
-      ...(analysisPlan?.structuralConclusions?.doorwayTasks.length
-        ? { precomputedDoorwayTasks: analysisPlan.structuralConclusions.doorwayTasks }
-        : {}),
       ...(effectiveMoveAwareDiscovery(tuning, analysisPlan) >= 0.5
         ? { planMoveAwareTranspositions: true } : {}),
       ...(mode === "fast" ? { planSolutionComparisonBudget: 0 } : {}),
