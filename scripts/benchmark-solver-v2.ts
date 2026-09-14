@@ -20,6 +20,7 @@ import {
   BENCHMARK_SCHEMA_VERSION,
   benchmarkCorpusFingerprint,
   benchmarkTuningFingerprint,
+  benchmarkTuningConfiguration,
   benchmarkRunIdentity,
   compareFeatureSummaries,
   expectedBenchmarkPairs,
@@ -27,6 +28,7 @@ import {
   isPromotableBenchmarkBaseline,
   isProfileEligible,
   parseBenchmarkArguments,
+  parseBenchmarkTuning,
   parseChildSample,
   runBenchmarkSample,
   selectBenchmarkFixtures,
@@ -36,6 +38,7 @@ import {
   type BenchmarkGitSnapshot,
   type BenchmarkSample,
   type BenchmarkSampleSummary,
+  type BenchmarkTuningRun,
 } from "./solver-v2-benchmark-lib.ts";
 import { BENCHMARK_CORPUS } from "../tests/fixtures/solver-v2/benchmark-corpus.ts";
 
@@ -61,10 +64,11 @@ function childErrorSample(
   detail: string,
   elapsedMs: number,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): BenchmarkSample {
   const profile = BENCHMARK_PROFILES[profileId];
   return Object.freeze({
-    runIdentity: benchmarkRunIdentity(fixtureId, profileId, featureRun),
+    runIdentity: benchmarkRunIdentity(fixtureId, profileId, featureRun, tuningRun),
     fixtureId,
     fixtureGroup: "primary-v2",
     boardHash: "unknown",
@@ -79,6 +83,7 @@ function childErrorSample(
       deterministic: profile.deterministic,
       workerCount: profile.workerCount,
       limits: profile.limits,
+      ...benchmarkTuningConfiguration(profile, tuningRun),
       ...(profile.sokomindOptions
         ? { sokomindOptions: profile.sokomindOptions }
         : {}),
@@ -104,6 +109,7 @@ function runIsolatedSample(
   fixtureId: string,
   profileId: BenchmarkProfileId,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): BenchmarkSample {
   const startedAt = performance.now();
   const profile = BENCHMARK_PROFILES[profileId];
@@ -116,6 +122,10 @@ function runIsolatedSample(
       "--child",
       `--child-fixture=${fixtureId}`,
       `--child-profile=${profileId}`,
+      ...(tuningRun ? [
+        `--child-tuning-json=${JSON.stringify(tuningRun.profile)}`,
+        ...(tuningRun.label !== "custom" ? [`--tuning-label=${tuningRun.label}`] : []),
+      ] : []),
       ...(featureRun
         ? [
             `--child-feature=${featureRun.feature}`,
@@ -138,6 +148,7 @@ function runIsolatedSample(
       profileId,
       child.status,
       featureRun,
+      tuningRun,
     );
   } catch (caught) {
     const detail = [
@@ -152,12 +163,21 @@ function runIsolatedSample(
       detail,
       elapsedMs,
       featureRun,
+      tuningRun,
     );
   }
 }
 
 async function main(): Promise<void> {
   const args = parseBenchmarkArguments(process.argv.slice(2));
+  const tuningRun = parseBenchmarkTuning(
+    args.childTuningJson ?? process.env.SOKOMIND_TUNING_JSON,
+    args.childMode && args.childProfileId ? [args.childProfileId] : args.profileIds,
+    args.tuningLabel,
+  );
+  if (tuningRun && (args.compareFeature || args.childFeature)) {
+    throw new Error("Tuning experiments cannot be combined with exact feature comparisons");
+  }
   if (args.childMode) {
     if (!args.childFixtureId || !args.childProfileId) {
       throw new Error("Child mode requires --child-fixture and --child-profile");
@@ -182,7 +202,7 @@ async function main(): Promise<void> {
           feature: args.childFeature,
           enabled: args.childFeatureEnabled!,
         };
-    const sample = await runBenchmarkSample(fixture, profile, featureRun);
+    const sample = await runBenchmarkSample(fixture, profile, featureRun, tuningRun);
     process.stdout.write(`${JSON.stringify(sample)}\n`);
     return;
   }
@@ -221,7 +241,7 @@ async function main(): Promise<void> {
       for (const featureRun of variants) {
         for (let index = 0; index < args.warmupRuns; index += 1) {
           process.stderr.write(
-            `  ${benchmarkRunIdentity(fixture.fixtureId, profileId, featureRun)}: ` +
+            `  ${benchmarkRunIdentity(fixture.fixtureId, profileId, featureRun, tuningRun)}: ` +
               `preflight ${index + 1}/${args.warmupRuns}\n`,
           );
           runIsolatedSample(
@@ -229,6 +249,7 @@ async function main(): Promise<void> {
             fixture.fixtureId,
             profileId,
             featureRun,
+            tuningRun,
           );
         }
         const samples: BenchmarkSample[] = [];
@@ -238,6 +259,7 @@ async function main(): Promise<void> {
             fixture.fixtureId,
             profileId,
             featureRun,
+            tuningRun,
           );
           samples.push(sample);
           process.stderr.write(
@@ -273,7 +295,7 @@ async function main(): Promise<void> {
   );
   const selectedExpectedPairs = expectedBenchmarkPairs(fixtures, args.profileIds) *
     (args.compareFeature ? 2 : 1);
-  const partial = args.compareFeature !== undefined ||
+  const partial = tuningRun !== undefined || args.compareFeature !== undefined ||
     fixtures.length !== BENCHMARK_CORPUS.length ||
     args.profileIds.length !== BENCHMARK_PROFILE_IDS.length;
   const gitEnd = captureGitSnapshot();
@@ -316,7 +338,13 @@ async function main(): Promise<void> {
       selectedExpectedPairs,
       partial,
     }),
-    tuningFingerprint: benchmarkTuningFingerprint(),
+    tuningFingerprint: benchmarkTuningFingerprint(tuningRun?.profile),
+    ...(tuningRun ? {tuningExperiment: Object.freeze({
+      ...tuningRun,
+      // Effective settings establish configuration, not whether this fixture
+      // reached the mechanism. No discovery efficacy classification is made.
+      mechanismExercise: "not-assessed" as const,
+    })} : {}),
     compareFeature: args.compareFeature,
     profiles: Object.freeze(
       Object.fromEntries(args.profileIds.map((profileId) => [

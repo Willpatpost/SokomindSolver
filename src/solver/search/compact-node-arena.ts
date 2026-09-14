@@ -29,6 +29,8 @@ export interface CompactNodeArena {
   boxTokenAt(index: number, boxIndex: number): number;
 
   estimatedRetainedBytes(): number;
+  /** Includes a whole new chunk when the next allocation needs one. */
+  estimatedRetainedBytesAfterAllocation(): number;
   estimatedBytesPerNode(): number;
 }
 
@@ -167,6 +169,11 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
         (2 + 4 + 2 + 4 + 2 + 1 + 2);
       const tokenBytes = numChunks * CHUNK_SIZE * boxCount * bytesPerToken;
       return scalarBytes + tokenBytes;
+    },
+
+    estimatedRetainedBytesAfterAllocation(): number {
+      const nextCapacity = _size < capacity ? capacity : capacity + CHUNK_SIZE;
+      return nextCapacity * (17 + boxCount * bytesPerToken);
     },
 
     estimatedBytesPerNode(): number {

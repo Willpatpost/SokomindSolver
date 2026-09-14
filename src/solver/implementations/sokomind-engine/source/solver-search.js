@@ -3936,6 +3936,15 @@ function bidirectionalSide(payload) {
   const frontierLimit = payload.frontierLimit || 40000;
   let order = 0, visited = 0, reported = 0, bestLandmarkEstimate = Infinity;
   let generated = 0, peakFrontier = 0, compactions = 0;
+  const maxVisited = payload.maxVisited ?? Infinity;
+  const maxGenerated = payload.maxGenerated ?? Infinity;
+  if (maxVisited <= 0 || maxGenerated <= 0) {
+    postMessage({type: "done", visited, generated, frontier: 0, retained: 0,
+      peakFrontier, cutoff: true,
+      terminationReason: maxVisited <= 0 ? "budget" : "generated-budget",
+      performance: performanceSnapshot(board.metrics)});
+    return;
+  }
   const compactFrontier = () => {
     peakFrontier = Math.max(peakFrontier, frontier.length);
     if (frontier.length <= frontierLimit * 2) return;
@@ -3982,7 +3991,7 @@ function bidirectionalSide(payload) {
   });
   compactFrontier();
 
-  while (frontier.length) {
+  while (frontier.length && generated < maxGenerated) {
     const current = frontier.pop()[2];
     if (bestCost.get(current.exactIdentity) !== current.cost) continue;
     bestCost.delete(current.exactIdentity);
@@ -4051,7 +4060,7 @@ function bidirectionalSide(payload) {
         peakFrontier,
       });
     }
-    if (payload.maxVisited && visited >= payload.maxVisited) {
+    if (visited >= maxVisited) {
       flushRecords(records, {
         visited,
         generated,
@@ -4087,6 +4096,7 @@ function bidirectionalSide(payload) {
         reverseShardOwns(exactPushIdentity(next, board), payload.reverseShard));
     }
     for (const next of nextStates) {
+      if (generated >= maxGenerated) break;
       next.exactIdentity = exactPushIdentity(next, board);
       if (next.cost >= (bestCost.get(next.exactIdentity) ?? Infinity)) continue;
       const estimate = forward
@@ -4121,7 +4131,8 @@ function bidirectionalSide(payload) {
     bestEstimate: bestLandmarkEstimate, frontier: frontier.length,
     retained: closed.size + bestCost.size, generated, peakFrontier, compactions,
     performance: performanceSnapshot(board.metrics)});
-  postMessage({type: "done", visited, cutoff: false, terminationReason: "exhausted",
+  postMessage({type: "done", visited, cutoff: generated >= maxGenerated,
+    terminationReason: generated >= maxGenerated ? "generated-budget" : "exhausted",
     bestEstimate: bestLandmarkEstimate, generated, peakFrontier, compactions,
     frontier: frontier.length, retained: closed.size + bestCost.size,
     performance: performanceSnapshot(board.metrics)});

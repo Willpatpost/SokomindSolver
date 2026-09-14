@@ -38,6 +38,7 @@ import type { ProofCheckpointOptions, SokomindProofWorker } from "./sokomind-pro
 import {
   aggregate,
   elapsed,
+  invalidateAggregate,
   metrics,
   reachedLimit,
   withRemainingLimits,
@@ -349,7 +350,7 @@ export const sokomindSolverMetadata: SolverMetadata = Object.freeze({
   displayName: "Sokomind Solver",
   description:
     "Typed-box Sokoban search with structural macros, compact bidirectional frontiers, and bounded move-count improvement.",
-  version: "1.2.0",
+  version: "1.2.1",
   capabilities: Object.freeze({
     executionTargets: ["web-worker"] as const,
     runtime: "javascript",
@@ -392,29 +393,10 @@ export function createSokomindSolverAdapter(
   return Object.freeze({
     metadata: sokomindSolverMetadata,
     async solve(
-      originalRequest: SolverRequest,
+      request: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
-      const originalOptions = extractSokomindOptions(originalRequest);
-      const structural = isStructuralPuzzle(originalRequest);
-      const autoStrategic =
-        originalOptions.mode === "quality" &&
-        structural &&
-        !originalOptions.deterministic &&
-        originalOptions.strategicAnalysisMs === 0;
-      const request = autoStrategic
-        ? Object.freeze({
-            ...originalRequest,
-            options: Object.freeze({
-              ...originalRequest.options,
-              "sokomind-solver": Object.freeze({
-                ...(originalRequest.options?.["sokomind-solver"] as Record<string, unknown> | undefined),
-                strategicAnalysisMs: 500,
-                strategicPlanExecution: true,
-              }),
-            }),
-          })
-        : originalRequest;
+      const structural = isStructuralPuzzle(request);
       const sokomindOptions = extractSokomindOptions(request);
       const startedAt = context.now();
       const maxElapsed = request.limits?.maxElapsedMs;
@@ -489,6 +471,7 @@ export function createSokomindSolverAdapter(
           state = withPreparedBoard(state, preparation.preparedBoard);
           run.budget.preparedBoardEstimatedMemoryBytes =
             preparedBoardMemoryEstimate(preparation.preparedBoard);
+          invalidateAggregate(run);
         }
         analysisPlan = preparation.analysisPlan;
         errors = [...errors, ...preparation.errors];

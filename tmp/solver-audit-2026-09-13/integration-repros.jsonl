@@ -1,0 +1,4 @@
+{"repro":"explicit-strategic-disable-overridden","requested":{"mode":"quality","strategicAnalysisMs":0,"strategicPlanExecution":false},"actualPreparation":{"maxMs":500,"inferenceWork":2048},"status":"cancelled"}
+{"repro":"bidir-ignores-generated-ceiling","requestedGenerated":1,"visited":9,"generated":21,"cutoff":false,"reason":"exhausted"}
+{"repro":"public-adapter-generated-overspend","requestedGenerated":3,"status":"unsolved","generated":21,"expanded":9,"detail":"The generated-state limit was reached."}
+{"repro":"worker-registration-stale-memory-cache","requestedMemoryBytes":1,"created":1,"posted":1,"status":"unsolved","detail":"The time limit was reached.","peakEstimatedMemoryBytes":0,"progress":[{"phase":"preparing"},{"phase":"searching","estimatedMemoryBytes":0}]}

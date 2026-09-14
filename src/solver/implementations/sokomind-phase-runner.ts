@@ -299,6 +299,7 @@ class PhaseRunner {
     aggregate(this.run);
     for (const id of [...this.active.keys()]) this.cleanupWorker(id);
     this.run.budget.resetPhase();
+    invalidateAggregate(this.run);
     this.resolve({
       ...(this.collectedSolutions.length
         ? { solutions: Object.freeze([...this.collectedSolutions]) }
@@ -324,6 +325,7 @@ class PhaseRunner {
     aggregate(this.run);
     for (const id of [...this.active.keys()]) this.cleanupWorker(id);
     this.run.budget.resetPhase();
+    invalidateAggregate(this.run);
     this.reject(error);
   }
 
@@ -499,6 +501,7 @@ class PhaseRunner {
         this.reverseRecords,
       );
       this.run.registry.register(executionId, plan.label, plan.mode);
+      invalidateAggregate(this.run);
 
       const onMessage: EngineMessageListener = ({ data }) => {
         if (this.settled) return;

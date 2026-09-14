@@ -99,6 +99,7 @@ export interface BoxReschedulePayload extends EnginePayloadBase {
 
 export interface BidirectionalSidePayload extends EnginePayloadBase {
   readonly maxVisited?: number;
+  readonly maxGenerated?: number;
   readonly frontierLimit?: number;
   readonly landmarkLimit?: number;
   readonly reverseShard?: Readonly<{ index: number; count: number }>;

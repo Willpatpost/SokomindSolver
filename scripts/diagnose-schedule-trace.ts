@@ -5,6 +5,7 @@ import { search } from "../src/solver/implementations/sokomind-engine/engine.gen
 import { createNodeSolverAdapter } from "../src/solver/node-runner.ts";
 import { verifySolverSolution } from "../src/solver/verification.ts";
 import { toLegacyState, solutionFromLegacyPath } from "../src/solver/implementations/sokomind-solver.ts";
+import { legacyPathFromSolution } from "../src/solver/implementations/sokomind-legacy.ts";
 
 interface BoxScheduleEntry {
   boxIndex: number;
@@ -76,7 +77,13 @@ assert.ok(
 );
 
 const session = createSession(puzzle);
-const request = { board: session.board, snapshot: session.snapshot, objective: { kind: "moves" as const } };
+const request = {
+  board: session.board, snapshot: session.snapshot,
+  objective: { kind: "moves" as const },
+  options: { "sokomind-solver": { mode: "quality", deterministic: true } },
+  limits: { maxElapsedMs: 180_000, maxExpandedStates: 500_000,
+    maxGeneratedStates: 5_000_000, maxMemoryBytes: 768 * 1024 * 1024 },
+};
 
 console.log(`Step 1: Solving ${fixture} with quality mode...`);
 const adapter = createNodeSolverAdapter({ hardwareConcurrency: 2 });
@@ -90,12 +97,9 @@ assert.ok(solverResult.status === "solved");
 const verification = verifySolverSolution(request, solverResult.solution);
 assert.ok(verification.valid, `Verification failed`);
 
-const incumbentPath = solverResult.solution.steps.map((s) => {
-  const map: Record<string, string> = { up: "U", down: "D", left: "L", right: "R" };
-  return map[s.direction];
-});
+const incumbentPath = legacyPathFromSolution(solverResult.solution);
 
-console.log(`  Discovery: ${incumbentPath.length} moves, ${solverResult.solution.pushes} pushes`);
+console.log(`  Quality incumbent: ${incumbentPath.length} moves, ${solverResult.solution.pushes} pushes`);
 
 console.log(`Step 2: Rescheduling with diagnostics...`);
 const state = toLegacyState(request);
@@ -105,6 +109,8 @@ const rescheduleResult = search({
   solutionPath: incumbentPath,
   maxVisited: 300_000,
   maxGenerated: 2_000_000,
+  maxMemoryBytes: request.limits.maxMemoryBytes,
+  rescheduleMaxMs: 25_000,
   rescheduleRounds: 2,
   diagnostics: true,
 }) as Record<string, unknown>;
@@ -118,7 +124,7 @@ const rescheduledVerification = verifySolverSolution(request, rescheduledSolutio
 assert.ok(rescheduledVerification.valid, "Rescheduled solution failed verification");
 
 console.log(`\nFixture: ${fixture}`);
-console.log(`Discovery: ${incumbentPath.length} moves`);
+console.log(`Quality incumbent: ${incumbentPath.length} moves`);
 console.log(`Rescheduled: ${rescheduledPath.length} moves`);
 
 const scheduleTrace = rescheduleResult.scheduleTrace as readonly BoxScheduleEntry[] | undefined;
@@ -139,7 +145,9 @@ if (boxRescheduling) {
 console.log("\nJSON output:");
 console.log(JSON.stringify({
   fixture,
-  discoveryMoves: incumbentPath.length,
+  mode: "quality",
+  incumbentMoves: incumbentPath.length,
+  replayVerified: true,
   rescheduledMoves: rescheduledPath.length,
   scheduleTrace: scheduleTrace ?? null,
   boxRescheduling: boxRescheduling ?? null,

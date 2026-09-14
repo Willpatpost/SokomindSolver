@@ -601,6 +601,21 @@ export async function runExactMoveAStar(
       );
     };
 
+    const nodeAllocationFitsMemory = (
+      newState: boolean,
+      projectedFrontierSize: number,
+    ): boolean => {
+      const maximum = request.limits?.maxMemoryBytes;
+      return maximum === undefined || estimatedArenaMemoryBytes(
+        currentStaticBytes(),
+        arena.estimatedRetainedBytesAfterAllocation(),
+        uniqueStates + (newState ? 1 : 0),
+        projectedFrontierSize,
+        heuristic.stats.cacheEntries,
+        boxCount,
+      ) <= maximum;
+    };
+
     const makeOptimalProof = (): SolverProof => ({
       objective: request.objective,
       kind: "optimal",
@@ -654,6 +669,20 @@ export async function runExactMoveAStar(
         metrics: {
           ...m,
           counters: { ...m.counters, lowerBound: Math.min(lb, U) },
+        },
+      };
+    };
+
+    const finishLimitReached = (detail: string): SolverResult => {
+      if (incumbentSolution) return finishSolvedBounded(lastLowerBound);
+      const m = metrics();
+      return {
+        status: "unsolved",
+        reason: "limit-reached",
+        detail,
+        metrics: {
+          ...m,
+          counters: { ...m.counters, lowerBound: lastLowerBound },
         },
       };
     };
@@ -726,6 +755,9 @@ export async function runExactMoveAStar(
         : finishCapExhausted(U);
     }
 
+    if (!nodeAllocationFitsMemory(true, 1)) {
+      return finishLimitReached("Estimated solver memory limit reached.");
+    }
     const rootIndex = arena.allocate();
     arena.setRobotCell(rootIndex, initialRobot);
     arena.setGMoves(rootIndex, 0);
@@ -792,11 +824,54 @@ export async function runExactMoveAStar(
     throwIfSolverCancelled(context.signal);
 
     let limitDetail: string | undefined;
-    let forcedNextIndex: number | undefined;
 
     const syncState = () => { heapSize = heap.size; };
 
-    searchLoop: while (heap.size > 0 || forcedNextIndex !== undefined) {
+    interface RetainedSuccessor {
+      readonly robotCell: number;
+      readonly moves: number;
+      readonly pushes: number;
+      readonly parentIndex: number;
+      readonly pushedFromCell: number;
+      readonly pushDirection: number;
+      readonly h: number;
+      readonly tokens: Uint32Array;
+      readonly key: bigint;
+      readonly zobristKey: number;
+      readonly previousBestG: number | undefined;
+    }
+
+    const retainSuccessor = (child: RetainedSuccessor): boolean => {
+      if (!nodeAllocationFitsMemory(child.previousBestG === undefined, heap.size + 1)) {
+        limitDetail = "Estimated solver memory limit reached.";
+        return false;
+      }
+      const index = arena.allocate();
+      arena.setRobotCell(index, child.robotCell);
+      arena.setGMoves(index, child.moves);
+      arena.setPushes(index, child.pushes);
+      arena.setParentNode(index, child.parentIndex);
+      arena.setPushedFromCell(index, child.pushedFromCell);
+      arena.setPushDirection(index, child.pushDirection);
+      arena.setHeuristic(index, child.h);
+      arena.writeBoxTokens(index, child.tokens);
+      counters.retainedBytes = arena.estimatedRetainedBytes();
+      counters.maxDepth = Math.max(counters.maxDepth, child.pushes);
+
+      if (bestGStore(child.zobristKey, child.key, child.moves)) {
+        uniqueStates += 1;
+      } else {
+        counters.reopens += 1;
+      }
+      // Even a state's only legal push can have a larger f than another
+      // frontier node. Every successor must compete in the global queue.
+      heap.enqueue(index);
+      syncState();
+      counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
+      return true;
+    };
+
+    searchLoop: while (heap.size > 0) {
       throwIfSolverCancelled(context.signal);
       if (elapsedLimitReached()) {
         limitDetail = "Maximum elapsed time reached.";
@@ -832,16 +907,9 @@ export async function runExactMoveAStar(
         }
       }
 
-      let nodeIndex: number;
-      if (forcedNextIndex !== undefined) {
-        nodeIndex = forcedNextIndex;
-        forcedNextIndex = undefined;
-      } else {
-        const popped = heap.dequeue();
-        if (popped === undefined) break;
-        nodeIndex = popped;
-        syncState();
-      }
+      const nodeIndex = heap.dequeue();
+      if (nodeIndex === undefined) break;
+      syncState();
 
       arena.readBoxTokens(nodeIndex, parentTokenBuf);
       const nodeRobotCell = arena.robotCell(nodeIndex);
@@ -1039,6 +1107,11 @@ export async function runExactMoveAStar(
                   )
                 : heuristic.evaluate(expansionBoxes);
 
+              if (memoryLimitReached()) {
+                (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+                limitDetail = "Estimated solver memory limit reached.";
+                break searchLoop;
+              }
               if (Number.isFinite(pushLowerBound)) {
                 const labelCosts = heuristic.lastLabelCosts;
                 const interactionBoost = labelCosts && boostEvaluator
@@ -1056,25 +1129,22 @@ export async function runExactMoveAStar(
                 const f = childMoves + h;
 
                 if (f < U) {
-                  const childIndex = arena.allocate();
-                  arena.setRobotCell(childIndex, savedCell);
-                  arena.setGMoves(childIndex, childMoves);
-                  arena.setPushes(childIndex, childPushes);
-                  arena.setParentNode(childIndex, nodeIndex);
-                  arena.setPushedFromCell(childIndex, savedCell);
-                  arena.setPushDirection(childIndex, fpDir);
-                  arena.setHeuristic(childIndex, h);
-                  arena.writeBoxTokens(childIndex, childTokenBuf);
-                  counters.retainedBytes = arena.estimatedRetainedBytes();
-                  counters.maxDepth = Math.max(counters.maxDepth, childPushes);
-
-                  const isNew = bestGStore(childZobristKey, childKey, childMoves);
-                  if (isNew) {
-                    uniqueStates += 1;
-                  } else {
-                    counters.reopens += 1;
+                  if (!retainSuccessor({
+                    robotCell: savedCell,
+                    moves: childMoves,
+                    pushes: childPushes,
+                    parentIndex: nodeIndex,
+                    pushedFromCell: savedCell,
+                    pushDirection: fpDir,
+                    h,
+                    tokens: childTokenBuf,
+                    key: childKey,
+                    zobristKey: childZobristKey,
+                    previousBestG: prevBestG,
+                  })) {
+                    (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+                    break searchLoop;
                   }
-                  forcedNextIndex = childIndex;
                 }
               } else {
                 counters.infeasiblePrunes += 1;
@@ -1209,6 +1279,11 @@ export async function runExactMoveAStar(
                     expansionBoxes, tChildBoxKey, parentBoxKey, tMovedLabel,
                   )
                 : heuristic.evaluate(expansionBoxes);
+              if (memoryLimitReached()) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                limitDetail = "Estimated solver memory limit reached.";
+                break searchLoop;
+              }
               if (!Number.isFinite(tPushLowerBound)) {
                 (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
                 counters.infeasiblePrunes += 1;
@@ -1232,45 +1307,21 @@ export async function runExactMoveAStar(
 
               if (tF >= U) continue;
 
-              const tProjectedArenaBytes = arena.estimatedRetainedBytes() + arena.estimatedBytesPerNode();
-              const tMaxMemory = request.limits?.maxMemoryBytes;
-              if (tMaxMemory !== undefined) {
-                const tStats = heuristic.stats;
-                const tProjectedMemory = estimatedArenaMemoryBytes(
-                  currentStaticBytes(), tProjectedArenaBytes,
-                  uniqueStates + 1, heap.size + 1, tStats.cacheEntries, boxCount,
-                );
-                if (tProjectedMemory > tMaxMemory) {
-                  limitDetail = "Estimated solver memory limit reached.";
-                  syncState();
-                  break searchLoop;
-                }
+              if (!retainSuccessor({
+                robotCell: stop.robotCell,
+                moves: tChildMoves,
+                pushes: tChildPushes,
+                parentIndex: nodeIndex,
+                pushedFromCell: box.cell,
+                pushDirection: encodeTunnelPushDirection(directionIndex, stop.pushCount),
+                h: tH,
+                tokens: childTokenBuf,
+                key: tChildKey,
+                zobristKey: tChildZobristKey,
+                previousBestG: tPrevBestG,
+              })) {
+                break searchLoop;
               }
-
-              const tChildIndex = arena.allocate();
-              arena.setRobotCell(tChildIndex, stop.robotCell);
-              arena.setGMoves(tChildIndex, tChildMoves);
-              arena.setPushes(tChildIndex, tChildPushes);
-              arena.setParentNode(tChildIndex, nodeIndex);
-              arena.setPushedFromCell(tChildIndex, box.cell);
-              arena.setPushDirection(
-                tChildIndex,
-                encodeTunnelPushDirection(directionIndex, stop.pushCount),
-              );
-              arena.setHeuristic(tChildIndex, tH);
-              arena.writeBoxTokens(tChildIndex, childTokenBuf);
-              counters.retainedBytes = arena.estimatedRetainedBytes();
-              counters.maxDepth = Math.max(counters.maxDepth, tChildPushes);
-
-              const tIsNewState = bestGStore(tChildZobristKey, tChildKey, tChildMoves);
-              if (tIsNewState) {
-                uniqueStates += 1;
-              } else {
-                counters.reopens += 1;
-              }
-              heap.enqueue(tChildIndex);
-              syncState();
-              counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
             }
           }
 
@@ -1344,18 +1395,7 @@ export async function runExactMoveAStar(
                 movedLabel,
               )
             : heuristic.evaluate(expansionBoxes);
-          const maxMemoryAfterHeuristic = request.limits?.maxMemoryBytes;
-          if (
-            maxMemoryAfterHeuristic !== undefined &&
-            estimatedArenaMemoryBytes(
-              currentStaticBytes(),
-              arena.estimatedRetainedBytes(),
-              uniqueStates,
-              heap.size,
-              heuristic.stats.cacheEntries,
-              boxCount,
-            ) > maxMemoryAfterHeuristic
-          ) {
+          if (memoryLimitReached()) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             limitDetail = "Estimated solver memory limit reached.";
             syncState();
@@ -1392,68 +1432,30 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const projectedArenaBytes = arena.estimatedRetainedBytes() + arena.estimatedBytesPerNode();
-          const maxMemory = request.limits?.maxMemoryBytes;
-          if (maxMemory !== undefined) {
-            const stats = heuristic.stats;
-            const projectedMemory = estimatedArenaMemoryBytes(
-              currentStaticBytes(),
-              projectedArenaBytes,
-              uniqueStates + 1,
-              heap.size + 1,
-              stats.cacheEntries,
-              boxCount,
-            );
-            if (projectedMemory > maxMemory) {
-              limitDetail = "Estimated solver memory limit reached.";
-              syncState();
-              break searchLoop;
-            }
+          if (!retainSuccessor({
+            robotCell: box.cell,
+            moves: childMoves,
+            pushes: childPushes,
+            parentIndex: nodeIndex,
+            pushedFromCell: box.cell,
+            pushDirection: directionIndex,
+            h,
+            tokens: childTokenBuf,
+            key: childKey,
+            zobristKey: childZobristKey,
+            previousBestG: prevBestG,
+          })) {
+            break searchLoop;
           }
-
-          const childIndex = arena.allocate();
-          arena.setRobotCell(childIndex, box.cell);
-          arena.setGMoves(childIndex, childMoves);
-          arena.setPushes(childIndex, childPushes);
-          arena.setParentNode(childIndex, nodeIndex);
-          arena.setPushedFromCell(childIndex, box.cell);
-          arena.setPushDirection(childIndex, directionIndex);
-          arena.setHeuristic(childIndex, h);
-          arena.writeBoxTokens(childIndex, childTokenBuf);
-          counters.retainedBytes = arena.estimatedRetainedBytes();
-          counters.maxDepth = Math.max(counters.maxDepth, childPushes);
-
-          const isNewState = bestGStore(childZobristKey, childKey, childMoves);
-          if (isNewState) {
-            uniqueStates += 1;
-          } else {
-            counters.reopens += 1;
-          }
-          heap.enqueue(childIndex);
-          syncState();
-          counters.peakFrontier = Math.max(counters.peakFrontier, heap.size);
         }
       }
     }
 
     syncState();
     if (limitDetail) {
-      if (incumbentSolution) {
-        // The current node has already been removed from the heap. A cutoff
-        // during its expansion must retain that node's f-value; heap.peek()
-        // alone can overstate the proven lower bound.
-        return finishSolvedBounded(lastLowerBound);
-      }
-      const m = metrics();
-      return {
-        status: "unsolved",
-        reason: "limit-reached",
-        detail: limitDetail,
-        metrics: {
-          ...m,
-          counters: { ...m.counters, lowerBound: lastLowerBound },
-        },
-      };
+      // Include the dequeued active node's f-value in any cutoff bound;
+      // the remaining heap alone can overstate proof progress.
+      return finishLimitReached(limitDetail);
     }
 
     if (incumbentSolution) {

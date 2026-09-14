@@ -12,7 +12,7 @@ import { isRecord } from "../core/type-guards.ts";
 import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 // Bump when a proof-producing algorithm or admissibility rule is corrected.
-export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-post-pi-corral-v1" as const;
+export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-astar-frontier-v2" as const;
 
 export interface OptimalRecord {
   readonly moves: number;
@@ -32,7 +32,7 @@ type OptimalCacheMutationResult = StorageMutationResult & {
 
 const EMPTY_CACHE: OptimalCache = Object.freeze({
   version: 7,
-    proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
+  proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
   records: Object.freeze({}),
 });
 
@@ -82,7 +82,10 @@ function isValidOptimalRecordKey(value: string): boolean {
  * backed-f transposition pruning. Version 4 could contain false certificates
  * created by the unsound goal-depth macro prune. Version 5 keyed proofs only
  * by puzzle ID, so a changed board could inherit a stale certificate. Schema 6
- * predates the PI-corral correction and lacks proof provenance.
+ * predates the PI-corral correction and lacks proof provenance. Earlier schema-7
+ * revisions could certify a forced A* branch before cheaper frontier nodes.
+ * The record format has no algorithm identity, so all earlier proof revisions
+ * are rejected rather than attempting to retain only unaffected certificates.
  */
 export function normalizeOptimalCache(value: unknown): OptimalCache {
   if (!isRecord(value) || !isRecord(value.records)) return EMPTY_CACHE;

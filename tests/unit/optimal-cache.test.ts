@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getOptimalRecord,
+  hydrateOptimalCacheFromIDB,
   isOptimal,
   loadOptimalCache,
   mergeOptimalCaches,
@@ -11,13 +13,13 @@ import {
   type OptimalCache,
   type OptimalRecord,
 } from "../../src/shared/optimal-cache.ts";
-import { STORAGE_KEYS } from "../../src/shared/storage.ts";
+import { APP_STORAGE_KEYS, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from "../../src/shared/storage.ts";
 import {
   createMemoryIndexedDB,
   installIndexedDB,
 } from "../support/memory-indexeddb.ts";
 
-const EMPTY_CACHE: OptimalCache = { version: 7, proofRevision: "exact-moves-post-pi-corral-v1", records: {} };
+const EMPTY_CACHE: OptimalCache = { version: 7, proofRevision: "exact-moves-astar-frontier-v2", records: {} };
 const FIRST_FINGERPRINT = "puzzle-v1:11111111";
 const SECOND_FINGERPRINT = "puzzle-v1:22222222";
 const recordKey = (puzzleId: string, fingerprint: string) =>
@@ -60,9 +62,70 @@ test("invalidates optimal records from every prior cache schema", () => {
   }
 });
 
+test("invalidates schema-7 certificates from before the A* frontier correction", async () => {
+  const stale = {
+    version: 7,
+    proofRevision: "exact-moves-post-pi-corral-v1",
+    records: { [recordKey("forced-frontier", FIRST_FINGERPRINT)]: { moves: 9, pushes: 2 } },
+  };
+  const staleCache = stale as unknown as OptimalCache;
+  const current = setOptimalRecord(EMPTY_CACHE, "other", SECOND_FINGERPRINT, { moves: 2, pushes: 1 });
+  assert.deepEqual(normalizeOptimalCache(stale), EMPTY_CACHE);
+  assert.deepEqual(mergeOptimalCaches(current, staleCache), current);
+  assert.deepEqual(mergeOptimalCaches(staleCache, current), current);
+  assert.equal(getOptimalRecord(staleCache, "forced-frontier", FIRST_FINGERPRINT), undefined);
+  assert.equal(isOptimal(staleCache, "forced-frontier", FIRST_FINGERPRINT, 9), false);
+  const corrected = setOptimalRecord(staleCache, "other", SECOND_FINGERPRINT, { moves: 2, pushes: 1 });
+  assert.deepEqual(corrected, current);
+
+  const memory = createMemoryIndexedDB();
+  memory.values.set(STORAGE_KEYS.optimal, stale);
+  const restore = installIndexedDB(memory.factory);
+  try {
+    assert.deepEqual(await hydrateOptimalCacheFromIDB(current), current);
+    const saved = saveOptimalCache(current);
+    assert.equal(await saved.durable, true);
+    assert.deepEqual(normalizeOptimalCache(memory.values.get(STORAGE_KEYS.optimal)), current);
+  } finally {
+    restore();
+  }
+});
+
+test("old tabs cannot overwrite corrected proof storage or affect progress and routes", () => {
+  const oldKey = "sokomind.optimal.v5";
+  assert.equal(LEGACY_STORAGE_KEYS.optimalV5, oldKey);
+  assert.ok(APP_STORAGE_KEYS.includes(oldKey), "reset still clears the obsolete key");
+  assert.notEqual(STORAGE_KEYS.optimal, oldKey);
+  const stale = JSON.stringify({ version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+    records: { [recordKey("forced-frontier", FIRST_FINGERPRINT)]: { moves: 9, pushes: 2 } } });
+  const values = new Map<string, string>([
+    [oldKey, stale],
+    [STORAGE_KEYS.optimal, stale],
+    [STORAGE_KEYS.progress, "preserve-progress"],
+    [STORAGE_KEYS.personalBestRoutes, "preserve-routes"],
+  ]);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  } } });
+  try {
+    assert.deepEqual(loadOptimalCache(), EMPTY_CACHE);
+    const current = setOptimalRecord(EMPTY_CACHE, "forced-frontier", FIRST_FINGERPRINT, { moves: 7, pushes: 2 });
+    assert.equal(saveOptimalCache(current).ok, true);
+    values.set(oldKey, stale); // Simulate an already-open, uncorrected tab writing again.
+    assert.deepEqual(loadOptimalCache(), current);
+    assert.equal(values.get(STORAGE_KEYS.progress), "preserve-progress");
+    assert.equal(values.get(STORAGE_KEYS.personalBestRoutes), "preserve-routes");
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
 test("current cache parsing drops malformed records safely", () => {
   const normalized = normalizeOptimalCache({
-    version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
       malformedKey: { moves: 9, pushes: 3 },
@@ -73,7 +136,7 @@ test("current cache parsing drops malformed records safely", () => {
   });
 
   assert.deepEqual(normalized, {
-    version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
     },
@@ -102,7 +165,7 @@ test("merges stale tab snapshots without losing either proof", () => {
   });
   assert.deepEqual(
     mergeOptimalCaches(merged, {
-      version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+      version: 7, proofRevision: "exact-moves-astar-frontier-v2",
       records: {
         [recordKey("p1", FIRST_FINGERPRINT)]: { moves: 18, pushes: 9 },
       },

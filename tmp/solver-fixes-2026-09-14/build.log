@@ -1,0 +1,76 @@
+
+> sokomind@0.1.0 prebuild
+> npm run prepare:sokomind-solver && npm run prepare:catalog
+
+
+> sokomind@0.1.0 prepare:sokomind-solver
+> node scripts/prepare-sokomind-engine.mjs
+
+
+> sokomind@0.1.0 prepare:catalog
+> node --experimental-strip-types scripts/prepare-puzzle-metadata.mjs
+
+Wrote 57 metadata records and 2 board shards to C:\Users\Willp\Code\GitHub\Sokomind\SokomindSolver\src\catalog\puzzle-metadata.json.
+
+> sokomind@0.1.0 build
+> npm run typecheck && vite build
+
+
+> sokomind@0.1.0 typecheck
+> tsc --noEmit
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 250 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/puzzle-shard-001-C5njDbeF.json         5.17 kB │ gzip:  1.09 kB
+dist/index.html                                    5.61 kB │ gzip:  2.01 kB
+dist/assets/puzzle-shard-000-OcWSgQp_.json        21.81 kB │ gzip:  3.97 kB
+dist/assets/sokomind-proof-worker--vtjCOXq.js    108.34 kB
+dist/assets/solver.worker-CfHJGK4b.js            209.34 kB
+dist/assets/sokomind-engine.worker-W78LRDHe.js   239.24 kB
+dist/assets/PuzzleMinimap-BB-qVthz.css             0.82 kB │ gzip:  0.37 kB
+dist/assets/model-C_q3343v.css                     0.86 kB │ gzip:  0.39 kB
+dist/assets/deadlocks-DS6J-3MC.css                 2.19 kB │ gzip:  0.76 kB
+dist/assets/HowToPlay-Dqc_o4-K.css                 3.60 kB │ gzip:  1.19 kB
+dist/assets/ReplayComparisonDialog-D-S2o5YD.css    6.29 kB │ gzip:  1.84 kB
+dist/assets/ProgressDialog-CegJDDaL.css            7.53 kB │ gzip:  1.78 kB
+dist/assets/Board-DbqU8s36.css                    11.22 kB │ gzip:  2.72 kB
+dist/assets/SolverDialog-B6woW4DJ.css             11.76 kB │ gzip:  2.75 kB
+dist/assets/PuzzleSelectorPage-BirpzCxh.css       11.91 kB │ gzip:  2.54 kB
+dist/assets/SolverLabPage-B8ysFrgM.css            12.15 kB │ gzip:  2.78 kB
+dist/assets/HomePage-CwV9KJm8.css                 14.41 kB │ gzip:  3.26 kB
+dist/assets/StatsPage-D_nxCvAl.css                16.52 kB │ gzip:  3.47 kB
+dist/assets/EditorPage-B4HEIj7L.css               33.18 kB │ gzip:  5.99 kB
+dist/assets/index-GrTNy8Lw.css                    38.89 kB │ gzip:  8.85 kB
+dist/assets/PlayPage-DmeMWcjX.css                 50.51 kB │ gzip:  9.04 kB
+dist/assets/rolldown-runtime-BpQH8Ho1.js           0.22 kB │ gzip:  0.19 kB
+dist/assets/use-stored-progress-By0s2CRm.js        0.40 kB │ gzip:  0.27 kB
+dist/assets/progress-import-BB_syTm4.js            1.68 kB │ gzip:  0.65 kB
+dist/assets/model-BH5maJlU.js                      2.19 kB │ gzip:  1.09 kB
+dist/assets/replay-comparison-CCHdh82T.js          2.80 kB │ gzip:  1.22 kB
+dist/assets/persistence-health-D-Zon-Ul.js         3.74 kB │ gzip:  1.42 kB
+dist/assets/core-BEbc2j9f.js                       4.07 kB │ gzip:  1.76 kB
+dist/assets/PuzzleMinimap-CpSIuELZ.js              4.26 kB │ gzip:  1.82 kB
+dist/assets/progress-DxrbIAZo.js                   4.59 kB │ gzip:  1.68 kB
+dist/assets/solver-Rz2vqs_g.js                     5.35 kB │ gzip:  1.98 kB
+dist/assets/HowToPlay-C1kA_okh.js                  5.51 kB │ gzip:  1.92 kB
+dist/assets/Board-CNz0N-gO.js                      7.79 kB │ gzip:  2.94 kB
+dist/assets/ProgressDialog-D9kE2HPp.js             8.01 kB │ gzip:  2.85 kB
+dist/assets/personal-best-routes-zgqYb4XD.js       8.25 kB │ gzip:  2.38 kB
+dist/assets/ReplayComparisonDialog-B4AvSegW.js     8.65 kB │ gzip:  3.18 kB
+dist/assets/deadlocks-DxRVv4f9.js                 10.53 kB │ gzip:  4.23 kB
+dist/assets/useSolverController-C1eDD13w.js       10.89 kB │ gzip:  4.02 kB
+dist/assets/SolverDialog-M5NjE37U.js              11.93 kB │ gzip:  3.35 kB
+dist/assets/HomePage-LO5nKegI.js                  17.17 kB │ gzip:  5.83 kB
+dist/assets/verification-_TzqNnci.js              17.82 kB │ gzip:  5.29 kB
+dist/assets/PuzzleSelectorPage-nEBSLSIC.js        18.30 kB │ gzip:  5.58 kB
+dist/assets/StatsPage-COXKIE-3.js                 19.98 kB │ gzip:  5.98 kB
+dist/assets/SolverLabPage-DWzBmQc1.js             23.71 kB │ gzip:  6.83 kB
+dist/assets/PlayPage-CGsN3n17.js                  61.82 kB │ gzip: 18.99 kB
+dist/assets/index-D8i5u0Rw.js                     79.59 kB │ gzip: 25.26 kB
+dist/assets/EditorPage-BJ9tNgGg.js               154.90 kB │ gzip: 46.51 kB
+dist/assets/react-vendor-C9DEO3NK.js             189.59 kB │ gzip: 59.61 kB
+
+✓ built in 1.01s

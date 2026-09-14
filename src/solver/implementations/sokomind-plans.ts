@@ -123,6 +123,8 @@ export function structuralPlan(
       targetedMacroExplored: 64,
       progressIntervalMs: 1_000,
       ...tuning,
+      ...((tuning.moveAwareDiscovery ?? 0) >= 0.5
+        ? { planMoveAwareTranspositions: true } : {}),
       ...(mode === "fast" ? { planSolutionComparisonBudget: 0 } : {}),
     }),
   });
@@ -284,6 +286,9 @@ export function bidirectionalPlans(
     Math.max(1, Math.floor(sideFallback)),
     budgetDivisor,
   );
+  // Use the same divisor as all other plans in this phase. Integer remainders
+  // remain available to subsequent phases instead of being spent by two lanes.
+  const sideGeneratedBudget = remainingGeneratedBudget(request, Infinity, budgetDivisor);
   return Object.freeze([
     Object.freeze({
       id: "bidirectional-forward",
@@ -292,6 +297,7 @@ export function bidirectionalPlans(
       payload: Object.freeze({
         state,
         maxVisited: sideBudget,
+        maxGenerated: sideGeneratedBudget,
         frontierLimit: 40_000,
       }),
     }),
@@ -302,6 +308,7 @@ export function bidirectionalPlans(
       payload: Object.freeze({
         state,
         maxVisited: sideBudget,
+        maxGenerated: sideGeneratedBudget,
         frontierLimit: 40_000,
         landmarkLimit: 64,
         reverseShard: Object.freeze({ index: 0, count: 1 }),

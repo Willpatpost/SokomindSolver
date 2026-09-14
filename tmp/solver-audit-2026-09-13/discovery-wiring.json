@@ -1,0 +1,99 @@
+{
+  "wiring": [
+    {
+      "requested": {},
+      "fingerprint": "f9eec8cceb9a3ff1",
+      "actual": {
+        "firstPushWalkWeight": 0,
+        "moveAwareDiscovery": 0,
+        "macroIntermediateQuota": 0
+      }
+    },
+    {
+      "requested": {
+        "firstPushWalkWeight": 0.05
+      },
+      "fingerprint": "f9eec8cceb9a3ff1",
+      "actual": {
+        "firstPushWalkWeight": 0,
+        "moveAwareDiscovery": 0,
+        "macroIntermediateQuota": 0
+      }
+    },
+    {
+      "requested": {
+        "moveAwareDiscovery": 1
+      },
+      "fingerprint": "f9eec8cceb9a3ff1",
+      "actual": {
+        "firstPushWalkWeight": 0,
+        "moveAwareDiscovery": 0,
+        "macroIntermediateQuota": 0
+      }
+    },
+    {
+      "requested": {
+        "macroIntermediateQuota": 2
+      },
+      "fingerprint": "f9eec8cceb9a3ff1",
+      "actual": {
+        "firstPushWalkWeight": 0,
+        "moveAwareDiscovery": 0,
+        "macroIntermediateQuota": 0
+      }
+    }
+  ],
+  "macro": {
+    "targeted": 8,
+    "untargeted": 0,
+    "quotaForwarded": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "retainedTagged": 0,
+    "visited": 1,
+    "generated": 18,
+    "multiRoomBoxes": []
+  },
+  "keeperWork": {
+    "profiles": 17,
+    "pathArrays": 671,
+    "copiedMoveEntries": 7594,
+    "maxSupportWalk": 32,
+    "visited": 1,
+    "generated": 18
+  },
+  "traceFormat": {
+    "fullPath": [
+      "Down"
+    ],
+    "encodedPath": [
+      "D"
+    ],
+    "fullValidation": {
+      "valid": true,
+      "reason": "solution",
+      "path": [
+        "Down"
+      ],
+      "originalMoves": 1
+    },
+    "encodedValidation": {
+      "valid": false,
+      "reason": "illegal-solution-path",
+      "path": null
+    },
+    "rescheduleEncoded": {
+      "path": null,
+      "failed": true,
+      "terminationReason": "invalid-rescheduling-incumbent",
+      "visited": 0
+    }
+  }
+}

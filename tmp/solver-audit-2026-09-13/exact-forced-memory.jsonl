@@ -1,0 +1,2 @@
+{"features":"default","limit":20000,"status":"solved","moves":5,"estimated":171248,"forced":5}
+{"features":{"forcedPushMacros":false},"limit":20000,"status":"unsolved","reason":"limit-reached","detail":"Estimated solver memory limit reached.","estimated":170032,"forced":0}

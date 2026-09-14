@@ -1,0 +1,75 @@
+✔ app-data reset retains a generation tombstone and clears owned timers (14.1871ms)
+✔ app-data reset clears the committed IndexedDB store (1.08ms)
+✔ reset clears writes made while its IndexedDB transaction is pending (0.2931ms)
+✔ the completed reset marker suppresses stale document mutations (0.7651ms)
+✔ app-data reset propagates real IndexedDB failures without broadcasting completion (0.8117ms)
+✔ app-data reset rejects when an owned localStorage key cannot be removed (0.3188ms)
+✔ app-data reset rejects when the progress tombstone cannot be written (0.2061ms)
+✔ app-data reset rejects when the cross-tab marker cannot be written (0.1531ms)
+✔ cross-tab reset events clear private timers and reload the clean entry (0.2896ms)
+✔ isOptimal compares only the proven move count (0.9398ms)
+✔ setOptimalRecord creates, overwrites, and preserves entries (0.2969ms)
+✔ invalidates optimal records from every prior cache schema (0.3562ms)
+✔ invalidates schema-7 certificates from before the A* frontier correction (1.9895ms)
+✔ old tabs cannot overwrite corrected proof storage or affect progress and routes (0.6237ms)
+✔ current cache parsing drops malformed records safely (0.2395ms)
+✔ merges stale tab snapshots without losing either proof (0.162ms)
+✔ keeps different revisions independent when tabs merge (0.0933ms)
+✔ save re-reads storage before writing a stale tab snapshot (0.3358ms)
+✔ reports durable success when IndexedDB saves after localStorage fails (0.2799ms)
+✔ reports failure when neither optimal-cache storage tier is available (0.1764ms)
+✔ DFS and Greedy retain the solvable disconnected-region branch (17.5766ms)
+✔ canonical shortcuts agree with BFS through walls and multiple boxes (8.7969ms)
+✔ obsolete proofs cannot load, hydrate, or merge into current records (0.8774ms)
+✔ worker client rejects unsupported proofs but accepts consistent results (2.677ms)
+▶ STORAGE_KEYS
+  ✔ is frozen (1.0496ms)
+  ✔ contains namespaced keys (0.0956ms)
+✔ STORAGE_KEYS (1.8491ms)
+▶ LEGACY_STORAGE_KEYS
+  ✔ is frozen (0.1068ms)
+✔ LEGACY_STORAGE_KEYS (0.2029ms)
+▶ reset markers
+  ✔ loads current generations and migrates legacy reset markers to generation one (1.9887ms)
+  ✔ rejects malformed and partially versioned reset markers (0.3698ms)
+✔ reset markers (2.5302ms)
+▶ clearAppStorage
+  ✔ removes only the exact current and legacy keys owned by this app (0.629ms)
+  ✔ does nothing when storage is unavailable (0.4055ms)
+  ✔ reports unavailable session storage instead of claiming removal (0.1879ms)
+  ✔ reports enumeration and per-key session removal failures (0.3469ms)
+✔ clearAppStorage (1.801ms)
+▶ readStoredValue
+  ✔ returns the value for an existing key (0.2449ms)
+  ✔ returns null for a missing key (0.0921ms)
+  ✔ reads JSON strings verbatim (0.2017ms)
+  ✔ returns null when window is undefined (0.131ms)
+  ✔ falls back to legacy keys when primary key is absent (0.1227ms)
+  ✔ migrates legacy value to the current key (0.1109ms)
+  ✔ prefers primary key over legacy keys (0.0835ms)
+  ✔ tries legacy keys in order and uses the first match (0.088ms)
+  ✔ returns null when all legacy keys are also missing (0.1178ms)
+  ✔ still returns legacy value when migration setItem throws (0.1599ms)
+  ✔ returns null when getItem throws (0.0974ms)
+✔ readStoredValue (1.6806ms)
+▶ writeStoredValue
+  ✔ writes a value and returns true (0.1958ms)
+  ✔ overwrites an existing value (0.1113ms)
+  ✔ writes JSON strings (0.1106ms)
+  ✔ returns false when window is undefined (0.0822ms)
+  ✔ classifies quota failures (0.1176ms)
+✔ writeStoredValue (0.7279ms)
+▶ removeStoredValue
+  ✔ removes an existing key and returns true (0.123ms)
+  ✔ returns true even when key does not exist (0.0839ms)
+  ✔ returns false when window is undefined (0.0787ms)
+  ✔ classifies security failures (0.1022ms)
+✔ removeStoredValue (0.4686ms)
+ℹ tests 53
+ℹ suites 7
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 310.4973

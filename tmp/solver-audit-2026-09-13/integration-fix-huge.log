@@ -1,0 +1,18 @@
+
+> sokomind@0.1.0 test:solver:huge
+> node --experimental-strip-types --test tests/performance/sokomind-solver-huge.test.ts
+
+{"name":"base-rewrite","elapsedMs":7308,"moves":789,"pushes":270,"visited":29000,"moveVisited":4000}
+{"name":"base","elapsedMs":5108,"moves":893,"pushes":278,"visited":1329,"generated":8425,"retained":2538,"peakFrontier":291}
+{"name":"mirrored","elapsedMs":5132,"moves":893,"pushes":278,"visited":1329,"generated":8425,"retained":2538,"peakFrontier":291}
+{"name":"rotated","elapsedMs":4768,"moves":893,"pushes":278,"visited":1329,"generated":8425,"retained":2538,"peakFrontier":291}
+{"name":"total","elapsedMs":22334}
+✔ Sokomind Solver replay-solves Grand Hall in three orientations within a hard process deadline (22571.3936ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22735.1585

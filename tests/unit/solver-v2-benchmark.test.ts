@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { Worker } from "node:worker_threads";
 
 import {
   BENCHMARK_PROFILES,
   BENCHMARK_ABORT_GRACE_MS,
   benchmarkRequest,
+  benchmarkRunIdentity,
+  benchmarkTuningConfiguration,
+  benchmarkTuningFingerprint,
   benchmarkWatchdogDelayMs,
   compareFeatureSummaries,
   expectedBenchmarkPairs,
@@ -12,6 +16,7 @@ import {
   isProfileEligible,
   PROMOTABLE_BASELINE_MIN_TIMED_RUNS,
   parseBenchmarkArguments,
+  parseBenchmarkTuning,
   parseChildSample,
   runBenchmarkSample,
   selectBenchmarkFixtures,
@@ -69,6 +74,66 @@ function sample(overrides: Partial<BenchmarkSample> = {}): BenchmarkSample {
 }
 
 describe("Solver V2 benchmark harness", () => {
+  it("validates explicit discovery treatments and rejects ignored or no-op experiments", () => {
+    const profiles = ["sokomind-fast"] as const;
+    const control = parseBenchmarkTuning('{"firstPushWalkWeight":0}', profiles, "control");
+    const treatment = parseBenchmarkTuning('{"firstPushWalkWeight":0.05}', profiles, "treatment");
+    assert.ok(control && treatment);
+    assert.equal(control.fingerprint, benchmarkTuningFingerprint());
+    assert.notEqual(treatment.fingerprint, control.fingerprint);
+    assert.equal(treatment.profile.firstPushWalkWeight, 0.05);
+    assert.notEqual(benchmarkRunIdentity("ultra-tiny", "sokomind-fast", undefined, control),
+      benchmarkRunIdentity("ultra-tiny", "sokomind-fast", undefined, treatment));
+    for (const raw of ["", "{", "null", "[]", '{"typo":1}', '{"firstPushWalkWeight":"0.05"}', '{"firstPushWalkWeight":2}']) {
+      assert.throws(() => parseBenchmarkTuning(raw, profiles));
+    }
+    assert.throws(() => parseBenchmarkTuning("{}", profiles, "treatment"), /does not change/);
+    assert.throws(() => parseBenchmarkTuning(undefined, profiles, "treatment"), /requires SOKOMIND/);
+    assert.throws(() => parseBenchmarkTuning('{"moveAwareDiscovery":1}', ["classic-astar"]), /do not support/);
+    assert.throws(() => parseBenchmarkArguments(["--tuning-label=typo"]), /control or treatment/);
+  });
+
+  it("passes resolved treatments into actual adapter worker commands", async (t) => {
+    const tuning = parseBenchmarkTuning(
+      '{"firstPushWalkWeight":0.05,"moveAwareDiscovery":1,"macroIntermediateQuota":2}',
+      ["sokomind-fast"], "treatment",
+    );
+    assert.ok(tuning);
+    const posted: Array<{algorithm?: string; firstPushWalkWeight?: number;
+      moveAwareDiscovery?: number; macroIntermediateQuota?: number}> = [];
+    const original = Worker.prototype.postMessage;
+    t.mock.method(Worker.prototype, "postMessage", function(this: Worker, ...args: Parameters<Worker["postMessage"]>) {
+      const command = args[0] as {payload?: typeof posted[number]};
+      if (command.payload?.algorithm === "ultimate" || command.payload?.algorithm === "plan-macro-beam") {
+        posted.push(command.payload);
+      }
+      return original.apply(this, args);
+    });
+    const result = await runBenchmarkSample(ULTRA_TINY, BENCHMARK_PROFILES["sokomind-fast"], undefined, tuning);
+    assert.equal(result.verified, true);
+    assert.ok(posted.length > 0, "The witness must reach a discovery worker");
+    for (const payload of posted) {
+      assert.equal(payload.firstPushWalkWeight, 0.05);
+      assert.equal(payload.moveAwareDiscovery, 1);
+      assert.equal(payload.macroIntermediateQuota, 2);
+    }
+    assert.deepEqual(result.configuration.sokomindTuning, tuning.profile);
+    assert.equal(result.configuration.tuningFingerprint, tuning.fingerprint);
+    // A solved tiny fixture verifies transport only, not mechanism exercise.
+    assert.equal(parseChildSample(JSON.stringify(result), ULTRA_TINY.fixtureId,
+      "sokomind-fast", 0, undefined, tuning).runIdentity, result.runIdentity);
+    const ignored = {...result, configuration: {...result.configuration,
+      ...benchmarkTuningConfiguration(BENCHMARK_PROFILES["sokomind-fast"])}};
+    assert.throws(() => parseChildSample(JSON.stringify(ignored), ULTRA_TINY.fixtureId,
+      "sokomind-fast", 0, undefined, tuning), /effective tuning mismatch/);
+  });
+
+  it("rejects mixed configurations even in a nondeterministic sample group", () => {
+    const left = sample({configuration: {deterministic: false, workerCount: 1, limits: {}}});
+    const right = {...left, configuration: {...left.configuration, workerCount: 2}};
+    assert.equal(summarizeBenchmarkSamples([left, right]).accepted, false);
+  });
+
   it("parses zero warmups without falling back", () => {
     const parsed = parseBenchmarkArguments(["--warmup=0", "--runs=1"]);
     assert.equal(parsed.warmupRuns, 0);

@@ -1,0 +1,114 @@
+{
+  "methodology": "One whole-process CPU profile; sampled self time includes startup; not a controlled speed comparison",
+  "totalSamples": 3402.0,
+  "topFunctions": [
+    {
+      "function": "createsSealedCorralDeadlock",
+      "hitCount": 424,
+      "percent": 12.46,
+      "line": 6413
+    },
+    {
+      "function": "reachablePaths",
+      "hitCount": 249,
+      "percent": 7.32,
+      "line": 4926
+    },
+    {
+      "function": "(garbage collector)",
+      "hitCount": 229,
+      "percent": 6.73,
+      "line": 0
+    },
+    {
+      "function": "expandTargetedPushSequence",
+      "hitCount": 140,
+      "percent": 4.12,
+      "line": 7015
+    },
+    {
+      "function": "inaccessibleFloorComponents",
+      "hitCount": 139,
+      "percent": 4.09,
+      "line": 6264
+    },
+    {
+      "function": "localDomainGloballyClosed",
+      "hitCount": 93,
+      "percent": 2.73,
+      "line": 6041
+    },
+    {
+      "function": "pushBoxNeighbors",
+      "hitCount": 91,
+      "percent": 2.67,
+      "line": 6625
+    },
+    {
+      "function": "deriveDenseBoxLayout",
+      "hitCount": 84,
+      "percent": 2.47,
+      "line": 173
+    },
+    {
+      "function": "get",
+      "hitCount": 70,
+      "percent": 2.06,
+      "line": 409
+    },
+    {
+      "function": "packedIdentityIncremental",
+      "hitCount": 69,
+      "percent": 2.03,
+      "line": 58
+    },
+    {
+      "function": "(program)",
+      "hitCount": 58,
+      "percent": 1.7,
+      "line": 0
+    },
+    {
+      "function": "minimumAssignment",
+      "hitCount": 53,
+      "percent": 1.56,
+      "line": 1870
+    },
+    {
+      "function": "ensureSignature",
+      "hitCount": 43,
+      "percent": 1.26,
+      "line": 229
+    },
+    {
+      "function": "createsFrozenComponentDeadlock",
+      "hitCount": 39,
+      "percent": 1.15,
+      "line": 3978
+    },
+    {
+      "function": "scanHalf",
+      "hitCount": 37,
+      "percent": 1.09,
+      "line": 4036
+    },
+    {
+      "function": "memoLookup",
+      "hitCount": 36,
+      "percent": 1.06,
+      "line": 466
+    },
+    {
+      "function": "heuristicWithInteractions",
+      "hitCount": 32,
+      "percent": 0.94,
+      "line": 2624
+    },
+    {
+      "function": "ensureIndexByCell",
+      "hitCount": 32,
+      "percent": 0.94,
+      "line": 153
+    }
+  ]
+}

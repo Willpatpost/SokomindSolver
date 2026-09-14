@@ -211,7 +211,7 @@ test("the completed reset marker suppresses stale document mutations", async () 
   assert.ok(puzzle);
   saveSession(createSession(puzzle));
   saveOptimalCache({
-    version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
     records: {
       [JSON.stringify([puzzle.id, puzzleRevisionFingerprint(puzzle)])]: {
         moves: 1,

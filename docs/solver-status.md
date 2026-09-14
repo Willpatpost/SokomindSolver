@@ -21,11 +21,20 @@ proof envelope; bounded proofs require unknown optimality, including at the work
 client boundary. Classic DFS/Greedy reuse a keeper region only when the newly
 occupied cell was outside the parent region; otherwise they recompute full BFS.
 
-Persisted optimality records use schema 7 and a proof revision stamp under
-`sokomind.optimal.v5`. Schema 6 and older records are rejected in both storage tiers
-because they can predate the PI-corral correction. The separate storage key prevents
+Persisted optimality records use schema 7, proof revision
+`exact-moves-astar-frontier-v2`, and storage key `sokomind.optimal.v6`.
+Earlier revisions are rejected in both storage tiers, including schema-7 records
+that can predate the A* frontier correction. The separate storage key prevents
 older tabs from overwriting current certificates; progress and personal-best routes
 are preserved. Bump the proof revision after any proof-safety correction.
+
+A* 2.2.1 and Sokomind 1.2.1 correct forced-successor scheduling: forced children
+use the global priority queue before their bounds or goals can establish proof.
+The previous shortcut could certify a nine-move solution while a seven-move
+route remained in the frontier. Independent oracle tests cover the board,
+mirror, rotation, incumbents and resource cutoffs. Earlier A* certificates must
+not be treated as proof evidence. This A*-specific correction does not change
+the independently searched IDA* contours or checkpoint schema.
 
 Quality and optimal modes can refine a complete incumbent with whole-box
 rescheduling. Every physical box is eligible, including repeated-label boxes;
@@ -76,17 +85,22 @@ rejection, replay verification, or resource limits.
   enabled.
 
 - `macroIntermediateQuota` (default 0, disabled): retains up to this many
-  non-endpoint intermediate states per macro expansion, selected by shortest
-  path and side diversity. Intermediates are tagged with `intermediateOf` for
-  beam dedup.
+  non-endpoint intermediate states in untargeted macro expansion, selected by
+  shortest path and side diversity. Targeted assignment and doorway macros do
+  not yet implement this control, and intermediate provenance is not yet carried
+  through beam selection. A configured quota alone is not evidence it ran.
 
 Quality-mode rescheduling is gated by `predictRescheduleValue()` in
 `sokomind-reschedule-predictor.ts`. Puzzles with low walk-push ratio and few
 boxes skip whole-box repair. Optimal mode always reschedules when eligible.
 
-Override any parameter at runtime via `SOKOMIND_TUNING_JSON`, e.g.
+Supply validated tuning to the adapter through its `tuning` option. The Node
+benchmark commands also accept `SOKOMIND_TUNING_JSON`, e.g.
 `SOKOMIND_TUNING_JSON='{"moveAwareDiscovery":1}'`. The SLURM benchmark script
 `scripts/slurm-p1-benchmark.sh` runs controlled A/B pairs for each parameter.
+Explicit strategic options are preserved in every mode: zero analysis time and
+disabled execution remain off in Quality. Enabling a strategy is separate from
+selecting Quality and still requires the documented promotion evidence.
 
 ## Exact-search safeguards
 
@@ -99,10 +113,16 @@ Override any parameter at runtime via `SOKOMIND_TUNING_JSON`, e.g.
   replay-valid incumbent can become a public solution.
 - A* resource exits retain the active minimum-`f` node's bound rather than
   deriving proof progress from the remaining heap alone.
+- Forced successors obey the same frontier ordering and projected-memory
+  checks as other successors, including the initial node arena allocation.
 - Pattern-database, deadlock-table, and related preprocessing share the run's
   cancellation, elapsed-time, state, and estimated-memory budgets.
 - Parallel rewrite lanes receive deterministic, disjoint integer shares of the
   remaining expanded, generated, and elapsed budgets.
+- Bidirectional discovery lanes receive disjoint generated-state shares and
+  enforce them before generating successors; coordinator checks remain a backstop.
+- Worker registration and coordinator resource changes invalidate cached totals
+  before subsequent startup or limit checks, including silent workers.
 - Persisted proof records are versioned and fingerprinted; stale solver or
   feature identities cannot establish current optimality.
 
@@ -112,8 +132,9 @@ upper bounds under both exact engines.
 
 ## Exact feature controls
 
-Every feature in `src/solver/search/exact-search-features.ts` defaults on and can
-be disabled internally for controlled comparisons:
+The features in `src/solver/search/exact-search-features.ts` can be disabled
+internally for controlled comparisons. They default on except PI-corral pruning,
+which remains disabled even under an explicit override:
 
 - incremental assignment repair;
 - linear conflict;

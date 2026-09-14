@@ -1,0 +1,21 @@
+
+> sokomind@0.1.0 test:static
+> node --test tests/static-build.test.mjs
+
+✔ builds a complete static GitHub Pages entry point (3.226ms)
+✔ Pages deployment uses the full default-branch ref and least privileges (1.897ms)
+✔ production CSP precedes resources and authorizes every inline script (1.7415ms)
+✔ asset manifest lists all hashed build assets (6.6172ms)
+✔ production output is installable and omits public source maps (1.6112ms)
+✔ all local scripts and styles referenced by index.html are deployable (1.4835ms)
+✔ the client bundle contains the playable application (4.6331ms)
+✔ the Home route does not load full puzzle-board data (2.313ms)
+✔ production delivery stays within reviewed gzip budgets (40.3058ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 110.3227

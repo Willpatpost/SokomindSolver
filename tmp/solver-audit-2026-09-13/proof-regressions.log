@@ -1,0 +1,64 @@
+
+> sokomind@0.1.0 test:solver:proof-regressions
+> npm run test:solver:known && npm run test:solver:parallel
+
+
+> sokomind@0.1.0 test:solver:known
+> node --experimental-strip-types --test tests/performance/solver-known-optima.test.ts
+
+▶ frozen known-optimum executable gate
+  ✔ partitions the manifest exactly once and references only frozen fixtures (1.5182ms)
+  ✔ ultra-tiny reproduces its frozen outcome and exact proof (33.6833ms)
+  ✔ tiny reproduces its frozen outcome and exact proof (203.2932ms)
+  ✔ tutorial-push reproduces its frozen outcome and exact proof (43.336ms)
+  ✔ tutorial-corner reproduces its frozen outcome and exact proof (203.9662ms)
+  ✔ tutorial-around reproduces its frozen outcome and exact proof (109.9878ms)
+  ✔ beginner-three reproduces its frozen outcome and exact proof (310.1048ms)
+  ✔ beginner-detour reproduces its frozen outcome and exact proof (156.8509ms)
+  ✔ beginner-typed-line reproduces its frozen outcome and exact proof (1390.1924ms)
+  ✔ garden-1 reproduces its frozen outcome and exact proof (723.251ms)
+  ✔ box-5x5-a reproduces its frozen outcome and exact proof (47.0387ms)
+  ✔ medium reproduces its frozen outcome and exact proof (6740.0885ms)
+  ✔ inter-rooms reproduces its frozen outcome and exact proof (220.441ms)
+  ✔ corridor-2 reproduces its frozen outcome and exact proof (7863.1119ms)
+  ✔ garden-2 reproduces its frozen outcome and exact proof (1045.1559ms)
+  ✔ workshop-1 reproduces its frozen outcome and exact proof (593.5138ms)
+  ✔ classic-1 reproduces its frozen outcome and exact proof (453.1104ms)
+  ✔ theme-kitchen reproduces its frozen outcome and exact proof (800.7376ms)
+  ✔ adv-rotary reproduces its frozen outcome and exact proof (124.0186ms)
+  ✔ adv-four-color reproduces its frozen outcome and exact proof (31453.9463ms)
+  ✔ adv-gallery reproduces its frozen outcome and exact proof (826.8997ms)
+  ✔ box-7x7 reproduces its frozen outcome and exact proof (999.9541ms)
+  ✔ sym-diamond reproduces its frozen outcome and exact proof (576.3738ms)
+  ✔ theme-library reproduces its frozen outcome and exact proof (25029.7328ms)
+  ✔ expert-maze reproduces its frozen outcome and exact proof (9772.5829ms)
+  ✔ v2-solved-box-must-move reproduces its frozen outcome and exact proof (155.9492ms)
+  ✔ v2-assignment-infeasible reproduces its frozen outcome and exact proof (141.4986ms)
+  ✔ v2-sealed-corral reproduces its frozen outcome and exact proof (62.921ms)
+  ✔ v2-microban-145 reproduces its frozen outcome and exact proof (171.5281ms)
+  ✔ v2-microban-146 reproduces its frozen outcome and exact proof (125.3834ms)
+  ✔ v2-caleb-022 reproduces its frozen outcome and exact proof (1625.4402ms)
+  ✔ v2-wide-multi-entry reproduces its frozen outcome and exact proof (832.8728ms)
+  ✔ v2-loop-heavy reproduces its frozen outcome and exact proof (684.6828ms)
+✔ frozen known-optimum executable gate (93525.8397ms)
+ℹ tests 33
+ℹ suites 1
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 93688.3656
+
+> sokomind@0.1.0 test:solver:parallel
+> node --experimental-strip-types --test tests/performance/solver-parallel-proof.test.ts
+
+✔ parallel Node proof workers preserve the inter-rooms 28-move optimum (1401.1934ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1561.9656

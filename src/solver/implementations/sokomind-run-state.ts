@@ -453,6 +453,7 @@ export function retainLegacyRecord(
     run.budget.retainRecord(estimateLegacyRecordBytes(record));
   }
   records.set(record.id, record);
+  invalidateAggregate(run);
 }
 
 export function reachedLimit(run: SearchRunState): BudgetStopReason | undefined {

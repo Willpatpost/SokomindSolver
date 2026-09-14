@@ -1,0 +1,22 @@
+
+> sokomind@0.1.0 test:browser:dist
+> node scripts/run-browser-tests.mjs tests/e2e/solver.spec.ts tests/e2e/solver-determinism.spec.ts --project=chromium --workers=1
+
+Sokomind preview: http://127.0.0.1:4173/Sokomind/
+
+Running 10 tests using 1 worker
+
+(node:32144) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\solver-determinism.spec.ts:277:5 › cross-environment determinism (spec criterion 17) › Node and browser produce identical A* results for "First Steps" (1.5s)
+  ok  2 [chromium] › tests\e2e\solver-determinism.spec.ts:277:5 › cross-environment determinism (spec criterion 17) › Node and browser produce identical A* results for "One Push Wonder" (989ms)
+  ok  3 [chromium] › tests\e2e\solver-determinism.spec.ts:277:5 › cross-environment determinism (spec criterion 17) › Node and browser produce identical A* results for "Two generic boxes" (1.3s)
+  ok  4 [chromium] › tests\e2e\solver.spec.ts:21:1 › defers lazy dialogs and disposes the solver worker (1.9s)
+  ok  5 [chromium] › tests\e2e\solver.spec.ts:74:1 › discovers five move-search algorithms and exposes an accessible configuration (1.7s)
+  ok  6 [chromium] › tests\e2e\solver.spec.ts:103:1 › solves a typed room with Sokomind Solver and plays its verified route (1.5s)
+  ok  7 [chromium] › tests\e2e\solver.spec.ts:121:1 › solves First Steps with A* and plays the verified route (1.3s)
+  ok  8 [chromium] › tests\e2e\solver.spec.ts:151:1 › does not claim an optimal proof was saved when both storage tiers fail (1.1s)
+  ok  9 [chromium] › tests\e2e\solver.spec.ts:188:1 › Sokomind Solver finds a replay-verified Grand Hall route (5.4s)
+  ok 10 [chromium] › tests\e2e\solver.spec.ts:221:1 › cancels a running Grand Hall A* search (1.1s)
+
+  10 passed (20.8s)

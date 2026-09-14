@@ -12,6 +12,7 @@ import type {
   SolverProgress,
   SolverRequest,
   SolverResult,
+  SolverSolution,
 } from "../../src/solver/contracts.ts";
 import {
   collectProofIssues,
@@ -32,8 +33,10 @@ import {
 } from "../../src/solver/search/model.ts";
 import {
   allReachableStates,
+  exactRemainingMoves,
 } from "../support/exact-solver-oracle.ts";
 import { classicAStarSolver } from "../../src/solver/implementations/classic-solvers.ts";
+import { verifySolverSolution } from "../../src/solver/verification.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -617,6 +620,92 @@ describe("bounded proof lb == U guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("exact A* forced-push macros", () => {
+  const competingFrontierRows = [
+    "OOOOOOO",
+    "OO    O",
+    "O    RO",
+    "O  XSXO",
+    "O   OSO",
+    "OOOOOOO",
+  ];
+  const elevenMoveIncumbent: SolverSolution = {
+    steps: [
+      { direction: "left", kind: "walk" },
+      { direction: "right", kind: "walk" },
+      { direction: "left", kind: "walk" },
+      { direction: "left", kind: "walk" },
+      { direction: "left", kind: "walk" },
+      { direction: "down", kind: "walk" },
+      { direction: "right", kind: "push" },
+      { direction: "up", kind: "walk" },
+      { direction: "right", kind: "walk" },
+      { direction: "right", kind: "walk" },
+      { direction: "down", kind: "push" },
+    ],
+    moves: 11,
+    pushes: 2,
+    objective: { kind: "moves" },
+    objectiveScore: 11,
+    optimality: "unknown",
+  };
+
+  for (const [name, rows] of [
+    ["base", competingFrontierRows],
+    ["mirror", competingFrontierRows.map((row) => [...row].reverse().join(""))],
+    ["rotation", [...competingFrontierRows].reverse().map((row) => [...row].reverse().join(""))],
+  ] as const) {
+    it(`keeps a forced goal behind cheaper frontier states (${name})`, async () => {
+      const request = requestFromRows(rows);
+      const board = compileSearchBoard(request.board);
+      const oracle = exactRemainingMoves(
+        board,
+        board.cellAt(request.snapshot.robot.row, request.snapshot.robot.column),
+        toDenseBoxes(board, request.snapshot.boxes),
+      );
+      assert.equal(oracle.exactMoves, 7);
+      const result = assertSolved(await classicAStarSolver.solve(request, oracleContext()));
+      assert.equal(result.solution.moves, oracle.exactMoves);
+      assert.equal(result.solution.pushes, 2);
+      assert.equal(result.solution.optimality, "proven");
+      assert.equal(result.proof?.lowerBound, oracle.exactMoves);
+      assert.equal(result.proof?.upperBound, oracle.exactMoves);
+      assert.equal(verifySolverSolution(request, result.solution).valid, true);
+      assert.deepEqual(collectProofIssues(result.proof, result.solution), []);
+      assert.ok((result.metrics.counters?.forcedPushMacroApplications ?? 0) > 0);
+    });
+  }
+
+  it("improves an incumbent without certifying the first forced goal", async () => {
+    const request = requestFromRows(competingFrontierRows);
+    assert.equal(verifySolverSolution(request, elevenMoveIncumbent).valid, true);
+    const result = assertSolved(await runExactMoveAStar(request, oracleContext(), {
+      incumbent: { solution: elevenMoveIncumbent, cost: 11 },
+    }));
+    assert.equal(result.solution.moves, 7);
+    assert.equal(result.proof?.lowerBound, 7);
+    assert.equal(result.proof?.upperBound, 7);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+
+  it("retains the global bound on cutoff after generating a forced successor", async () => {
+    const request = {
+      ...requestFromRows(competingFrontierRows),
+      limits: { maxExpandedStates: 4 },
+    };
+    const result = assertSolved(await runExactMoveAStar(request, oracleContext(), {
+      incumbent: { solution: elevenMoveIncumbent, cost: 11 },
+    }));
+    assert.equal(result.metrics.expandedStates, 4);
+    assert.ok((result.metrics.counters?.forcedPushMacroApplications ?? 0) > 0);
+    assert.equal(result.solution.moves, 11);
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof?.kind, "bounded");
+    assert.ok((result.proof?.lowerBound ?? Infinity) <= 7);
+    assert.equal(result.proof?.upperBound, 11);
+    assert.deepEqual(collectProofIssues(result.proof, result.solution), []);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+
   it("produces same optimal solution on corridor puzzle", async () => {
     const req = requestFromRows([
       "OOOOOOO",

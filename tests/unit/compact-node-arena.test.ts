@@ -129,6 +129,28 @@ describe("CompactNodeArena", () => {
     assert.ok(arena.estimatedRetainedBytes() >= before);
   });
 
+  it("projects complete chunk allocations without allocating memory", () => {
+    for (const maxToken of [65535, 70000]) {
+      const arena = createCompactNodeArena(3, maxToken);
+      const chunkBytes = 8192 * (17 + 3 * (maxToken > 65535 ? 4 : 2));
+      assert.equal(arena.estimatedRetainedBytes(), 0);
+      assert.equal(arena.estimatedRetainedBytesAfterAllocation(), chunkBytes);
+      assert.equal(arena.size, 0);
+      assert.equal(arena.estimatedRetainedBytes(), 0);
+
+      for (let i = 0; i < 8192; i++) {
+        assert.equal(arena.estimatedRetainedBytesAfterAllocation(), chunkBytes);
+        arena.allocate();
+      }
+      assert.equal(arena.estimatedRetainedBytes(), chunkBytes);
+      assert.equal(arena.estimatedRetainedBytesAfterAllocation(), 2 * chunkBytes);
+      assert.equal(arena.estimatedRetainedBytes(), chunkBytes);
+      arena.allocate();
+      assert.equal(arena.estimatedRetainedBytes(), 2 * chunkBytes);
+      assert.equal(arena.estimatedRetainedBytesAfterAllocation(), 2 * chunkBytes);
+    }
+  });
+
   it("estimatedBytesPerNode matches spec for Uint16 tokens", () => {
     const arena = createCompactNodeArena(3);
     assert.equal(arena.estimatedBytesPerNode(), 17 + 3 * 2);

@@ -49,14 +49,16 @@ run_ab() {
   SOKOMIND_TUNING_JSON="$control_json" \
     npm run benchmark:solver:v2 -- \
       --runs=5 --warmup=0 \
-      --save="results/${label}-control-${JOB}-${STAMP}.jsonl" \
+      --profile=sokomind-fast --profile=sokomind-quality --tuning-label=control \
+      --save="results/${label}-control-${JOB}-${STAMP}.json" \
     2>&1
   echo ""
   echo "=== $label: TREATMENT ==="
   SOKOMIND_TUNING_JSON="$treatment_json" \
     npm run benchmark:solver:v2 -- \
       --runs=5 --warmup=0 \
-      --save="results/${label}-treatment-${JOB}-${STAMP}.jsonl" \
+      --profile=sokomind-fast --profile=sokomind-quality --tuning-label=treatment \
+      --save="results/${label}-treatment-${JOB}-${STAMP}.json" \
     2>&1
   echo ""
 }
@@ -75,5 +77,7 @@ run_ab "p1.1-macro-intermediate" \
 
 echo "=== SUMMARY ==="
 echo "All A/B benchmarks complete."
+echo "Effective tuning is verified; mechanism exercise and efficacy require separate review."
+echo "macroIntermediateQuota still does not apply to targeted macros."
 echo "Results in: results/"
-ls -la results/*-${JOB}-*.jsonl 2>/dev/null || echo "(no artifacts found)"
+ls -la results/*-${JOB}-*.json 2>/dev/null || echo "(no artifacts found)"

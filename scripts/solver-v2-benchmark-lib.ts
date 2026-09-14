@@ -22,6 +22,8 @@ import { sokomindSolverMetadata } from "../src/solver/implementations/sokomind-s
 import {
   resolveSokomindTuning,
   sokomindTuningPayload,
+  type SokomindTuningOverrides,
+  type SokomindTuningProfile,
 } from "../src/solver/implementations/sokomind-tuning.ts";
 import { createNodeSolverAdapter } from "../src/solver/node-runner.ts";
 import { collectProofIssues } from "../src/solver/proof.ts";
@@ -189,6 +191,8 @@ export interface BenchmarkArguments {
   readonly compareFeature?: ExactSearchFeatureKey;
   readonly childFeature?: ExactSearchFeatureKey;
   readonly childFeatureEnabled?: boolean;
+  readonly tuningLabel?: "control" | "treatment";
+  readonly childTuningJson?: string;
 }
 
 function optionValues(argv: readonly string[], name: string): readonly string[] {
@@ -232,6 +236,14 @@ function isFeatureKey(value: string): value is ExactSearchFeatureKey {
 export function parseBenchmarkArguments(
   argv: readonly string[],
 ): BenchmarkArguments {
+  const tuningLabel = optionalValue(argv, "tuning-label");
+  if (tuningLabel !== undefined && tuningLabel !== "control" && tuningLabel !== "treatment") {
+    throw new Error("--tuning-label must be control or treatment");
+  }
+  const childTuningJson = optionalValue(argv, "child-tuning-json");
+  if (childTuningJson !== undefined && !argv.includes("--child")) {
+    throw new Error("--child-tuning-json requires --child");
+  }
   const compareFeature = optionalValue(argv, "compare-feature");
   if (compareFeature !== undefined && !isFeatureKey(compareFeature)) {
     throw new Error(
@@ -293,6 +305,8 @@ export function parseBenchmarkArguments(
     childFeatureEnabled: childFeatureEnabledRaw === undefined
       ? undefined
       : childFeatureEnabledRaw === "1",
+    tuningLabel,
+    childTuningJson,
   });
 }
 
@@ -379,8 +393,50 @@ export function benchmarkCorpusFingerprint(): string {
   );
 }
 
-export function benchmarkTuningFingerprint(): string {
-  return fingerprint(sokomindTuningPayload(resolveSokomindTuning()));
+export function benchmarkTuningFingerprint(profile = resolveSokomindTuning()): string {
+  return fingerprint(sokomindTuningPayload(profile));
+}
+
+export interface BenchmarkTuningRun {
+  readonly label: "control" | "treatment" | "custom";
+  readonly profile: SokomindTuningProfile;
+  readonly fingerprint: string;
+}
+
+/** Resolve once before spawning; children receive the complete validated profile. */
+export function parseBenchmarkTuning(
+  raw: string | undefined,
+  profileIds: readonly BenchmarkProfileId[],
+  label?: "control" | "treatment",
+): BenchmarkTuningRun | undefined {
+  if (raw === undefined) {
+    if (label !== undefined) throw new Error("--tuning-label requires SOKOMIND_TUNING_JSON");
+    return undefined;
+  }
+  if (profileIds.some(id => id !== "sokomind-fast" && id !== "sokomind-quality")) {
+    throw new Error("SOKOMIND_TUNING_JSON requires only sokomind-fast or sokomind-quality profiles; other profiles do not support this experiment");
+  }
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch {
+    throw new Error("SOKOMIND_TUNING_JSON must contain valid JSON");
+  }
+  if (!isRecord(value)) throw new Error("SOKOMIND_TUNING_JSON must contain a JSON object");
+  // Resolve validates unknown names, types, ranges and the tuning schema.
+  const profile = resolveSokomindTuning(value as SokomindTuningOverrides);
+  const tuningFingerprint = benchmarkTuningFingerprint(profile);
+  if (label === "treatment" && tuningFingerprint === benchmarkTuningFingerprint()) {
+    throw new Error("Tuning treatment does not change the effective default settings");
+  }
+  return Object.freeze({label: label ?? "custom", profile, fingerprint: tuningFingerprint});
+}
+
+export function benchmarkTuningConfiguration(
+  profile: BenchmarkProfile,
+  tuningRun?: BenchmarkTuningRun,
+): Pick<BenchmarkSample["configuration"], "sokomindTuning" | "tuningFingerprint"> {
+  if (!profile.sokomindOptions) return {};
+  const tuning = tuningRun?.profile ?? resolveSokomindTuning();
+  return {sokomindTuning: tuning, tuningFingerprint: benchmarkTuningFingerprint(tuning)};
 }
 
 export interface BenchmarkSample {
@@ -402,6 +458,8 @@ export interface BenchmarkSample {
     sokomindOptions?: SokomindRequestOptions;
     exactFeatures?: ExactSearchFeatures;
     exactFeatureFingerprint?: string;
+    sokomindTuning?: SokomindTuningProfile;
+    tuningFingerprint?: string;
   }>;
   readonly status: "solved" | "unsolved" | "cancelled" | "error";
   readonly optimality?: "unknown" | "proven";
@@ -441,13 +499,15 @@ export function benchmarkRunIdentity(
   fixtureId: string,
   profileId: BenchmarkProfileId,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): string {
-  return featureRun
+  const identity = featureRun
     ? `${fixtureId}:${profileId}:${featureRun.enabled ? "control" : "without"}:${featureRun.feature}`
     : `${fixtureId}:${profileId}`;
+  return tuningRun ? `${identity}:tuning:${tuningRun.label}:${tuningRun.fingerprint}` : identity;
 }
 
-function profileAdapter(profileId: BenchmarkProfileId): SolverAdapter {
+function profileAdapter(profileId: BenchmarkProfileId, tuningRun?: BenchmarkTuningRun): SolverAdapter {
   switch (profileId) {
     case "classic-astar":
       return classicAStarSolver;
@@ -457,7 +517,7 @@ function profileAdapter(profileId: BenchmarkProfileId): SolverAdapter {
     case "sokomind-quality":
     case "sokomind-optimal-astar":
     case "sokomind-optimal-ida":
-      return createNodeSolverAdapter();
+      return createNodeSolverAdapter({tuning: tuningRun?.profile});
   }
 }
 
@@ -470,8 +530,9 @@ async function solveBenchmarkProfile(
   context: SolverExecutionContext,
   profile: BenchmarkProfile,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): Promise<SolverResult> {
-  if (!featureRun) return profileAdapter(profile.id).solve(request, context);
+  if (!featureRun) return profileAdapter(profile.id, tuningRun).solve(request, context);
   const featureOverrides = {
     [featureRun.feature]: featureRun.enabled,
   } as Partial<ExactSearchFeatures>;
@@ -493,7 +554,11 @@ export async function runBenchmarkSample(
   fixture: BenchmarkFixture,
   profile: BenchmarkProfile,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): Promise<BenchmarkSample> {
+  if (tuningRun && (featureRun || (profile.id !== "sokomind-fast" && profile.id !== "sokomind-quality"))) {
+    throw new Error("Tuning experiments require a Sokomind discovery profile without exact feature comparisons");
+  }
   const request = benchmarkRequest(fixture, profile);
   const controller = new AbortController();
   const watchdogDelay = benchmarkWatchdogDelayMs(profile.limits.maxElapsedMs);
@@ -510,7 +575,7 @@ export async function runBenchmarkSample(
   let result: SolverResult | undefined;
   let error: string | undefined;
   try {
-    result = await solveBenchmarkProfile(request, context, profile, featureRun);
+    result = await solveBenchmarkProfile(request, context, profile, featureRun, tuningRun);
   } catch (caught) {
     error = caught instanceof Error ? caught.stack ?? caught.message : String(caught);
   } finally {
@@ -524,7 +589,7 @@ export async function runBenchmarkSample(
     ? resolveExactSearchFeatures({ [featureRun.feature]: featureRun.enabled })
     : undefined;
   const common = {
-    runIdentity: benchmarkRunIdentity(fixture.fixtureId, profile.id, featureRun),
+    runIdentity: benchmarkRunIdentity(fixture.fixtureId, profile.id, featureRun, tuningRun),
     fixtureId: fixture.fixtureId,
     fixtureGroup: fixture.fixtureGroup,
     boardHash: computeBoardHash(fixture.rows),
@@ -539,6 +604,7 @@ export async function runBenchmarkSample(
       deterministic: profile.deterministic,
       workerCount: profile.workerCount,
       limits: profile.limits,
+      ...benchmarkTuningConfiguration(profile, tuningRun),
       ...(profile.sokomindOptions
         ? { sokomindOptions: profile.sokomindOptions }
         : {}),
@@ -723,8 +789,9 @@ export function summarizeBenchmarkSamples(
     throw new Error("Cannot summarize samples with different run identities");
   }
   const signatures = new Set(samples.map(deterministicSignature));
+  const configurations = new Set(samples.map(sample => stableJson(sample.configuration)));
   const isDeterministic = first.configuration.deterministic;
-  const consistent = isDeterministic ? signatures.size === 1 : true;
+  const consistent = configurations.size === 1 && (!isDeterministic || signatures.size === 1);
   const elapsed = samples.map((sample) => sample.elapsedMs);
   const elapsedMedian = median(elapsed);
   const representative = [...samples].sort(
@@ -747,7 +814,7 @@ export function summarizeBenchmarkSamples(
     consistent,
     ...(consistent
       ? {}
-      : { consistencyDetail: "Deterministic status, proof, optimum, or state counters varied" }),
+      : { consistencyDetail: "Configuration or deterministic status, proof, optimum, or state counters varied" }),
     elapsedMs: Object.freeze({
       minimum: Math.min(...elapsed),
       median: elapsedMedian,
@@ -956,6 +1023,7 @@ export function parseChildSample(
   expectedProfileId: BenchmarkProfileId,
   exitStatus: number | null,
   featureRun?: BenchmarkFeatureRun,
+  tuningRun?: BenchmarkTuningRun,
 ): BenchmarkSample {
   if (exitStatus !== 0) {
     throw new Error(`Benchmark child exited with status ${String(exitStatus)}`);
@@ -976,6 +1044,7 @@ export function parseChildSample(
     expectedFixtureId,
     expectedProfileId,
     featureRun,
+    tuningRun,
   );
   if (
     sample.fixtureId !== expectedFixtureId ||
@@ -985,6 +1054,11 @@ export function parseChildSample(
     throw new Error(
       `Benchmark child identity mismatch; expected ${expectedIdentity}`,
     );
+  }
+  const expectedTuning = benchmarkTuningConfiguration(BENCHMARK_PROFILES[expectedProfileId], tuningRun);
+  if (sample.configuration.tuningFingerprint !== expectedTuning.tuningFingerprint ||
+      stableJson(sample.configuration.sokomindTuning) !== stableJson(expectedTuning.sokomindTuning)) {
+    throw new Error("Benchmark child effective tuning mismatch; requested settings were ignored or changed");
   }
   return sample;
 }

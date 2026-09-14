@@ -1,0 +1,10 @@
+
+> sokomind@0.1.0 lint:docs
+> node scripts/validate-doc-paths.mjs --ci && npm run check:project-reference
+
+Checked 26 Markdown files — links, anchors, paths, npm commands, and encoding are valid.
+
+> sokomind@0.1.0 check:project-reference
+> node --experimental-strip-types scripts/generate-project-reference.mjs --check
+
+Project reference source facts are current.

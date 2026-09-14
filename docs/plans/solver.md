@@ -24,25 +24,34 @@ established. A repair requiring a complete incumbent is not pre-search success.
 
 ### Implemented controls awaiting experimental promotion
 
-- **P1.1 Macro intermediate retention** — implemented as `macroIntermediateQuota`
-  (default 0). Controlled quality/generalization evidence is required before enabling.
-- **P1.2 Keeper-arrival beam** — implemented as `moveAwareDiscovery` (default 0).
+The September 2026 audit corrections restore A* global frontier ordering,
+invalidate earlier proof certificates, enforce discovery budgets, honor explicit
+strategic opt-outs, and pass validated tuning through benchmark workers. These
+are correctness and measurement prerequisites, not route-quality promotions.
+The historical P1 comparisons used a driver whose treatments were ignored;
+repeat activation witnesses and controlled experiments before interpreting them.
+
+- **P1.1 Macro intermediate retention** - implemented as `macroIntermediateQuota`
+  (default 0) for untargeted macros only. Targeted handoff retention and provenance
+  through beam selection remain open. Require exercise and survival counters plus
+  controlled quality/generalization evidence before enabling.
+- **P1.2 Keeper-arrival beam** - implemented as `moveAwareDiscovery` (default 0).
   Production promotion remains conditional on controlled benchmarks.
-- **P1.3 First-push walk cost** — implemented as `firstPushWalkWeight` (default 0).
+- **P1.3 First-push walk cost** - implemented as `firstPushWalkWeight` (default 0).
   Remains a soft ordering experiment, not a proof heuristic.
-- **P1.4 Reschedule-derived schedule trace** — implemented in repair telemetry and
+- **P1.4 Reschedule-derived schedule trace** - implemented in repair telemetry and
   `scripts/diagnose-schedule-trace.ts`; use the trace to evaluate partial schedules.
 
 ### Delivered P2 implementation
 
-- **P2.1 Reschedule-value predictor** — implemented in
+- **P2.1 Reschedule-value predictor** - implemented in
   `src/solver/implementations/sokomind-reschedule-predictor.ts` and used by the
   quality-mode harvesting path. Optimal-mode eligibility is preserved.
-- **P2.2 Route diagnosis script** — available through `npm run diagnose:solver-route`.
+- **P2.2 Route diagnosis script** - available through `npm run diagnose:solver-route`.
 
 ### Remaining modularization work
 
-- **P2.3 Engine modularization** — review keeper-arrival/Pareto ownership for the
+- **P2.3 Engine modularization** - review keeper-arrival/Pareto ownership for the
   next behavior-preserving extraction. Existing adapter lifecycle helpers are
   already separate modules; a wholesale engine rewrite remains rejected.
 

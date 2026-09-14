@@ -1,0 +1,152 @@
+[
+  {
+    "name": "discovery",
+    "moves": 893,
+    "pushes": 278,
+    "walking": 615,
+    "byLabel": {
+      "X": {
+        "pushes": 122,
+        "walkingBefore": 300,
+        "runs": 22,
+        "unfilled": 0
+      },
+      "H": {
+        "pushes": 46,
+        "walkingBefore": 95,
+        "runs": 4,
+        "unfilled": 1
+      },
+      "C": {
+        "pushes": 26,
+        "walkingBefore": 63,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "D": {
+        "pushes": 20,
+        "walkingBefore": 27,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "B": {
+        "pushes": 22,
+        "walkingBefore": 37,
+        "runs": 4,
+        "unfilled": 0
+      },
+      "A": {
+        "pushes": 24,
+        "walkingBefore": 51,
+        "runs": 3,
+        "unfilled": 0
+      },
+      "G": {
+        "pushes": 18,
+        "walkingBefore": 42,
+        "runs": 1,
+        "unfilled": 0
+      }
+    }
+  },
+  {
+    "name": "rewrite",
+    "moves": 789,
+    "pushes": 270,
+    "walking": 519,
+    "byLabel": {
+      "X": {
+        "pushes": 124,
+        "walkingBefore": 255,
+        "runs": 29,
+        "unfilled": 1
+      },
+      "C": {
+        "pushes": 26,
+        "walkingBefore": 53,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "D": {
+        "pushes": 20,
+        "walkingBefore": 25,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "H": {
+        "pushes": 38,
+        "walkingBefore": 88,
+        "runs": 8,
+        "unfilled": 1
+      },
+      "B": {
+        "pushes": 22,
+        "walkingBefore": 38,
+        "runs": 4,
+        "unfilled": 0
+      },
+      "A": {
+        "pushes": 22,
+        "walkingBefore": 33,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "G": {
+        "pushes": 18,
+        "walkingBefore": 27,
+        "runs": 3,
+        "unfilled": 0
+      }
+    }
+  },
+  {
+    "name": "reference",
+    "moves": 626,
+    "pushes": 248,
+    "walking": 378,
+    "byLabel": {
+      "X": {
+        "pushes": 118,
+        "walkingBefore": 226,
+        "runs": 21,
+        "unfilled": 4
+      },
+      "C": {
+        "pushes": 20,
+        "walkingBefore": 34,
+        "runs": 4,
+        "unfilled": 0
+      },
+      "A": {
+        "pushes": 22,
+        "walkingBefore": 25,
+        "runs": 1,
+        "unfilled": 0
+      },
+      "D": {
+        "pushes": 26,
+        "walkingBefore": 23,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "B": {
+        "pushes": 34,
+        "walkingBefore": 33,
+        "runs": 2,
+        "unfilled": 0
+      },
+      "H": {
+        "pushes": 14,
+        "walkingBefore": 15,
+        "runs": 3,
+        "unfilled": 0
+      },
+      "G": {
+        "pushes": 14,
+        "walkingBefore": 22,
+        "runs": 1,
+        "unfilled": 0
+      }
+    }
+  }
+]
