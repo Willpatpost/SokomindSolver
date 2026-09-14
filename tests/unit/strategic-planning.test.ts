@@ -5,7 +5,7 @@ import { createSession, stepSnapshot, type PuzzleDefinition } from "../../src/co
 import { search, validateStrategicPlanContract, evaluateStrategicPlanState, rebaseStrategicPlan } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-solver.ts";
 import { analysisPlanFromAnalysis } from "../../src/solver/implementations/sokomind-legacy.ts";
-import { preparationPlan, structuralPlan, checkpointContinuationPlans } from "../../src/solver/implementations/sokomind-plans.ts";
+import { preparationPlan, structuralPlan, checkpointContinuationPlans, discoveryPlans, useRichAnalyzerGuidance } from "../../src/solver/implementations/sokomind-plans.ts";
 import { parseSokomindOptions } from "../../src/solver/implementations/sokomind-options.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
@@ -351,4 +351,55 @@ test("invalid worker continuation context falls back without carrying plan autho
     strategicContinuation: {root: {}, path: []}, planDiagnostics: true});
   assert.ok(result.path);
   assert.equal((result.planDiagnostics as {strategicExecution?: unknown}).strategicExecution, undefined);
+});
+
+test("normal Quality mode does not receive expensive analyzer hints", () => {
+  const {request, state, analysis} = prepare();
+  const converted = analysisPlanFromAnalysis(analysis);
+  assert.ok(converted);
+  assert.equal(useRichAnalyzerGuidance(request), false);
+  const structural = structuralPlan(state, request, {}, "quality", 1, converted);
+  const sp = structural.payload as Record<string, unknown>;
+  assert.equal(sp.precomputedDoorwayTasks, undefined, "Quality must not get precomputedDoorwayTasks");
+  assert.equal(sp.planStrategicExecution, undefined, "Quality must not set planStrategicExecution");
+  assert.equal(sp.planTaskMacros, undefined, "Quality must not set planTaskMacros");
+  const discovery = discoveryPlans(state, request, 1, {}, 1, converted);
+  const dp = discovery[0].payload as Record<string, unknown>;
+  assert.equal(dp.precomputedDoorwayTasks, undefined, "Discovery must not get precomputedDoorwayTasks in Quality mode");
+  if (converted.recommendations.moveAwareDiscovery) {
+    assert.equal(dp.moveAwareDiscovery, undefined, "Discovery must not get analyzer moveAwareDiscovery in Quality mode");
+    assert.equal(dp.planMoveAwareTranspositions, undefined, "Discovery must not get planMoveAwareTranspositions in Quality mode");
+  }
+});
+
+test("Fast mode still receives intended cheap analyzer guidance", () => {
+  const {request, state, analysis, plan} = prepare();
+  const converted = analysisPlanFromAnalysis(analysis);
+  assert.ok(converted);
+  const structural = structuralPlan(state, request, {}, "fast", 1, converted);
+  const sp = structural.payload as Record<string, unknown>;
+  assert.deepEqual(sp.strategicPlan, plan, "Fast mode must receive strategicPlan");
+  assert.equal(sp.planTaskMacros, false, "Fast mode must disable task macros");
+  assert.equal(sp.planStrategicExecution, undefined, "Fast mode must not set planStrategicExecution");
+  assert.equal(sp.precomputedDoorwayTasks, undefined, "Fast mode must not get expensive precomputedDoorwayTasks");
+});
+
+test("explicit strategicPlanExecution enables rich analyzer path", () => {
+  const {state, analysis} = prepare();
+  const converted = analysisPlanFromAnalysis(analysis);
+  assert.ok(converted);
+  const richRequest = {...requestFor(), options: {"sokomind-solver": {strategicPlanExecution: true}}};
+  assert.equal(useRichAnalyzerGuidance(richRequest), true);
+  const structural = structuralPlan(state, richRequest, {}, "quality", 1, converted);
+  const sp = structural.payload as Record<string, unknown>;
+  assert.equal(sp.planStrategicExecution, true, "Must set planStrategicExecution with explicit opt-in");
+  assert.equal(sp.planTaskMacros, false, "Must disable task macros with strategic execution");
+  if (converted.structuralConclusions?.doorwayTasks.length) {
+    assert.ok(sp.precomputedDoorwayTasks, "Must pass precomputedDoorwayTasks with strategic execution");
+  }
+  const discovery = discoveryPlans(state, richRequest, 1, {}, 1, converted);
+  const dp = discovery[0].payload as Record<string, unknown>;
+  if (converted.structuralConclusions) {
+    assert.ok(dp.precomputedDoorwayTasks !== undefined, "Discovery must get precomputedDoorwayTasks with strategic execution");
+  }
 });

@@ -544,10 +544,11 @@ describe("vendored Sokomind engine", () => {
     );
   });
 
-  it("applies analyzer tuning: moveAwareDiscovery flows into structural plan", () => {
+  it("applies analyzer tuning: moveAwareDiscovery flows into structural plan with strategicPlanExecution", () => {
     const puzzle = PUZZLE_BY_ID["gen-v2-340187-cd08a50a"];
     assert.ok(puzzle, "fixture puzzle must exist");
     const request = requestFor(puzzle);
+    const richRequest = {...request, options: {"sokomind-solver": {strategicPlanExecution: true}}};
     const state = toLegacyState(request);
     const result = search({ algorithm: "analyze-puzzle", state });
     const analysisPlan = analysisPlanFromAnalysis(result.analysis);
@@ -559,21 +560,22 @@ describe("vendored Sokomind engine", () => {
       "complex puzzle with rooms > 1 must recommend moveAwareDiscovery 1",
     );
 
-    const plan = structuralPlan(state, request, {}, "fast", 1, analysisPlan);
-    const payload = plan.payload as Record<string, unknown>;
+    const richPlan = structuralPlan(state, richRequest, {}, "fast", 1, analysisPlan);
+    const richPayload = richPlan.payload as Record<string, unknown>;
+    assert.equal(richPayload.moveAwareDiscovery, 1,
+      "moveAwareDiscovery must flow through with strategicPlanExecution");
+    assert.equal(richPayload.planMoveAwareTranspositions, true,
+      "moveAwareDiscovery >= 0.5 must enable planMoveAwareTranspositions with strategicPlanExecution");
+
+    const normalPlan = structuralPlan(state, request, {}, "fast", 1, analysisPlan);
+    const normalPayload = normalPlan.payload as Record<string, unknown>;
+    assert.equal(normalPayload.moveAwareDiscovery, undefined,
+      "moveAwareDiscovery must NOT flow through without strategicPlanExecution");
+    assert.equal(normalPayload.planMoveAwareTranspositions, undefined,
+      "planMoveAwareTranspositions must NOT be set without strategicPlanExecution");
 
     assert.equal(
-      payload.moveAwareDiscovery,
-      1,
-      "moveAwareDiscovery must flow through to structural plan",
-    );
-    assert.equal(
-      payload.planMoveAwareTranspositions,
-      true,
-      "moveAwareDiscovery >= 0.5 must enable planMoveAwareTranspositions",
-    );
-    assert.equal(
-      payload.planSolutionComparisonBudget,
+      richPayload.planSolutionComparisonBudget,
       0,
       "Fast mode must disable solution comparison",
     );

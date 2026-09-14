@@ -92,6 +92,7 @@ export function structuralPlan(
   budgetDivisor = 1,
   analysisPlan?: SokomindAnalysisPlan,
 ): EnginePlan {
+  const rich = useRichAnalyzerGuidance(request);
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
   const transpositionLimit =
     memoryLimit <= MEMORY_TIER_LOW
@@ -110,7 +111,7 @@ export function structuralPlan(
       state,
       ...(analysisPlan?.strategicPlan ? {
         strategicPlan: analysisPlan.strategicPlan,
-        ...(extractSokomindOptions(request).strategicPlanExecution
+        ...(rich
           ? { planStrategicExecution: true, planTaskMacros: false }
           : mode === "fast" ? { planTaskMacros: false } : {}),
       } : {}),
@@ -127,11 +128,11 @@ export function structuralPlan(
       targetedMacroExplored: 64,
       progressIntervalMs: 1_000,
       ...tuning,
-      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan),
-      ...(analysisPlan?.structuralConclusions?.doorwayTasks.length
+      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan, rich),
+      ...(rich && analysisPlan?.structuralConclusions?.doorwayTasks.length
         ? { precomputedDoorwayTasks: analysisPlan.structuralConclusions.doorwayTasks }
         : {}),
-      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan) >= 0.5
+      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan, rich) >= 0.5
         ? { planMoveAwareTranspositions: true } : {}),
       ...(mode === "fast" ? { planSolutionComparisonBudget: 0 } : {}),
     }),
@@ -157,18 +158,25 @@ export function sokomindDiscoveryBeamWidth(
   return boxCount >= 8 ? 256 : 700;
 }
 
+export function useRichAnalyzerGuidance(request: SolverRequest): boolean {
+  return extractSokomindOptions(request).strategicPlanExecution;
+}
+
 function effectiveMoveAwareDiscovery(
   tuning: Readonly<Record<string, number>>,
-  analysisPlan?: SokomindAnalysisPlan,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+  rich: boolean,
 ): number {
   if ((tuning.moveAwareDiscovery ?? 0) > 0) return tuning.moveAwareDiscovery;
-  return analysisPlan?.recommendations.moveAwareDiscovery ?? 0;
+  return rich ? (analysisPlan?.recommendations.moveAwareDiscovery ?? 0) : 0;
 }
 
 function analyzerRecommendedTuningDefaults(
   tuning: Readonly<Record<string, number>>,
-  analysisPlan?: SokomindAnalysisPlan,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+  rich: boolean,
 ): Readonly<Record<string, number>> {
+  if (!rich) return {};
   const rec = analysisPlan?.recommendations;
   if (!rec) return {};
   const overrides: Record<string, number> = {};
@@ -193,6 +201,7 @@ export function discoveryPlans(
   analysisPlan?: SokomindAnalysisPlan,
   firstSolutionOnly = false,
 ): readonly EnginePlan[] {
+  const rich = useRichAnalyzerGuidance(request);
   const boxes = request.snapshot.boxes.length;
   const moderate = boxes >= 5 || request.board.floor.length >= 45;
   const memoryLimit = request.limits?.maxMemoryBytes ?? Infinity;
@@ -276,12 +285,12 @@ export function discoveryPlans(
       progressInterval: 1_000,
       progressIntervalMs: 1_000,
       ...tuning,
-      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan),
-      ...(analysisPlan?.structuralConclusions
+      ...analyzerRecommendedTuningDefaults(tuning, analysisPlan, rich),
+      ...(rich && analysisPlan?.structuralConclusions
         ? { precomputedDoorwayTasks: analysisPlan.structuralConclusions.doorwayTasks }
         : {}),
       ...(firstSolutionOnly ? { beamSolutionComparisonBudget: 0 } : {}),
-      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan) >= 0.5
+      ...(effectiveMoveAwareDiscovery(tuning, analysisPlan, rich) >= 0.5
         ? { planMoveAwareTranspositions: true } : {}),
     }),
   });
