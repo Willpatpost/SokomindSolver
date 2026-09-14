@@ -7,3 +7,4 @@ results/*.jsonl
 playwright-report/
 review-catalog/
 .env*
+tmp/
