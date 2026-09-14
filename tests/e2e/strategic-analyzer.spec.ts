@@ -21,41 +21,37 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
   const memoryBytes = 2048 * 1024 ** 2;
   const request = {board: session.board, snapshot: session.snapshot, objective: {kind: "moves" as const},
     options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0, deterministic: true}},
-    limits: {maxElapsedMs: 60000, maxExpandedStates: 1000000, maxGeneratedStates: 10000000,
+    limits: {maxElapsedMs: 45000, maxExpandedStates: 200000, maxGeneratedStates: 2000000,
       maxMemoryBytes: memoryBytes}};
   await page.goto("./#/play/ultra-tiny");
-  const {result, rescheduled, progressLog} = await page.evaluate(async ({asset, request}) =>
-    new Promise<{result: SolverResult; rescheduled: boolean; progressLog: string[]}>((resolve, reject) => {
+  const {result, rescheduled} = await page.evaluate(async ({asset, request}) =>
+    new Promise<{result: SolverResult; rescheduled: boolean}>((resolve, reject) => {
       const worker = new Worker(new URL(`assets/${asset}`, document.baseURI), {type: "module"});
       let rescheduled = false;
-      const progressLog: string[] = [];
       const finish = () => {clearTimeout(timer); worker.terminate();};
-      const timer = setTimeout(() => {finish(); reject(new Error("Quality worker timed out"));}, 75000);
+      const timer = setTimeout(() => {finish(); reject(new Error("Quality worker timed out"));}, 60000);
       worker.onerror = event => {finish(); reject(new Error(event.message));};
       worker.onmessage = event => {
         const data = event.data;
-        if (data.type === "solver/progress") {
-          const p = data.progress;
-          progressLog.push(`[${p.elapsedMs}ms] ${p.phase}: ${p.detail ?? ""} (expanded=${p.expandedStates} generated=${p.generatedStates})`);
-          if (p.detail?.includes("transport rescheduling")) rescheduled = true;
-        }
+        if (data.type === "solver/progress" && data.progress.detail?.includes("transport rescheduling")) rescheduled = true;
         if (data.type === "solver/failure") {finish(); reject(new Error(data.error.message));}
-        if (data.type === "solver/result") {finish(); resolve({result: data.result, rescheduled, progressLog});}
+        if (data.type === "solver/result") {finish(); resolve({result: data.result, rescheduled});}
       };
       worker.postMessage({type: "solver/run", protocolVersion: 1, jobId: "quality-rescheduling",
         solverId: "sokomind-solver", request});
     }), {asset, request});
   await testInfo.attach("grand-hall-public-quality.json", {
     body: JSON.stringify({project: testInfo.project.name, requestLimits: request.limits,
-      options: request.options, rescheduled, progressLog, result}, null, 2),
+      options: request.options, rescheduled, result}, null, 2),
     contentType: "application/json",
   });
+  expect(rescheduled).toBe(true);
   expect(result.status).toBe("solved");
   if (result.status !== "solved") return;
   // Quality improvement is time-bounded; CI browser environments (headless
-  // Chromium) may not complete enough rewrite passes to match local results.
-  // With reverse workers enabled, discovery runs 3 parallel plans consuming
-  // more states; bounds accommodate the slowest observed CI environment.
+  // Chromium) may not complete enough rewrite passes to match local results
+  // (520/242). Discovery alone produces ~893/563; bounds accommodate the
+  // slowest observed CI environment while confirming rescheduling ran.
   expect(result.solution.moves).toBeLessThanOrEqual(950);
   expect(result.solution.pushes).toBeLessThanOrEqual(600);
   expect(result.solution.optimality).toBe("unknown");

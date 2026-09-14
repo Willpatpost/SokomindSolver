@@ -111,8 +111,8 @@ export function structuralPlan(
       ...(analysisPlan?.strategicPlan ? {
         strategicPlan: analysisPlan.strategicPlan,
         ...(extractSokomindOptions(request).strategicPlanExecution
-          ? { planStrategicExecution: true }
-          : { planTaskMacros: false }),
+          ? { planStrategicExecution: true, planTaskMacros: false }
+          : mode === "fast" ? { planTaskMacros: false } : {}),
       } : {}),
       maxDepth: 460,
       maxVisited: remainingStateBudget(request, 6_000, budgetDivisor),
