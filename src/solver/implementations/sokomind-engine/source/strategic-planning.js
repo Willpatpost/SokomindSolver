@@ -171,7 +171,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     pathLimit: strategicLimit(config.pathLimit, 512, 4096),
     inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
     scheduleChoices: strategicLimit(config.scheduleChoices, 0, 8),
-    partialScheduleEvaluation: !!config.partialScheduleEvaluation,
+    partialScheduleEvaluation: config.partialScheduleEvaluation ? 1 : 0,
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
