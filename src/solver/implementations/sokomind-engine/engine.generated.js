@@ -4940,8 +4940,11 @@ function reachablePaths(state, board) {
     return cached;
   }
   const parents = new Int32Array(dense.keys.length), parentMoves = new Int8Array(dense.keys.length);
+  const distances = new Int16Array(dense.keys.length);
   parents.fill(-2);
+  distances.fill(-1);
   parents[start] = -1;
+  distances[start] = 0;
   const queue = new Int32Array(dense.keys.length);
   queue[0] = start;
   let tail = 1, regionId = start;
@@ -4952,6 +4955,7 @@ function reachablePaths(state, board) {
       if (next < 0 || parents[next] !== -2 || occupied[next] >= 0) continue;
       parents[next] = current;
       parentMoves[next] = direction;
+      distances[next] = distances[current] + 1;
       queue[tail++] = next;
       regionId = Math.min(regionId, next);
     }
@@ -4973,6 +4977,11 @@ function reachablePaths(state, board) {
       return id !== undefined && parents[id] !== -2;
     },
     hasId: id => id >= 0 && parents[id] !== -2,
+    distanceTo: position => {
+      const id = dense.idByKey.get(position);
+      return id !== undefined ? distances[id] : -1;
+    },
+    distanceToId: id => id >= 0 ? distances[id] : -1,
     get: position => pathToId(dense.idByKey.get(position)),
     getId: pathToId,
     keys: function* () {
@@ -4986,6 +4995,7 @@ function reachablePaths(state, board) {
     // instead of recursively charging every memo entry for the shared board.
     _parents: parents,
     _parentMoves: parentMoves,
+    _distances: distances,
     _queue: queue,
   };
   Object.defineProperty(result, "board", {
@@ -6413,10 +6423,16 @@ function exactLocalCorralAnalyses(state, board, reachable = reachablePaths(state
 function createsSealedCorralDeadlock(state, board, reachable) {
   const {dense} = board;
   const layout = denseBoxLayout(state.boxes, board);
-  const occupied = new Map(state.boxes.map(([y, x, label]) => [pkey(y, x), label]));
+  const indexByCell = ensureIndexByCell(layout, board);
   for (const component of inaccessibleFloorComponents(reachable, board)) {
-    const componentBoxes = [...component].filter(position => occupied.has(position));
-    if (!componentBoxes.some(position => board.goals.get(position) !== occupied.get(position))) continue;
+    const componentBoxes = [...component].filter(position => {
+      const id = dense.idByKey.get(position);
+      return id !== undefined && indexByCell[id] >= 0;
+    });
+    if (!componentBoxes.some(position => {
+      const id = dense.idByKey.get(position);
+      return board.goals.get(position) !== state.boxes[indexByCell[id]][2];
+    })) continue;
     const canOpen = componentBoxes.some(position => {
       const box = dense.idByKey.get(position);
       return DIRECTION_ENTRIES.some((_, direction) => {
@@ -7190,11 +7206,40 @@ function expandTargetedPushSequence(
     options.reserveAlternateApproach === true,
   );
   if (metrics) metrics.macroEndpointsRetained += selected.length;
+  const intermediateQuota = options.macroIntermediateQuota ?? 0;
+  const intermediates = [];
+  if (intermediateQuota > 0 && endpoints.length > selected.length) {
+    const endpointSignatures = new Set([
+      exactPushKey(initial, board),
+      ...selected.map(ep => exactPushKey(ep, board)),
+    ]);
+    const candidates = endpoints
+      .filter(s => s.pushes > 1 && !s.targetDeadEnd && !s.macroRejectedReason &&
+        !endpointSignatures.has(exactPushKey(s, board)))
+      .sort((a, b) => a.macroPath.length - b.macroPath.length);
+    const seenSides = new Set();
+    for (const candidate of candidates) {
+      if (intermediates.length >= intermediateQuota) break;
+      const side = candidate.pushedTo;
+      if (intermediates.length > 0 && seenSides.has(side)) continue;
+      seenSides.add(side);
+      intermediates.push(candidate);
+    }
+    if (metrics) {
+      metrics.macroTargetedIntermediatesGenerated = (metrics.macroTargetedIntermediatesGenerated || 0) + candidates.length;
+      metrics.macroTargetedIntermediatesRetained = (metrics.macroTargetedIntermediatesRetained || 0) + intermediates.length;
+    }
+  }
   return [
     materializeMacroPath(initial),
     ...selected
       .filter(endpoint => exactPushKey(endpoint, board) !== exactPushKey(initial, board))
       .map(materializeMacroPath),
+    ...intermediates.map(s => {
+      const materialized = materializeMacroPath(s);
+      materialized.intermediateOf = exactPushKey(selected[0] || initial, board);
+      return materialized;
+    }),
   ];
 }
 
@@ -7916,6 +7961,7 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
     pathLimit: strategicLimit(config.pathLimit, 512, 4096),
     inferenceWork: strategicLimit(config.inferenceWork, 2048, 20000),
     scheduleChoices: strategicLimit(config.scheduleChoices, 0, 8),
+    partialScheduleEvaluation: !!config.partialScheduleEvaluation,
   };
   const canonical = canonicalPlanTransform(data);
   const state = {rows: canonical.rows, robot: canonical.robot, boxes: canonical.boxes};
@@ -8107,11 +8153,24 @@ function buildStrategicPlan(data, config = {}, prepared = undefined) {
       consumer.dependsOn.push(id); consumer.evidence.sourceIds.push(id);
     }
   }
-  plan.candidates = [...schedules.values()].slice(0, options.width).map(candidate => ({path: candidate.path,
+  let finalCandidates = [...schedules.values()];
+  if (options.partialScheduleEvaluation && finalCandidates.length) {
+    for (const candidate of finalCandidates) {
+      candidate._scheduleCost = evaluatePartialScheduleCost(board, initial, candidate.path);
+    }
+    finalCandidates.sort((a, b) => {
+      const aCost = a._scheduleCost?.feasible ? a._scheduleCost.estimatedTotalMoves : Infinity;
+      const bCost = b._scheduleCost?.feasible ? b._scheduleCost.estimatedTotalMoves : Infinity;
+      return aCost - bCost || a.score - b.score;
+    });
+    plan.statistics.partialScheduleEvaluations = finalCandidates.length;
+  }
+  plan.candidates = finalCandidates.slice(0, options.width).map(candidate => ({path: candidate.path,
       moves: candidate.path.length, pushes: candidate.pushes, tasks: candidate.tasks,
       endpoint: {robot: candidate.robot, boxes: candidate.boxes},
       solved: goal(candidate.boxes, board.goals),
-      estimatedRemainingPushes: candidate.estimatedRemainingPushes}));
+      estimatedRemainingPushes: candidate.estimatedRemainingPushes,
+      ...(candidate._scheduleCost ? {scheduleCost: candidate._scheduleCost} : {})}));
   if (plan.candidates.some(candidate => candidate.solved)) plan.status = "solved";
   plan.statistics.expanded = budget.expanded;
   plan.statistics.generated = budget.generated;
@@ -8301,6 +8360,54 @@ function fixedOrderBoxReschedule(board, initial, events, selected, targetCell, u
     if (budget.expanded % 256 === 0) budget.report(heap.length);
   }
   return null;
+}
+
+function evaluatePartialScheduleCost(board, initial, path) {
+  if (!path.length) return {feasible: true, moves: 0, pushes: 0, remainingPushEstimate: 0};
+  let state = {robot: initial.robot, boxes: initial.boxes};
+  let pushes = 0, lastPushMove = -1;
+  const events = [];
+  for (let index = 0; index < path.length; index++) {
+    const next = neighbors(state, board, false).find(n => n.move === path[index]);
+    if (!next) return {feasible: false, reason: "invalid-move", moveIndex: index};
+    if (next.boxes !== state.boxes) {
+      const boxIndex = state.boxes.findIndex((box, i) =>
+        box[0] !== next.boxes[i][0] || box[1] !== next.boxes[i][1]);
+      if (boxIndex < 0) return {feasible: false, reason: "no-box-moved", moveIndex: index};
+      events.push({boxIndex, moveIndex: index, walkCost: index - lastPushMove - 1});
+      pushes++;
+      lastPushMove = index;
+    }
+    state = {robot: next.robot, boxes: next.boxes};
+  }
+  let remainingPushEstimate = 0;
+  for (let boxIndex = 0; boxIndex < state.boxes.length; boxIndex++) {
+    const [y, x, label] = state.boxes[boxIndex];
+    const position = pkey(y, x);
+    if (board.goals.get(position) === label) continue;
+    const targets = [...board.goals].filter(([, kind]) => kind === label);
+    let bestDistance = Infinity;
+    for (const [target] of targets) {
+      const d = compiledGoalPushDistance(board, position, target);
+      if (Number.isFinite(d) && d < bestDistance) bestDistance = d;
+    }
+    if (!Number.isFinite(bestDistance)) {
+      remainingPushEstimate += 100;
+    } else {
+      remainingPushEstimate += bestDistance;
+    }
+  }
+  const keeperWalkEstimate = remainingPushEstimate > 0
+    ? Math.max(0, remainingPushEstimate - 1) * 2
+    : 0;
+  return {
+    feasible: true,
+    moves: path.length,
+    pushes,
+    pushEvents: events.length,
+    remainingPushEstimate,
+    estimatedTotalMoves: path.length + remainingPushEstimate + keeperWalkEstimate,
+  };
 }
 
 function boxReschedulingTrace(payload, path, board) {
@@ -8633,12 +8740,12 @@ function keeperApproachProfile(state, board, reachable) {
       const support = pkey(y - dy, x - dx);
       if (!board.floor.has(destination) || occupied.has(destination) ||
           occupied.has(support)) continue;
-      if (!reachable.has(support)) continue;
-      const walk = reachable.get(support);
+      const walkDistance = reachable.distanceTo(support);
+      if (walkDistance < 0) continue;
       const candidateSide = `${dy},${dx}`;
-      if (walk.length < distance ||
-          (walk.length === distance && candidateSide < side)) {
-        distance = walk.length;
+      if (walkDistance < distance ||
+          (walkDistance === distance && candidateSide < side)) {
+        distance = walkDistance;
         side = candidateSide;
       }
     }
@@ -10434,7 +10541,8 @@ function planMacroBeamSearch(payload, observe = null) {
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
             paretoLimit: payload.macroParetoLimit,
             reserveAlternateApproach: payload.macroApproachDiversity === true,
-            pruneUnreachable: payload.pruneUnreachableTargetMacros !== false},
+            pruneUnreachable: payload.pruneUnreachableTargetMacros !== false,
+            macroIntermediateQuota: payload.macroIntermediateQuota ?? 0},
           )
           : expandPushSequences(
             first, board, macroLimit, explored, results,
