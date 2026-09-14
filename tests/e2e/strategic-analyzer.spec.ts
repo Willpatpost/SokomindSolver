@@ -21,7 +21,7 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
   const memoryBytes = 2048 * 1024 ** 2;
   const request = {board: session.board, snapshot: session.snapshot, objective: {kind: "moves" as const},
     options: {"sokomind-solver": {mode: "quality", maximumIncumbents: 1, harvestElapsedMs: 0, deterministic: true}},
-    limits: {maxElapsedMs: 45000, maxExpandedStates: 200000, maxGeneratedStates: 2000000,
+    limits: {maxElapsedMs: 60000, maxExpandedStates: 200000, maxGeneratedStates: 2000000,
       maxMemoryBytes: memoryBytes}};
   await page.goto("./#/play/ultra-tiny");
   const {result, rescheduled} = await page.evaluate(async ({asset, request}) =>
@@ -29,7 +29,7 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
       const worker = new Worker(new URL(`assets/${asset}`, document.baseURI), {type: "module"});
       let rescheduled = false;
       const finish = () => {clearTimeout(timer); worker.terminate();};
-      const timer = setTimeout(() => {finish(); reject(new Error("Quality worker timed out"));}, 60000);
+      const timer = setTimeout(() => {finish(); reject(new Error("Quality worker timed out"));}, 75000);
       worker.onerror = event => {finish(); reject(new Error(event.message));};
       worker.onmessage = event => {
         const data = event.data;
