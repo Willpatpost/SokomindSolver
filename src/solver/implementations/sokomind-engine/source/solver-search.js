@@ -1972,7 +1972,8 @@ function planMacroBeamSearch(payload, observe = null) {
             moveAwareDedupe: payload.moveAwareMacroDedupe === true,
             paretoLimit: payload.macroParetoLimit,
             reserveAlternateApproach: payload.macroApproachDiversity === true,
-            pruneUnreachable: payload.pruneUnreachableTargetMacros !== false},
+            pruneUnreachable: payload.pruneUnreachableTargetMacros !== false,
+            macroIntermediateQuota: payload.macroIntermediateQuota ?? 0},
           )
           : expandPushSequences(
             first, board, macroLimit, explored, results,
