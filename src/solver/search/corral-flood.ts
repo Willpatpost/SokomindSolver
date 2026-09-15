@@ -13,6 +13,7 @@ export interface BoundaryPush {
 export interface CorralComponent {
   readonly boxIndices: readonly number[];
   readonly boundaryPushes: readonly BoundaryPush[];
+  readonly potentialPushes: readonly BoundaryPush[];
 }
 
 export type CorralVisitor = (component: CorralComponent) => boolean | void;
@@ -83,6 +84,7 @@ export class CorralFlood {
       if (allOnGoals) continue;
 
       const boundaryPushes: BoundaryPush[] = [];
+      const potentialPushes: BoundaryPush[] = [];
       for (const bi of boxIndices) {
         const box = boxes[bi];
         const neighbors = board.neighbors[box.cell];
@@ -90,17 +92,22 @@ export class CorralFlood {
           const supportDir = OPPOSITE[d];
           const support = neighbors[supportDir];
           if (support < 0) continue;
-          if (!reachable.isReachable(support)) continue;
 
           const dest = neighbors[d];
           if (dest < 0) continue;
           if (occupancy[dest] !== 0) continue;
 
-          boundaryPushes.push({ boxIndex: bi, direction: d, destination: dest });
+          if (componentId[support] !== cid) {
+            potentialPushes.push({ boxIndex: bi, direction: d, destination: dest });
+          }
+
+          if (reachable.isReachable(support)) {
+            boundaryPushes.push({ boxIndex: bi, direction: d, destination: dest });
+          }
         }
       }
 
-      const stop = visitor({ boxIndices, boundaryPushes });
+      const stop = visitor({ boxIndices, boundaryPushes, potentialPushes });
       if (stop === true) return true;
     }
 

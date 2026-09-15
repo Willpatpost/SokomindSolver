@@ -44,14 +44,15 @@ export class PiCorralDetector {
     this.#checks += 1;
 
     return this.#flood.scan(board, boxes, occupancy, reachable, (component) => {
-      if (component.boundaryPushes.length === 0) {
+      if (component.potentialPushes.length === 0) {
         this.#sealedDeadlocks += 1;
         return true;
       }
 
-      if (component.boundaryPushes.length > MAX_BOUNDARY_BOXES) return;
+      if (component.potentialPushes.length > MAX_BOUNDARY_BOXES) return;
 
-      if (this.#allPushesDeadlock(board, boxes, component.boundaryPushes)) {
+      const corralBoxSet = new Set(component.boxIndices);
+      if (this.#allPushesDeadlock(board, boxes, component.potentialPushes, corralBoxSet)) {
         this.#piDeadlocks += 1;
         return true;
       }
@@ -62,9 +63,10 @@ export class PiCorralDetector {
     board: CompiledSearchBoard,
     boxes: readonly DenseBox[],
     pushes: readonly BoundaryPush[],
+    corralBoxSet: ReadonlySet<number>,
   ): boolean {
     for (const push of pushes) {
-      if (!this.#pushCreatesDeadlock(board, boxes, push)) {
+      if (!this.#pushCreatesDeadlock(board, boxes, push, corralBoxSet)) {
         return false;
       }
     }
@@ -75,24 +77,28 @@ export class PiCorralDetector {
     board: CompiledSearchBoard,
     boxes: readonly DenseBox[],
     push: BoundaryPush,
+    corralBoxSet: ReadonlySet<number>,
   ): boolean {
-    const tempBoxes: DenseBox[] = boxes.map((box, i) =>
-      i === push.boxIndex
-        ? { ...box, cell: push.destination }
-        : box,
-    );
+    const corralBoxes: DenseBox[] = [];
+    for (const i of corralBoxSet) {
+      corralBoxes.push(
+        i === push.boxIndex
+          ? { ...boxes[i], cell: push.destination }
+          : boxes[i],
+      );
+    }
 
     const occ = this.#tempOccupancy;
     occ.fill(-1);
-    for (let i = 0; i < tempBoxes.length; i++) {
-      occ[tempBoxes[i].cell] = i;
+    for (let i = 0; i < corralBoxes.length; i++) {
+      occ[corralBoxes[i].cell] = i;
     }
 
-    if (createsFullyBlockedTwoByTwoDeadlock(board, tempBoxes, push.destination, occ)) {
+    if (createsFullyBlockedTwoByTwoDeadlock(board, corralBoxes, push.destination, occ)) {
       return true;
     }
 
-    if (hasFreezeDeadlock(board, tempBoxes, occ)) {
+    if (hasFreezeDeadlock(board, corralBoxes, occ)) {
       return true;
     }
 

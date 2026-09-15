@@ -705,10 +705,10 @@ export async function runIdaStarSearch(
       featureTelemetry.linearConflictTotal += value;
       return value;
     };
-    const pdbValue = (boxes: readonly DenseBox[]): number => {
-      if (!pdbEvaluator) return 0;
+    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null): number => {
+      if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluate(boxes);
+      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -1012,8 +1012,8 @@ export async function runIdaStarSearch(
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSum = pdbValue(initialBoxes);
-    const initialH = Math.max(initialHPush + Math.max(initialLC, initialBoost), initialPdbSum) + initialHWalk;
+    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
+    const initialH = initialHPush + Math.max(initialLC, initialBoost, initialPdbSurplus) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1247,11 +1247,8 @@ export async function runIdaStarSearch(
             frame.robot,
             frame.boxes,
           );
-          const pdbSum = pdbValue(frame.boxes);
-          const h = Math.max(
-            hPush + Math.max(linearConflictBoost, interactionBoost),
-            pdbSum,
-          ) + hWalk;
+          const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
+          const h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost) + hWalk;
           frame.h = h;
 
           const f = frame.g + h;

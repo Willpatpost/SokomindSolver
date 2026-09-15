@@ -424,10 +424,10 @@ export async function runExactMoveAStar(
       featureTelemetry.linearConflictTotal += value;
       return value;
     };
-    const pdbValue = (boxes: readonly DenseBox[]): number => {
-      if (!pdbEvaluator) return 0;
+    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null): number => {
+      if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluate(boxes);
+      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -485,8 +485,8 @@ export async function runExactMoveAStar(
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSum = pdbValue(initialBoxes);
-    const initialH = Math.max(initialPushBound + Math.max(initialLC, initialBoost), initialPdbSum) + initialWalkBound;
+    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
+    const initialH = initialPushBound + Math.max(initialLC, initialBoost, initialPdbSurplus) + initialWalkBound;
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -1121,11 +1121,11 @@ export async function runExactMoveAStar(
                   counters.interactionBoostTotal += interactionBoost;
                 }
                 const fpLinearConflict = linearConflict(expansionBoxes);
-                const fpPdbSum = pdbValue(expansionBoxes);
+                const fpPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = Math.max(pushLowerBound + Math.max(fpLinearConflict, interactionBoost), fpPdbSum) + walkBound;
+                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost, fpPdbBoost) + walkBound;
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1296,11 +1296,11 @@ export async function runExactMoveAStar(
                 : 0;
               if (tInteractionBoost > 0) counters.interactionBoostTotal += tInteractionBoost;
               const tLC = linearConflict(expansionBoxes);
-              const tPdb = pdbValue(expansionBoxes);
+              const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts);
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
               );
-              const tH = Math.max(tPushLowerBound + Math.max(tLC, tInteractionBoost), tPdb) + tWalkBound;
+              const tH = tPushLowerBound + Math.max(tLC, tInteractionBoost, tPdbBoost) + tWalkBound;
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1416,14 +1416,14 @@ export async function runExactMoveAStar(
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
           const childLinearConflict = linearConflict(expansionBoxes);
-          const childPdbSum = pdbValue(expansionBoxes);
+          const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
 
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
             savedCell,
             expansionBoxes,
           );
-          const h = Math.max(pushLowerBound + Math.max(childLinearConflict, interactionBoost), childPdbSum) + walkBound;
+          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost, childPdbBoost) + walkBound;
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

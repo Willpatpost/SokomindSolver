@@ -66,7 +66,7 @@ describe("exact-search feature configuration", () => {
       exactSearchFeatureFingerprint(resolveExactSearchFeatures({})),
     );
     assert.equal(exactSearchFeatureMask(resolved), 0b111_1101_1111);
-    assert.equal(resolveExactSearchFeatures({piCorralPruning: true}).piCorralPruning, false);
+    assert.equal(resolveExactSearchFeatures({piCorralPruning: true}).piCorralPruning, true);
   });
 
   it("rejects unknown and non-boolean feature overrides", () => {

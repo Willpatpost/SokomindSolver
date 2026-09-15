@@ -49,10 +49,16 @@ existing live estimated-memory checks for memory. It no longer inherits the
 extra 20k/35k memory-class state caps. Local-window and optimal-mode allocations
 are unchanged; shared limits, cutoff publications, and replay checks still apply.
 See [resource-policy measurements](benchmarks/quality-memory-policy.md). The
-historical lower-memory Grand Hall proof claims were invalid: PI-corral pruning
-incorrectly rejected its solvable root. That rule is now disabled in exact search,
-including explicit feature overrides. Updated runs retain unknown optimality and
-bounded proof metadata. Sokomind 1.2.0 / exact A* and IDA* 2.2.0 supersede the
+historical lower-memory Grand Hall proof claims were invalid: the former PI-corral
+implementation incorrectly rejected its solvable root because it only checked
+keeper-reachable boundary pushes and applied deadlock tests against all board
+boxes. That implementation has been replaced with a sound I-corral detector that
+checks all potential boundary pushes (support cell outside the corral component)
+and restricts freeze/2x2 deadlock tests to corral-internal boxes only. The
+corrected detector does not false-positive on Grand Hall. PI-corral pruning
+defaults to off but can now be enabled via explicit feature overrides for
+controlled experiments; the prior hard override that silently forced it off has
+been removed. Updated runs retain unknown optimality and bounded proof metadata. Sokomind 1.2.0 / exact A* and IDA* 2.2.0 supersede the
 affected versions; IDA* schema 3 rejects older checkpoints, including direct API
 resume. Previously emitted claims must not be treated as current proof evidence.
 
@@ -136,7 +142,7 @@ upper bounds under both exact engines.
 
 The features in `src/solver/search/exact-search-features.ts` can be disabled
 internally for controlled comparisons. They default on except PI-corral pruning,
-which remains disabled even under an explicit override:
+which defaults off but can be enabled via explicit override:
 
 - incremental assignment repair;
 - linear conflict;
@@ -163,8 +169,13 @@ short tunnels where the robot can reach the opposite side.
 Corral ordering reuses the PI-corral flood to identify boundary pushes into
 unreachable regions containing off-goal boxes and reorders IDA* child generation
 to try those pushes first. It never prunes branches, so proof correctness is
-unaffected. PI-corral pruning itself remains disabled because its deadlock
-classification is unsound.
+unaffected. PI-corral pruning uses a sound I-corral detector that checks all
+potential boundary pushes and restricts deadlock tests to corral-internal boxes.
+
+Pattern-database partitions contribute to the heuristic via per-label surplus:
+for each label, any excess of the PDB value over the assignment cost is added to
+the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`. This is
+admissible because each label's boxes and goals are disjoint.
 
 Mixed-label deadlock tables enumerate the complete label assignment product
 within the existing construction budget. Deeper PI-corral boundary-table checks

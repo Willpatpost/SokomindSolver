@@ -118,4 +118,41 @@ export class PdbHeuristicEvaluator {
     }
     return total;
   }
+
+  evaluateWithSurplus(
+    boxes: readonly DenseBox[],
+    assignmentLabelCosts: ReadonlyMap<string, number>,
+  ): number {
+    if (this.#pdbs.length === 0) return 0;
+    for (const cells of this.#cellsByLabel) cells.length = 0;
+    for (const box of boxes) {
+      const slot = this.#labelSlots.get(box.label);
+      if (slot !== undefined) this.#cellsByLabel[slot].push(box.cell);
+    }
+
+    const labelPdbTotals = new Map<string, number>();
+    for (let i = 0; i < this.#partitions.length; i++) {
+      const pdb = this.#pdbs[i];
+      const k = pdb.k;
+      if (k === 0) continue;
+      const label = this.#partitions[i].labels[0];
+      const slot = this.#labelSlots.get(label);
+      const boxCells = slot === undefined ? undefined : this.#cellsByLabel[slot];
+      if (!boxCells || boxCells.length < k) continue;
+      const value = boxCells.length === k
+        ? pdb.lookup(boxCells)
+        : minSubsetLookup(pdb, boxCells, k, this.#subsetIndices, this.#subsetCells);
+      if (value !== PDB_UNSOLVED) {
+        labelPdbTotals.set(label, (labelPdbTotals.get(label) ?? 0) + value);
+      }
+    }
+
+    let surplus = 0;
+    for (const [label, pdbValue] of labelPdbTotals) {
+      const assignmentCost = assignmentLabelCosts.get(label) ?? 0;
+      const diff = pdbValue - assignmentCost;
+      if (diff > 0) surplus += diff;
+    }
+    return surplus;
+  }
 }

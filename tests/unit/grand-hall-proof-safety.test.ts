@@ -38,8 +38,10 @@ test("a PI-corral false positive cannot certify a known nonoptimal Grand Hall ro
   for (const box of boxes) occupancy[box.cell] = 1;
   const reachable = new KeeperReachability(board).flood(
     board.cellAt(request.snapshot.robot.row, request.snapshot.robot.column), occupancy);
-  // Preserve the counterexample for any future replacement of this detector.
-  assert.equal(new PiCorralDetector(board.cellCount).check(board, boxes, occupancy, reachable), true);
+  // The sound I-corral detector (checking all potential boundary pushes, not
+  // just currently reachable ones) must NOT false-positive on Grand Hall's
+  // solvable root.
+  assert.equal(new PiCorralDetector(board.cellCount).check(board, boxes, occupancy, reachable), false);
   for (const search of [runExactMoveAStar, runIdaStarSearch]) {
     const result = await search(request, {signal: new AbortController().signal,
       now: () => performance.now(), reportProgress() {}}, {
