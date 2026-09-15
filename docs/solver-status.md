@@ -115,7 +115,8 @@ selecting Quality and still requires the documented promotion evidence.
 - A* and IDA* minimize moves and independently replay accepted routes.
 - IDA* keeps collision-checked best-`g` dominance only inside the current
   contour. Path-dependent backed `f` values are not persistent transposition
-  bounds.
+  bounds. Computed `h` values are cached across contours because `h` is
+  state-determined (depends only on box positions and robot cell, not path).
 - The unproved goal-depth macro prune is disconnected from both exact kernels.
 - A numeric upper bound is an exclusive pruning ceiling. Only a complete,
   replay-valid incumbent can become a public solution.

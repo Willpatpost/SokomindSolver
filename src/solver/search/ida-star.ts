@@ -757,11 +757,14 @@ export async function runIdaStarSearch(
     let dfsStackMemoryBytes = 0;
     let reachabilitySnapshotMemoryBytes = 0;
     let heuristicCacheEntries = 0;
+    let hCacheMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
+    let hCacheHits = 0;
+    const hCache = new Map<number, { bigintKey: bigint; h: number }>();
     let peakEstimatedMemoryBytes = 0;
     estimateInteractionSearchBaseMemory = () =>
       estimateIdaCurrentBytes(
         preprocessingStaticMemoryBytes,
-        transpositionMemoryBytes,
+        transpositionMemoryBytes + hCacheMemoryBytes,
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
           initialBoxes.length,
@@ -808,12 +811,14 @@ export async function runIdaStarSearch(
       tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
       goalCutEvaluations: goalCutEvaluator?.stats.evaluations ?? 0,
       goalCutTotal: goalCutEvaluator?.stats.cutTotal ?? 0,
+      hCacheHits,
+      hCacheSize: hCache.size,
     });
 
     const currentMemory = (): IdaMemoryBreakdown =>
       estimateIdaMemory(
         currentStaticMemoryBytes(),
-        transpositionMemoryBytes,
+        transpositionMemoryBytes + hCacheMemoryBytes,
         heuristicCacheEntries,
         initialBoxes.length,
         dfsStackMemoryBytes,
@@ -833,7 +838,7 @@ export async function runIdaStarSearch(
     const recordCurrentMemory = (): number => {
       const currentBytes = estimateIdaCurrentBytes(
         currentStaticMemoryBytes(),
-        transpositionMemoryBytes,
+        transpositionMemoryBytes + hCacheMemoryBytes,
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
           initialBoxes.length,
@@ -1071,9 +1076,9 @@ export async function runIdaStarSearch(
       : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
         ? 3_000_000
         : 2_000_000;
+    const H_CACHE_SIZE_CAP = Math.max(1, Math.floor(TT_SIZE_CAP / 2));
     const transposition = new Map<number, { bigintKey: bigint; bestG: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
-
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {
         const ctx = options.checkpointContext;
@@ -1216,60 +1221,81 @@ export async function runIdaStarSearch(
 
         // ----- First visit: f-bound, TT, solved check, mark expanded -----
         if (!frame.expanded) {
-          let hPush: number;
-          if (pathStack.length >= 2 && frame.push) {
-            const parentFrame = pathStack[pathStack.length - 2];
-            const parentBoxKey = packBoxKeyFromBoxes(parentFrame.boxes);
-            const childBoxKey = packBoxKeyFromBoxes(frame.boxes);
-            const movedBox = parentFrame.boxes.find(
-              (b) => b.cell === frame.push!.boxCell,
-            );
-            if (movedBox) {
-              hPush = features.incrementalAssignment
-                ? heuristic.evaluateIncremental(
-                    frame.boxes,
-                    childBoxKey,
-                    parentBoxKey,
-                    movedBox.label,
-                  )
-                : heuristic.evaluate(frame.boxes);
+          const hCacheEntry = hCache.get(frame.zobristKey);
+          const cachedH = hCacheEntry !== undefined && hCacheEntry.bigintKey === frame.exactKey
+            ? hCacheEntry.h
+            : -1;
+
+          let h: number;
+          if (cachedH >= 0) {
+            h = cachedH;
+            hCacheHits++;
+          } else {
+            let hPush: number;
+            if (pathStack.length >= 2 && frame.push) {
+              const parentFrame = pathStack[pathStack.length - 2];
+              const parentBoxKey = packBoxKeyFromBoxes(parentFrame.boxes);
+              const childBoxKey = packBoxKeyFromBoxes(frame.boxes);
+              const movedBox = parentFrame.boxes.find(
+                (b) => b.cell === frame.push!.boxCell,
+              );
+              if (movedBox) {
+                hPush = features.incrementalAssignment
+                  ? heuristic.evaluateIncremental(
+                      frame.boxes,
+                      childBoxKey,
+                      parentBoxKey,
+                      movedBox.label,
+                    )
+                  : heuristic.evaluate(frame.boxes);
+              } else {
+                hPush = heuristic.evaluate(frame.boxes);
+              }
             } else {
               hPush = heuristic.evaluate(frame.boxes);
             }
-          } else {
-            hPush = heuristic.evaluate(frame.boxes);
-          }
-          heuristicCacheEntries = heuristic.stats.cacheEntries;
-          if (memoryLimitReached()) {
-            limitDetail = "Estimated solver memory limit reached.";
-            break idaLoop;
-          }
-          if (!Number.isFinite(hPush)) {
-            counters.infeasiblePrunes += 1;
-            popFrame();
-            continue;
-          }
+            heuristicCacheEntries = heuristic.stats.cacheEntries;
+            if (memoryLimitReached()) {
+              limitDetail = "Estimated solver memory limit reached.";
+              break idaLoop;
+            }
+            if (!Number.isFinite(hPush)) {
+              counters.infeasiblePrunes += 1;
+              popFrame();
+              continue;
+            }
 
-          const labelCosts = heuristic.lastLabelCosts;
-          const interactionBoost = labelCosts && boostEvaluator
-            ? boostEvaluator.evaluate(
-                frame.boxes,
-                labelCosts,
-                packBoxKeyFromBoxes(frame.boxes),
-              )
-            : 0;
-          if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
+            const labelCosts = heuristic.lastLabelCosts;
+            const interactionBoost = labelCosts && boostEvaluator
+              ? boostEvaluator.evaluate(
+                  frame.boxes,
+                  labelCosts,
+                  packBoxKeyFromBoxes(frame.boxes),
+                )
+              : 0;
+            if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
-          const linearConflictBoost = linearConflict(frame.boxes);
+            const linearConflictBoost = linearConflict(frame.boxes);
 
-          const hWalk = minimumManhattanWalkToPotentialPush(
-            board,
-            frame.robot,
-            frame.boxes,
-          );
-          const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
-          const goalCutBoost = goalCut();
-          const h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost) + hWalk;
+            const hWalk = minimumManhattanWalkToPotentialPush(
+              board,
+              frame.robot,
+              frame.boxes,
+            );
+            const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
+            const goalCutBoost = goalCut();
+            h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost) + hWalk;
+
+            const oldHCacheSize = hCache.size;
+            hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h });
+            if (hCache.size > oldHCacheSize) {
+              hCacheMemoryBytes += estimateTranspositionEntryBytes();
+            }
+            if (hCache.size > H_CACHE_SIZE_CAP) {
+              const firstKey = hCache.keys().next().value;
+              if (firstKey !== undefined) hCache.delete(firstKey);
+            }
+          }
           frame.h = h;
 
           const f = frame.g + h;
