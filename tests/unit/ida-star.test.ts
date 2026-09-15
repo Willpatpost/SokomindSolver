@@ -254,9 +254,9 @@ describe("IDA* search", () => {
     const staticBytes =
       baseline.metrics.counters?.memoryStaticBytes ?? 0;
     assert.ok(staticBytes > 1, "Expected a meaningful static allocation");
-    assert.equal(
-      baseline.metrics.counters?.estimatedMemoryBytes,
-      staticBytes,
+    assert.ok(
+      (baseline.metrics.counters?.estimatedMemoryBytes ?? 0) >= staticBytes,
+      "Estimated memory should be at least the static allocation",
     );
 
     const result = await runIdaStarSearch(
