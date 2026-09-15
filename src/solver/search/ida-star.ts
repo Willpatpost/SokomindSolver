@@ -52,6 +52,10 @@ import {
   InteractionBoostEvaluator,
   isExactInteractionSearchLimitError,
 } from "./interaction-boost.ts";
+import {
+  GoalCutEvaluator,
+  hasPotentialGoalCut,
+} from "./goal-cut.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -651,6 +655,10 @@ export async function runIdaStarSearch(
     const tunnelDetector = features.tunnelMacros
       ? new TunnelMacroDetector(board)
       : null;
+    const goalCutEvaluator =
+      features.goalCutHeuristic && hasPotentialGoalCut(board, board.topology)
+        ? new GoalCutEvaluator(board, board.topology)
+        : null;
     const deadlockTableLookup = features.deadlockTablePruning
       ? await buildDeadlockTablesAsync(
           board,
@@ -709,6 +717,15 @@ export async function runIdaStarSearch(
       if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
       return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
+    };
+    const goalCut = (): number => {
+      if (!goalCutEvaluator) return 0;
+      const states = heuristic.lastAssignmentStates;
+      if (!states) return 0;
+      const value = goalCutEvaluator.evaluate(states);
+      featureTelemetry.goalCutEvaluations += 1;
+      featureTelemetry.goalCutTotal += value;
+      return value;
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -789,6 +806,8 @@ export async function runIdaStarSearch(
       goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
       tunnelMacroChecks: tunnelDetector?.stats.checks ?? 0,
       tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
+      goalCutEvaluations: goalCutEvaluator?.stats.evaluations ?? 0,
+      goalCutTotal: goalCutEvaluator?.stats.cutTotal ?? 0,
     });
 
     const currentMemory = (): IdaMemoryBreakdown =>
@@ -1013,7 +1032,8 @@ export async function runIdaStarSearch(
       initialBoxes,
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
-    const initialH = initialHPush + Math.max(initialLC, initialBoost, initialPdbSurplus) + initialHWalk;
+    const initialGoalCut = goalCut();
+    const initialH = initialHPush + Math.max(initialLC, initialBoost, initialPdbSurplus, initialGoalCut) + initialHWalk;
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1248,7 +1268,8 @@ export async function runIdaStarSearch(
             frame.boxes,
           );
           const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
-          const h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost) + hWalk;
+          const goalCutBoost = goalCut();
+          const h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost) + hWalk;
           frame.h = h;
 
           const f = frame.g + h;

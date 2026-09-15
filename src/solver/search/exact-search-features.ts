@@ -10,6 +10,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "deadlockTablePruning",
   "goalCommitmentPruning",
   "tunnelMacros",
+  "goalCutHeuristic",
 ] as const);
 
 export type ExactSearchFeatureKey = (typeof EXACT_SEARCH_FEATURE_KEYS)[number];
@@ -26,6 +27,7 @@ export interface ExactSearchFeatures {
   readonly deadlockTablePruning: boolean;
   readonly goalCommitmentPruning: boolean;
   readonly tunnelMacros: boolean;
+  readonly goalCutHeuristic: boolean;
 }
 
 export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze({
@@ -40,6 +42,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   deadlockTablePruning: true,
   goalCommitmentPruning: true,
   tunnelMacros: true,
+  goalCutHeuristic: true,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
@@ -99,6 +102,8 @@ interface ExactSearchFeatureTelemetry {
   pdbEvaluations: number;
   deadlockTableChecks: number;
   tunnelMacroApplications: number;
+  goalCutEvaluations: number;
+  goalCutTotal: number;
 }
 
 export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry {
@@ -110,5 +115,7 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     pdbEvaluations: 0,
     deadlockTableChecks: 0,
     tunnelMacroApplications: 0,
+    goalCutEvaluations: 0,
+    goalCutTotal: 0,
   };
 }

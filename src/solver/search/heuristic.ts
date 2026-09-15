@@ -28,7 +28,7 @@ export interface AssignmentHeuristicStats {
   readonly incrementalRepairs: number;
 }
 
-interface LabelAssignmentState {
+export interface LabelAssignmentState {
   readonly cost: number;
   readonly columns: readonly number[];
   readonly rowPotentials: Float64Array;
@@ -276,6 +276,10 @@ export class AssignmentHeuristic {
       cacheEntries: this.#cache.size + this.#fallbackCache.size,
       incrementalRepairs: this.#incrementalRepairs,
     });
+  }
+
+  get lastAssignmentStates(): ReadonlyMap<string, LabelAssignmentState> | null {
+    return this.#lastLabelStates;
   }
 
   get lastLabelCosts(): ReadonlyMap<string, number> | null {

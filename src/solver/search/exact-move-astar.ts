@@ -50,6 +50,10 @@ import {
   isExactInteractionSearchLimitError,
 } from "./interaction-boost.ts";
 import {
+  GoalCutEvaluator,
+  hasPotentialGoalCut,
+} from "./goal-cut.ts";
+import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
   fillOccupancy,
@@ -361,6 +365,10 @@ export async function runExactMoveAStar(
     const tunnelDetector = features.tunnelMacros
       ? new TunnelMacroDetector(board)
       : null;
+    const goalCutEvaluator =
+      features.goalCutHeuristic && hasPotentialGoalCut(board, board.topology)
+        ? new GoalCutEvaluator(board, board.topology)
+        : null;
     const deadlockTableLookup = features.deadlockTablePruning
       ? await buildDeadlockTablesAsync(
           board,
@@ -429,6 +437,15 @@ export async function runExactMoveAStar(
       featureTelemetry.pdbEvaluations += 1;
       return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
     };
+    const goalCut = (): number => {
+      if (!goalCutEvaluator) return 0;
+      const states = heuristic.lastAssignmentStates;
+      if (!states) return 0;
+      const value = goalCutEvaluator.evaluate(states);
+      featureTelemetry.goalCutEvaluations += 1;
+      featureTelemetry.goalCutTotal += value;
+      return value;
+    };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
       movedCell: number,
@@ -486,7 +503,8 @@ export async function runExactMoveAStar(
       initialBoxes,
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
-    const initialH = initialPushBound + Math.max(initialLC, initialBoost, initialPdbSurplus) + initialWalkBound;
+    const initialGoalCut = goalCut();
+    const initialH = initialPushBound + Math.max(initialLC, initialBoost, initialPdbSurplus, initialGoalCut) + initialWalkBound;
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -525,6 +543,8 @@ export async function runExactMoveAStar(
       goalCommitmentApplicable: commitmentDetector === null ? 0 : 1,
       tunnelMacroChecks: tunnelDetector?.stats.checks ?? 0,
       tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
+      goalCutEvaluations: goalCutEvaluator?.stats.evaluations ?? 0,
+      goalCutTotal: goalCutEvaluator?.stats.cutTotal ?? 0,
     });
 
     const metrics = () =>
@@ -1123,10 +1143,11 @@ export async function runExactMoveAStar(
                 }
                 const fpLinearConflict = linearConflict(expansionBoxes);
                 const fpPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
+                const fpGoalCut = goalCut();
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost, fpPdbBoost) + walkBound;
+                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut) + walkBound;
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1299,10 +1320,11 @@ export async function runExactMoveAStar(
               if (tInteractionBoost > 0) counters.interactionBoostTotal += tInteractionBoost;
               const tLC = linearConflict(expansionBoxes);
               const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts);
+              const tGoalCut = goalCut();
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
               );
-              const tH = tPushLowerBound + Math.max(tLC, tInteractionBoost, tPdbBoost) + tWalkBound;
+              const tH = tPushLowerBound + Math.max(tLC, tInteractionBoost, tPdbBoost, tGoalCut) + tWalkBound;
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1420,13 +1442,14 @@ export async function runExactMoveAStar(
 
           const childLinearConflict = linearConflict(expansionBoxes);
           const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
+          const childGoalCut = goalCut();
 
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
             savedCell,
             expansionBoxes,
           );
-          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost, childPdbBoost) + walkBound;
+          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost, childPdbBoost, childGoalCut) + walkBound;
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

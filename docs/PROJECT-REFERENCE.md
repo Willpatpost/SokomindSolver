@@ -266,6 +266,7 @@ fails when the generated facts below differ from source.
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default
 - `tunnelMacros`: enabled by default
+- `goalCutHeuristic`: enabled by default
 - Maximum PDB table: **268,435,456 entries** (**512 MiB**)
 
 ### Frozen solver evidence

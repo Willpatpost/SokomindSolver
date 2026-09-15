@@ -152,8 +152,9 @@ internally for controlled comparisons. All default on:
 - corral ordering;
 - pattern-deadlock pruning;
 - deadlock-table pruning;
-- goal-commitment pruning; and
-- tunnel macros.
+- goal-commitment pruning;
+- tunnel macros; and
+- goal-cut heuristic.
 
 Telemetry reports the feature vector and mechanism-specific construction,
 evaluation, application, or prune counters. A feature is beneficial only when
@@ -184,8 +185,14 @@ potential boundary pushes and restricts deadlock tests to corral-internal boxes.
 
 Pattern-database partitions contribute to the heuristic via per-label surplus:
 for each label, any excess of the PDB value over the assignment cost is added to
-the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`. This is
-admissible because each label's boxes and goals are disjoint.
+the heuristic as `h = assignment + max(LC, boost, pdb_surplus, goal_cut) + walk`.
+This is admissible because each label's boxes and goals are disjoint.
+
+Goal-cut detects bottleneck conflicts when multiple boxes' shortest push-paths
+share articulation points or tunnel cells. For each bottleneck with demand N > 1,
+the surplus is (N-1)*2 additional pushes; the heuristic takes the maximum across
+all bottlenecks. This is admissible: N boxes sharing a single-capacity bottleneck
+require at least N-1 yield manoeuvres of 2 pushes each.
 
 Mixed-label deadlock tables enumerate the complete label assignment product
 within the existing construction budget. Deeper PI-corral boundary-table checks
