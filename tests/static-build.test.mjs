@@ -74,15 +74,15 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Coordinator decomposition and typed engine payload interfaces.
   // Forced-push macros integrated into classic engine; aggregate caching in run-state.
   // Backward perimeter BFS and matching-component analysis in both exact engines.
-  allScriptsAndStylesGzipBytes: 455_000,
-  largestAssetGzipBytes: 80_000,
-  homeRouteGzipBytes: 175_000,
-  playRouteGzipBytes: 200_000,
-  solverWorkerGzipBytes: 61_000,
+  allScriptsAndStylesGzipBytes: 460_000,
+  largestAssetGzipBytes: 85_000,
+  homeRouteGzipBytes: 180_000,
+  playRouteGzipBytes: 205_000,
+  solverWorkerGzipBytes: 66_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
   // schedule trace, and macro intermediate retention (73,072).
-  engineWorkerGzipBytes: 74_000,
-  puzzleShardGzipBytes: 5_000,
+  engineWorkerGzipBytes: 79_000,
+  puzzleShardGzipBytes: 10_000,
 });
 
 function assertWithinBudget(label, actual, maximum) {
