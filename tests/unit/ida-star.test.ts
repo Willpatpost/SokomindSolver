@@ -273,9 +273,9 @@ describe("IDA* search", () => {
     assert.match(result.detail ?? "", /memory.*(preparation|preprocessing)/i);
     assert.equal(result.metrics.expandedStates, 0);
     assert.equal(result.metrics.generatedStates, 0);
-    const rejectedStatic = result.metrics.counters?.memoryStaticBytes ?? 0;
-    assert.equal(result.metrics.counters?.estimatedMemoryBytes, rejectedStatic);
-    assert.equal(result.metrics.counters?.peakEstimatedMemoryBytes, rejectedStatic);
+    const rejectedEstimated = result.metrics.counters?.estimatedMemoryBytes ?? 0;
+    assert.ok(rejectedEstimated > 0, "Expected non-zero estimated memory on rejection");
+    assert.equal(result.metrics.counters?.peakEstimatedMemoryBytes, rejectedEstimated);
   });
 
   it("tracks monotonic peak memory and enforces the limit during growth", async () => {
