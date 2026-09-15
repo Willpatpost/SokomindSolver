@@ -7020,11 +7020,7 @@ function expandPushSequences(
     ...selected
       .filter(endpoint => exactPushKey(endpoint, board) !== exactPushKey(initial, board))
       .map(materializeMacroPath),
-    ...intermediates.map(s => {
-      const materialized = materializeMacroPath(s);
-      materialized.intermediateOf = exactPushKey(selected[0] || initial, board);
-      return materialized;
-    }),
+    ...intermediates.map(materializeMacroPath),
   ];
 }
 
@@ -7235,11 +7231,7 @@ function expandTargetedPushSequence(
     ...selected
       .filter(endpoint => exactPushKey(endpoint, board) !== exactPushKey(initial, board))
       .map(materializeMacroPath),
-    ...intermediates.map(s => {
-      const materialized = materializeMacroPath(s);
-      materialized.intermediateOf = exactPushKey(selected[0] || initial, board);
-      return materialized;
-    }),
+    ...intermediates.map(materializeMacroPath),
   ];
 }
 

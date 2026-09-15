@@ -13,11 +13,15 @@ const puzzle: PuzzleDefinition = {
   id: "strategic-two", title: "Strategic two", difficulty: "tutorial", boxes: 2,
   rows: ["OOOOOOO", "O  R  O", "O A X O", "O a S O", "O     O", "OOOOOOO"],
 };
+interface ScheduleCost {
+  feasible: boolean; moves: number; pushes: number; pushEvents: number;
+  remainingPushEstimate: number; estimatedTotalMoves: number;
+}
 interface Plan {
   schemaVersion: number;
   snapshotKey: string;
-  candidates: Array<{path: string[]; moves: number; pushes: number; tasks: string[]}>;
-  statistics: {expanded: number; generated: number; elapsedMs: number; groupWidenings?: number};
+  candidates: Array<{path: string[]; moves: number; pushes: number; tasks: string[]; solved?: boolean; scheduleCost?: ScheduleCost}>;
+  statistics: {expanded: number; generated: number; elapsedMs: number; groupWidenings?: number; partialScheduleEvaluations?: number};
   resources: Array<{id: string; consumerTaskId: string; cells: string[]; alternatives?: string[][]; availableFrom: string; availableUntil: string}>;
   tasks: Array<{id: string; kind: string; boxIndex: number; boxCandidates?: number[]; completesWhen: {kind: string; cells: string[]; label?: string}; dependsOn: string[]; requires: string[]; evidence: {snapshotKey: string}; forTaskId?: string}>;
   hypotheses: Array<{taskIds: string[]}>;
@@ -350,4 +354,73 @@ test("invalid worker continuation context falls back without carrying plan autho
     strategicContinuation: {root: {}, path: []}, planDiagnostics: true});
   assert.ok(result.path);
   assert.equal((result.planDiagnostics as {strategicExecution?: unknown}).strategicExecution, undefined);
+});
+
+// --- evaluatePartialScheduleCost (exercised through strategic planning) ---
+
+test("partialScheduleEvaluation on a solved puzzle produces feasible cost with zero remainder", () => {
+  const {plan} = prepare(puzzle, {partialScheduleEvaluation: 1});
+  assert.ok(validateStrategicPlanContract(plan));
+  assert.ok((plan.statistics.partialScheduleEvaluations ?? 0) >= 1);
+  for (const candidate of plan.candidates) {
+    const cost = candidate.scheduleCost;
+    assert.ok(cost);
+    assert.equal(cost.feasible, true);
+    assert.equal(cost.moves, candidate.moves);
+    assert.equal(cost.pushes, candidate.pushes);
+    if (candidate.solved) assert.equal(cost.remainingPushEstimate, 0);
+    assert.equal(cost.estimatedTotalMoves, cost.moves + cost.remainingPushEstimate);
+  }
+});
+
+test("partialScheduleEvaluation with zero budget still produces a valid contract", () => {
+  const {plan} = prepare(puzzle, {partialScheduleEvaluation: 1, maxMs: 0});
+  assert.ok(validateStrategicPlanContract(plan));
+  assert.deepEqual(plan.candidates, []);
+  assert.equal(plan.statistics.partialScheduleEvaluations, undefined);
+});
+
+test("partialScheduleEvaluation re-ranks candidates by estimatedTotalMoves", () => {
+  const threeBox: PuzzleDefinition = {...puzzle, id: "ordering-three", boxes: 3,
+    rows: ["OOOOOOOOO", "O   R   O", "O A B X O", "O a b S O", "O       O", "OOOOOOOOO"]};
+  const {plan: withEval} = prepare(threeBox, {partialScheduleEvaluation: 1});
+  const {plan: without} = prepare(threeBox);
+  assert.ok(validateStrategicPlanContract(withEval));
+  assert.ok(validateStrategicPlanContract(without));
+  assert.ok((withEval.statistics.partialScheduleEvaluations ?? 0) >= 2);
+  assert.equal(without.statistics.partialScheduleEvaluations, undefined);
+  for (const candidate of withEval.candidates) {
+    assert.ok(candidate.scheduleCost);
+  }
+  for (const candidate of without.candidates) {
+    assert.equal(candidate.scheduleCost, undefined);
+  }
+  const costs = withEval.candidates.map(c => c.scheduleCost!);
+  for (let i = 1; i < costs.length; i++) {
+    const prev = costs[i - 1].feasible ? costs[i - 1].estimatedTotalMoves : Infinity;
+    const curr = costs[i].feasible ? costs[i].estimatedTotalMoves : Infinity;
+    assert.ok(prev <= curr, `candidate ${i - 1} (${prev}) should rank before candidate ${i} (${curr})`);
+  }
+});
+
+// --- targeted macroIntermediateQuota ---
+
+test("targeted macro expansion generates intermediates when macroIntermediateQuota is set", () => {
+  const maze = PUZZLE_BY_ID["expert-maze"]!;
+  const {state, plan} = prepare(maze, {maxMs: 500});
+  assert.ok(validateStrategicPlanContract(plan));
+  const withQuota = search({algorithm: "plan-macro-beam", state, strategicPlan: plan,
+    macroIntermediateQuota: 4, maxVisited: 1000, planStrategicExecution: true});
+  const perf = withQuota.performance as Record<string, number | undefined>;
+  assert.ok((perf.macroTargetedIntermediatesGenerated ?? 0) > 0,
+    "targeted intermediates should be generated with quota > 0");
+  assert.ok((perf.macroTargetedIntermediatesRetained ?? 0) > 0,
+    "targeted intermediates should be retained with quota > 0");
+  const withoutQuota = search({algorithm: "plan-macro-beam", state, strategicPlan: plan,
+    macroIntermediateQuota: 0, maxVisited: 1000, planStrategicExecution: true});
+  const perf0 = withoutQuota.performance as Record<string, number | undefined>;
+  assert.equal(perf0.macroTargetedIntermediatesGenerated, undefined,
+    "no targeted intermediates with quota 0");
+  assert.equal(perf0.macroTargetedIntermediatesRetained, undefined,
+    "no targeted intermediates retained with quota 0");
 });
