@@ -54,6 +54,10 @@ import {
   hasPotentialGoalCut,
 } from "./goal-cut.ts";
 import {
+  buildBackwardPerimeter,
+  type BackwardPerimeterTable,
+} from "./backward-perimeter.ts";
+import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
   fillOccupancy,
@@ -400,10 +404,38 @@ export async function runExactMoveAStar(
     featureTelemetry.pdbTableEntries = pdbEvaluator?.totalTableEntries ?? 0;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
+    const perimeterTable: BackwardPerimeterTable | null = features.backwardPerimeter
+      ? buildBackwardPerimeter(
+          board, exactCodec, zobristTable,
+          { maxStates: 50_000 },
+          {
+            ...preprocessingBudget,
+            baseMemoryBytes:
+              baseStaticBytes +
+              (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+              (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+              (pdbEvaluator?.estimatedRetainedBytes ?? 0),
+          },
+          context.now,
+        )
+      : null;
+    if (perimeterTable) {
+      const ps = perimeterTable.stats;
+      featureTelemetry.backwardPerimeterBuildExpanded = ps.coloredStatesExplored;
+      featureTelemetry.backwardPerimeterColoredStates = ps.coloredStatesExplored;
+      featureTelemetry.backwardPerimeterProjectedStates = ps.projectedStates;
+      featureTelemetry.backwardPerimeterBuildTimeMs = ps.buildTimeMs;
+      featureTelemetry.backwardPerimeterRetainedBytes = ps.retainedBytes;
+      featureTelemetry.backwardPerimeterMaxDepth = ps.maxDepth;
+      featureTelemetry.matchingComponents = ps.matchingComponents;
+      featureTelemetry.matchingEliminatedEdges = ps.matchingEliminatedEdges;
+    }
+    throwIfSolverCancelled(context.signal);
     const preprocessingStaticBytes = baseStaticBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
-      (pdbEvaluator?.estimatedRetainedBytes ?? 0);
+      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+      (perimeterTable?.stats.retainedBytes ?? 0);
     const currentStaticBytes = () =>
       preprocessingStaticBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0);
@@ -445,6 +477,37 @@ export async function runExactMoveAStar(
       featureTelemetry.goalCutEvaluations += 1;
       featureTelemetry.goalCutTotal += value;
       return value;
+    };
+    const perimeterLookup = (
+      tokens: ArrayLike<number>,
+    ): number => {
+      if (!perimeterTable) return 0;
+      const boxZob = zobristTable.hashFromTokensNoRobot(tokens);
+      const boxKey = exactCodec.packBoxTokens(tokens);
+      const dist = perimeterTable.lookup(boxZob, boxKey);
+      if (dist === undefined) return 0;
+      return dist;
+    };
+    const computeH = (
+      pushBound: number,
+      lc: number,
+      boost: number,
+      pdb: number,
+      gc: number,
+      walkBound: number,
+      tokens: ArrayLike<number>,
+    ): number => {
+      let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
+      const perimeterDist = perimeterLookup(tokens);
+      if (perimeterDist > totalPushBound) {
+        featureTelemetry.backwardPerimeterImprovements++;
+        const improvement = perimeterDist - totalPushBound;
+        if (improvement > featureTelemetry.backwardPerimeterMaxImprovement) {
+          featureTelemetry.backwardPerimeterMaxImprovement = improvement;
+        }
+        totalPushBound = perimeterDist;
+      }
+      return totalPushBound + walkBound;
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -504,7 +567,7 @@ export async function runExactMoveAStar(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
     const initialGoalCut = goalCut();
-    const initialH = initialPushBound + Math.max(initialLC, initialBoost, initialPdbSurplus, initialGoalCut) + initialWalkBound;
+    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens);
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -545,6 +608,18 @@ export async function runExactMoveAStar(
       tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
       goalCutEvaluations: goalCutEvaluator?.stats.evaluations ?? 0,
       goalCutTotal: goalCutEvaluator?.stats.cutTotal ?? 0,
+      backwardPerimeterBuildExpanded: featureTelemetry.backwardPerimeterBuildExpanded,
+      backwardPerimeterColoredStates: featureTelemetry.backwardPerimeterColoredStates,
+      backwardPerimeterProjectedStates: featureTelemetry.backwardPerimeterProjectedStates,
+      backwardPerimeterBuildTimeMs: featureTelemetry.backwardPerimeterBuildTimeMs,
+      backwardPerimeterRetainedBytes: featureTelemetry.backwardPerimeterRetainedBytes,
+      backwardPerimeterLookups: perimeterTable?.stats.lookups ?? 0,
+      backwardPerimeterHits: perimeterTable?.stats.hits ?? 0,
+      backwardPerimeterImprovements: featureTelemetry.backwardPerimeterImprovements,
+      backwardPerimeterMaxImprovement: featureTelemetry.backwardPerimeterMaxImprovement,
+      backwardPerimeterMaxDepth: featureTelemetry.backwardPerimeterMaxDepth,
+      matchingComponents: featureTelemetry.matchingComponents,
+      matchingEliminatedEdges: featureTelemetry.matchingEliminatedEdges,
     });
 
     const metrics = () =>
@@ -1044,7 +1119,9 @@ export async function runExactMoveAStar(
           continue;
         }
         // Push bound is a cache hit (was evaluated at generation time).
-        const expandedPushBound = heuristic.evaluate(expansionBoxes);
+        let expandedPushBound = heuristic.evaluate(expansionBoxes);
+        const expandedPerimeter = perimeterLookup(parentTokenBuf);
+        if (expandedPerimeter > expandedPushBound) expandedPushBound = expandedPerimeter;
         const hExpanded = expandedPushBound + expandedWalk;
         if (nodeMoves + hExpanded >= U) {
           continue;
@@ -1147,7 +1224,7 @@ export async function runExactMoveAStar(
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = pushLowerBound + Math.max(fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut) + walkBound;
+                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf);
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1324,7 +1401,7 @@ export async function runExactMoveAStar(
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
               );
-              const tH = tPushLowerBound + Math.max(tLC, tInteractionBoost, tPdbBoost, tGoalCut) + tWalkBound;
+              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf);
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1449,7 +1526,7 @@ export async function runExactMoveAStar(
             savedCell,
             expansionBoxes,
           );
-          const h = pushLowerBound + Math.max(childLinearConflict, interactionBoost, childPdbBoost, childGoalCut) + walkBound;
+          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf);
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

@@ -56,6 +56,10 @@ import {
   GoalCutEvaluator,
   hasPotentialGoalCut,
 } from "./goal-cut.ts";
+import {
+  buildBackwardPerimeter,
+  type BackwardPerimeterTable,
+} from "./backward-perimeter.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -706,6 +710,34 @@ export async function runIdaStarSearch(
 
     const zobristTable: ZobristTable = createZobristTable(board.cellCount, exactCodec.labelCount);
 
+    const perimeterTable: BackwardPerimeterTable | null = features.backwardPerimeter
+      ? buildBackwardPerimeter(
+          board, exactCodec, zobristTable,
+          { maxStates: 50_000 },
+          {
+            ...preprocessingBudget,
+            baseMemoryBytes:
+              baseStaticMemoryBytes +
+              (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+              (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+              (pdbEvaluator?.estimatedRetainedBytes ?? 0),
+          },
+          context.now,
+        )
+      : null;
+    if (perimeterTable) {
+      const ps = perimeterTable.stats;
+      featureTelemetry.backwardPerimeterBuildExpanded = ps.coloredStatesExplored;
+      featureTelemetry.backwardPerimeterColoredStates = ps.coloredStatesExplored;
+      featureTelemetry.backwardPerimeterProjectedStates = ps.projectedStates;
+      featureTelemetry.backwardPerimeterBuildTimeMs = ps.buildTimeMs;
+      featureTelemetry.backwardPerimeterRetainedBytes = ps.retainedBytes;
+      featureTelemetry.backwardPerimeterMaxDepth = ps.maxDepth;
+      featureTelemetry.matchingComponents = ps.matchingComponents;
+      featureTelemetry.matchingEliminatedEdges = ps.matchingEliminatedEdges;
+    }
+    throwIfSolverCancelled(context.signal);
+
     const linearConflict = (boxes: readonly DenseBox[]): number => {
       if (!features.linearConflict) return 0;
       featureTelemetry.linearConflictEvaluations += 1;
@@ -726,6 +758,36 @@ export async function runIdaStarSearch(
       featureTelemetry.goalCutEvaluations += 1;
       featureTelemetry.goalCutTotal += value;
       return value;
+    };
+    const perimeterLookup = (boxes: readonly DenseBox[]): number => {
+      if (!perimeterTable) return 0;
+      const tokens = exactCodec.tokensFromBoxes(boxes);
+      const boxZob = zobristTable.hashFromTokensNoRobot(tokens);
+      const boxKey = exactCodec.packBoxTokens(tokens);
+      const dist = perimeterTable.lookup(boxZob, boxKey);
+      if (dist === undefined) return 0;
+      return dist;
+    };
+    const computeH = (
+      pushBound: number,
+      lc: number,
+      boost: number,
+      pdb: number,
+      gc: number,
+      walkBound: number,
+      boxes: readonly DenseBox[],
+    ): number => {
+      let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
+      const perimeterDist = perimeterLookup(boxes);
+      if (perimeterDist > totalPushBound) {
+        featureTelemetry.backwardPerimeterImprovements++;
+        const improvement = perimeterDist - totalPushBound;
+        if (improvement > featureTelemetry.backwardPerimeterMaxImprovement) {
+          featureTelemetry.backwardPerimeterMaxImprovement = improvement;
+        }
+        totalPushBound = perimeterDist;
+      }
+      return totalPushBound + walkBound;
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -749,7 +811,8 @@ export async function runIdaStarSearch(
     const preprocessingStaticMemoryBytes = baseStaticMemoryBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
-      (pdbEvaluator?.estimatedRetainedBytes ?? 0);
+      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+      (perimeterTable?.stats.retainedBytes ?? 0);
     const currentStaticMemoryBytes = () =>
       preprocessingStaticMemoryBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0);
@@ -811,6 +874,18 @@ export async function runIdaStarSearch(
       tunnelMacroApplications: tunnelDetector?.stats.applications ?? 0,
       goalCutEvaluations: goalCutEvaluator?.stats.evaluations ?? 0,
       goalCutTotal: goalCutEvaluator?.stats.cutTotal ?? 0,
+      backwardPerimeterBuildExpanded: featureTelemetry.backwardPerimeterBuildExpanded,
+      backwardPerimeterColoredStates: featureTelemetry.backwardPerimeterColoredStates,
+      backwardPerimeterProjectedStates: featureTelemetry.backwardPerimeterProjectedStates,
+      backwardPerimeterBuildTimeMs: featureTelemetry.backwardPerimeterBuildTimeMs,
+      backwardPerimeterRetainedBytes: featureTelemetry.backwardPerimeterRetainedBytes,
+      backwardPerimeterLookups: perimeterTable?.stats.lookups ?? 0,
+      backwardPerimeterHits: perimeterTable?.stats.hits ?? 0,
+      backwardPerimeterImprovements: featureTelemetry.backwardPerimeterImprovements,
+      backwardPerimeterMaxImprovement: featureTelemetry.backwardPerimeterMaxImprovement,
+      backwardPerimeterMaxDepth: featureTelemetry.backwardPerimeterMaxDepth,
+      matchingComponents: featureTelemetry.matchingComponents,
+      matchingEliminatedEdges: featureTelemetry.matchingEliminatedEdges,
       hCacheHits,
       hCacheSize: hCache.size,
     });
@@ -1038,7 +1113,7 @@ export async function runIdaStarSearch(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
     const initialGoalCut = goalCut();
-    const initialH = initialHPush + Math.max(initialLC, initialBoost, initialPdbSurplus, initialGoalCut) + initialHWalk;
+    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1284,7 +1359,7 @@ export async function runIdaStarSearch(
             );
             const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
             const goalCutBoost = goalCut();
-            h = hPush + Math.max(linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost) + hWalk;
+            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes);
 
             const oldHCacheSize = hCache.size;
             hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h });

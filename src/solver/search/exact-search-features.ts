@@ -11,6 +11,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "goalCommitmentPruning",
   "tunnelMacros",
   "goalCutHeuristic",
+  "backwardPerimeter",
 ] as const);
 
 export type ExactSearchFeatureKey = (typeof EXACT_SEARCH_FEATURE_KEYS)[number];
@@ -28,6 +29,7 @@ export interface ExactSearchFeatures {
   readonly goalCommitmentPruning: boolean;
   readonly tunnelMacros: boolean;
   readonly goalCutHeuristic: boolean;
+  readonly backwardPerimeter: boolean;
 }
 
 export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze({
@@ -43,6 +45,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   goalCommitmentPruning: true,
   tunnelMacros: true,
   goalCutHeuristic: true,
+  backwardPerimeter: false,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
@@ -104,6 +107,18 @@ interface ExactSearchFeatureTelemetry {
   tunnelMacroApplications: number;
   goalCutEvaluations: number;
   goalCutTotal: number;
+  backwardPerimeterBuildExpanded: number;
+  backwardPerimeterColoredStates: number;
+  backwardPerimeterProjectedStates: number;
+  backwardPerimeterBuildTimeMs: number;
+  backwardPerimeterRetainedBytes: number;
+  backwardPerimeterLookups: number;
+  backwardPerimeterHits: number;
+  backwardPerimeterImprovements: number;
+  backwardPerimeterMaxImprovement: number;
+  backwardPerimeterMaxDepth: number;
+  matchingComponents: number;
+  matchingEliminatedEdges: number;
 }
 
 export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry {
@@ -117,5 +132,17 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     tunnelMacroApplications: 0,
     goalCutEvaluations: 0,
     goalCutTotal: 0,
+    backwardPerimeterBuildExpanded: 0,
+    backwardPerimeterColoredStates: 0,
+    backwardPerimeterProjectedStates: 0,
+    backwardPerimeterBuildTimeMs: 0,
+    backwardPerimeterRetainedBytes: 0,
+    backwardPerimeterLookups: 0,
+    backwardPerimeterHits: 0,
+    backwardPerimeterImprovements: 0,
+    backwardPerimeterMaxImprovement: 0,
+    backwardPerimeterMaxDepth: 0,
+    matchingComponents: 0,
+    matchingEliminatedEdges: 0,
   };
 }

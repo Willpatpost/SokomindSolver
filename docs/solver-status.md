@@ -142,7 +142,7 @@ upper bounds under both exact engines.
 ## Exact feature controls
 
 The features in `src/solver/search/exact-search-features.ts` can be disabled
-internally for controlled comparisons. All default on:
+internally for controlled comparisons. All default on except where noted:
 
 - incremental assignment repair;
 - linear conflict;
@@ -154,8 +154,9 @@ internally for controlled comparisons. All default on:
 - pattern-deadlock pruning;
 - deadlock-table pruning;
 - goal-commitment pruning;
-- tunnel macros; and
-- goal-cut heuristic.
+- tunnel macros;
+- goal-cut heuristic; and
+- backward perimeter (default off).
 
 Telemetry reports the feature vector and mechanism-specific construction,
 evaluation, application, or prune counters. A feature is beneficial only when
@@ -199,6 +200,20 @@ Mixed-label deadlock tables enumerate the complete label assignment product
 within the existing construction budget. Deeper PI-corral boundary-table checks
 and relaxed pattern-window eligibility remain rejected because each produced a
 false positive under its abstraction.
+
+Backward perimeter builds a bounded reverse push-only BFS from the solved box
+layout during preprocessing. The BFS uses relaxed un-push transitions (no
+keeper reachability, no deadlock pruning) so its distances are admissible lower
+bounds on remaining pushes. For repeated-label puzzles, matching-component
+analysis (alternating-cycle detection on the box–goal bipartite reachability
+graph, ported from `perfectMatchingDomains`) splits interchangeable same-label
+boxes into independent groups, giving the reverse BFS a unique seed and
+finer-grained colored state identity. Colored BFS states are projected back to
+uncolored box-only keys; the minimum distance across all colorings is stored.
+Forward A*/IDA* combine the perimeter as
+`h = max(normalPushBound, perimeterPushDist) + walkBound`. Perimeter values
+are lower bounds only — never upper bounds and never incumbents. The feature
+defaults off pending benchmark validation.
 
 ## Correctness and performance gates
 
