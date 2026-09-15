@@ -16,9 +16,10 @@ better routes. Quality and generalization come first, then latency.
 
 ## Next step
 
-Adapt the costed scheduling model from `solution-box-reschedule` to evaluate
-analyzer-generated **partial schedules** where feasibility must still be
-established. A repair requiring a complete incumbent is not pre-search success.
+Benchmark `partialScheduleEvaluation` on the quality-mode puzzle set and
+promote if candidate ranking improves without regressions. Evaluate whether
+targeted macro intermediates (currently drawn from the terminal-state pool)
+should collect from the full exploration set instead.
 
 ## Open work
 
@@ -31,15 +32,21 @@ plan execution). The remaining P1 controls below are correctness and
 measurement prerequisites, not route-quality promotions.
 
 - **P1.1 Macro intermediate retention** - implemented as `macroIntermediateQuota`
-  (default 0) for untargeted macros only. Targeted handoff retention and provenance
-  through beam selection remain open. Require exercise and survival counters plus
-  controlled quality/generalization evidence before enabling.
+  (default 0) for both untargeted and targeted macros. Targeted expansion reports
+  `macroTargetedIntermediatesGenerated` and `macroTargetedIntermediatesRetained`.
+  Provenance (`intermediateOf`) is written but not consumed by beam selection.
+  Require controlled quality/generalization evidence before enabling.
 - **P1.2 Keeper-arrival beam** - implemented as `moveAwareDiscovery` (default 0).
   Production promotion remains conditional on controlled benchmarks.
 - **P1.3 First-push walk cost** - implemented as `firstPushWalkWeight` (default 0).
   Remains a soft ordering experiment, not a proof heuristic.
 - **P1.4 Reschedule-derived schedule trace** - implemented in repair telemetry and
   `scripts/diagnose-schedule-trace.ts`; use the trace to evaluate partial schedules.
+- **P1.5 Partial-schedule evaluation** - implemented as
+  `partialScheduleEvaluation` (numeric 0/1) in `strategicAnalysis` config.
+  Re-ranks strategic candidates by `evaluatePartialScheduleCost`, which replays
+  each candidate's path and estimates remaining cost via `discoveryHeuristic`
+  (Hungarian assignment). Default off. Requires benchmarking before promotion.
 
 ### Delivered P2 implementation
 

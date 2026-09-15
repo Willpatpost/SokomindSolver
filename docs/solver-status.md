@@ -85,10 +85,12 @@ rejection, replay verification, or resource limits.
   enabled.
 
 - `macroIntermediateQuota` (default 0, disabled): retains up to this many
-  non-endpoint intermediate states in untargeted macro expansion, selected by
-  shortest path and side diversity. Targeted assignment and doorway macros do
-  not yet implement this control, and intermediate provenance is not yet carried
-  through beam selection. A configured quota alone is not evidence it ran.
+  non-endpoint intermediate states in both untargeted and targeted macro
+  expansion, selected by shortest path and side diversity. Targeted macros
+  report separate counters (`macroTargetedIntermediatesGenerated`,
+  `macroTargetedIntermediatesRetained`). Intermediate provenance
+  (`intermediateOf`) is written but not yet consumed by beam selection.
+  A configured quota alone is not evidence it ran.
 
 Quality-mode rescheduling is gated by `predictRescheduleValue()` in
 `sokomind-reschedule-predictor.ts`. Puzzles with low walk-push ratio and few
