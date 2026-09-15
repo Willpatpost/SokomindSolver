@@ -7,6 +7,11 @@ export interface TunnelMacroStop {
   readonly robotCell: number;
 }
 
+export interface TunnelMacroResult {
+  readonly stops: readonly TunnelMacroStop[];
+  readonly replacesSinglePush: boolean;
+}
+
 export interface TunnelMacroStats {
   readonly checks: number;
   readonly applications: number;
@@ -56,7 +61,7 @@ export class TunnelMacroDetector {
     occupancy: Uint8Array,
     goalLabelByCell: readonly (string | null)[],
     boxLabel: string,
-  ): readonly TunnelMacroStop[] | null {
+  ): TunnelMacroResult | null {
     this.#checks += 1;
 
     const pushAxis = pushDirection < 2 ? 0 : 1;
@@ -108,8 +113,11 @@ export class TunnelMacroDetector {
     if (stops.length === 0) return null;
     if (stops.length === 1 && stops[0]!.pushCount === 1) return null;
 
+    const farNeighbor = board.neighbors[destination][pushDirection];
+    const replacesSinglePush = farNeighbor >= 0 && this.#tunnelAxis[farNeighbor] === pushAxis;
+
     this.#applications += 1;
-    return stops;
+    return { stops, replacesSinglePush };
   }
 }
 

@@ -334,7 +334,7 @@ export async function runExactMoveAStar(
       : null;
     const commitmentDetector =
       features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
-      ? new GoalCommitmentDetector()
+      ? new GoalCommitmentDetector(request.snapshot.boxes.length)
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
@@ -1031,8 +1031,9 @@ export async function runExactMoveAStar(
         }
       }
 
+      fillDeadlockOccupancy(deadlockOccupancyBuffer, expansionBoxes);
       const committedBoxes = commitmentDetector
-        ? findProvenCommitments(board, expansionBoxes, commitmentDetector)
+        ? findProvenCommitments(board, expansionBoxes, commitmentDetector, deadlockOccupancyBuffer)
         : new Set<number>();
 
       const parentBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
@@ -1207,10 +1208,11 @@ export async function runExactMoveAStar(
           }
 
           // Tunnel macro: skip intermediate non-goal tunnel positions
-          const tunnelStops = tunnelDetector?.resolve(
+          const tunnelResult = tunnelDetector?.resolve(
             destination, directionIndex, occupied, board.goalLabelByCell, box.label,
           );
-          if (tunnelStops) {
+          if (tunnelResult) {
+            const tunnelStops = tunnelResult.stops;
             const tSavedCell = expansionBoxes[boxIndex].cell;
             const tDistance = reachable.distanceTo(support);
             if (tDistance < 0) {
@@ -1323,6 +1325,7 @@ export async function runExactMoveAStar(
                 break searchLoop;
               }
             }
+            if (tunnelResult.replacesSinglePush) continue;
           }
 
           const savedCell = expansionBoxes[boxIndex].cell;

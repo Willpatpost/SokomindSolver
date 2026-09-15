@@ -624,7 +624,7 @@ export async function runIdaStarSearch(
       : null;
     const commitmentDetector =
       features.goalCommitmentPruning && hasPotentialGoalCommitment(board)
-      ? new GoalCommitmentDetector()
+      ? new GoalCommitmentDetector(request.snapshot.boxes.length)
       : null;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
@@ -1465,8 +1465,9 @@ export async function runIdaStarSearch(
 
         const frozenBoxes = frame.frozenBoxes!;
         if (frame.committedBoxes === null) {
+          fillDeadlockOccupancy(deadlockOccupancyBuffer, frame.boxes);
           frame.committedBoxes = commitmentDetector
-            ? findProvenCommitments(board, frame.boxes, commitmentDetector)
+            ? findProvenCommitments(board, frame.boxes, commitmentDetector, deadlockOccupancyBuffer)
             : new Set<number>();
         }
         const committedBoxes = frame.committedBoxes;
@@ -1705,23 +1706,24 @@ export async function runIdaStarSearch(
           }
 
           // Tunnel macro: chain pushes through tunnel
-          const tStops = tunnelDetector?.resolve(
+          const tResult = tunnelDetector?.resolve(
             destination, directionIndex, occupancyBuffer, board.goalLabelByCell, box.label,
           );
-          if (tStops) {
+          if (tResult) {
             const tDistance = reachable.distanceTo(support);
             if (tDistance < 0) {
               throw new Error("Reachable support cell has no keeper distance.");
             }
-            counters.generated += tStops.length - 1;
-            workSinceYield += tStops.length - 1;
+            counters.generated += tResult.stops.length - 1;
+            workSinceYield += tResult.stops.length - 1;
             frame.tunnelMacro = {
-              stops: tStops,
+              stops: tResult.stops,
               boxIndex,
               directionIndex,
               walkDistance: tDistance,
               cursor: 0,
             };
+            if (tResult.replacesSinglePush) continue;
           }
 
           // Move box

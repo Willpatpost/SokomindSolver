@@ -161,9 +161,20 @@ both variants prove and replay the expected result, the control proves the
 feature ran, deterministic work or measured memory improves, and isolated-run
 timing shows no material regression.
 
-Tunnel macros add look-ahead successors at safe stopping points while retaining
-the ordinary single-push successor. Replacing the single step is unsound on
-short tunnels where the robot can reach the opposite side.
+Tunnel macros add look-ahead successors at safe stopping points. When the far
+neighbor of the destination is also a tunnel cell on the same axis, the
+single-push successor is replaced because the keeper cannot reach the opposite
+side without passing through the box. At tunnel entrances where external paths
+may allow the keeper to walk around, the single-push is retained alongside the
+macro stops.
+
+Goal-commitment pruning skips successor generation for boxes proven to be on
+their final goals. Static commitments detect boxes on matching goals in corner
+or dead-end cells (both axes wall-blocked). Dynamic freeze commitments extend
+this: when a group of boxes is mutually frozen (each axis blocked by walls or
+other frozen boxes) and every box in the group is on its matching goal, the
+entire group is committed. The residual assignment check ensures the remaining
+boxes can still reach the remaining goals.
 
 Corral ordering reuses the PI-corral flood to identify boundary pushes into
 unreachable regions containing off-goal boxes and reorders IDA* child generation

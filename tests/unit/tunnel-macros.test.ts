@@ -117,8 +117,8 @@ describe("TunnelMacroDetector", () => {
       );
 
       assert.notEqual(result, null, "should detect tunnel macro");
-      assert.ok(result!.length >= 1);
-      const lastStop = result![result!.length - 1]!;
+      assert.ok(result!.stops.length >= 1);
+      const lastStop = result!.stops[result!.stops.length - 1]!;
       assert.ok(lastStop.pushCount > 1, "macro should chain multiple pushes");
     });
 
@@ -142,7 +142,7 @@ describe("TunnelMacroDetector", () => {
         // resolve returns null when the only stop is at pushCount=1
         if (result !== null) {
           assert.ok(
-            result.some(s => s.pushCount > 1),
+            result.stops.some(s => s.pushCount > 1),
             "if not null, should have multi-push stop",
           );
         }
@@ -169,7 +169,7 @@ describe("TunnelMacroDetector", () => {
           dest, 3, occupancy, board.goalLabelByCell, "X",
         );
         if (result !== null) {
-          for (const stop of result) {
+          for (const stop of result.stops) {
             assert.notEqual(
               stop.finalCell, boxCell2,
               "box should not end up ON the blocking box",
@@ -197,7 +197,7 @@ describe("TunnelMacroDetector", () => {
           dest, 3, occupancy, board.goalLabelByCell, "X",
         );
         if (result !== null) {
-          const hasGoalStop = result.some(
+          const hasGoalStop = result.stops.some(
             (s) => board.goalLabelByCell[s.finalCell] === "X",
           );
           assert.ok(hasGoalStop, "should include goal cell as a stop");
@@ -222,12 +222,61 @@ describe("TunnelMacroDetector", () => {
           dest, 3, occupancy, board.goalLabelByCell, "A",
         );
         if (result !== null) {
-          for (const stop of result) {
+          for (const stop of result.stops) {
             const goalLabel = board.goalLabelByCell[stop.finalCell];
             if (goalLabel !== null && goalLabel !== "A") {
               assert.fail("should not stop at a goal with a different label");
             }
           }
+        }
+      }
+    });
+
+    it("sets replacesSinglePush when far neighbor is also a tunnel cell", () => {
+      // Long tunnel: destination's far neighbor is also a tunnel cell
+      const { board } = boardFromRows([
+        "OOOOOOOOO",
+        "ORX    SO",
+        "OOOOOOOOO",
+      ]);
+      const detector = new TunnelMacroDetector(board);
+      const occupancy = new Uint8Array(board.cellCount);
+      occupancy[board.cellAt(1, 2)] = 1;
+
+      const dest = board.cellAt(1, 3);
+      if (board.topology.tunnels.has(dest)) {
+        const result = detector.resolve(
+          dest, 3, occupancy, board.goalLabelByCell, "X",
+        );
+        assert.notEqual(result, null);
+        assert.equal(result!.replacesSinglePush, true,
+          "far neighbor is tunnel cell, single push is redundant");
+      }
+    });
+
+    it("does not replace single push at tunnel entrance", () => {
+      // Box pushed from open area into tunnel entrance
+      const { board } = boardFromRows([
+        "OOOOOOO",
+        "O R   O",
+        "OOX OOO",
+        "  O O",
+        "  OSO",
+        "  OOO",
+      ]);
+      const detector = new TunnelMacroDetector(board);
+      const occupancy = new Uint8Array(board.cellCount);
+      const boxCell = board.cellAt(2, 2);
+      occupancy[boxCell] = 1;
+
+      const dest = board.cellAt(3, 2);
+      if (board.topology.tunnels.has(dest)) {
+        const result = detector.resolve(
+          dest, 1, occupancy, board.goalLabelByCell, "X",
+        );
+        if (result !== null) {
+          assert.equal(result.replacesSinglePush, false,
+            "keeper could reach far side via open area");
         }
       }
     });

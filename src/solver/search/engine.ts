@@ -973,12 +973,12 @@ export async function runClassicSearch(
 
           // Tunnel macro: generate additional children at multi-push stops.
           // The single-push child is always retained for soundness.
-          const tunnelStops = tunnelDetector.resolve(
+          const tunnelResult = tunnelDetector.resolve(
             destination, directionIndex, occupied,
             board.goalLabelByCell, box.label,
           );
-          if (tunnelStops) {
-            for (const stop of tunnelStops) {
+          if (tunnelResult) {
+            for (const stop of tunnelResult.stops) {
               if (stop.pushCount <= 1) continue;
               if (isStaticDeadCell(board, stop.finalCell, box.label)) {
                 counters.deadlockPrunes += 1;
