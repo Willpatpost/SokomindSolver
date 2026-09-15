@@ -56,8 +56,8 @@ boxes. That implementation has been replaced with a sound I-corral detector that
 checks all potential boundary pushes (support cell outside the corral component)
 and restricts freeze/2x2 deadlock tests to corral-internal boxes only. The
 corrected detector does not false-positive on Grand Hall. PI-corral pruning
-defaults to off but can now be enabled via explicit feature overrides for
-controlled experiments; the prior hard override that silently forced it off has
+PI-corral pruning now defaults on after benchmark validation showed consistent
+state-count improvements; the prior hard override that silently forced it off has
 been removed. Updated runs retain unknown optimality and bounded proof metadata. Sokomind 1.2.0 / exact A* and IDA* 2.2.0 supersede the
 affected versions; IDA* schema 3 rejects older checkpoints, including direct API
 resume. Previously emitted claims must not be treated as current proof evidence.
@@ -141,8 +141,7 @@ upper bounds under both exact engines.
 ## Exact feature controls
 
 The features in `src/solver/search/exact-search-features.ts` can be disabled
-internally for controlled comparisons. They default on except PI-corral pruning,
-which defaults off but can be enabled via explicit override:
+internally for controlled comparisons. All default on:
 
 - incremental assignment repair;
 - linear conflict;

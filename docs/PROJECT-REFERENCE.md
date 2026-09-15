@@ -260,7 +260,7 @@ fails when the generated facts below differ from source.
 - `interactionBoost`: enabled by default
 - `patternDatabase`: enabled by default
 - `forcedPushMacros`: enabled by default
-- `piCorralPruning`: disabled by default
+- `piCorralPruning`: enabled by default
 - `corralOrdering`: enabled by default
 - `patternDeadlockPruning`: enabled by default
 - `deadlockTablePruning`: enabled by default

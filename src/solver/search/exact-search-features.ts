@@ -34,10 +34,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   interactionBoost: true,
   patternDatabase: true,
   forcedPushMacros: true,
-  // Sound I-corral: checks all potential boundary pushes (support outside the
-  // component), not just currently keeper-reachable ones. Off by default until
-  // benchmark validation promotes it.
-  piCorralPruning: false,
+  piCorralPruning: true,
   corralOrdering: true,
   patternDeadlockPruning: true,
   deadlockTablePruning: true,
