@@ -74,7 +74,8 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Coordinator decomposition and typed engine payload interfaces.
   // Forced-push macros integrated into classic engine; aggregate caching in run-state.
   // Backward perimeter BFS, matching-component analysis, and component PDB in both exact engines.
-  allScriptsAndStylesGzipBytes: 470_000,
+  // Move-cost pattern database heuristic in both exact engines.
+  allScriptsAndStylesGzipBytes: 475_000,
   largestAssetGzipBytes: 90_000,
   homeRouteGzipBytes: 185_000,
   playRouteGzipBytes: 210_000,

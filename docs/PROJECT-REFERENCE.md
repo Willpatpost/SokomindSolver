@@ -269,6 +269,7 @@ fails when the generated facts below differ from source.
 - `goalCutHeuristic`: enabled by default
 - `backwardPerimeter`: disabled by default
 - `componentPdb`: disabled by default
+- `moveCostPatternPdb`: disabled by default
 - Maximum PDB table: **268,435,456 entries** (**512 MiB**)
 
 ### Frozen solver evidence
@@ -282,7 +283,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **470,000 gzip bytes**
+- All scripts and styles: **475,000 gzip bytes**
 - Largest asset: **90,000 gzip bytes**
 - Solver worker: **72,000 gzip bytes**
 - Nested engine worker: **84,000 gzip bytes**
