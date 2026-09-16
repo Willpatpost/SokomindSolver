@@ -87,8 +87,8 @@ function printResult(label: string, result: SolverResult): void {
     }
   }
   if (result.status === "unsolved") {
-    console.log(`  reason: ${(result as any).reason}`);
-    console.log(`  detail: ${(result as any).detail}`);
+    console.log(`  reason: ${result.reason}`);
+    console.log(`  detail: ${result.detail}`);
   }
   const m = result.metrics;
   console.log(`  elapsedMs: ${m.elapsedMs.toFixed(0)}`);

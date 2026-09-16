@@ -100,16 +100,31 @@ function buildPerimeterForRows(
 
 const OPPOSITE_DIRECTION = [1, 0, 3, 2] as const;
 
+type OracleBox = { cell: number; label: string };
+
+function normalizeBoxes(boxes: OracleBox[]): OracleBox[] {
+  return boxes
+    .slice()
+    .sort((a, b) => a.label.localeCompare(b.label) || a.cell - b.cell);
+}
+
+function oracleStateKey(boxes: OracleBox[], robot: number): string {
+  return `${boxes.map(b => `${b.label}@${b.cell}`).join(",")}:${robot}`;
+}
+
+function oracleConfigKey(boxes: OracleBox[]): string {
+  return boxes.map(b => `${b.label}@${b.cell}`).join(",");
+}
+
 /**
  * Full-state push-BFS oracle: compute exact optimal push distance from
  * every reachable (boxConfig, robotCell) state to the solved state.
  *
- * Returns a Map from box-configuration key (sorted token string) to the
- * minimum push distance over all robot positions that reach the goal.
+ * Label-aware: tracks each box's label through all transitions so that
+ * the goal test correctly requires each box to be on a matching goal.
  *
- * We run backward BFS from all solved states (boxes on goals, robot on
- * any reachable cell) and record push distances. This gives push-optimal
- * distances for every reachable configuration.
+ * Returns a Map from labeled box-configuration key to the minimum push
+ * distance over all robot positions that reach the goal.
  */
 function computeExactPushDistances(rows: string[]): {
   distByBoxConfig: Map<string, number>;
@@ -122,38 +137,8 @@ function computeExactPushDistances(rows: string[]): {
   const labels = [...board.goalCellsByLabel.keys()].sort();
   const boxCount = parsed.initialBoxes.length;
 
-  const goalCells: number[] = [];
-  for (const cells of board.goalCellsByLabel.values()) {
-    for (const cell of cells) goalCells.push(cell);
-  }
+  const goalsByLabel = board.goalCellsByLabel;
 
-  // State encoding: sorted box cells + robot cell
-  // We run a forward push-BFS from the initial state and record
-  // push distances for each (boxConfig, robot) state.
-  function stateKey(boxCells: number[], robot: number): string {
-    return boxCells.join(",") + ":" + robot;
-  }
-  function boxConfigKey(boxCells: number[]): string {
-    return boxCells.join(",");
-  }
-
-  // Forward push-BFS from initial state
-  const initBoxCells: number[] = [];
-  for (const box of parsed.initialBoxes) {
-    const cell = board.cellAt(box.position.row, box.position.column);
-    initBoxCells.push(cell);
-  }
-  initBoxCells.sort((a, b) => a - b);
-  const initRobot = board.cellAt(
-    parsed.initialRobot.row,
-    parsed.initialRobot.column,
-  );
-
-  // BFS state: { boxCells (sorted), robot, pushDist }
-  const visited = new Map<string, number>(); // stateKey → pushDist
-  const queue: { boxCells: number[]; robot: number; pushDist: number }[] = [];
-
-  // Flood-fill keeper reachability from robot given box occupancy
   function floodKeeper(robot: number, occupancy: Set<number>): Set<number> {
     const reachable = new Set<number>();
     const q = [robot];
@@ -172,27 +157,38 @@ function computeExactPushDistances(rows: string[]): {
     return reachable;
   }
 
-  // Seed: flood from initial robot position
-  const initOccupancy = new Set(initBoxCells);
+  const initBoxes = normalizeBoxes(
+    parsed.initialBoxes.map(box => ({
+      label: box.label,
+      cell: board.cellAt(box.position.row, box.position.column),
+    })),
+  );
+  const initRobot = board.cellAt(
+    parsed.initialRobot.row,
+    parsed.initialRobot.column,
+  );
+
+  const visited = new Map<string, number>();
+  const queue: { boxes: OracleBox[]; robot: number; pushDist: number }[] = [];
+
+  const initOccupancy = new Set(initBoxes.map(b => b.cell));
   const initReachable = floodKeeper(initRobot, initOccupancy);
 
-  // Seed all reachable robot positions at push distance 0 (no pushes yet)
   for (const r of initReachable) {
-    const key = stateKey(initBoxCells, r);
+    const key = oracleStateKey(initBoxes, r);
     visited.set(key, 0);
-    queue.push({ boxCells: initBoxCells, robot: r, pushDist: 0 });
+    queue.push({ boxes: initBoxes, robot: r, pushDist: 0 });
   }
 
-  // BFS: expand by pushes (each push is distance +1), then flood keeper
   let head = 0;
   while (head < queue.length) {
-    const { boxCells, robot, pushDist } = queue[head++];
-    const occupancy = new Set(boxCells);
+    const { boxes, robot, pushDist } = queue[head++];
+    const occupancy = new Set(boxes.map(b => b.cell));
     const keeperReach = floodKeeper(robot, occupancy);
 
     for (let b = 0; b < boxCount; b++) {
-      const boxCell = boxCells[b];
-      const boxNbrs = neighbors[boxCell];
+      const box = boxes[b];
+      const boxNbrs = neighbors[box.cell];
 
       for (let d = 0; d < SEARCH_DIRECTION_COUNT; d++) {
         const dest = boxNbrs[d];
@@ -202,83 +198,58 @@ function computeExactPushDistances(rows: string[]): {
         if (occupancy.has(dest) || occupancy.has(support)) continue;
         if (!keeperReach.has(support)) continue;
 
-        // Push box b from boxCell to dest, keeper ends at boxCell
-        const newBoxCells = boxCells.slice();
-        newBoxCells[b] = dest;
-        newBoxCells.sort((a, b) => a - b);
-        const newRobot = boxCell;
+        const newBoxes = normalizeBoxes(
+          boxes.map((bx, i) =>
+            i === b ? { ...bx, cell: dest } : bx,
+          ),
+        );
+        const newRobot = box.cell;
         const newPushDist = pushDist + 1;
 
-        // Flood keeper from new robot position
-        const newOccupancy = new Set(newBoxCells);
+        const newOccupancy = new Set(newBoxes.map(bx => bx.cell));
         const newKeeperReach = floodKeeper(newRobot, newOccupancy);
 
         for (const r of newKeeperReach) {
-          const key = stateKey(newBoxCells, r);
+          const key = oracleStateKey(newBoxes, r);
           if (!visited.has(key)) {
             visited.set(key, newPushDist);
-            queue.push({ boxCells: newBoxCells, robot: r, pushDist: newPushDist });
+            queue.push({ boxes: newBoxes, robot: r, pushDist: newPushDist });
           }
         }
       }
     }
   }
 
-  // Compute remaining push distance for each config:
-  // BFS backward from goal configs, but it's simpler to just compute
-  // forward distances from each config to the goal by checking if
-  // any (config, robot) state reaches (goalConfig, any robot).
-  //
-  // Actually, we need the REMAINING push distance from each config.
-  // We'll build a push-distance-to-goal table by doing BACKWARD BFS
-  // from goal states in the explored state graph.
+  // Backward BFS from all solved states to compute remaining push distances.
+  const solvedBoxes = normalizeBoxes(
+    [...goalsByLabel.entries()].flatMap(([label, cells]) =>
+      cells.map(cell => ({ label, cell })),
+    ),
+  );
+  const goalKey = oracleConfigKey(solvedBoxes);
 
-  // Build reverse graph on box configs (push level)
-  // pushDist from initial to each (config, robot) is in `visited`.
-  // We want: for each config, min pushes remaining to reach any goal config.
-  // This equals: min over all goal states (goalConfig, r) of
-  //   (pushDist(goalConfig, r) - pushDist(config, r_best))
-  // That's not right. We need actual push-optimal distance from config to goal.
-
-  // Simplest correct approach: BFS backward from goal configs in the
-  // push-level config graph. A config transition exists if we can push
-  // a box from one config to get another.
-
-  // But we already have the FORWARD BFS distances. The optimal remaining
-  // pushes from config C = min over all robot positions r of
-  //   (shortest push path from (C, r) to any (goalConfig, r')).
-  // This is NOT simply max_push_dist_to_goal - push_dist_from_start.
-
-  // So let's do a separate backward BFS from goal states.
-  // BFS on (config, robot) states, starting from all (goalConfig, robot).
-  const goalConfigKey = boxConfigKey([...goalCells].sort((a, b) => a - b));
   const backwardVisited = new Map<string, number>();
-  const backwardQueue: { boxCells: number[]; robot: number; pushDist: number }[] = [];
+  const backwardQueue: { boxes: OracleBox[]; robot: number; pushDist: number }[] = [];
 
-  // Seed with all (goalConfig, r) states that were reachable
-  for (const [key, _dist] of visited) {
-    const parts = key.split(":");
-    const configStr = parts[0];
-    if (configStr === goalConfigKey) {
+  for (const [key] of visited) {
+    const configStr = key.split(":")[0];
+    if (configStr === goalKey) {
       backwardVisited.set(key, 0);
-      const cells = configStr.split(",").map(Number);
-      const robot = Number(parts[1]);
-      backwardQueue.push({ boxCells: cells, robot, pushDist: 0 });
+      const robot = Number(key.split(":")[1]);
+      backwardQueue.push({ boxes: solvedBoxes, robot, pushDist: 0 });
     }
   }
 
-  // Backward BFS: un-push boxes
   let bHead = 0;
   while (bHead < backwardQueue.length) {
-    const { boxCells, pushDist } = backwardQueue[bHead++];
-    const occupancy = new Set(boxCells);
+    const { boxes, pushDist } = backwardQueue[bHead++];
+    const occupancy = new Set(boxes.map(b => b.cell));
 
     for (let b = 0; b < boxCount; b++) {
-      const boxCell = boxCells[b];
-      const boxNbrs = neighbors[boxCell];
+      const box = boxes[b];
+      const boxNbrs = neighbors[box.cell];
 
       for (let d = 0; d < SEARCH_DIRECTION_COUNT; d++) {
-        // Reverse of: keeper at support pushes box from prevCell to boxCell
         const oppositeD = OPPOSITE_DIRECTION[d];
         const prevCell = boxNbrs[oppositeD];
         if (prevCell < 0) continue;
@@ -286,29 +257,27 @@ function computeExactPushDistances(rows: string[]): {
         if (support < 0) continue;
         if (occupancy.has(prevCell) || occupancy.has(support)) continue;
 
-        // Un-push: box moves from boxCell to prevCell
-        const newBoxCells = boxCells.slice();
-        newBoxCells[b] = prevCell;
-        newBoxCells.sort((a, b) => a - b);
+        const newBoxes = normalizeBoxes(
+          boxes.map((bx, i) =>
+            i === b ? { ...bx, cell: prevCell } : bx,
+          ),
+        );
 
-        // After un-push, keeper could be anywhere reachable from support
-        // with box at prevCell (and other boxes at their new positions)
-        const newOccupancy = new Set(newBoxCells);
+        const newOccupancy = new Set(newBoxes.map(bx => bx.cell));
         const newKeeperReach = floodKeeper(support, newOccupancy);
         const newPushDist = pushDist + 1;
 
         for (const r of newKeeperReach) {
-          const key = stateKey(newBoxCells, r);
-          if (!backwardVisited.has(key) && visited.has(key)) {
+          const key = oracleStateKey(newBoxes, r);
+          if (!backwardVisited.has(key)) {
             backwardVisited.set(key, newPushDist);
-            backwardQueue.push({ boxCells: newBoxCells, robot: r, pushDist: newPushDist });
+            backwardQueue.push({ boxes: newBoxes, robot: r, pushDist: newPushDist });
           }
         }
       }
     }
   }
 
-  // Aggregate: for each box config, min push distance to goal
   const distByBoxConfig = new Map<string, number>();
   for (const [key, dist] of backwardVisited) {
     const configStr = key.split(":")[0];
@@ -337,7 +306,7 @@ function assertAdmissibleForAllReachable(
   const parsed = parsePuzzleRows(rows);
   assert.equal(parsed.initialBoxes.length, expectedBoxCount);
 
-  const { distByBoxConfig, labels } = computeExactPushDistances(rows);
+  const { distByBoxConfig } = computeExactPushDistances(rows);
   assert.ok(distByBoxConfig.size > 0, "oracle must find reachable configs");
 
   let checked = 0;
@@ -345,16 +314,11 @@ function assertAdmissibleForAllReachable(
   let violations = 0;
 
   for (const [configStr, exactDist] of distByBoxConfig) {
-    const cells = configStr.split(",").map(Number);
-    const denseBoxes = cells.map((cell, i) => ({
-      id: `b${i}`, label: labels[0], cell,
-    }));
+    const denseBoxes = configStr.split(",").map((token, i) => {
+      const [label, cellStr] = token.split("@");
+      return { id: `b${i}`, label, cell: Number(cellStr) };
+    });
 
-    // For mixed-label boards, we need correct label assignment.
-    // Use the label ordering from the board's goalCellsByLabel.
-    // For same-label boards, all boxes share labels[0].
-    // For mixed boards, we need to try all label assignments.
-    // The perimeter projects colored → normal, so we construct normal tokens.
     const tokens = codec.tokensFromBoxes(denseBoxes);
     const zobKey = zobrist.hashFromTokensNoRobot(tokens);
     const bigKey = codec.packBoxTokens(tokens);
@@ -1539,24 +1503,23 @@ describe("exhaustive tiny-board perimeter admissibility", () => {
   it("admissible for 2 same-label + 1 typed box", () => {
     const rows = [
       "OOOOOOO",
-      "OSX aSO",
-      "O  A  O",
-      "O  XR O",
+      "O R   O",
+      "O AXX O",
+      "O aSS O",
       "OOOOOOO",
     ];
     assertAdmissibleForAllReachable(rows, 3);
   });
 
   it("admissible for 2 same-label boxes that must cross paths", () => {
-    // Narrow corridor forces boxes to cross through each other's territory.
     const rows = [
-      "OOOOOOOOO",
-      "OS      O",
-      "OOOOO   O",
-      "O   X R O",
-      "O   OOOOO",
-      "O X    SO",
-      "OOOOOOOOO",
+      "OOOOOOO",
+      "O    SO",
+      "O     O",
+      "O XRX O",
+      "O     O",
+      "OS    O",
+      "OOOOOOO",
     ];
     assertAdmissibleForAllReachable(rows, 2);
   });
