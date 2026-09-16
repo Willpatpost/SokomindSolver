@@ -1,4 +1,12 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
+import type {
+  SingleBoxPushGraph,
+  ComponentViableCorridor,
+} from "./single-box-push-graph.ts";
+import {
+  singleBoxCanReach,
+  computeComponentCorridor,
+} from "./single-box-push-graph.ts";
 
 export interface MatchingComponentResult {
   readonly totalComponents: number;
@@ -10,14 +18,18 @@ export interface MatchingComponentResult {
   readonly finiteEdges: number;
   readonly allowedEdges: number;
   readonly eliminatedEdges: number;
+  /** label → per-component viable corridors */
+  readonly corridorsByLabel: ReadonlyMap<string, readonly ComponentViableCorridor[]>;
 }
 
 export function analyzeMatchingComponents(
   board: CompiledSearchBoard,
+  singleBoxGraph?: SingleBoxPushGraph,
 ): MatchingComponentResult {
   const componentsByLabel = new Map<string, readonly number[]>();
   const goalComponentsByLabel = new Map<string, readonly number[]>();
   const componentCountByLabel = new Map<string, number>();
+  const corridorsByLabel = new Map<string, readonly ComponentViableCorridor[]>();
   let totalComponents = 0;
   let totalFiniteEdges = 0;
   let totalAllowedEdges = 0;
@@ -38,10 +50,18 @@ export function analyzeMatchingComponents(
       goalComponentsByLabel.set(label, comp);
       componentCountByLabel.set(label, 1);
       totalComponents += 1;
+
+      if (singleBoxGraph) {
+        corridorsByLabel.set(label, [
+          computeComponentCorridor(singleBoxGraph, boxCells, [...goalCells]),
+        ]);
+      }
       continue;
     }
 
-    const reachable = buildReachabilityMatrix(board, boxCells, goalCells);
+    const reachable = singleBoxGraph
+      ? buildReachabilityMatrixFromGraph(singleBoxGraph, boxCells, goalCells)
+      : buildReachabilityMatrix(board, boxCells, goalCells);
     const finiteEdges = countFiniteEdges(reachable, k);
     totalFiniteEdges += finiteEdges;
 
@@ -53,6 +73,11 @@ export function analyzeMatchingComponents(
       componentCountByLabel.set(label, 1);
       totalComponents += 1;
       totalAllowedEdges += finiteEdges;
+      if (singleBoxGraph) {
+        corridorsByLabel.set(label, [
+          computeComponentCorridor(singleBoxGraph, boxCells, [...goalCells]),
+        ]);
+      }
       continue;
     }
 
@@ -72,6 +97,11 @@ export function analyzeMatchingComponents(
       goalComponentsByLabel.set(label, comp);
       componentCountByLabel.set(label, 1);
       totalComponents += 1;
+      if (singleBoxGraph) {
+        corridorsByLabel.set(label, [
+          computeComponentCorridor(singleBoxGraph, boxCells, [...goalCells]),
+        ]);
+      }
       continue;
     }
 
@@ -79,6 +109,22 @@ export function analyzeMatchingComponents(
     goalComponentsByLabel.set(label, goalComponents);
     componentCountByLabel.set(label, count);
     totalComponents += count;
+
+    if (singleBoxGraph) {
+      const corridors: ComponentViableCorridor[] = [];
+      for (let c = 0; c < count; c++) {
+        const compBoxCells: number[] = [];
+        const compGoalCells: number[] = [];
+        for (let i = 0; i < k; i++) {
+          if (boxComponents[i] === c) compBoxCells.push(boxCells[i]);
+          if (goalComponents[i] === c) compGoalCells.push(goalCells[i]);
+        }
+        corridors.push(
+          computeComponentCorridor(singleBoxGraph, compBoxCells, compGoalCells),
+        );
+      }
+      corridorsByLabel.set(label, corridors);
+    }
   }
 
   return {
@@ -89,14 +135,27 @@ export function analyzeMatchingComponents(
     finiteEdges: totalFiniteEdges,
     allowedEdges: totalAllowedEdges,
     eliminatedEdges: totalFiniteEdges - totalAllowedEdges,
+    corridorsByLabel,
   };
 }
 
-/**
- * Build k×k reachability matrix. Entry [box * k + goal] = 1 if the box at
- * boxCells[box] can reach goalCells[goal] via some push sequence (relaxed,
- * ignoring other boxes), using the pre-computed reverse-push distance tables.
- */
+function buildReachabilityMatrixFromGraph(
+  graph: SingleBoxPushGraph,
+  boxCells: readonly number[],
+  goalCells: readonly number[],
+): Uint8Array {
+  const k = boxCells.length;
+  const matrix = new Uint8Array(k * k);
+  for (let box = 0; box < k; box++) {
+    for (let goal = 0; goal < k; goal++) {
+      if (singleBoxCanReach(graph, boxCells[box], goalCells[goal])) {
+        matrix[box * k + goal] = 1;
+      }
+    }
+  }
+  return matrix;
+}
+
 function buildReachabilityMatrix(
   board: CompiledSearchBoard,
   boxCells: readonly number[],
@@ -122,10 +181,6 @@ function countFiniteEdges(reachable: Uint8Array, k: number): number {
   return count;
 }
 
-/**
- * Standard augmenting-path bipartite matching. Returns matchBoxToGoal
- * (box index → goal index) or null if no perfect matching exists.
- */
 function findPerfectMatching(
   reachable: Uint8Array,
   k: number,
@@ -158,12 +213,10 @@ function findPerfectMatching(
 
 /**
  * Find edges that appear in some perfect matching via alternating-cycle
- * analysis. Contracts matching edges and checks mutual reachability in
- * the resulting directed graph.
- *
- * Port of perfectMatchingDomains() from sokomind-engine/source/heuristic.js.
+ * analysis. An edge (box, goal) is allowed iff it is in the initial matching
+ * OR the contracted directed graph has a cycle through box and matchedBox(goal).
  */
-function findAllowedEdges(
+export function findAllowedEdges(
   reachable: Uint8Array,
   matching: Int32Array,
   k: number,
@@ -219,10 +272,6 @@ function findAllowedEdges(
   return allowed;
 }
 
-/**
- * Find connected components of the allowed-edge bipartite graph using
- * union-find. Nodes 0..k-1 are boxes, k..2k-1 are goals.
- */
 function findComponents(
   allowedEdges: Uint8Array,
   _matching: Int32Array,

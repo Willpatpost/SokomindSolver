@@ -730,11 +730,16 @@ export async function runIdaStarSearch(
       featureTelemetry.backwardPerimeterBuildExpanded = ps.coloredStatesExplored;
       featureTelemetry.backwardPerimeterColoredStates = ps.coloredStatesExplored;
       featureTelemetry.backwardPerimeterProjectedStates = ps.projectedStates;
+      featureTelemetry.backwardPerimeterDuplicateProjections = ps.duplicateProjections;
+      featureTelemetry.backwardPerimeterConstrainedSkipped = ps.constrainedTransitionsSkipped;
       featureTelemetry.backwardPerimeterBuildTimeMs = ps.buildTimeMs;
       featureTelemetry.backwardPerimeterRetainedBytes = ps.retainedBytes;
+      featureTelemetry.backwardPerimeterPeakWorkingBytes = ps.peakWorkingBytes;
       featureTelemetry.backwardPerimeterMaxDepth = ps.maxDepth;
       featureTelemetry.matchingComponents = ps.matchingComponents;
       featureTelemetry.matchingEliminatedEdges = ps.matchingEliminatedEdges;
+      featureTelemetry.corridorViableCells = ps.corridorViableCells;
+      featureTelemetry.corridorViableEdges = ps.corridorViableEdges;
     }
     throwIfSolverCancelled(context.signal);
 
@@ -780,8 +785,9 @@ export async function runIdaStarSearch(
       let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
       const perimeterDist = perimeterLookup(boxes);
       if (perimeterDist > totalPushBound) {
-        featureTelemetry.backwardPerimeterImprovements++;
         const improvement = perimeterDist - totalPushBound;
+        featureTelemetry.backwardPerimeterImprovements++;
+        featureTelemetry.backwardPerimeterTotalImprovement += improvement;
         if (improvement > featureTelemetry.backwardPerimeterMaxImprovement) {
           featureTelemetry.backwardPerimeterMaxImprovement = improvement;
         }
@@ -877,15 +883,21 @@ export async function runIdaStarSearch(
       backwardPerimeterBuildExpanded: featureTelemetry.backwardPerimeterBuildExpanded,
       backwardPerimeterColoredStates: featureTelemetry.backwardPerimeterColoredStates,
       backwardPerimeterProjectedStates: featureTelemetry.backwardPerimeterProjectedStates,
+      backwardPerimeterDuplicateProjections: featureTelemetry.backwardPerimeterDuplicateProjections,
+      backwardPerimeterConstrainedSkipped: featureTelemetry.backwardPerimeterConstrainedSkipped,
       backwardPerimeterBuildTimeMs: featureTelemetry.backwardPerimeterBuildTimeMs,
       backwardPerimeterRetainedBytes: featureTelemetry.backwardPerimeterRetainedBytes,
+      backwardPerimeterPeakWorkingBytes: featureTelemetry.backwardPerimeterPeakWorkingBytes,
       backwardPerimeterLookups: perimeterTable?.stats.lookups ?? 0,
       backwardPerimeterHits: perimeterTable?.stats.hits ?? 0,
       backwardPerimeterImprovements: featureTelemetry.backwardPerimeterImprovements,
+      backwardPerimeterTotalImprovement: featureTelemetry.backwardPerimeterTotalImprovement,
       backwardPerimeterMaxImprovement: featureTelemetry.backwardPerimeterMaxImprovement,
       backwardPerimeterMaxDepth: featureTelemetry.backwardPerimeterMaxDepth,
       matchingComponents: featureTelemetry.matchingComponents,
       matchingEliminatedEdges: featureTelemetry.matchingEliminatedEdges,
+      corridorViableCells: featureTelemetry.corridorViableCells,
+      corridorViableEdges: featureTelemetry.corridorViableEdges,
       hCacheHits,
       hCacheSize: hCache.size,
     });

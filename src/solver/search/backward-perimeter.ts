@@ -8,6 +8,11 @@ import {
   analyzeMatchingComponents,
   type MatchingComponentResult,
 } from "./matching-components.ts";
+import {
+  compileSingleBoxPushGraph,
+  type ComponentViableCorridor,
+  isViableEdge,
+} from "./single-box-push-graph.ts";
 import { createExactStateCodec } from "./exact-state.ts";
 import { createZobristTable } from "./zobrist-state.ts";
 
@@ -15,15 +20,21 @@ export interface BackwardPerimeterStats {
   seeds: number;
   coloredStatesExplored: number;
   projectedStates: number;
+  duplicateProjections: number;
+  constrainedTransitionsSkipped: number;
   buildTimeMs: number;
   retainedBytes: number;
+  peakWorkingBytes: number;
   lookups: number;
   hits: number;
   improvements: number;
+  totalImprovement: number;
   maxImprovement: number;
   maxDepth: number;
   matchingComponents: number;
   matchingEliminatedEdges: number;
+  corridorViableCells: number;
+  corridorViableEdges: number;
 }
 
 interface PerimeterEntry {
@@ -43,6 +54,8 @@ export interface BackwardPerimeterTable {
 export interface BackwardPerimeterBudget {
   readonly maxStates: number;
   readonly maxDepth?: number;
+  /** Disable corridor constraints for testing uncolored baseline. */
+  readonly disableCorridors?: boolean;
 }
 
 const OPPOSITE_DIRECTION = [1, 0, 3, 2] as const;
@@ -50,7 +63,6 @@ const OPPOSITE_DIRECTION = [1, 0, 3, 2] as const;
 const ESTIMATED_MAP_ENTRY_BYTES = 80;
 const ESTIMATED_CHAIN_ELEMENT_BYTES = 48;
 const ESTIMATED_BIGINT_BYTES = 24;
-
 export function buildBackwardPerimeter(
   board: CompiledSearchBoard,
   forwardCodec: ExactStateCodec,
@@ -67,22 +79,36 @@ export function buildBackwardPerimeter(
 
   checkExactPreprocessingBudget(preprocessingBudget);
 
-  const matchingResult = analyzeMatchingComponents(board);
+  const singleBoxGraph = compileSingleBoxPushGraph(board, preprocessingBudget);
+  const matchingResult = analyzeMatchingComponents(board, singleBoxGraph);
 
   const stats: BackwardPerimeterStats = {
     seeds: 0,
     coloredStatesExplored: 0,
     projectedStates: 0,
+    duplicateProjections: 0,
+    constrainedTransitionsSkipped: 0,
     buildTimeMs: 0,
     retainedBytes: 0,
+    peakWorkingBytes: 0,
     lookups: 0,
     hits: 0,
     improvements: 0,
+    totalImprovement: 0,
     maxImprovement: 0,
     maxDepth: 0,
     matchingComponents: matchingResult.totalComponents,
     matchingEliminatedEdges: matchingResult.eliminatedEdges,
+    corridorViableCells: 0,
+    corridorViableEdges: 0,
   };
+
+  for (const corridors of matchingResult.corridorsByLabel.values()) {
+    for (const corridor of corridors) {
+      stats.corridorViableCells += corridor.viableCells.size;
+      stats.corridorViableEdges += corridor.viableDirectedEdges.size;
+    }
+  }
 
   const coloredLabels = buildColoredLabels(board, matchingResult);
   if (!coloredLabels) {
@@ -94,6 +120,7 @@ export function buildBackwardPerimeter(
     coloredLabelNames,
     coloredLabelToOriginalId,
     goalColoredLabelId,
+    coloredLabelToCorridor,
   } = coloredLabels;
 
   const coloredCodec = createExactStateCodec(cellCount, coloredLabelNames);
@@ -113,15 +140,35 @@ export function buildBackwardPerimeter(
 
   const projectedTable = new Map<number, PerimeterEntry[]>();
 
-  const { maxStates, maxDepth } = budget;
+  const { maxStates, maxDepth, disableCorridors } = budget;
+
+  const arenaBytes =
+    maxStates * boxCount * Uint32Array.BYTES_PER_ELEMENT +
+    maxStates * Uint32Array.BYTES_PER_ELEMENT;
+  let currentWorkingBytes = arenaBytes;
+
+  checkExactPreprocessingBudget(preprocessingBudget, currentWorkingBytes);
+
   const arenaTokens = new Uint32Array(maxStates * boxCount);
   const arenaDistances = new Uint32Array(maxStates);
   let queueHead = 0;
   let queueTail = 0;
 
   const coloredDedup = new Map<number, DedupEntry[]>();
+  let coloredDedupEntries = 0;
 
   const normalTokenBuf = new Uint32Array(boxCount);
+
+  function updateWorkingBytes(): void {
+    currentWorkingBytes = arenaBytes +
+      coloredDedupEntries * (ESTIMATED_CHAIN_ELEMENT_BYTES + ESTIMATED_BIGINT_BYTES) +
+      coloredDedup.size * ESTIMATED_MAP_ENTRY_BYTES +
+      stats.projectedStates * (ESTIMATED_CHAIN_ELEMENT_BYTES + ESTIMATED_BIGINT_BYTES) +
+      projectedTable.size * ESTIMATED_MAP_ENTRY_BYTES;
+    if (currentWorkingBytes > stats.peakWorkingBytes) {
+      stats.peakWorkingBytes = currentWorkingBytes;
+    }
+  }
 
   function coloredDedupHas(zobKey: number, bigKey: bigint): boolean {
     const chain = coloredDedup.get(zobKey);
@@ -139,6 +186,7 @@ export function buildBackwardPerimeter(
     } else {
       chain.push({ bigintKey: bigKey });
     }
+    coloredDedupEntries++;
   }
 
   function projectedStore(zobKey: number, bigKey: bigint, dist: number): void {
@@ -150,6 +198,7 @@ export function buildBackwardPerimeter(
     }
     for (let i = 0; i < chain.length; i++) {
       if (chain[i].bigintKey === bigKey) {
+        stats.duplicateProjections++;
         if (dist < chain[i].distance) chain[i].distance = dist;
         return;
       }
@@ -206,7 +255,8 @@ export function buildBackwardPerimeter(
 
   while (queueHead < queueTail) {
     if ((queueHead & 63) === 0) {
-      checkExactPreprocessingBudget(preprocessingBudget);
+      updateWorkingBytes();
+      checkExactPreprocessingBudget(preprocessingBudget, currentWorkingBytes);
     }
 
     const stateOffset = queueHead * boxCount;
@@ -228,6 +278,7 @@ export function buildBackwardPerimeter(
       const token = arenaTokens[stateOffset + b];
       const boxCell = token % cellCount;
       const coloredLabelId = (token / cellCount) | 0;
+      const corridor = coloredLabelToCorridor[coloredLabelId];
       const neighbors = board.neighbors[boxCell];
       if (!neighbors) continue;
 
@@ -238,6 +289,11 @@ export function buildBackwardPerimeter(
         const supportCell = board.neighbors[prevCell]?.[oppositeD] ?? -1;
         if (supportCell < 0) continue;
         if (occupancy[prevCell] !== 0 || occupancy[supportCell] !== 0) continue;
+
+        if (!disableCorridors && corridor && !isViableEdge(corridor, prevCell, boxCell)) {
+          stats.constrainedTransitionsSkipped++;
+          continue;
+        }
 
         const newToken = coloredLabelId * cellCount + prevCell;
 
@@ -255,6 +311,7 @@ export function buildBackwardPerimeter(
 
   coloredDedup.clear();
 
+  updateWorkingBytes();
   stats.retainedBytes = estimateProjectedRetainedBytes(projectedTable);
   stats.buildTimeMs = Math.max(0, now() - buildStart);
 
@@ -268,6 +325,7 @@ function buildColoredLabels(
   coloredLabelNames: string[];
   coloredLabelToOriginalId: number[];
   goalColoredLabelId: Map<number, number>;
+  coloredLabelToCorridor: (ComponentViableCorridor | null)[];
 } | null {
   const sortedLabels = [...board.goalCellsByLabel.keys()].sort();
   const originalLabelToId = new Map<string, number>();
@@ -277,6 +335,7 @@ function buildColoredLabels(
 
   const coloredLabelNames: string[] = [];
   const coloredLabelToOriginalId: number[] = [];
+  const coloredLabelToCorridor: (ComponentViableCorridor | null)[] = [];
   const goalColoredLabelId = new Map<number, number>();
 
   for (const label of sortedLabels) {
@@ -284,12 +343,14 @@ function buildColoredLabels(
     const compCount = matching.componentCountByLabel.get(label) ?? 1;
     const goalComps = matching.goalComponentsByLabel.get(label);
     const goalCells = board.goalCellsByLabel.get(label);
+    const corridors = matching.corridorsByLabel.get(label);
 
     const baseId = coloredLabelNames.length;
 
     for (let c = 0; c < compCount; c++) {
       coloredLabelNames.push(`${label}__c${c}`);
       coloredLabelToOriginalId.push(origId);
+      coloredLabelToCorridor.push(corridors?.[c] ?? null);
     }
 
     if (goalCells && goalComps) {
@@ -300,7 +361,12 @@ function buildColoredLabels(
   }
 
   if (coloredLabelNames.length === 0) return null;
-  return { coloredLabelNames, coloredLabelToOriginalId, goalColoredLabelId };
+  return {
+    coloredLabelNames,
+    coloredLabelToOriginalId,
+    goalColoredLabelId,
+    coloredLabelToCorridor,
+  };
 }
 
 function buildSeedTokens(

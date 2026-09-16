@@ -110,15 +110,21 @@ interface ExactSearchFeatureTelemetry {
   backwardPerimeterBuildExpanded: number;
   backwardPerimeterColoredStates: number;
   backwardPerimeterProjectedStates: number;
+  backwardPerimeterDuplicateProjections: number;
+  backwardPerimeterConstrainedSkipped: number;
   backwardPerimeterBuildTimeMs: number;
   backwardPerimeterRetainedBytes: number;
+  backwardPerimeterPeakWorkingBytes: number;
   backwardPerimeterLookups: number;
   backwardPerimeterHits: number;
   backwardPerimeterImprovements: number;
+  backwardPerimeterTotalImprovement: number;
   backwardPerimeterMaxImprovement: number;
   backwardPerimeterMaxDepth: number;
   matchingComponents: number;
   matchingEliminatedEdges: number;
+  corridorViableCells: number;
+  corridorViableEdges: number;
 }
 
 export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry {
@@ -135,14 +141,20 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     backwardPerimeterBuildExpanded: 0,
     backwardPerimeterColoredStates: 0,
     backwardPerimeterProjectedStates: 0,
+    backwardPerimeterDuplicateProjections: 0,
+    backwardPerimeterConstrainedSkipped: 0,
     backwardPerimeterBuildTimeMs: 0,
     backwardPerimeterRetainedBytes: 0,
+    backwardPerimeterPeakWorkingBytes: 0,
     backwardPerimeterLookups: 0,
     backwardPerimeterHits: 0,
     backwardPerimeterImprovements: 0,
+    backwardPerimeterTotalImprovement: 0,
     backwardPerimeterMaxImprovement: 0,
     backwardPerimeterMaxDepth: 0,
     matchingComponents: 0,
     matchingEliminatedEdges: 0,
+    corridorViableCells: 0,
+    corridorViableEdges: 0,
   };
 }
