@@ -13,6 +13,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "goalCutHeuristic",
   "backwardPerimeter",
   "componentPdb",
+  "moveCostPatternPdb",
 ] as const);
 
 export type ExactSearchFeatureKey = (typeof EXACT_SEARCH_FEATURE_KEYS)[number];
@@ -32,6 +33,7 @@ export interface ExactSearchFeatures {
   readonly goalCutHeuristic: boolean;
   readonly backwardPerimeter: boolean;
   readonly componentPdb: boolean;
+  readonly moveCostPatternPdb: boolean;
 }
 
 export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze({
@@ -49,6 +51,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   goalCutHeuristic: true,
   backwardPerimeter: false,
   componentPdb: false,
+  moveCostPatternPdb: false,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
@@ -137,6 +140,13 @@ interface ExactSearchFeatureTelemetry {
   componentPdbMaxImprovement: number;
   componentPdbPartitionQueries: number;
   componentPdbPartitionCacheHits: number;
+  moveCostPdbBuildTimeMs: number;
+  moveCostPdbRetainedBytes: number;
+  moveCostPdbPatterns: number;
+  moveCostPdbSettledStates: number;
+  moveCostPdbImprovements: number;
+  moveCostPdbTotalImprovement: number;
+  moveCostPdbMaxImprovement: number;
 }
 
 export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry {
@@ -177,5 +187,12 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     componentPdbMaxImprovement: 0,
     componentPdbPartitionQueries: 0,
     componentPdbPartitionCacheHits: 0,
+    moveCostPdbBuildTimeMs: 0,
+    moveCostPdbRetainedBytes: 0,
+    moveCostPdbPatterns: 0,
+    moveCostPdbSettledStates: 0,
+    moveCostPdbImprovements: 0,
+    moveCostPdbTotalImprovement: 0,
+    moveCostPdbMaxImprovement: 0,
   };
 }

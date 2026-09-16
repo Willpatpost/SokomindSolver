@@ -62,6 +62,10 @@ import {
   type ComponentPdbCollection,
 } from "./component-pdb.ts";
 import {
+  probeAndSelectPatterns,
+  type MoveCostPatternCollection,
+} from "./move-cost-pattern-pdb.ts";
+import {
   analyzeMatchingComponents,
   extractMatchingComponents,
 } from "./matching-components.ts";
@@ -477,19 +481,6 @@ export async function runExactMoveAStar(
       }
     }
     throwIfSolverCancelled(context.signal);
-    const preprocessingStaticBytes = baseStaticBytes +
-      (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
-      (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
-      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
-      (perimeterTable?.stats.retainedBytes ?? 0) +
-      (componentPdbCollection?.retainedBytes ?? 0);
-    const currentStaticBytes = () =>
-      preprocessingStaticBytes +
-      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
-    const labelCount = labels.length;
-    const labelToId = new Map<string, number>();
-    for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
-
     const initialRobot = board.cellAt(
       request.snapshot.robot.row,
       request.snapshot.robot.column,
@@ -500,6 +491,34 @@ export async function runExactMoveAStar(
     const initialBoxes = sortedBoxes(
       toDenseBoxes(board, request.snapshot.boxes),
     );
+    let moveCostPdbCollection: MoveCostPatternCollection | null = null;
+    if (features.moveCostPatternPdb) {
+      const mcResult = probeAndSelectPatterns(
+        board, preprocessingBudget, context.now,
+        { incumbentCost: U < Infinity ? U : undefined },
+        initialBoxes, initialRobot,
+      );
+      moveCostPdbCollection = mcResult.collection;
+      const t = mcResult.telemetry;
+      featureTelemetry.moveCostPdbBuildTimeMs = t.probeTotalMs + t.buildTotalMs;
+      featureTelemetry.moveCostPdbRetainedBytes = t.totalRetainedBytes;
+      featureTelemetry.moveCostPdbPatterns = t.candidatesSelected;
+      featureTelemetry.moveCostPdbSettledStates = t.totalSettledStates;
+    }
+    throwIfSolverCancelled(context.signal);
+    const preprocessingStaticBytes = baseStaticBytes +
+      (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+      (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+      (perimeterTable?.stats.retainedBytes ?? 0) +
+      (componentPdbCollection?.retainedBytes ?? 0) +
+      (moveCostPdbCollection?.estimatedRetainedBytes ?? 0);
+    const currentStaticBytes = () =>
+      preprocessingStaticBytes +
+      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
+    const labelCount = labels.length;
+    const labelToId = new Map<string, number>();
+    for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
     const boxCount = initialBoxes.length;
     let heapSize = 0;
     let uniqueStates = 0;
@@ -558,6 +577,7 @@ export async function runExactMoveAStar(
       walkBound: number,
       tokens: ArrayLike<number>,
       boxes: readonly DenseBox[],
+      robotCell: number,
     ): number => {
       let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
       const perimeterDist = perimeterLookup(tokens);
@@ -580,7 +600,20 @@ export async function runExactMoveAStar(
         }
         totalPushBound = componentBound;
       }
-      return totalPushBound + walkBound;
+      let h = totalPushBound + walkBound;
+      if (moveCostPdbCollection) {
+        const mcBound = moveCostPdbCollection.evaluate(boxes, robotCell);
+        if (mcBound > h) {
+          const improvement = mcBound - h;
+          featureTelemetry.moveCostPdbImprovements++;
+          featureTelemetry.moveCostPdbTotalImprovement += improvement;
+          if (improvement > featureTelemetry.moveCostPdbMaxImprovement) {
+            featureTelemetry.moveCostPdbMaxImprovement = improvement;
+          }
+          h = mcBound;
+        }
+      }
+      return h;
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -640,7 +673,7 @@ export async function runExactMoveAStar(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
     const initialGoalCut = goalCut();
-    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens, initialBoxes);
+    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens, initialBoxes, initialRobot);
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -708,6 +741,13 @@ export async function runExactMoveAStar(
       componentPdbMaxImprovement: featureTelemetry.componentPdbMaxImprovement,
       componentPdbPartitionQueries: componentPdbCollection?.stats.partitionQueries ?? 0,
       componentPdbPartitionCacheHits: componentPdbCollection?.stats.partitionCacheHits ?? 0,
+      moveCostPdbBuildTimeMs: featureTelemetry.moveCostPdbBuildTimeMs,
+      moveCostPdbRetainedBytes: featureTelemetry.moveCostPdbRetainedBytes,
+      moveCostPdbPatterns: featureTelemetry.moveCostPdbPatterns,
+      moveCostPdbSettledStates: featureTelemetry.moveCostPdbSettledStates,
+      moveCostPdbImprovements: featureTelemetry.moveCostPdbImprovements,
+      moveCostPdbTotalImprovement: featureTelemetry.moveCostPdbTotalImprovement,
+      moveCostPdbMaxImprovement: featureTelemetry.moveCostPdbMaxImprovement,
     });
 
     const metrics = () =>
@@ -1314,7 +1354,7 @@ export async function runExactMoveAStar(
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf, expansionBoxes);
+                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell);
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1491,7 +1531,7 @@ export async function runExactMoveAStar(
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
               );
-              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf, expansionBoxes);
+              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf, expansionBoxes, stop.robotCell);
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1616,7 +1656,7 @@ export async function runExactMoveAStar(
             savedCell,
             expansionBoxes,
           );
-          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf, expansionBoxes);
+          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell);
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

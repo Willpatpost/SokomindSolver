@@ -751,6 +751,7 @@ const FEATURE_EXERCISE_COUNTER: Readonly<
   goalCutHeuristic: "goalCutEvaluations",
   backwardPerimeter: "backwardPerimeterHits",
   componentPdb: "componentPdbImprovements",
+  moveCostPatternPdb: "moveCostPdbImprovements",
 });
 
 function median(values: readonly number[]): number {

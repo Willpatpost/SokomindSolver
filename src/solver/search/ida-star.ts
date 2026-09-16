@@ -65,6 +65,10 @@ import {
   type ComponentPdbCollection,
 } from "./component-pdb.ts";
 import {
+  probeAndSelectPatterns,
+  type MoveCostPatternCollection,
+} from "./move-cost-pattern-pdb.ts";
+import {
   analyzeMatchingComponents,
   extractMatchingComponents,
 } from "./matching-components.ts";
@@ -783,6 +787,21 @@ export async function runIdaStarSearch(
       }
     }
     throwIfSolverCancelled(context.signal);
+    let moveCostPdbCollection: MoveCostPatternCollection | null = null;
+    if (features.moveCostPatternPdb) {
+      const mcResult = probeAndSelectPatterns(
+        board, preprocessingBudget, context.now,
+        { incumbentCost: U < Infinity ? U : undefined },
+        initialBoxes, initialRobot,
+      );
+      moveCostPdbCollection = mcResult.collection;
+      const t = mcResult.telemetry;
+      featureTelemetry.moveCostPdbBuildTimeMs = t.probeTotalMs + t.buildTotalMs;
+      featureTelemetry.moveCostPdbRetainedBytes = t.totalRetainedBytes;
+      featureTelemetry.moveCostPdbPatterns = t.candidatesSelected;
+      featureTelemetry.moveCostPdbSettledStates = t.totalSettledStates;
+    }
+    throwIfSolverCancelled(context.signal);
 
     const linearConflict = (boxes: readonly DenseBox[]): number => {
       if (!features.linearConflict) return 0;
@@ -836,6 +855,7 @@ export async function runIdaStarSearch(
       gc: number,
       walkBound: number,
       boxes: readonly DenseBox[],
+      robotCell: number,
     ): number => {
       let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
       const perimeterDist = perimeterLookup(boxes);
@@ -858,7 +878,20 @@ export async function runIdaStarSearch(
         }
         totalPushBound = componentBound;
       }
-      return totalPushBound + walkBound;
+      let h = totalPushBound + walkBound;
+      if (moveCostPdbCollection) {
+        const mcBound = moveCostPdbCollection.evaluate(boxes, robotCell);
+        if (mcBound > h) {
+          const improvement = mcBound - h;
+          featureTelemetry.moveCostPdbImprovements++;
+          featureTelemetry.moveCostPdbTotalImprovement += improvement;
+          if (improvement > featureTelemetry.moveCostPdbMaxImprovement) {
+            featureTelemetry.moveCostPdbMaxImprovement = improvement;
+          }
+          h = mcBound;
+        }
+      }
+      return h;
     };
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
@@ -884,7 +917,8 @@ export async function runIdaStarSearch(
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
       (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
       (perimeterTable?.stats.retainedBytes ?? 0) +
-      (componentPdbCollection?.retainedBytes ?? 0);
+      (componentPdbCollection?.retainedBytes ?? 0) +
+      (moveCostPdbCollection?.estimatedRetainedBytes ?? 0);
     const currentStaticMemoryBytes = () =>
       preprocessingStaticMemoryBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0);
@@ -973,6 +1007,13 @@ export async function runIdaStarSearch(
       componentPdbMaxImprovement: featureTelemetry.componentPdbMaxImprovement,
       componentPdbPartitionQueries: componentPdbCollection?.stats.partitionQueries ?? 0,
       componentPdbPartitionCacheHits: componentPdbCollection?.stats.partitionCacheHits ?? 0,
+      moveCostPdbBuildTimeMs: featureTelemetry.moveCostPdbBuildTimeMs,
+      moveCostPdbRetainedBytes: featureTelemetry.moveCostPdbRetainedBytes,
+      moveCostPdbPatterns: featureTelemetry.moveCostPdbPatterns,
+      moveCostPdbSettledStates: featureTelemetry.moveCostPdbSettledStates,
+      moveCostPdbImprovements: featureTelemetry.moveCostPdbImprovements,
+      moveCostPdbTotalImprovement: featureTelemetry.moveCostPdbTotalImprovement,
+      moveCostPdbMaxImprovement: featureTelemetry.moveCostPdbMaxImprovement,
       hCacheHits,
       hCacheSize: hCache.size,
     });
@@ -1200,7 +1241,7 @@ export async function runIdaStarSearch(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
     const initialGoalCut = goalCut();
-    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes);
+    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1446,7 +1487,7 @@ export async function runIdaStarSearch(
             );
             const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
             const goalCutBoost = goalCut();
-            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes);
+            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot);
 
             const oldHCacheSize = hCache.size;
             hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h });
