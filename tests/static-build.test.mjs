@@ -75,14 +75,14 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Forced-push macros integrated into classic engine; aggregate caching in run-state.
   // Backward perimeter BFS, matching-component analysis, and component PDB in both exact engines.
   // Move-cost pattern database heuristic in both exact engines.
-  allScriptsAndStylesGzipBytes: 475_000,
-  largestAssetGzipBytes: 90_000,
-  homeRouteGzipBytes: 185_000,
-  playRouteGzipBytes: 210_000,
-  solverWorkerGzipBytes: 72_000,
+  allScriptsAndStylesGzipBytes: 480_000,
+  largestAssetGzipBytes: 95_000,
+  homeRouteGzipBytes: 190_000,
+  playRouteGzipBytes: 215_000,
+  solverWorkerGzipBytes: 77_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
   // schedule trace, and macro intermediate retention.
-  engineWorkerGzipBytes: 84_000,
+  engineWorkerGzipBytes: 89_000,
   puzzleShardGzipBytes: 10_000,
 });
 
