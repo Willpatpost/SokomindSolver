@@ -63,6 +63,63 @@ const OPPOSITE_DIRECTION = [1, 0, 3, 2] as const;
 const ESTIMATED_MAP_ENTRY_BYTES = 80;
 const ESTIMATED_CHAIN_ELEMENT_BYTES = 48;
 const ESTIMATED_BIGINT_BYTES = 24;
+
+/**
+ * Admissibility proof — simulation/superset argument.
+ *
+ * Claim: for every box configuration B that appears in the projected
+ * perimeter table at distance d, every real Sokoban solution from B
+ * requires at least d pushes to reach the goal.
+ *
+ * Proof sketch (each step is proved in detail below):
+ *
+ *  1. Matching components are fail-open. findAllowedEdges retains every
+ *     bipartite edge (box, goal) that appears in at least one perfect
+ *     matching. Therefore, in any real solution's box→goal assignment,
+ *     each box and its assigned goal belong to the same component.
+ *
+ *  2. Every real push of a box is a valid transition in the single-box
+ *     push graph. The single-box graph is a relaxation that removes all
+ *     other boxes, which can only open up more keeper-reachable cells
+ *     (never close them). If the keeper can reach the support cell in
+ *     the real puzzle, it can reach it in the single-box relaxation.
+ *
+ *  3. Every cell in a box's real trajectory belongs to the viable cell
+ *     set of its component's corridor. The corridor is the intersection
+ *     of cells forward-reachable from ANY initial box in the component
+ *     and cells backward-reachable to ANY goal in the component, both
+ *     computed on the single-box graph. Since the real trajectory starts
+ *     at an initial box cell and ends at a goal cell, and each push is
+ *     a valid single-box transition (step 2), every intermediate cell
+ *     is both forward-reachable from the start and backward-reachable
+ *     to the goal.
+ *
+ *  4. Every push edge in a box's real trajectory is a viable directed
+ *     edge in the corridor. The corridor's directed edges are a cell-
+ *     level over-approximation: they include edge (A, B) if ANY node
+ *     at A (under any keeper region) has a transition to ANY node at B.
+ *     Since the real push A→B is a valid single-box transition (step 2)
+ *     and both A and B are viable cells (step 3), the edge is included.
+ *
+ *  5. Reversing any real d-push solution from B gives a valid d-length
+ *     path in the constrained backward BFS from the goal to (a colored
+ *     state that projects to) B. Each reversed push checks
+ *     isViableEdge(corridor, prevCell, boxCell), which tests the
+ *     forward push direction — exactly the edge proved viable in step 4.
+ *     Multi-box occupancy at each step matches the real state (we are
+ *     replaying the exact same box positions in reverse).
+ *
+ *  6. The backward BFS assigns shortest-path distances, so the colored
+ *     state's distance is ≤ d. Projection takes the minimum over all
+ *     colored states that map to B, so the perimeter distance is ≤ d.
+ *
+ * Note: the statement "restricting an admissible relaxation can only
+ * increase distances, therefore remains admissible" is FALSE in general.
+ * A restricted relaxation can produce distances that exceed the real
+ * optimal cost. The admissibility of this perimeter relies on the
+ * specific construction: the corridor is a SUPERSET of real trajectories,
+ * so reversing real solutions always produces valid backward paths.
+ */
 export function buildBackwardPerimeter(
   board: CompiledSearchBoard,
   forwardCodec: ExactStateCodec,

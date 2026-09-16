@@ -367,13 +367,26 @@ function directedEdgeKey(
 /**
  * Compute the viable corridor for a matching component.
  *
- * viableCells: intersection of forward-reachable from any initial box in C
- * and backward-reachable to any goal in C.
+ * The corridor is a superset of all cells and directed push edges that
+ * can appear in any real trajectory of a component-C box from its
+ * initial position to any of C's goals:
  *
- * viableDirectedEdges: for each forward push edge prevCell→currentCell on the
- * single-box graph that lies entirely within viableCells, record it as a
- * directed edge key. This is a cell-level over-approximation (collapsed from
- * keeper-region nodes).
+ * viableCells: intersection of (forward-reachable from ANY initial box
+ * in C) and (backward-reachable to ANY goal in C), both computed on the
+ * full single-box push graph (all keeper regions, not just shortest
+ * paths). This is a superset because every real trajectory cell is
+ * forward-reachable from the box's start and backward-reachable to
+ * its goal.
+ *
+ * viableDirectedEdges: for each single-box graph node whose boxCell is
+ * viable, for each transition to another viable boxCell, record the
+ * directed edge (fromCell, toCell). This is a cell-level over-
+ * approximation collapsed from (boxCell, keeperRegion) nodes — it
+ * includes an edge if it exists under ANY keeper region, never
+ * restricting to a single region or path.
+ *
+ * The superset property is what makes the backward perimeter admissible:
+ * see the proof in backward-perimeter.ts.
  */
 export function computeComponentCorridor(
   graph: SingleBoxPushGraph,
