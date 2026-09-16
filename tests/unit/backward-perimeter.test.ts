@@ -118,7 +118,7 @@ function computeExactPushDistances(rows: string[]): {
 } {
   const parsed = parsePuzzleRows(rows);
   const board = compileSearchBoard(parsed);
-  const { cellCount, neighbors } = board;
+  const { neighbors } = board;
   const labels = [...board.goalCellsByLabel.keys()].sort();
   const boxCount = parsed.initialBoxes.length;
 
@@ -224,12 +224,6 @@ function computeExactPushDistances(rows: string[]): {
     }
   }
 
-  // For each box configuration, record minimum push distance to goal
-  const goalSet = new Set(goalCells);
-  const isGoal = (boxCells: number[]) =>
-    boxCells.length === goalCells.length &&
-    boxCells.every(c => goalSet.has(c));
-
   // Compute remaining push distance for each config:
   // BFS backward from goal configs, but it's simpler to just compute
   // forward distances from each config to the goal by checking if
@@ -276,7 +270,7 @@ function computeExactPushDistances(rows: string[]): {
   // Backward BFS: un-push boxes
   let bHead = 0;
   while (bHead < backwardQueue.length) {
-    const { boxCells, robot, pushDist } = backwardQueue[bHead++];
+    const { boxCells, pushDist } = backwardQueue[bHead++];
     const occupancy = new Set(boxCells);
 
     for (let b = 0; b < boxCount; b++) {
@@ -336,7 +330,7 @@ function assertAdmissibleForAllReachable(
   rows: string[],
   expectedBoxCount: number,
 ): void {
-  const { board, codec, zobrist, table } =
+  const { codec, zobrist, table } =
     buildPerimeterForRows(rows, 100_000);
   assert.ok(table, "perimeter table must be built");
 

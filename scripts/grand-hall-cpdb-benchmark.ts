@@ -36,7 +36,6 @@ function makeContext(timeoutMs = 120_000): {
   abort: AbortController;
 } {
   const abort = new AbortController();
-  const start = performance.now();
   setTimeout(() => abort.abort(), timeoutMs);
   return {
     context: {
