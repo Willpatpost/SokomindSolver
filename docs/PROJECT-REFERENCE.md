@@ -268,6 +268,7 @@ fails when the generated facts below differ from source.
 - `tunnelMacros`: enabled by default
 - `goalCutHeuristic`: enabled by default
 - `backwardPerimeter`: disabled by default
+- `componentPdb`: disabled by default
 - Maximum PDB table: **268,435,456 entries** (**512 MiB**)
 
 ### Frozen solver evidence
@@ -281,7 +282,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **460,000 gzip bytes**
+- All scripts and styles: **465,000 gzip bytes**
 - Largest asset: **85,000 gzip bytes**
 - Solver worker: **66,000 gzip bytes**
 - Nested engine worker: **79,000 gzip bytes**
