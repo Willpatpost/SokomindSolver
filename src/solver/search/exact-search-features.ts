@@ -12,6 +12,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "tunnelMacros",
   "goalCutHeuristic",
   "backwardPerimeter",
+  "componentPdb",
 ] as const);
 
 export type ExactSearchFeatureKey = (typeof EXACT_SEARCH_FEATURE_KEYS)[number];
@@ -30,6 +31,7 @@ export interface ExactSearchFeatures {
   readonly tunnelMacros: boolean;
   readonly goalCutHeuristic: boolean;
   readonly backwardPerimeter: boolean;
+  readonly componentPdb: boolean;
 }
 
 export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze({
@@ -46,6 +48,7 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   tunnelMacros: true,
   goalCutHeuristic: true,
   backwardPerimeter: false,
+  componentPdb: false,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
@@ -125,6 +128,15 @@ interface ExactSearchFeatureTelemetry {
   matchingEliminatedEdges: number;
   corridorViableCells: number;
   corridorViableEdges: number;
+  componentPdbBuildTimeMs: number;
+  componentPdbRetainedBytes: number;
+  componentPdbPeakBuildBytes: number;
+  componentPdbComponents: number;
+  componentPdbImprovements: number;
+  componentPdbTotalImprovement: number;
+  componentPdbMaxImprovement: number;
+  componentPdbPartitionQueries: number;
+  componentPdbPartitionCacheHits: number;
 }
 
 export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry {
@@ -156,5 +168,14 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     matchingEliminatedEdges: 0,
     corridorViableCells: 0,
     corridorViableEdges: 0,
+    componentPdbBuildTimeMs: 0,
+    componentPdbRetainedBytes: 0,
+    componentPdbPeakBuildBytes: 0,
+    componentPdbComponents: 0,
+    componentPdbImprovements: 0,
+    componentPdbTotalImprovement: 0,
+    componentPdbMaxImprovement: 0,
+    componentPdbPartitionQueries: 0,
+    componentPdbPartitionCacheHits: 0,
   };
 }

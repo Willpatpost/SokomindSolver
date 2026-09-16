@@ -22,6 +22,71 @@ export interface MatchingComponentResult {
   readonly corridorsByLabel: ReadonlyMap<string, readonly ComponentViableCorridor[]>;
 }
 
+export interface MatchingComponent {
+  readonly id: number;
+  readonly label: string;
+  readonly initialCells: readonly number[];
+  readonly goalCells: readonly number[];
+  readonly corridor: ComponentViableCorridor;
+}
+
+export function extractMatchingComponents(
+  board: CompiledSearchBoard,
+  result: MatchingComponentResult,
+): readonly MatchingComponent[] {
+  const components: MatchingComponent[] = [];
+  let globalId = 0;
+
+  for (const [label, goalCells] of board.goalCellsByLabel) {
+    const boxCells: number[] = [];
+    for (const box of board.source.initialBoxes) {
+      if (box.label === label) {
+        const cell = board.cellAt(box.position.row, box.position.column);
+        if (cell >= 0) boxCells.push(cell);
+      }
+    }
+
+    const compCount = result.componentCountByLabel.get(label) ?? 1;
+    const boxComps = result.componentsByLabel.get(label);
+    const goalComps = result.goalComponentsByLabel.get(label);
+    const corridors = result.corridorsByLabel.get(label);
+
+    for (let c = 0; c < compCount; c++) {
+      const compBoxCells: number[] = [];
+      const compGoalCells: number[] = [];
+
+      if (boxComps) {
+        for (let i = 0; i < boxComps.length; i++) {
+          if (boxComps[i] === c) compBoxCells.push(boxCells[i]);
+        }
+      } else {
+        compBoxCells.push(...boxCells);
+      }
+
+      if (goalComps) {
+        for (let i = 0; i < goalComps.length; i++) {
+          if (goalComps[i] === c) compGoalCells.push(goalCells[i]);
+        }
+      } else {
+        compGoalCells.push(...goalCells);
+      }
+
+      const corridor = corridors?.[c];
+      if (!corridor) continue;
+
+      components.push({
+        id: globalId++,
+        label,
+        initialCells: compBoxCells,
+        goalCells: compGoalCells,
+        corridor,
+      });
+    }
+  }
+
+  return components;
+}
+
 export function analyzeMatchingComponents(
   board: CompiledSearchBoard,
   singleBoxGraph?: SingleBoxPushGraph,

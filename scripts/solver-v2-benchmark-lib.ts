@@ -750,6 +750,7 @@ const FEATURE_EXERCISE_COUNTER: Readonly<
   tunnelMacros: "tunnelMacroApplications",
   goalCutHeuristic: "goalCutEvaluations",
   backwardPerimeter: "backwardPerimeterHits",
+  componentPdb: "componentPdbImprovements",
 });
 
 function median(values: readonly number[]): number {

@@ -60,6 +60,15 @@ import {
   buildBackwardPerimeter,
   type BackwardPerimeterTable,
 } from "./backward-perimeter.ts";
+import {
+  buildComponentPdbCollection,
+  type ComponentPdbCollection,
+} from "./component-pdb.ts";
+import {
+  analyzeMatchingComponents,
+  extractMatchingComponents,
+} from "./matching-components.ts";
+import { compileSingleBoxPushGraph } from "./single-box-push-graph.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
@@ -742,6 +751,38 @@ export async function runIdaStarSearch(
       featureTelemetry.corridorViableEdges = ps.corridorViableEdges;
     }
     throwIfSolverCancelled(context.signal);
+    let componentPdbCollection: ComponentPdbCollection | null = null;
+    if (features.componentPdb) {
+      const cpdbBudget: ExactPreprocessingBudget = {
+        ...preprocessingBudget,
+        baseMemoryBytes:
+          baseStaticMemoryBytes +
+          (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+          (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+          (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+          (perimeterTable?.stats.retainedBytes ?? 0),
+      };
+      const singleBoxGraph = compileSingleBoxPushGraph(board, cpdbBudget);
+      const matchingResult = analyzeMatchingComponents(board, singleBoxGraph);
+      const matchingComponents = extractMatchingComponents(board, matchingResult);
+      componentPdbCollection = buildComponentPdbCollection(
+        board,
+        matchingComponents,
+        { totalMaxStates: 500_000, maxStatesPerComponent: 200_000 },
+        cpdbBudget,
+        context.now,
+      );
+      const cs = componentPdbCollection.stats;
+      featureTelemetry.componentPdbBuildTimeMs = cs.componentPdbBuildTimeMs;
+      featureTelemetry.componentPdbRetainedBytes = cs.componentPdbRetainedBytes;
+      featureTelemetry.componentPdbPeakBuildBytes = cs.componentPdbPeakBuildBytes;
+      featureTelemetry.componentPdbComponents = matchingComponents.length;
+      if (!perimeterTable) {
+        featureTelemetry.matchingComponents = matchingResult.totalComponents;
+        featureTelemetry.matchingEliminatedEdges = matchingResult.eliminatedEdges;
+      }
+    }
+    throwIfSolverCancelled(context.signal);
 
     const linearConflict = (boxes: readonly DenseBox[]): number => {
       if (!features.linearConflict) return 0;
@@ -773,6 +814,20 @@ export async function runIdaStarSearch(
       if (dist === undefined) return 0;
       return dist;
     };
+    const componentPdbBoxesByLabel = new Map<string, number[]>();
+    const componentPdbLookup = (boxes: readonly DenseBox[]): number => {
+      if (!componentPdbCollection) return 0;
+      componentPdbBoxesByLabel.clear();
+      for (const box of boxes) {
+        let cells = componentPdbBoxesByLabel.get(box.label);
+        if (!cells) {
+          cells = [];
+          componentPdbBoxesByLabel.set(box.label, cells);
+        }
+        cells.push(box.cell);
+      }
+      return componentPdbCollection.evaluate(componentPdbBoxesByLabel);
+    };
     const computeH = (
       pushBound: number,
       lc: number,
@@ -792,6 +847,16 @@ export async function runIdaStarSearch(
           featureTelemetry.backwardPerimeterMaxImprovement = improvement;
         }
         totalPushBound = perimeterDist;
+      }
+      const componentBound = componentPdbLookup(boxes);
+      if (componentBound > totalPushBound) {
+        const improvement = componentBound - totalPushBound;
+        featureTelemetry.componentPdbImprovements++;
+        featureTelemetry.componentPdbTotalImprovement += improvement;
+        if (improvement > featureTelemetry.componentPdbMaxImprovement) {
+          featureTelemetry.componentPdbMaxImprovement = improvement;
+        }
+        totalPushBound = componentBound;
       }
       return totalPushBound + walkBound;
     };
@@ -818,7 +883,8 @@ export async function runIdaStarSearch(
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
       (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
-      (perimeterTable?.stats.retainedBytes ?? 0);
+      (perimeterTable?.stats.retainedBytes ?? 0) +
+      (componentPdbCollection?.retainedBytes ?? 0);
     const currentStaticMemoryBytes = () =>
       preprocessingStaticMemoryBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0);
@@ -898,6 +964,15 @@ export async function runIdaStarSearch(
       matchingEliminatedEdges: featureTelemetry.matchingEliminatedEdges,
       corridorViableCells: featureTelemetry.corridorViableCells,
       corridorViableEdges: featureTelemetry.corridorViableEdges,
+      componentPdbBuildTimeMs: featureTelemetry.componentPdbBuildTimeMs,
+      componentPdbRetainedBytes: featureTelemetry.componentPdbRetainedBytes,
+      componentPdbPeakBuildBytes: featureTelemetry.componentPdbPeakBuildBytes,
+      componentPdbComponents: featureTelemetry.componentPdbComponents,
+      componentPdbImprovements: featureTelemetry.componentPdbImprovements,
+      componentPdbTotalImprovement: featureTelemetry.componentPdbTotalImprovement,
+      componentPdbMaxImprovement: featureTelemetry.componentPdbMaxImprovement,
+      componentPdbPartitionQueries: componentPdbCollection?.stats.partitionQueries ?? 0,
+      componentPdbPartitionCacheHits: componentPdbCollection?.stats.partitionCacheHits ?? 0,
       hCacheHits,
       hCacheSize: hCache.size,
     });
@@ -1587,8 +1662,12 @@ export async function runIdaStarSearch(
             continue;
           }
           // Push bound is a cache hit (was evaluated in the !expanded block).
-          const expandedPushBound = heuristic.evaluate(frame.boxes);
+          let expandedPushBound = heuristic.evaluate(frame.boxes);
           heuristicCacheEntries = heuristic.stats.cacheEntries;
+          const expandedPerimeter = perimeterLookup(frame.boxes);
+          if (expandedPerimeter > expandedPushBound) expandedPushBound = expandedPerimeter;
+          const expandedComponentBound = componentPdbLookup(frame.boxes);
+          if (expandedComponentBound > expandedPushBound) expandedPushBound = expandedComponentBound;
           const hExpanded = expandedPushBound + expandedWalk;
           const fExpanded = frame.g + hExpanded;
           if (fExpanded >= U) {

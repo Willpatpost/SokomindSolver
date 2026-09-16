@@ -58,6 +58,15 @@ import {
   type BackwardPerimeterTable,
 } from "./backward-perimeter.ts";
 import {
+  buildComponentPdbCollection,
+  type ComponentPdbCollection,
+} from "./component-pdb.ts";
+import {
+  analyzeMatchingComponents,
+  extractMatchingComponents,
+} from "./matching-components.ts";
+import { compileSingleBoxPushGraph } from "./single-box-push-graph.ts";
+import {
   estimatedArenaMemoryBytes,
   fillDeadlockOccupancy,
   fillOccupancy,
@@ -436,11 +445,44 @@ export async function runExactMoveAStar(
       featureTelemetry.corridorViableEdges = ps.corridorViableEdges;
     }
     throwIfSolverCancelled(context.signal);
+    let componentPdbCollection: ComponentPdbCollection | null = null;
+    if (features.componentPdb) {
+      const cpdbBudget: ExactPreprocessingBudget = {
+        ...preprocessingBudget,
+        baseMemoryBytes:
+          baseStaticBytes +
+          (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
+          (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
+          (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+          (perimeterTable?.stats.retainedBytes ?? 0),
+      };
+      const singleBoxGraph = compileSingleBoxPushGraph(board, cpdbBudget);
+      const matchingResult = analyzeMatchingComponents(board, singleBoxGraph);
+      const matchingComponents = extractMatchingComponents(board, matchingResult);
+      componentPdbCollection = buildComponentPdbCollection(
+        board,
+        matchingComponents,
+        { totalMaxStates: 500_000, maxStatesPerComponent: 200_000 },
+        cpdbBudget,
+        context.now,
+      );
+      const cs = componentPdbCollection.stats;
+      featureTelemetry.componentPdbBuildTimeMs = cs.componentPdbBuildTimeMs;
+      featureTelemetry.componentPdbRetainedBytes = cs.componentPdbRetainedBytes;
+      featureTelemetry.componentPdbPeakBuildBytes = cs.componentPdbPeakBuildBytes;
+      featureTelemetry.componentPdbComponents = matchingComponents.length;
+      if (!perimeterTable) {
+        featureTelemetry.matchingComponents = matchingResult.totalComponents;
+        featureTelemetry.matchingEliminatedEdges = matchingResult.eliminatedEdges;
+      }
+    }
+    throwIfSolverCancelled(context.signal);
     const preprocessingStaticBytes = baseStaticBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
       (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
-      (perimeterTable?.stats.retainedBytes ?? 0);
+      (perimeterTable?.stats.retainedBytes ?? 0) +
+      (componentPdbCollection?.retainedBytes ?? 0);
     const currentStaticBytes = () =>
       preprocessingStaticBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0);
@@ -493,6 +535,20 @@ export async function runExactMoveAStar(
       if (dist === undefined) return 0;
       return dist;
     };
+    const componentPdbBoxesByLabel = new Map<string, number[]>();
+    const componentPdbLookup = (boxes: readonly DenseBox[]): number => {
+      if (!componentPdbCollection) return 0;
+      componentPdbBoxesByLabel.clear();
+      for (const box of boxes) {
+        let cells = componentPdbBoxesByLabel.get(box.label);
+        if (!cells) {
+          cells = [];
+          componentPdbBoxesByLabel.set(box.label, cells);
+        }
+        cells.push(box.cell);
+      }
+      return componentPdbCollection.evaluate(componentPdbBoxesByLabel);
+    };
     const computeH = (
       pushBound: number,
       lc: number,
@@ -501,6 +557,7 @@ export async function runExactMoveAStar(
       gc: number,
       walkBound: number,
       tokens: ArrayLike<number>,
+      boxes: readonly DenseBox[],
     ): number => {
       let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
       const perimeterDist = perimeterLookup(tokens);
@@ -512,6 +569,16 @@ export async function runExactMoveAStar(
           featureTelemetry.backwardPerimeterMaxImprovement = improvement;
         }
         totalPushBound = perimeterDist;
+      }
+      const componentBound = componentPdbLookup(boxes);
+      if (componentBound > totalPushBound) {
+        const improvement = componentBound - totalPushBound;
+        featureTelemetry.componentPdbImprovements++;
+        featureTelemetry.componentPdbTotalImprovement += improvement;
+        if (improvement > featureTelemetry.componentPdbMaxImprovement) {
+          featureTelemetry.componentPdbMaxImprovement = improvement;
+        }
+        totalPushBound = componentBound;
       }
       return totalPushBound + walkBound;
     };
@@ -573,7 +640,7 @@ export async function runExactMoveAStar(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
     const initialGoalCut = goalCut();
-    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens);
+    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens, initialBoxes);
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -632,6 +699,15 @@ export async function runExactMoveAStar(
       matchingEliminatedEdges: featureTelemetry.matchingEliminatedEdges,
       corridorViableCells: featureTelemetry.corridorViableCells,
       corridorViableEdges: featureTelemetry.corridorViableEdges,
+      componentPdbBuildTimeMs: featureTelemetry.componentPdbBuildTimeMs,
+      componentPdbRetainedBytes: featureTelemetry.componentPdbRetainedBytes,
+      componentPdbPeakBuildBytes: featureTelemetry.componentPdbPeakBuildBytes,
+      componentPdbComponents: featureTelemetry.componentPdbComponents,
+      componentPdbImprovements: featureTelemetry.componentPdbImprovements,
+      componentPdbTotalImprovement: featureTelemetry.componentPdbTotalImprovement,
+      componentPdbMaxImprovement: featureTelemetry.componentPdbMaxImprovement,
+      componentPdbPartitionQueries: componentPdbCollection?.stats.partitionQueries ?? 0,
+      componentPdbPartitionCacheHits: componentPdbCollection?.stats.partitionCacheHits ?? 0,
     });
 
     const metrics = () =>
@@ -1134,6 +1210,8 @@ export async function runExactMoveAStar(
         let expandedPushBound = heuristic.evaluate(expansionBoxes);
         const expandedPerimeter = perimeterLookup(parentTokenBuf);
         if (expandedPerimeter > expandedPushBound) expandedPushBound = expandedPerimeter;
+        const expandedComponentBound = componentPdbLookup(expansionBoxes);
+        if (expandedComponentBound > expandedPushBound) expandedPushBound = expandedComponentBound;
         const hExpanded = expandedPushBound + expandedWalk;
         if (nodeMoves + hExpanded >= U) {
           continue;
@@ -1236,7 +1314,7 @@ export async function runExactMoveAStar(
                 const walkBound = minimumManhattanWalkToPotentialPush(
                   board, savedCell, expansionBoxes,
                 );
-                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf);
+                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf, expansionBoxes);
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1413,7 +1491,7 @@ export async function runExactMoveAStar(
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
               );
-              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf);
+              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf, expansionBoxes);
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1538,7 +1616,7 @@ export async function runExactMoveAStar(
             savedCell,
             expansionBoxes,
           );
-          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf);
+          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf, expansionBoxes);
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
