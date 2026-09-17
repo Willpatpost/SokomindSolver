@@ -13,9 +13,9 @@ Current executable source takes precedence over historical benchmark reports.
 
 ## Fresh measurements and their limits
 
-[Raw audit evidence](benchmarks/solver-performance-audit-2026-09-16.json)
-preserves requests, returned routes, replay results, counters, environment,
-current CPU-profile summary, and the heuristic counterexample below.
+Raw audit evidence (requests, returned routes, replay results, counters,
+environment, CPU-profile summary, and the heuristic counterexample below)
+was collected during the initial performance audit session.
 
 Measurements used commit `9e6cbd2`, Sokomind 1.2.1, Node 24.14.0, an AMD Ryzen 7
 9800X3D with 16 logical processors and about 31.19 GiB reported system memory.
