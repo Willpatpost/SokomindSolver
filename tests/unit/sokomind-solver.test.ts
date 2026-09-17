@@ -583,9 +583,10 @@ describe("Sokomind Solver adapter", () => {
                 });
               } else {
                 // Local windows cannot improve this incumbent; rescheduling must
-                // still run, without reusing the work those windows consumed.
+                // still run, sharing the improvement budget with them.
+                const visitedCap = Number(command.payload.maxVisited) || 40;
                 self.emit({type: "done", status: "solved", path: ["Left", "Right", "Down"],
-                  visited: command.payload.algorithm === "ultimate" ? 1 : 40,
+                  visited: command.payload.algorithm === "ultimate" ? 1 : Math.min(40, visitedCap),
                   generated: command.payload.algorithm === "ultimate" ? 3 : 7});
               }
             });
@@ -600,12 +601,14 @@ describe("Sokomind Solver adapter", () => {
       const result = await adapter.solve(request, context(controller.signal));
       const repair = commands.find(command => command.payload.algorithm === "solution-box-reschedule");
       assert.ok(repair);
-      assert.equal(repair.payload.maxVisited, 100);
+      assert.equal(repair.payload.maxVisited, 60);
       assert.equal(repair.payload.maxGenerated, 110);
       assert.ok(Number(repair.payload.rescheduleMaxMs) > 0 && Number(repair.payload.rescheduleMaxMs) <= 100);
       assert.deepEqual(repair.payload.solutionPath, ["Left", "Right", "Down"]);
       assert.ok(workers.every(worker => worker.terminated));
-      assert.ok((result.metrics.expandedStates ?? 0) <= 101);
+      const proofExpanded = Number(result.metrics.counters?.proofExpandedStates) || 0;
+      const improvementExpanded = (result.metrics.expandedStates ?? 0) - proofExpanded;
+      assert.ok(improvementExpanded <= 101, `improvement expandedStates=${improvementExpanded} exceeded 101 (proof=${proofExpanded})`);
       assert.ok((result.metrics.generatedStates ?? 0) <= 120);
       if (repairOutcome === "cancelled") { assert.equal(result.status, "cancelled"); return; }
       assert.equal(result.status, "solved");

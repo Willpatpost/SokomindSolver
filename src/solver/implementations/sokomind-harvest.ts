@@ -509,6 +509,8 @@ export async function qualityAnytimeImprove(
     DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
   );
 
+  const improvementStartExpanded = aggregate(run).expandedStates;
+
   // ── Initial parallel rewrite wave on all diverse candidates ──────────
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
@@ -652,11 +654,15 @@ export async function qualityAnytimeImprove(
     const sliceMs = Math.min(DEFAULT_QUALITY_SLICE_MS, Math.floor(remainingMs / 2));
     if (sliceMs < 1) break;
 
+    const improvementConsumed = aggregate(run).expandedStates - improvementStartExpanded;
+    const remainingImprovementBudget = Math.max(0, configuredRewriteVisited - improvementConsumed);
+    if (remainingImprovementBudget < 1) break;
+
     const remainingRequest = withRemainingLimits(run);
     if (!remainingRequest) break;
 
     const perSliceVisited = Math.min(
-      configuredRewriteVisited,
+      remainingImprovementBudget,
       remainingRequest.limits?.maxExpandedStates ?? Infinity,
       currentOp === "window" && rescheduleEligible ? 50_000 : Infinity,
     );
