@@ -541,11 +541,14 @@ export async function runConcurrentProof(
       const now = context.now();
       if (!force && now - lastProgressAt < 100) return;
       lastProgressAt = now;
-      const { peakFrontierSize: _peak, ...metrics } = combinedMetrics();
+      const metrics = combinedMetrics();
       const lowerBound = Math.min(bestCost, ...trackers.map(partitionLowerBound));
       context.reportProgress({
         phase: "proving",
-        ...metrics,
+        elapsedMs: metrics.elapsedMs,
+        expandedStates: metrics.expandedStates,
+        generatedStates: metrics.generatedStates,
+        counters: metrics.counters,
         incumbent: {
           moves: bestCost,
           pushes: bestSolution.pushes,
