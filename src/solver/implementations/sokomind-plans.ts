@@ -449,6 +449,8 @@ export function diversifiedHarvestPlans(
   }));
 }
 
+const REWRITE_MEMORY_PER_WORKER = 512 * 1024 * 1024;
+
 export function sokomindRewriteConcurrency(
   maxWorkers: number,
   maxMemoryBytes: number | undefined,
@@ -457,9 +459,9 @@ export function sokomindRewriteConcurrency(
   const workers = Math.max(1, Math.floor(maxWorkers));
   const candidates = Math.max(0, Math.floor(candidateCount));
   if (candidates === 0) return 0;
-  const memory = maxMemoryBytes ?? Infinity;
-  const available = Math.max(0, memory - COORDINATOR_MEMORY_RESERVATION_BYTES);
-  const memoryBound = Math.max(1, Math.floor(available / WORKER_MEMORY_RESERVATION_BYTES));
+  const memoryBound = maxMemoryBytes === undefined
+    ? workers
+    : Math.max(1, Math.floor(maxMemoryBytes / REWRITE_MEMORY_PER_WORKER));
   return Math.max(1, Math.min(workers, memoryBound, candidates));
 }
 
