@@ -622,7 +622,7 @@ export async function qualityAnytimeImprove(
   type Operator = "window" | "box";
   const stalls: Record<Operator, number> = { window: 0, box: 0 };
   const MAX_STALLS = 3;
-  let currentOp: Operator = "window";
+  let currentOp: Operator = rewriteCount > 0 ? "box" : "window";
   let sliceIndex = 0;
 
   while (!run.context.signal.aborted) {
