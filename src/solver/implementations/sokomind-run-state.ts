@@ -54,6 +54,8 @@ export interface SearchRunState {
   solutionImprovements: number;
   suppressedImprovementErrors: number;
   suppressedHarvestErrors: number;
+  qualitySlicesCompleted: number;
+  qualityOperatorStalls: number;
   aggregateGeneration: number;
   cachedAggregate: AggregateSnapshot | null;
 }
@@ -228,6 +230,8 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
       initialSolutionMoves: run.initialSolutionMoves,
       bestSolutionMoves: run.bestSolutionMoves,
       solutionImprovements: run.solutionImprovements,
+      qualitySlicesCompleted: run.qualitySlicesCompleted,
+      qualityOperatorStalls: run.qualityOperatorStalls,
       ...laneCounters,
     }),
   });

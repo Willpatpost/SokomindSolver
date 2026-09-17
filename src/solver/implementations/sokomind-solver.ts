@@ -9,7 +9,7 @@ import type {
 } from "../contracts.ts";
 import { runClassicSearch } from "../search/engine.ts";
 import { BudgetTracker } from "./sokomind-budget-tracker.ts";
-import { harvestAndImprove, runProof } from "./sokomind-harvest.ts";
+import { harvestAndImprove, qualityAnytimeImprove, optimalQuickImprove, runProof } from "./sokomind-harvest.ts";
 import { solvedWithImprovement, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
 import {
   finiteNonNegative,
@@ -366,11 +366,24 @@ export function createSokomindSolverAdapter(
     t: Readonly<Record<string, number>>,
     mw: number,
     ap?: SokomindAnalysisPlan,
-  ): Promise<SolverResult> =>
-    harvestAndImprove(
+  ): Promise<SolverResult> => {
+    if (sokoOpts.mode === "quality") {
+      return qualityAnytimeImprove(
+        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
+        proofWorkerFactory, proofCheckpointOptions,
+      );
+    }
+    if (sokoOpts.mode === "optimal") {
+      return optimalQuickImprove(
+        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
+        proofWorkerFactory, proofCheckpointOptions,
+      );
+    }
+    return harvestAndImprove(
       r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
       proofWorkerFactory, proofCheckpointOptions,
     );
+  };
 
   return Object.freeze({
     metadata: sokomindSolverMetadata,
@@ -434,6 +447,8 @@ export function createSokomindSolverAdapter(
         solutionImprovements: 0,
         suppressedImprovementErrors: 0,
         suppressedHarvestErrors: 0,
+        qualitySlicesCompleted: 0,
+        qualityOperatorStalls: 0,
         aggregateGeneration: 1,
         cachedAggregate: null,
       };

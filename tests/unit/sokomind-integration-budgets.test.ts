@@ -40,7 +40,8 @@ function runState(request = requestFor()): SearchRunState {
     rejectedCandidates: 0, completedWorkers: 0, phaseTimeouts: 0, watchdogTimeouts: 0,
     lastProgressAt: -Infinity, progressPhase: "searching", initialSolutionMoves: 0,
     bestSolutionMoves: 0, solutionImprovements: 0, suppressedImprovementErrors: 0,
-    suppressedHarvestErrors: 0, aggregateGeneration: 1, cachedAggregate: null,
+    suppressedHarvestErrors: 0, qualitySlicesCompleted: 0, qualityOperatorStalls: 0,
+    aggregateGeneration: 1, cachedAggregate: null,
   };
 }
 

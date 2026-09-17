@@ -42,6 +42,11 @@ export function defaultImprovementMaxVisited(maxMemoryBytes?: number): number {
 export const DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS = 45_000;
 export const DEFAULT_IMPROVEMENT_MINIMUM_MOVES = 100;
 
+export const DEFAULT_QUALITY_SLICE_MS = 10_000;
+export const DEFAULT_OPTIMAL_HARVEST_MS = 3_000;
+export const OPTIMAL_REWRITE_TIME_SHARE = 0.15;
+export const OPTIMAL_RESCHEDULE_TIME_SHARE = 0.10;
+
 export interface EnginePlan {
   readonly id: string;
   readonly label: string;
