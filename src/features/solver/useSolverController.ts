@@ -20,6 +20,8 @@ export const MEMORY_LIMIT_OPTIONS = Object.freeze([
   { value: 384, label: "Low memory (384 MiB)" },
   { value: 768, label: "Desktop (768 MiB)" },
   { value: 1_536, label: "Large desktop (1.5 GiB)" },
+  { value: 3_072, label: "High memory (3 GiB)" },
+  { value: 4_096, label: "Maximum (4 GiB)" },
 ] as const);
 
 interface UseSolverControllerOptions {

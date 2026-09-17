@@ -169,6 +169,7 @@ function createMetrics(
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
+      cheapCutoffs: counters.cheapCutoffs,
       reopens: counters.reopens,
       reachabilityFloods: counters.reachabilityFloods,
       avoidedReachabilityFloods: counters.avoidedReachabilityFloods,
@@ -278,6 +279,7 @@ export async function runExactMoveAStar(
     reachabilityFloods: 0,
     avoidedReachabilityFloods: 0,
     incrementalCanonicalCells: 0,
+    cheapCutoffs: 0,
     retainedBytes: 0,
     peakFrontier: 0,
     maxDepth: 0,
@@ -401,10 +403,13 @@ export async function runExactMoveAStar(
     const packBoxKey = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey });
+    const totalBudgetMs = request.limits?.maxElapsedMs ?? Infinity;
+    const pdbDeadline = Math.min(deadline, startedAt + 0.25 * totalBudgetMs);
     const pdbStartedAt = context.now();
     const pdbEvaluator = features.patternDatabase
       ? await PdbHeuristicEvaluator.createAsync(board, context.signal, {
           ...preprocessingBudget,
+          deadline: pdbDeadline,
           baseMemoryBytes:
             baseStaticBytes +
             (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
@@ -530,10 +535,10 @@ export async function runExactMoveAStar(
       featureTelemetry.linearConflictTotal += value;
       return value;
     };
-    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null): number => {
+    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null, boxKey?: bigint): number => {
       if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
+      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey);
     };
     const goalCut = (): number => {
       if (!goalCutEvaluator) return 0;
@@ -671,7 +676,8 @@ export async function runExactMoveAStar(
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
+    const initialBoxKey = packBoxKey(initialBoxes);
+    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts, initialBoxKey);
     const initialGoalCut = goalCut();
     const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens, initialBoxes, initialRobot);
     lastLowerBound = initialH;
@@ -691,6 +697,8 @@ export async function runExactMoveAStar(
       pdbTableEntries: featureTelemetry.pdbTableEntries,
       pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
+      pdbCacheHits: pdbEvaluator?.surplusCacheStats.hits ?? 0,
+      pdbCacheMisses: pdbEvaluator?.surplusCacheStats.misses ?? 0,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
       corralOrderingChecks: corralOrderer?.stats.checks ?? 0,
@@ -1341,6 +1349,12 @@ export async function runExactMoveAStar(
                 break searchLoop;
               }
               if (Number.isFinite(pushLowerBound)) {
+                const walkBound = minimumManhattanWalkToPotentialPush(
+                  board, savedCell, expansionBoxes,
+                );
+                if (childMoves + pushLowerBound + walkBound >= U) {
+                  counters.cheapCutoffs += 1;
+                } else {
                 const labelCosts = heuristic.lastLabelCosts;
                 const interactionBoost = labelCosts && boostEvaluator
                   ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey)
@@ -1349,11 +1363,8 @@ export async function runExactMoveAStar(
                   counters.interactionBoostTotal += interactionBoost;
                 }
                 const fpLinearConflict = linearConflict(expansionBoxes);
-                const fpPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
+                const fpPdbBoost = pdbSurplus(expansionBoxes, labelCosts, childBoxKey);
                 const fpGoalCut = goalCut();
-                const walkBound = minimumManhattanWalkToPotentialPush(
-                  board, savedCell, expansionBoxes,
-                );
                 const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell);
                 const f = childMoves + h;
 
@@ -1374,6 +1385,7 @@ export async function runExactMoveAStar(
                     (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
                     break searchLoop;
                   }
+                }
                 }
               } else {
                 counters.infeasiblePrunes += 1;
@@ -1526,7 +1538,7 @@ export async function runExactMoveAStar(
                 : 0;
               if (tInteractionBoost > 0) counters.interactionBoostTotal += tInteractionBoost;
               const tLC = linearConflict(expansionBoxes);
-              const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts);
+              const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts, tChildBoxKey);
               const tGoalCut = goalCut();
               const tWalkBound = minimumManhattanWalkToPotentialPush(
                 board, stop.robotCell, expansionBoxes,
@@ -1648,7 +1660,7 @@ export async function runExactMoveAStar(
           if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
           const childLinearConflict = linearConflict(expansionBoxes);
-          const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts);
+          const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts, childBoxKey);
           const childGoalCut = goalCut();
 
           const walkBound = minimumManhattanWalkToPotentialPush(

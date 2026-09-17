@@ -46,6 +46,7 @@ export interface SearchCounters {
   reachabilityFloods: number;
   avoidedReachabilityFloods: number;
   incrementalCanonicalCells: number;
+  cheapCutoffs: number;
   retainedBytes: number;
   peakFrontier: number;
   maxDepth: number;

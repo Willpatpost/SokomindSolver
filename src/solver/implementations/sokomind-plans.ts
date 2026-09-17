@@ -12,11 +12,36 @@ import {
 import { extractSokomindOptions, type SokomindRequestOptions } from "./sokomind-options.ts";
 import type { SokomindTuningProfile } from "./sokomind-tuning.ts";
 
-export const DEFAULT_MAX_ENGINE_WORKERS = 6;
+export const DEFAULT_MAX_ENGINE_WORKERS = 12;
 
 export const MEMORY_TIER_LOW = 384 * 1024 * 1024;
 export const MEMORY_TIER_MEDIUM = 768 * 1024 * 1024;
 export const MEMORY_TIER_HIGH = 1_536 * 1024 * 1024;
+
+export const WORKER_MEMORY_RESERVATION_BYTES = 256 * 1024 * 1024;
+export const COORDINATOR_MEMORY_RESERVATION_BYTES = 128 * 1024 * 1024;
+
+export type WorkerLimitReason = "hardware" | "memory" | "cap";
+
+export interface EffectiveWorkerResult {
+  readonly count: number;
+  readonly limitedBy: WorkerLimitReason;
+}
+
+export function effectiveWorkerCount(
+  totalMemoryBytes: number,
+  hardwareConcurrency: number,
+): EffectiveWorkerResult {
+  const available = Math.max(0, totalMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES);
+  const memoryBound = Math.max(1, Math.floor(available / WORKER_MEMORY_RESERVATION_BYTES));
+  const hardwareBound = Math.max(1, hardwareConcurrency - 1 || 1);
+  const count = Math.max(1, Math.min(DEFAULT_MAX_ENGINE_WORKERS, hardwareBound, memoryBound));
+  const limitedBy: WorkerLimitReason =
+    count === DEFAULT_MAX_ENGINE_WORKERS ? "cap"
+    : count === memoryBound && memoryBound <= hardwareBound ? "memory"
+    : "hardware";
+  return { count, limitedBy };
+}
 
 export const TRANSPOSITION_LIMIT_LOW = 24_000;
 export const TRANSPOSITION_LIMIT_MEDIUM = 36_000;
@@ -433,11 +458,8 @@ export function sokomindRewriteConcurrency(
   const candidates = Math.max(0, Math.floor(candidateCount));
   if (candidates === 0) return 0;
   const memory = maxMemoryBytes ?? Infinity;
-  const memoryBound = memory <= MEMORY_TIER_MEDIUM
-    ? 1
-    : memory <= MEMORY_TIER_HIGH
-      ? 2
-      : DEFAULT_MAX_ENGINE_WORKERS;
+  const available = Math.max(0, memory - COORDINATOR_MEMORY_RESERVATION_BYTES);
+  const memoryBound = Math.max(1, Math.floor(available / WORKER_MEMORY_RESERVATION_BYTES));
   return Math.max(1, Math.min(workers, memoryBound, candidates));
 }
 

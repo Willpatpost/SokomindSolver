@@ -205,6 +205,7 @@ interface SearchCounters {
   commitmentSkips: number;
   interactionBoostTotal: number;
   infeasiblePrunes: number;
+  cheapCutoffs: number;
   reachabilityFloods: number;
   peakStackDepth: number;
   maxDepth: number;
@@ -422,6 +423,7 @@ function createMetrics(
       commitmentSkips: counters.commitmentSkips,
       interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
+      cheapCutoffs: counters.cheapCutoffs,
       reopens: 0,
       reachabilityFloods: counters.reachabilityFloods,
       identityFloods: 0,
@@ -534,6 +536,7 @@ export async function runIdaStarSearch(
     commitmentSkips: 0,
     interactionBoostTotal: 0,
     infeasiblePrunes: 0,
+    cheapCutoffs: 0,
     reachabilityFloods: 0,
     peakStackDepth: 0,
     maxDepth: 0,
@@ -704,10 +707,13 @@ export async function runIdaStarSearch(
     const packBoxKeyFromBoxes = (boxes: readonly DenseBox[]) =>
       exactCodec.packBoxTokens(exactCodec.tokensFromBoxes(boxes));
     const heuristic = new AssignmentHeuristic(board, { packBoxKey: packBoxKeyFromBoxes });
+    const totalBudgetMs = request.limits?.maxElapsedMs ?? Infinity;
+    const pdbDeadline = Math.min(deadline, startedAt + 0.25 * totalBudgetMs);
     const pdbStartedAt = context.now();
     const pdbEvaluator = features.patternDatabase
       ? await PdbHeuristicEvaluator.createAsync(board, context.signal, {
           ...preprocessingBudget,
+          deadline: pdbDeadline,
           baseMemoryBytes:
             baseStaticMemoryBytes +
             (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
@@ -810,10 +816,10 @@ export async function runIdaStarSearch(
       featureTelemetry.linearConflictTotal += value;
       return value;
     };
-    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null): number => {
+    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null, boxKey?: bigint): number => {
       if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts);
+      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey);
     };
     const goalCut = (): number => {
       if (!goalCutEvaluator) return 0;
@@ -957,6 +963,8 @@ export async function runIdaStarSearch(
       pdbTableEntries: featureTelemetry.pdbTableEntries,
       pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
+      pdbCacheHits: pdbEvaluator?.surplusCacheStats.hits ?? 0,
+      pdbCacheMisses: pdbEvaluator?.surplusCacheStats.misses ?? 0,
       forcedPushMacroChecks: macroDetector?.stats.checks ?? 0,
       piCorralChecks: corralDetector?.stats.checks ?? 0,
       corralOrderingChecks: corralOrderer?.stats.checks ?? 0,
@@ -1239,7 +1247,7 @@ export async function runIdaStarSearch(
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts);
+    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts, packBoxKeyFromBoxes(initialBoxes));
     const initialGoalCut = goalCut();
     const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
@@ -1468,26 +1476,32 @@ export async function runIdaStarSearch(
               continue;
             }
 
+            const hWalk = minimumManhattanWalkToPotentialPush(
+              board,
+              frame.robot,
+              frame.boxes,
+            );
+            if (frame.g + hPush + hWalk > fLimit) {
+              counters.cheapCutoffs += 1;
+              h = hPush + hWalk;
+            } else {
             const labelCosts = heuristic.lastLabelCosts;
+            const boxKey = packBoxKeyFromBoxes(frame.boxes);
             const interactionBoost = labelCosts && boostEvaluator
               ? boostEvaluator.evaluate(
                   frame.boxes,
                   labelCosts,
-                  packBoxKeyFromBoxes(frame.boxes),
+                  boxKey,
                 )
               : 0;
             if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
             const linearConflictBoost = linearConflict(frame.boxes);
 
-            const hWalk = minimumManhattanWalkToPotentialPush(
-              board,
-              frame.robot,
-              frame.boxes,
-            );
-            const pdbBoost = pdbSurplus(frame.boxes, labelCosts);
+            const pdbBoost = pdbSurplus(frame.boxes, labelCosts, boxKey);
             const goalCutBoost = goalCut();
             h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot);
+            }
 
             const oldHCacheSize = hCache.size;
             hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h });

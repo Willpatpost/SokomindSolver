@@ -24,12 +24,10 @@ import { extractSokomindOptions } from "./sokomind-options.ts";
 import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
 import { runPhase } from "./sokomind-phase-runner.ts";
 import {
-  DEFAULT_MAX_ENGINE_WORKERS,
-  MEMORY_TIER_HIGH,
-  MEMORY_TIER_MEDIUM,
   bidirectionalPlans,
   checkpointContinuationPlans,
   discoveryPlans,
+  effectiveWorkerCount,
   preparationPlan,
   reverseLaneCount,
   structuralPlan,
@@ -130,26 +128,8 @@ function configuredWorkerCount(
         2,
     ),
   );
-  const memoryGb =
-    options.deviceMemoryGb ??
-    (
-      globalThis.navigator as Navigator & {
-        readonly deviceMemory?: number;
-      }
-    )?.deviceMemory;
   const declaredMemoryBytes = request.limits?.maxMemoryBytes ?? Infinity;
-  const memoryBound =
-    declaredMemoryBytes <= MEMORY_TIER_MEDIUM ||
-    (memoryGb !== undefined && memoryGb <= 4)
-      ? 1
-      : declaredMemoryBytes <= MEMORY_TIER_HIGH ||
-          (memoryGb !== undefined && memoryGb <= 8)
-        ? 2
-        : DEFAULT_MAX_ENGINE_WORKERS;
-  return Math.max(
-    1,
-    Math.min(DEFAULT_MAX_ENGINE_WORKERS, hardware - 1 || 1, memoryBound),
-  );
+  return effectiveWorkerCount(declaredMemoryBytes, hardware).count;
 }
 
 function structuralHeadStartMs(run: SearchRunState): number {

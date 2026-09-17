@@ -18,8 +18,15 @@ import {
   generateCandidatePatterns,
   probeAndSelectPatterns,
   PatternWalkWorkspace,
+  precomputeBinomials,
+  rankCombination,
+  unrankCombination,
   type MoveCostPattern,
 } from "../../src/solver/search/move-cost-pattern-pdb.ts";
+import {
+  exactRemainingMoves,
+  allReachableStates,
+} from "../support/exact-solver-oracle.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import type {
   SolverExecutionContext,
@@ -945,6 +952,166 @@ describe("move-cost-pattern-pdb", () => {
         value <= exact,
         `Probed collection value ${value} must be <= exact ${exact}`,
       );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Rank/unrank round-trip
+  // -----------------------------------------------------------------------
+  describe("rank/unrank round-trip", () => {
+    it("round-trips every valid rank for small spaces", () => {
+      for (const [m, k] of [[8, 2], [8, 3], [8, 4], [6, 2], [6, 3]] as const) {
+        const binom = precomputeBinomials(m, k);
+        const totalRanks = Math.round(binom[m][k]);
+        const combo = new Uint16Array(k);
+        const reranked = new Uint16Array(k);
+
+        for (let r = 0; r < totalRanks; r++) {
+          unrankCombination(r, m, k, binom, combo);
+
+          for (let i = 1; i < k; i++) {
+            assert.ok(
+              combo[i] > combo[i - 1],
+              `unrank(${r}, m=${m}, k=${k}) not strictly ascending: [${combo}]`,
+            );
+          }
+          assert.ok(
+            combo[k - 1] < m,
+            `unrank(${r}, m=${m}, k=${k}) out of range: [${combo}]`,
+          );
+
+          const roundTripped = rankCombination(combo, k, binom);
+          assert.equal(
+            roundTripped, r,
+            `rank(unrank(${r})) = ${roundTripped} for m=${m}, k=${k}`,
+          );
+        }
+
+        const allCombos: number[][] = [];
+        function enumerate(start: number, depth: number, current: number[]): void {
+          if (depth === k) { allCombos.push([...current]); return; }
+          for (let c = start; c < m; c++) {
+            current.push(c);
+            enumerate(c + 1, depth + 1, current);
+            current.pop();
+          }
+        }
+        enumerate(0, 0, []);
+
+        assert.equal(allCombos.length, totalRanks, `C(${m},${k}) count mismatch`);
+
+        for (const combo of allCombos) {
+          const arr = Uint16Array.from(combo);
+          const rank = rankCombination(arr, k, binom);
+          unrankCombination(rank, m, k, binom, reranked);
+          assert.deepEqual(
+            [...reranked], combo,
+            `unrank(rank([${combo}])) failed for m=${m}, k=${k}`,
+          );
+        }
+      }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Roadmap counterexample — boxes at cellAt(2,2) and cellAt(2,3),
+  // robot at cellAt(1,3) — a mid-game state, not the initial position
+  // -----------------------------------------------------------------------
+  describe("roadmap counterexample", () => {
+    it("MC-PDB value does not exceed oracle on the 2-box reproducer", () => {
+      const rows = [
+        "OOOOOOO",
+        "O  R  O",
+        "O S   O",
+        "O S   O",
+        "O XX  O",
+        "OOOOOOO",
+      ];
+      const board = compileBoard(rows);
+      const initialBoxes = getBoxes(board, rows);
+      const label = initialBoxes[0].label;
+
+      const testBoxes: DenseBox[] = [
+        { id: "box-1", label, cell: board.cellAt(2, 2) },
+        { id: "box-2", label, cell: board.cellAt(2, 3) },
+      ];
+      const testRobot = board.cellAt(1, 3);
+
+      const patterns = selectGoalPatterns(board);
+      assert.ok(patterns.length > 0, "should find a pattern for this board");
+
+      const pattern = patterns[0];
+      const pdb = buildMoveCostPatternPdb(board, pattern, {
+        maxSettledStates: 100_000,
+        maxBuildMs: 5_000,
+        maxUsefulDistance: 80,
+      });
+
+      const workspace = new PatternWalkWorkspace(board.cellCount);
+      const sortedCells = Uint16Array.from(testBoxes.map(b => b.cell)).sort();
+      const pdbValue = evaluateMoveCostPattern(
+        board, pdb, sortedCells, testRobot, workspace,
+      );
+
+      const oracleResult = exactRemainingMoves(board, testRobot, testBoxes);
+      assert.ok(oracleResult.exactMoves !== null, "oracle should solve from this state");
+      assert.ok(
+        pdbValue <= oracleResult.exactMoves!,
+        `MC-PDB ${pdbValue} exceeds oracle ${oracleResult.exactMoves} — inadmissible`,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Exhaustive admissibility on all reachable states of a 2-box board
+  // -----------------------------------------------------------------------
+  describe("exhaustive 2-box admissibility", () => {
+    it("MC-PDB <= oracle for every reachable state", () => {
+      const rows = [
+        "OOOOOOO",
+        "OS   SO",
+        "O X X O",
+        "O  R  O",
+        "OOOOOOO",
+      ];
+      const board = compileBoard(rows);
+      const boxes = getBoxes(board, rows);
+      const robotCell = getRobotCell(board, rows);
+
+      const patterns = selectGoalPatterns(board);
+      assert.ok(patterns.length > 0);
+
+      const pattern = patterns[0];
+      const pdb = buildMoveCostPatternPdb(board, pattern, {
+        maxSettledStates: 1_000_000,
+        maxBuildMs: 10_000,
+        maxUsefulDistance: 200,
+      });
+
+      const workspace = new PatternWalkWorkspace(board.cellCount);
+      const stateMap = allReachableStates(board, robotCell, boxes);
+      let violations = 0;
+
+      for (const state of stateMap.values()) {
+        const sortedCells = Uint16Array.from(
+          state.boxes.map(b => b.cell),
+        ).sort();
+        const pdbValue = evaluateMoveCostPattern(
+          board, pdb, sortedCells, state.robot, workspace,
+        );
+
+        if (state.exactMoves === null) continue;
+
+        if (pdbValue > state.exactMoves) {
+          violations++;
+          assert.fail(
+            `Inadmissible at robot=${state.robot} boxes=[${sortedCells}]: ` +
+            `MC-PDB=${pdbValue} > oracle=${state.exactMoves}`,
+          );
+        }
+      }
+
+      assert.equal(violations, 0, `${violations} admissibility violations found`);
     });
   });
 });

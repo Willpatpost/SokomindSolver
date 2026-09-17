@@ -41,7 +41,8 @@ export function automaticMemoryLimitBytes(): number {
   if (memoryGb === undefined) return 768 * MEBIBYTE;
   if (memoryGb <= 4) return 384 * MEBIBYTE;
   if (memoryGb <= 8) return 768 * MEBIBYTE;
-  return 1_536 * MEBIBYTE;
+  if (memoryGb <= 16) return 2_048 * MEBIBYTE;
+  return 4_096 * MEBIBYTE;
 }
 
 export function errorMessage(error: unknown): string {

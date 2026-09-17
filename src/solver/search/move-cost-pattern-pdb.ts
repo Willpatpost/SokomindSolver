@@ -179,22 +179,20 @@ function rankCombination(
 
 function unrankCombination(
   rank: number,
-  m: number,
+  _m: number,
   k: number,
   binom: Float64Array[],
   out: Uint16Array,
 ): void {
   let r = rank;
-  let last = -1;
-  for (let i = 0; i < k; i++) {
-    for (let c = last + 1; c < m; c++) {
+  for (let i = k - 1; i >= 0; i--) {
+    for (let c = i; ; c++) {
       const b = binom[c][i + 1];
-      if (r < b) {
-        out[i] = c;
-        last = c;
+      if (b > r) {
+        out[i] = c - 1;
+        r -= binom[c - 1][i + 1];
         break;
       }
-      r -= b;
     }
   }
 }
@@ -495,15 +493,18 @@ export function buildMoveCostPatternPdb(
           const prevRI = cellToRegionIndex[prevCell];
           if (prevRI < 0) continue;
 
-          const supportCell = nbrs[d];
+          const prevNbrs = board.neighbors[prevCell];
+          if (!prevNbrs) continue;
+          const supportCell = prevNbrs[OPPOSITE_DIRECTION[d]];
           if (supportCell < 0) continue;
 
           let prevOccupied = false;
           let supportOccupied = false;
           for (let j = 0; j < k; j++) {
             if (j === b) continue;
-            if (scratchBoxCells[j] === prevCell) { prevOccupied = true; break; }
-            if (scratchBoxCells[j] === supportCell) { supportOccupied = true; break; }
+            if (scratchBoxCells[j] === prevCell) prevOccupied = true;
+            if (scratchBoxCells[j] === supportCell) supportOccupied = true;
+            if (prevOccupied || supportOccupied) break;
           }
           if (prevOccupied || supportOccupied) continue;
 
@@ -1154,4 +1155,4 @@ export function probeAndSelectPatterns(
 // Re-export workspace for tests
 // ---------------------------------------------------------------------------
 
-export { PatternWalkWorkspace };
+export { PatternWalkWorkspace, precomputeBinomials, rankCombination, unrankCombination };

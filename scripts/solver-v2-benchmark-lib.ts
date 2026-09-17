@@ -73,6 +73,27 @@ export const SOKOMIND_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
+export const PRODUCTION_FAST_LIMITS: Readonly<SolverLimits> = Object.freeze({
+  maxElapsedMs: 30_000,
+  maxExpandedStates: 500_000,
+  maxGeneratedStates: 5_000_000,
+  maxMemoryBytes: 4 * 1024 * 1024 * 1024,
+});
+
+export const PRODUCTION_QUALITY_LIMITS: Readonly<SolverLimits> = Object.freeze({
+  maxElapsedMs: 60_000,
+  maxExpandedStates: 500_000,
+  maxGeneratedStates: 5_000_000,
+  maxMemoryBytes: 4 * 1024 * 1024 * 1024,
+});
+
+export const PRODUCTION_OPTIMAL_LIMITS: Readonly<SolverLimits> = Object.freeze({
+  maxElapsedMs: 120_000,
+  maxExpandedStates: 500_000,
+  maxGeneratedStates: 5_000_000,
+  maxMemoryBytes: 4 * 1024 * 1024 * 1024,
+});
+
 export const BENCHMARK_PROFILE_IDS = Object.freeze([
   "sokomind-fast",
   "sokomind-quality",
@@ -80,6 +101,9 @@ export const BENCHMARK_PROFILE_IDS = Object.freeze([
   "sokomind-optimal-ida",
   "classic-astar",
   "classic-ida-star",
+  "production-fast",
+  "production-quality",
+  "production-optimal",
 ] as const);
 
 export type BenchmarkProfileId = (typeof BENCHMARK_PROFILE_IDS)[number];
@@ -94,6 +118,7 @@ export interface BenchmarkProfile {
   readonly classicEligibleOnly: boolean;
   readonly limits: Readonly<SolverLimits>;
   readonly sokomindOptions?: SokomindRequestOptions;
+  readonly qualityMoveThreshold?: number;
 }
 
 function productionSokomindOptions(
@@ -175,6 +200,40 @@ export const BENCHMARK_PROFILES: Readonly<
     requiresKnownOptimum: true,
     classicEligibleOnly: true,
     limits: CLASSIC_LIMITS,
+  }),
+  "production-fast": Object.freeze({
+    id: "production-fast",
+    solverId: sokomindSolverMetadata.id,
+    solverVersion: sokomindSolverMetadata.version,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
+    requiresKnownOptimum: false,
+    classicEligibleOnly: false,
+    limits: PRODUCTION_FAST_LIMITS,
+    sokomindOptions: productionSokomindOptions("fast", "auto"),
+  }),
+  "production-quality": Object.freeze({
+    id: "production-quality",
+    solverId: sokomindSolverMetadata.id,
+    solverVersion: sokomindSolverMetadata.version,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
+    requiresKnownOptimum: false,
+    classicEligibleOnly: false,
+    limits: PRODUCTION_QUALITY_LIMITS,
+    sokomindOptions: productionSokomindOptions("quality", "auto"),
+    qualityMoveThreshold: 1.1,
+  }),
+  "production-optimal": Object.freeze({
+    id: "production-optimal",
+    solverId: sokomindSolverMetadata.id,
+    solverVersion: sokomindSolverMetadata.version,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
+    requiresKnownOptimum: true,
+    classicEligibleOnly: false,
+    limits: PRODUCTION_OPTIMAL_LIMITS,
+    sokomindOptions: productionSokomindOptions("optimal", "auto"),
   }),
 });
 
@@ -488,6 +547,8 @@ export interface BenchmarkSample {
   readonly accepted: boolean;
   readonly featureUnderTest?: ExactSearchFeatureKey;
   readonly featureEnabled?: boolean;
+  readonly firstSolutionMs?: number;
+  readonly incumbentHistory?: readonly { moves: number; elapsedMs: number }[];
 }
 
 export interface BenchmarkFeatureRun {
@@ -517,6 +578,9 @@ function profileAdapter(profileId: BenchmarkProfileId, tuningRun?: BenchmarkTuni
     case "sokomind-quality":
     case "sokomind-optimal-astar":
     case "sokomind-optimal-ida":
+    case "production-fast":
+    case "production-quality":
+    case "production-optimal":
       return createNodeSolverAdapter({tuning: tuningRun?.profile});
   }
 }
@@ -556,7 +620,10 @@ export async function runBenchmarkSample(
   featureRun?: BenchmarkFeatureRun,
   tuningRun?: BenchmarkTuningRun,
 ): Promise<BenchmarkSample> {
-  if (tuningRun && (featureRun || (profile.id !== "sokomind-fast" && profile.id !== "sokomind-quality"))) {
+  const tuningEligible =
+    profile.id === "sokomind-fast" || profile.id === "sokomind-quality" ||
+    profile.id === "production-fast" || profile.id === "production-quality";
+  if (tuningRun && (featureRun || !tuningEligible)) {
     throw new Error("Tuning experiments require a Sokomind discovery profile without exact feature comparisons");
   }
   const request = benchmarkRequest(fixture, profile);
@@ -665,12 +732,34 @@ export async function runBenchmarkSample(
       ? undefined
       : knownOutcome.kind === "solved" &&
         result.solution.moves === knownOutcome.moves;
-    const accepted = verification.valid &&
-      (!profile.requiresKnownOptimum ||
-        (knownOutcome?.kind === "solved" &&
-          result.solution.optimality === "proven" &&
-          proofValid &&
-          matchesKnownOptimum === true));
+    let accepted: boolean;
+    let qualityDetail: string | undefined;
+    if (profile.qualityMoveThreshold !== undefined) {
+      const threshold = profile.qualityMoveThreshold;
+      const moves = result.solution.moves;
+      const lb = result.proof?.lowerBound ?? base.lowerBound;
+      const withinKnown = knownOutcome?.kind === "solved" &&
+        moves <= Math.floor(threshold * knownOutcome.moves);
+      const withinBound = typeof lb === "number" && lb > 0 &&
+        lb >= Math.ceil(moves / threshold);
+      accepted = verification.valid && (withinKnown || withinBound);
+      if (!accepted) {
+        qualityDetail = !verification.valid
+          ? verification.message
+          : !withinKnown && !withinBound
+            ? knownOutcome?.kind === "solved"
+              ? `${moves} moves exceeds ${Math.floor(threshold * knownOutcome.moves)}-move quality ceiling`
+              : `Lower bound ${lb ?? "unknown"} insufficient to certify ${moves}-move solution within ${Math.round((threshold - 1) * 100)}%`
+            : undefined;
+      }
+    } else {
+      accepted = verification.valid &&
+        (!profile.requiresKnownOptimum ||
+          (knownOutcome?.kind === "solved" &&
+            result.solution.optimality === "proven" &&
+            proofValid &&
+            matchesKnownOptimum === true));
+    }
     return Object.freeze({
       ...base,
       status: "solved" as const,
@@ -683,15 +772,16 @@ export async function runBenchmarkSample(
       accepted,
       ...(!accepted
         ? {
-            detail: !verification.valid
-              ? verification.message
-              : knownOutcome === undefined
-                ? "No independent frozen outcome is available"
-                : knownOutcome.kind === "unsolvable"
-                  ? "Independent truth marks this fixture unsolvable"
-                  : !proofValid
-                    ? "Expected a structurally valid optimal proof"
-                    : `Expected the frozen ${knownOutcome.moves}-move optimum`,
+            detail: qualityDetail ??
+              (!verification.valid
+                ? verification.message
+                : knownOutcome === undefined
+                  ? "No independent frozen outcome is available"
+                  : knownOutcome.kind === "unsolvable"
+                    ? "Independent truth marks this fixture unsolvable"
+                    : !proofValid
+                      ? "Expected a structurally valid optimal proof"
+                      : `Expected the frozen ${knownOutcome.moves}-move optimum`),
           }
         : {}),
     });

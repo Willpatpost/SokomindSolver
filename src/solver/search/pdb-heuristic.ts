@@ -7,7 +7,7 @@ import {
   UNSOLVED as PDB_UNSOLVED,
   type PatternDatabase,
 } from "./pattern-database.ts";
-import type { ExactPreprocessingBudget } from "./preprocessing-budget.ts";
+import { isExactPreprocessingLimitError, type ExactPreprocessingBudget } from "./preprocessing-budget.ts";
 
 function minSubsetLookup(
   pdb: PatternDatabase,
@@ -42,6 +42,8 @@ function minSubsetLookup(
   return minValue;
 }
 
+const SURPLUS_CACHE_CAP = 50_000;
+
 /** Pattern-database evaluator with reusable hot-path buffers. */
 export class PdbHeuristicEvaluator {
   readonly #pdbs: readonly PatternDatabase[];
@@ -50,6 +52,9 @@ export class PdbHeuristicEvaluator {
   readonly #cellsByLabel: number[][] = [];
   readonly #subsetIndices: number[] = [];
   readonly #subsetCells: number[] = [];
+  readonly #surplusCache = new Map<bigint, number>();
+  #cacheHits = 0;
+  #cacheMisses = 0;
 
   constructor(board: CompiledSearchBoard);
   constructor(partitions: readonly GoalPartition[], pdbs: readonly PatternDatabase[]);
@@ -78,21 +83,28 @@ export class PdbHeuristicEvaluator {
   static async createAsync(board: CompiledSearchBoard, signal: AbortSignal, budget?: ExactPreprocessingBudget): Promise<PdbHeuristicEvaluator> {
     const partitions = partitionGoals(board);
     const pdbs: PatternDatabase[] = [];
-    for (const partition of partitions) {
-      const retainedBytes = pdbs.reduce((sum, pdb) => sum + pdb.estimatedRetainedBytes, 0);
-      pdbs.push(await buildPatternDatabaseAsync(board, {
-        goalCells: partition.goalCells,
-        labelIds: partition.labels,
-        regionCells: partition.regionCells,
-      }, signal, budget ? { ...budget, baseMemoryBytes: budget.baseMemoryBytes + retainedBytes } : undefined));
+    try {
+      for (const partition of partitions) {
+        const retainedBytes = pdbs.reduce((sum, pdb) => sum + pdb.estimatedRetainedBytes, 0);
+        pdbs.push(await buildPatternDatabaseAsync(board, {
+          goalCells: partition.goalCells,
+          labelIds: partition.labels,
+          regionCells: partition.regionCells,
+        }, signal, budget ? { ...budget, baseMemoryBytes: budget.baseMemoryBytes + retainedBytes } : undefined));
+      }
+    } catch (err) {
+      if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
     }
-    return new PdbHeuristicEvaluator(partitions, pdbs);
+    return new PdbHeuristicEvaluator(partitions.slice(0, pdbs.length), pdbs);
   }
 
   get partitionCount(): number { return this.#partitions.length; }
   get totalTableEntries(): number { return this.#pdbs.reduce((sum, pdb) => sum + pdb.tableSize, 0); }
   get estimatedRetainedBytes(): number {
     return this.#pdbs.reduce((sum, pdb) => sum + pdb.estimatedRetainedBytes, 0);
+  }
+  get surplusCacheStats(): { hits: number; misses: number; size: number } {
+    return { hits: this.#cacheHits, misses: this.#cacheMisses, size: this.#surplusCache.size };
   }
 
   evaluate(boxes: readonly DenseBox[]): number {
@@ -122,8 +134,19 @@ export class PdbHeuristicEvaluator {
   evaluateWithSurplus(
     boxes: readonly DenseBox[],
     assignmentLabelCosts: ReadonlyMap<string, number>,
+    boxKey?: bigint,
   ): number {
     if (this.#pdbs.length === 0) return 0;
+
+    if (boxKey !== undefined) {
+      const cached = this.#surplusCache.get(boxKey);
+      if (cached !== undefined) {
+        this.#cacheHits++;
+        return cached;
+      }
+    }
+    this.#cacheMisses++;
+
     for (const cells of this.#cellsByLabel) cells.length = 0;
     for (const box of boxes) {
       const slot = this.#labelSlots.get(box.label);
@@ -153,6 +176,15 @@ export class PdbHeuristicEvaluator {
       const diff = pdbValue - assignmentCost;
       if (diff > 0) surplus += diff;
     }
+
+    if (boxKey !== undefined) {
+      this.#surplusCache.set(boxKey, surplus);
+      if (this.#surplusCache.size > SURPLUS_CACHE_CAP) {
+        const firstKey = this.#surplusCache.keys().next().value;
+        if (firstKey !== undefined) this.#surplusCache.delete(firstKey);
+      }
+    }
+
     return surplus;
   }
 }

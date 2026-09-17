@@ -3,6 +3,7 @@ import { throwIfSolverCancelled } from "../cancellation.ts";
 import { delayForEventLoop } from "./scheduling.ts";
 import {
   checkExactPreprocessingBudget,
+  isExactPreprocessingLimitError,
   type ExactPreprocessingBudget,
 } from "./preprocessing-budget.ts";
 
@@ -116,13 +117,91 @@ function canAllocatePatternDatabase(tableSize: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// PDB construction via reverse-push BFS
+// PDB construction via reverse-push BFS (level-based packed ranks)
 // ---------------------------------------------------------------------------
 
-export function buildPatternDatabase(
+function makePdbLookup(
+  cellToRegionIndex: Int32Array,
+  binom: Float64Array[],
+  tableSize: number,
+  table: Uint16Array,
+): PatternDatabase["lookup"] {
+  return (boxCells: readonly number[]): number => {
+    const regionPositions: number[] = [];
+    for (const cell of boxCells) {
+      const rp = cellToRegionIndex[cell];
+      if (rp < 0) return UNSOLVED;
+      regionPositions.push(rp);
+    }
+    regionPositions.sort((a, b) => a - b);
+    const index = combinadicEncode(regionPositions, binom);
+    if (index >= tableSize) return UNSOLVED;
+    return table[index];
+  };
+}
+
+interface PdbBfsContext {
+  readonly board: CompiledSearchBoard;
+  readonly regionCells: readonly number[];
+  readonly regionSet: Set<number>;
+  readonly regionCount: number;
+  readonly cellToRegionIndex: Int32Array;
+  readonly binom: Float64Array[];
+  readonly table: Uint16Array;
+  readonly k: number;
+}
+
+function expandPdbLevel(
+  ctx: PdbBfsContext,
+  currentLevel: Uint32Array,
+  dist: number,
+  nextLevel: number[],
+  positions: number[],
+  occupiedRegion: Uint8Array,
+  newPositions: number[],
+): void {
+  const { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k } = ctx;
+  for (let ci = 0; ci < currentLevel.length; ci++) {
+    const rank = currentLevel[ci];
+    combinadicDecode(rank, k, regionCount, binom).forEach((v, i) => { positions[i] = v; });
+
+    occupiedRegion.fill(0);
+    for (let i = 0; i < k; i++) occupiedRegion[positions[i]] = 1;
+
+    for (let bi = 0; bi < k; bi++) {
+      const boardCell = regionCells[positions[bi]];
+      const neighbors = board.neighbors[boardCell];
+
+      for (let d = 0; d < 4; d++) {
+        const destCell = neighbors[d];
+        if (destCell < 0) continue;
+        const destRegion = cellToRegionIndex[destCell];
+        if (destRegion < 0) continue;
+        if (occupiedRegion[destRegion]) continue;
+
+        const supportCell = board.neighbors[destCell]?.[d] ?? -1;
+        if (supportCell < 0) continue;
+        if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
+        if (board.positions[supportCell] === undefined) continue;
+
+        for (let i = 0; i < k; i++) newPositions[i] = positions[i];
+        newPositions[bi] = destRegion;
+        newPositions.sort((a, b) => a - b);
+
+        const newIndex = combinadicEncode(newPositions, binom);
+        if (table[newIndex] !== UNSOLVED) continue;
+
+        table[newIndex] = dist;
+        nextLevel.push(newIndex);
+      }
+    }
+  }
+}
+
+function preparePdbBfs(
   board: CompiledSearchBoard,
   config: PatternDatabaseConfig,
-): PatternDatabase {
+): { ctx: PdbBfsContext; solvedRank: number; retainedBytes: number } | PatternDatabase {
   const { goalCells, regionCells } = config;
   const k = goalCells.length;
 
@@ -135,7 +214,6 @@ export function buildPatternDatabase(
 
   const regionSet = new Set(regionCells);
   const regionCount = regionCells.length;
-
   const cellToRegionIndex = new Int32Array(board.cellCount).fill(-1);
   for (let i = 0; i < regionCells.length; i++) {
     cellToRegionIndex[regionCells[i]] = i;
@@ -143,105 +221,63 @@ export function buildPatternDatabase(
 
   const binom = buildBinomials(regionCount, k);
   const tableSize = binom[regionCount][k];
-
   if (!canAllocatePatternDatabase(tableSize)) {
     return disabledPatternDatabase(k, goalCells, regionCells);
   }
 
+  const retainedBytes = estimatePdbRetainedBytes(board.cellCount, regionCount, k, tableSize);
   const table = new Uint16Array(tableSize);
   table.fill(UNSOLVED);
 
-  const solvedRegionPositions = goalCells
-    .map((gc) => cellToRegionIndex[gc])
-    .sort((a, b) => a - b);
-
-  if (solvedRegionPositions.some((p) => p < 0)) {
-    return {
-      k,
-      tableSize,
-      goalCells,
-      regionCells,
-      estimatedRetainedBytes: estimatePdbRetainedBytes(
-        board.cellCount, regionCount, k, tableSize,
-      ),
-      lookup: () => UNSOLVED,
-    };
+  const solvedPositions = goalCells.map((gc) => cellToRegionIndex[gc]).sort((a, b) => a - b);
+  if (solvedPositions.some((p) => p < 0)) {
+    return { k, tableSize, goalCells: [...goalCells], regionCells: [...regionCells], estimatedRetainedBytes: retainedBytes, lookup: () => UNSOLVED };
   }
 
-  const solvedIndex = combinadicEncode(solvedRegionPositions, binom);
-  table[solvedIndex] = 0;
-
-  interface BfsState {
-    regionPositions: number[];
-  }
-
-  const queue: BfsState[] = [{ regionPositions: [...solvedRegionPositions] }];
-  let head = 0;
-
-  while (head < queue.length) {
-    const current = queue[head++];
-    const currentIndex = combinadicEncode(current.regionPositions, binom);
-    const currentDist = table[currentIndex];
-
-    if (currentDist >= UNSOLVED - 1) continue;
-
-    const occupiedRegion = new Uint8Array(regionCount);
-    for (const rp of current.regionPositions) {
-      occupiedRegion[rp] = 1;
-    }
-
-    for (let bi = 0; bi < k; bi++) {
-      const regionPos = current.regionPositions[bi];
-      const boardCell = regionCells[regionPos];
-      const neighbors = board.neighbors[boardCell];
-
-      for (let d = 0; d < 4; d++) {
-        const destCell = neighbors[d];
-        if (destCell < 0) continue;
-
-        const destRegion = cellToRegionIndex[destCell];
-        if (destRegion < 0) continue;
-        if (occupiedRegion[destRegion]) continue;
-
-        const supportCell = board.neighbors[destCell]?.[d] ?? -1;
-        if (supportCell < 0) continue;
-        if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
-        if (board.positions[supportCell] === undefined) continue;
-
-        const newPositions = [...current.regionPositions];
-        newPositions[bi] = destRegion;
-        newPositions.sort((a, b) => a - b);
-
-        const newIndex = combinadicEncode(newPositions, binom);
-        if (table[newIndex] !== UNSOLVED) continue;
-
-        table[newIndex] = currentDist + 1;
-        queue.push({ regionPositions: newPositions });
-      }
-    }
-  }
+  const solvedRank = combinadicEncode(solvedPositions, binom);
+  table[solvedRank] = 0;
 
   return {
-    k,
-    tableSize,
-    goalCells: [...goalCells],
-    regionCells: [...regionCells],
-    estimatedRetainedBytes: estimatePdbRetainedBytes(
-      board.cellCount, regionCount, k, tableSize,
-    ),
-    lookup(boxCells: readonly number[]): number {
-      const regionPositions: number[] = [];
-      for (const cell of boxCells) {
-        const rp = cellToRegionIndex[cell];
-        if (rp < 0) return UNSOLVED;
-        regionPositions.push(rp);
-      }
-      regionPositions.sort((a, b) => a - b);
-      const index = combinadicEncode(regionPositions, binom);
-      if (index >= tableSize) return UNSOLVED;
-      return table[index];
-    },
+    ctx: { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k },
+    solvedRank,
+    retainedBytes,
   };
+}
+
+function finishPdb(ctx: PdbBfsContext, retainedBytes: number, goalCells: readonly number[]): PatternDatabase {
+  return {
+    k: ctx.k,
+    tableSize: ctx.table.length,
+    goalCells: [...goalCells],
+    regionCells: [...ctx.regionCells],
+    estimatedRetainedBytes: retainedBytes,
+    lookup: makePdbLookup(ctx.cellToRegionIndex, ctx.binom, ctx.table.length, ctx.table),
+  };
+}
+
+export function buildPatternDatabase(
+  board: CompiledSearchBoard,
+  config: PatternDatabaseConfig,
+): PatternDatabase {
+  const prepared = preparePdbBfs(board, config);
+  if ("lookup" in prepared) return prepared;
+  const { ctx, solvedRank, retainedBytes } = prepared;
+
+  const positions = new Array<number>(ctx.k);
+  const newPositions = new Array<number>(ctx.k);
+  const occupiedRegion = new Uint8Array(ctx.regionCount);
+
+  let currentLevel = Uint32Array.from([solvedRank]);
+  let dist = 1;
+
+  while (currentLevel.length > 0) {
+    const nextLevel: number[] = [];
+    expandPdbLevel(ctx, currentLevel, dist, nextLevel, positions, occupiedRegion, newPositions);
+    currentLevel = Uint32Array.from(nextLevel);
+    dist++;
+  }
+
+  return finishPdb(ctx, retainedBytes, config.goalCells);
 }
 
 const PDB_BFS_YIELD_INTERVAL = 4096;
@@ -252,138 +288,79 @@ export async function buildPatternDatabaseAsync(
   signal: AbortSignal,
   budget?: ExactPreprocessingBudget,
 ): Promise<PatternDatabase> {
-  const { goalCells, regionCells } = config;
-  const k = goalCells.length;
   checkExactPreprocessingBudget(budget);
+  const prepared = preparePdbBfs(board, config);
+  if ("lookup" in prepared) return prepared;
+  const { ctx, solvedRank, retainedBytes } = prepared;
 
-  if (k === 0) {
-    return { k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => 0 };
-  }
-  if (k > MAX_K) {
-    throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
-  }
-
-  const regionSet = new Set(regionCells);
-  const regionCount = regionCells.length;
-
-  const cellToRegionIndex = new Int32Array(board.cellCount).fill(-1);
-  for (let i = 0; i < regionCells.length; i++) {
-    cellToRegionIndex[regionCells[i]] = i;
-  }
-
-  const binom = buildBinomials(regionCount, k);
-  const tableSize = binom[regionCount][k];
-  if (!canAllocatePatternDatabase(tableSize)) {
-    return disabledPatternDatabase(k, goalCells, regionCells);
-  }
-  const retainedBytes = estimatePdbRetainedBytes(
-    board.cellCount, regionCount, k, tableSize,
-  );
   checkExactPreprocessingBudget(budget, retainedBytes);
 
-  const table = new Uint16Array(tableSize);
-  table.fill(UNSOLVED);
+  const positions = new Array<number>(ctx.k);
+  const newPositions = new Array<number>(ctx.k);
+  const occupiedRegion = new Uint8Array(ctx.regionCount);
 
-  const solvedRegionPositions = goalCells
-    .map((gc) => cellToRegionIndex[gc])
-    .sort((a, b) => a - b);
-
-  if (solvedRegionPositions.some((p) => p < 0)) {
-    return { k, tableSize, goalCells, regionCells, estimatedRetainedBytes: retainedBytes, lookup: () => UNSOLVED };
-  }
-
-  const solvedIndex = combinadicEncode(solvedRegionPositions, binom);
-  table[solvedIndex] = 0;
-
-  interface BfsState {
-    regionPositions: number[];
-  }
-
-  const queue: BfsState[] = [{ regionPositions: [...solvedRegionPositions] }];
-  let head = 0;
-  let itersSinceYield = 0;
+  let currentLevel = Uint32Array.from([solvedRank]);
+  let dist = 1;
+  let totalSettled = 1;
 
   throwIfSolverCancelled(signal);
-  checkExactPreprocessingBudget(budget, retainedBytes + 64 + k * 8);
 
-  while (head < queue.length) {
-    if ((head & 255) === 0) {
-      checkExactPreprocessingBudget(
-        budget,
-        retainedBytes + queue.length * (32 + k * 8),
-      );
-    }
-    if (++itersSinceYield >= PDB_BFS_YIELD_INTERVAL) {
-      itersSinceYield = 0;
-      await delayForEventLoop();
-      throwIfSolverCancelled(signal);
-      checkExactPreprocessingBudget(
-        budget,
-        retainedBytes + queue.length * (32 + k * 8),
-      );
-    }
+  try {
+    while (currentLevel.length > 0) {
+      const nextLevel: number[] = [];
+      for (let ci = 0; ci < currentLevel.length; ci++) {
+        if ((ci & 255) === 0) {
+          checkExactPreprocessingBudget(budget, retainedBytes + totalSettled * 4);
+        }
+        if (ci > 0 && (ci % PDB_BFS_YIELD_INTERVAL) === 0) {
+          await delayForEventLoop();
+          throwIfSolverCancelled(signal);
+          checkExactPreprocessingBudget(budget, retainedBytes + totalSettled * 4);
+        }
 
-    const current = queue[head++];
-    const currentIndex = combinadicEncode(current.regionPositions, binom);
-    const currentDist = table[currentIndex];
+        const rank = currentLevel[ci];
+        combinadicDecode(rank, ctx.k, ctx.regionCount, ctx.binom).forEach((v, i) => { positions[i] = v; });
 
-    if (currentDist >= UNSOLVED - 1) continue;
+        occupiedRegion.fill(0);
+        for (let i = 0; i < ctx.k; i++) occupiedRegion[positions[i]] = 1;
 
-    const occupiedRegion = new Uint8Array(regionCount);
-    for (const rp of current.regionPositions) {
-      occupiedRegion[rp] = 1;
-    }
+        for (let bi = 0; bi < ctx.k; bi++) {
+          const boardCell = ctx.regionCells[positions[bi]];
+          const neighbors = ctx.board.neighbors[boardCell];
 
-    for (let bi = 0; bi < k; bi++) {
-      const regionPos = current.regionPositions[bi];
-      const boardCell = regionCells[regionPos];
-      const neighbors = board.neighbors[boardCell];
+          for (let d = 0; d < 4; d++) {
+            const destCell = neighbors[d];
+            if (destCell < 0) continue;
+            const destRegion = ctx.cellToRegionIndex[destCell];
+            if (destRegion < 0) continue;
+            if (occupiedRegion[destRegion]) continue;
 
-      for (let d = 0; d < 4; d++) {
-        const destCell = neighbors[d];
-        if (destCell < 0) continue;
+            const supportCell = ctx.board.neighbors[destCell]?.[d] ?? -1;
+            if (supportCell < 0) continue;
+            if (!ctx.regionSet.has(supportCell) && ctx.board.neighbors[supportCell] === undefined) continue;
+            if (ctx.board.positions[supportCell] === undefined) continue;
 
-        const destRegion = cellToRegionIndex[destCell];
-        if (destRegion < 0) continue;
-        if (occupiedRegion[destRegion]) continue;
+            for (let i = 0; i < ctx.k; i++) newPositions[i] = positions[i];
+            newPositions[bi] = destRegion;
+            newPositions.sort((a, b) => a - b);
 
-        const supportCell = board.neighbors[destCell]?.[d] ?? -1;
-        if (supportCell < 0) continue;
-        if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
-        if (board.positions[supportCell] === undefined) continue;
+            const newIndex = combinadicEncode(newPositions, ctx.binom);
+            if (ctx.table[newIndex] !== UNSOLVED) continue;
 
-        const newPositions = [...current.regionPositions];
-        newPositions[bi] = destRegion;
-        newPositions.sort((a, b) => a - b);
-
-        const newIndex = combinadicEncode(newPositions, binom);
-        if (table[newIndex] !== UNSOLVED) continue;
-
-        table[newIndex] = currentDist + 1;
-        queue.push({ regionPositions: newPositions });
+            ctx.table[newIndex] = dist;
+            nextLevel.push(newIndex);
+          }
+        }
       }
+      totalSettled += nextLevel.length;
+      currentLevel = Uint32Array.from(nextLevel);
+      dist++;
     }
+  } catch (err) {
+    if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
   }
 
-  return {
-    k,
-    tableSize,
-    goalCells: [...goalCells],
-    regionCells: [...regionCells],
-    estimatedRetainedBytes: retainedBytes,
-    lookup(boxCells: readonly number[]): number {
-      const regionPositions: number[] = [];
-      for (const cell of boxCells) {
-        const rp = cellToRegionIndex[cell];
-        if (rp < 0) return UNSOLVED;
-        regionPositions.push(rp);
-      }
-      regionPositions.sort((a, b) => a - b);
-      const index = combinadicEncode(regionPositions, binom);
-      if (index >= tableSize) return UNSOLVED;
-      return table[index];
-    },
-  };
+  return finishPdb(ctx, retainedBytes, config.goalCells);
 }
 
 export function buildGoalRegion(
