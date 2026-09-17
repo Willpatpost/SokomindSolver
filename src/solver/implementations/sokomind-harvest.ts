@@ -500,17 +500,6 @@ export async function qualityAnytimeImprove(
 
   const rewriteAllocation = adaptiveRewriteAllocation(run.request);
   const rescheduleEligible = supportsBoxRescheduling(state);
-
-  let best = selectBest(
-    collector.incumbents.map((inc) => ({
-      solution: inc.solution,
-      discoveryOrder: inc.discoveryOrder,
-    })),
-  );
-
-  run.progressPhase = "improving";
-  report(run, `Starting anytime improvement loop.`, true);
-
   const configuredRewriteVisited = configuredBudget(
     options.improvementMaxVisited,
     defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes),
@@ -520,7 +509,113 @@ export async function qualityAnytimeImprove(
     DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
   );
 
-  // Anytime loop: alternate between window-rewrite and box-reschedule
+  // ── Initial parallel rewrite wave on all diverse candidates ──────────
+  const rewriteCandidates = selectForRewrite(collector.incumbents);
+  const rewriteCount = rewriteCandidates.length;
+  const rewriteConcurrency = sokomindRewriteConcurrency(
+    maxWorkers, run.request.limits?.maxMemoryBytes, rewriteCount,
+  );
+
+  const rewrittenCandidates: Array<{
+    solution: SolverSolution;
+    discoveryOrder: number;
+    improved: boolean;
+  }> = collector.incumbents.map((incumbent) => ({
+    solution: incumbent.solution,
+    discoveryOrder: incumbent.discoveryOrder,
+    improved: false,
+  }));
+
+  if (rewriteCount > 0 && rewriteConcurrency > 0 && !run.context.signal.aborted) {
+    run.progressPhase = "improving";
+    report(run, `Rewriting ${rewriteCount} diverse incumbent(s) in parallel.`, true);
+
+    const initialWaveRequest = withRemainingLimits(run);
+    const totalRewriteVisited = Math.min(
+      configuredRewriteVisited,
+      initialWaveRequest?.limits?.maxExpandedStates ?? Infinity,
+    );
+    const totalRewriteGenerated =
+      initialWaveRequest?.limits?.maxGeneratedStates ?? Infinity;
+    const initialWaveBudgetMs = Number.isFinite(run.deadline)
+      ? Math.floor((run.deadline - run.context.now()) * 0.4)
+      : configuredElapsed;
+    const windowDeadline = Math.min(
+      run.deadline,
+      run.context.now() + initialWaveBudgetMs,
+    );
+    const rewriteStarted = aggregate(run);
+
+    const pending = rewriteCandidates.map((incumbent, candidateIndex) => ({
+      incumbent,
+      candidateIndex,
+    }));
+    while (pending.length && !run.context.signal.aborted) {
+      const usage = aggregate(run);
+      const remainingVisited = Math.max(
+        0,
+        totalRewriteVisited - (usage.expandedStates - rewriteStarted.expandedStates),
+      );
+      const remainingGenerated = Math.max(
+        0,
+        totalRewriteGenerated - (usage.generatedStates - rewriteStarted.generatedStates),
+      );
+      const remainingElapsed = Math.max(0, windowDeadline - run.context.now());
+      if (remainingVisited < 1 || remainingGenerated < 1 || remainingElapsed < 1) break;
+
+      const waveSize = Math.min(rewriteConcurrency, pending.length);
+      const remainingWaves = Math.ceil(pending.length / rewriteConcurrency);
+      const visitedShares = dividedIntegerBudget(remainingVisited, pending.length);
+      const generatedShares = dividedIntegerBudget(remainingGenerated, pending.length);
+      const perWorkerElapsed = Math.max(1, Math.floor(remainingElapsed / remainingWaves));
+      const wave = pending.splice(0, waveSize);
+      const results = await Promise.all(wave.map(async (
+        { incumbent, candidateIndex },
+        waveIndex,
+      ) => {
+        const maxVisited = Math.min(
+          visitedShares[waveIndex] ?? 0,
+          rescheduleEligible ? 50_000 : Infinity,
+        );
+        const maxGenerated = generatedShares[waveIndex] ?? 0;
+        if (maxVisited < 1 || maxGenerated < 1) {
+          return {
+            solution: incumbent.solution,
+            discoveryOrder: incumbent.discoveryOrder,
+            improved: false,
+          };
+        }
+        const improved = await improveIncumbent(
+          run, state, incumbent.solution, createWorker,
+          {
+            ...options,
+            improvementMaxVisited: maxVisited,
+            improvementMaxElapsedMs: perWorkerElapsed,
+            improvementMaxPasses: 1,
+          },
+          candidateIndex,
+          maxGenerated,
+          waveSize,
+          rewriteAllocation,
+        );
+        return {
+          solution: improved.solution,
+          discoveryOrder: incumbent.discoveryOrder,
+          improved: improved.improved,
+        };
+      }));
+      rewrittenCandidates.push(...results);
+    }
+  }
+
+  let best = selectBest(rewrittenCandidates);
+  run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
+  invalidateAggregate(run);
+
+  run.progressPhase = "improving";
+  report(run, `Starting anytime improvement loop (best=${best.moves} moves from ${rewriteCount} rewritten candidates).`, true);
+
+  // ── Anytime loop: alternate between window-rewrite and box-reschedule ─
   const improvementDeadline = Number.isFinite(run.deadline)
     ? run.deadline
     : run.context.now() + configuredElapsed;
