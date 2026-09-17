@@ -27,7 +27,7 @@ test("parallel Node proof workers preserve the inter-rooms 28-move optimum", asy
         mode: "quality",
         proofAlgorithm: "astar",
         proofParallelism: 2,
-        deterministic: true,
+        deterministic: false,
       },
     },
   };
@@ -42,6 +42,8 @@ test("parallel Node proof workers preserve the inter-rooms 28-move optimum", asy
   assert.equal(result.solution.moves, 28);
   assert.equal(result.solution.pushes, 7);
   assert.equal(result.solution.optimality, "proven");
+  assert.equal(result.proof?.algorithm, "parallel-move-astar");
+  assert.equal(result.metrics.counters?.["proof.proofWorkerCount"], 2);
   assert.equal(verifySolverSolution(request, result.solution).valid, true);
   assert.deepEqual(collectProofIssues(result.proof, result.solution), []);
   assert.equal(result.proof?.lowerBound, 28);

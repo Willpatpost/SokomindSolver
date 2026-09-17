@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { effectiveProofWorkerCount, effectiveWorkerCount } from "../../src/solver/implementations/sokomind-worker-limits.ts";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("./#/solver-lab/ultra-tiny");
@@ -19,6 +20,31 @@ test("presents an optional, documented search workspace", async ({ page }) => {
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
   expect(results.violations).toEqual([]);
+});
+
+test("reviews worker ceilings and preserves worker settings in run comparisons", async ({ page }) => {
+  const hardware = await page.evaluate(() => navigator.hardwareConcurrency);
+  const setup = page.getByRole("region", { name: "Search setup" });
+  const workers = setup.getByLabel("Search workers");
+  await expect(workers).toHaveValue("0");
+  await expect(workers.locator("option")).toHaveCount(7);
+  await setup.getByLabel("Memory limit").selectOption("4096");
+  await setup.getByLabel("Search mode").selectOption("quality");
+  await workers.selectOption("4");
+  await expect(setup).toContainText(`Browser reports ${hardware} logical processors.`);
+  await expect(setup).toContainText(`Search allows up to ${effectiveWorkerCount(4_096 * 1024 * 1024, hardware, 4).count} worker`);
+  await expect(setup).toContainText(`Proof allows up to ${effectiveProofWorkerCount(4_096 * 1024 * 1024, hardware, 4).count} worker`);
+  await setup.getByLabel("Search mode").selectOption("fast");
+  await setup.getByRole("button", { name: "Run search" }).click();
+  await expect(page.getByText("1 of 6 runs")).toBeVisible();
+  await workers.selectOption("2");
+  await setup.getByRole("button", { name: "Run search" }).click();
+  await expect(page.getByText("2 of 6 runs")).toBeVisible();
+  await expect(page.getByText("Limits or mode differ", { exact: true })).toBeVisible();
+  const comparison = page.getByRole("region", { name: "Side-by-side run comparison" });
+  await expect(comparison.getByText("Search worker setting", { exact: true })).toHaveCount(2);
+  await setup.getByLabel("Algorithm").selectOption("classic-astar");
+  await expect(workers).toHaveCount(0);
 });
 
 test("runs a worker search and steps through its replay-verified route", async ({ page }) => {

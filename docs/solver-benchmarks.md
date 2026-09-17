@@ -24,21 +24,35 @@ and may take hours on proof-heavy fixtures.
 
 | Profile | Production path | Deterministic | Eligibility |
 |---|---|---:|---|
-| `sokomind-fast` | Node Sokomind adapter, fast mode | Yes for benchmark | All fixtures |
-| `sokomind-quality` | Node Sokomind adapter, harvest + rewrite | Yes for benchmark | All fixtures |
-| `sokomind-optimal-astar` | Node Sokomind adapter + A* proof | Yes | Classic-eligible |
-| `sokomind-optimal-ida` | Node Sokomind adapter + IDA* proof | Yes | Classic-eligible |
+| `sokomind-fast` | Node Sokomind adapter, fast mode | No | All fixtures |
+| `sokomind-quality` | Node Sokomind adapter, harvest + rewrite | No | All fixtures |
+| `sokomind-optimal-astar` | Node Sokomind adapter + A* proof | No | Classic-eligible |
+| `sokomind-optimal-ida` | Node Sokomind adapter + IDA* proof | No | Classic-eligible |
 | `classic-astar` | Exact move A* adapter | Yes | Classic-eligible |
 | `classic-ida-star` | Exact move IDA* adapter | Yes | Classic-eligible |
+| `production-fast` | Fast, 30-second target | No | All fixtures |
+| `production-quality` | Quality, 60-second/10% target | No | All fixtures |
+| `production-optimal` | Optimal, 120-second certificate target | No | All fixtures, including Grand Hall |
 
 Classic eligibility is at most eight boxes and at most 96 floor cells. The
-frozen corpus currently has 43 fixtures, 37 of which are classic-eligible. The
-complete matrix contains 234 eligible fixture/profile pairs.
+harness derives the eligible matrix from the current corpus and requested
+profiles. The all-fixture production matrix includes an intentionally difficult
+27-box memory stress fixture; it is not yet a declared reasonable-puzzle SLO suite.
 
 Every request receives the same immutable limits object recorded in its sample.
 Classic proof profiles use 60 seconds, 500,000 expanded states, 5,000,000
 generated states, and 512 MiB. General Sokomind profiles use 180 seconds,
-500,000 expanded states, 5,000,000 generated states, and 768 MiB.
+500,000 expanded states, 5,000,000 generated states, and 4 GiB. The three
+production target profiles use the same work and memory limits with respective
+30/60/120-second deadlines. These Node profiles retain proof parallelism one;
+browser Auto proof parallelism is a separate configuration.
+
+Every solved sample must replay and return within its harness deadline. Quality
+requires at most `floor(1.1 * C*)` moves when an independent frozen optimum is
+available; otherwise a compatible proof lower bound must certify that ratio.
+Metrics-only bounds cannot qualify a result. Production Optimal requires a
+compatible optimal certificate with equal bounds, and must match independent
+truth when available. Legacy exact profiles additionally require frozen truth.
 
 ## Methodology
 
@@ -50,6 +64,7 @@ memory boundaries and cold-start measurements. A preflight requested with
 For each fixture/profile group the harness retains:
 
 - every raw sample;
+- first observed incumbent time and strictly improving published-incumbent history;
 - minimum, median, maximum, and median absolute deviation for elapsed time;
 - before/after RSS and `process.resourceUsage().maxRSS` peak RSS;
 - solver metrics and all counters;
@@ -60,7 +75,12 @@ For each fixture/profile group the harness retains:
 Deterministic samples must agree on status, solution/proof outcome, expanded
 states, and generated states. A disagreement rejects the group rather than
 silently selecting a median record. Milliseconds are descriptive across
-machines; they are not a correctness gate.
+machines; the configured production deadline still gates target acceptance.
+Incumbent times measure receipt of published verified progress; terminal replay
+provides a fallback. Internally retained improvements without publication remain
+invisible. Certificate timing, p95, occupied-worker telemetry, supported/holdout
+suites, and isolated browser qualification remain open in the
+[performance roadmap](SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md).
 
 ## Controlled feature A/B runs
 

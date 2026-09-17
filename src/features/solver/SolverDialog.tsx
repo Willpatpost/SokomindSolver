@@ -16,6 +16,7 @@ import {
 import {
   MEMORY_LIMIT_OPTIONS,
   TIME_LIMIT_OPTIONS,
+  WORKER_LIMIT_OPTIONS,
   useSolverController,
 } from "./useSolverController";
 import type { SolverRunFingerprint } from "./solver-ui-types";
@@ -203,6 +204,19 @@ export function SolverDialog({
                 </label>
 
                 {solver.selectedSolverId === "sokomind-solver" ? (
+                <>
+                <label>
+                  <span>Search workers</span>
+                  <select
+                    disabled={solver.running}
+                    onChange={(event) => solver.setWorkerParallelism(Number(event.currentTarget.value))}
+                    value={solver.workerParallelism}
+                  >
+                    {WORKER_LIMIT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <label>
                   <span>Mode</span>
                   <select
@@ -222,8 +236,20 @@ export function SolverDialog({
                     <option value="optimal">Optimal</option>
                   </select>
                 </label>
+                </>
                 ) : null}
                   </div>
+
+              {solver.selectedSolverId === "sokomind-solver" ? (
+                <p className={styles.note}>
+                  Browser reports {solver.hardwareConcurrency} logical processors.
+                  Search allows up to {solver.discoveryWorkers.count} worker{solver.discoveryWorkers.count === 1 ? "" : "s"}
+                  {" "}(limited by {solver.discoveryWorkers.limitedBy === "requested" ? "your selection" : solver.discoveryWorkers.limitedBy}).
+                  {solver.mode !== "fast" ? <> Proof allows up to {solver.proofWorkers.count} worker{solver.proofWorkers.count === 1 ? "" : "s"}
+                    {" "}(limited by {solver.proofWorkers.limitedBy === "requested" ? "your selection" : solver.proofWorkers.limitedBy}).</> : null}
+                  {" "}Each phase uses only the workers it has useful work for.
+                </p>
+              ) : null}
 
               {solver.selectedSolver ? (
                 <p className={styles.description}>

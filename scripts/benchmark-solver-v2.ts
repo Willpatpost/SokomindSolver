@@ -383,7 +383,7 @@ async function main(): Promise<void> {
 
   const accepted = summaries.filter((summary) => summary.accepted).length;
   process.stderr.write(
-    `Summary: ${accepted}/${summaries.length} accepted deterministic sample groups\n`,
+    `Summary: ${accepted}/${summaries.length} accepted sample groups\n`,
   );
   if (summaries.some((summary) => !summary.accepted)) process.exitCode = 2;
 }

@@ -514,13 +514,14 @@ export async function runExactMoveAStar(
     const preprocessingStaticBytes = baseStaticBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
-      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+      (pdbEvaluator?.preprocessingRetainedBytes ?? 0) +
       (perimeterTable?.stats.retainedBytes ?? 0) +
       (componentPdbCollection?.retainedBytes ?? 0) +
       (moveCostPdbCollection?.estimatedRetainedBytes ?? 0);
     const currentStaticBytes = () =>
       preprocessingStaticBytes +
-      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
+      (boostEvaluator?.searchCacheRetainedBytes ?? 0) +
+      (pdbEvaluator?.searchCacheRetainedBytes ?? 0);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();
     for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
@@ -638,13 +639,24 @@ export async function runExactMoveAStar(
     const arena = createCompactNodeArena(boxCount, maxToken);
     estimateInteractionSearchBaseMemory = () =>
       estimatedArenaMemoryBytes(
-        preprocessingStaticBytes,
+        preprocessingStaticBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0),
         arena.estimatedRetainedBytes(),
         uniqueStates,
         heapSize,
         heuristic.stats.cacheEntries,
         boxCount,
       );
+    pdbEvaluator?.setSearchCacheMemoryBudget((additionalBytes) => {
+      const maximum = request.limits?.maxMemoryBytes;
+      return maximum === undefined || estimatedArenaMemoryBytes(
+        currentStaticBytes(),
+        arena.estimatedRetainedBytes(),
+        uniqueStates,
+        heapSize,
+        heuristic.stats.cacheEntries,
+        boxCount,
+      ) + additionalBytes <= maximum;
+    });
 
     const parentTokenBuf = new Uint32Array(boxCount);
     const childTokenBuf = new Uint32Array(boxCount);
@@ -695,7 +707,8 @@ export async function runExactMoveAStar(
         boostEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
-      pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
+      pdbRetainedBytes: pdbEvaluator?.preprocessingRetainedBytes ?? 0,
+      pdbSearchCacheRetainedBytes: pdbEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       pdbCacheHits: pdbEvaluator?.surplusCacheStats.hits ?? 0,
       pdbCacheMisses: pdbEvaluator?.surplusCacheStats.misses ?? 0,
@@ -711,7 +724,7 @@ export async function runExactMoveAStar(
       deadlockTableRetainedBytes:
         deadlockTableLookup?.estimatedRetainedBytes ?? 0,
       preprocessingRetainedBytes:
-        (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+        (pdbEvaluator?.preprocessingRetainedBytes ?? 0) +
         (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
         (boostEvaluator?.preprocessingRetainedBytes ?? 0),
       deadlockTableChecks: featureTelemetry.deadlockTableChecks,

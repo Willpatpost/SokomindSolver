@@ -28,6 +28,7 @@ import {
 import {
   MEMORY_LIMIT_OPTIONS,
   TIME_LIMIT_OPTIONS,
+  WORKER_LIMIT_OPTIONS,
   useSolverController,
 } from "../solver/useSolverController.ts";
 import {
@@ -209,6 +210,8 @@ function LoadedSolverLab({
       mode: solver.mode,
       timeLimitMs: solver.timeLimitMs,
       memoryLimitMiB: solver.memoryLimitMiB,
+      workerParallelism: solver.workerParallelism,
+      proofParallelism: solver.mode === "fast" ? 0 : solver.proofWorkers.count,
     });
     solver.start();
   }, [solver]);
@@ -377,6 +380,19 @@ function LoadedSolverLab({
                   </select>
                 </label>
                 {solver.selectedSolverId === "sokomind-solver" ? (
+                  <>
+                  <label>
+                    <span>Search workers</span>
+                    <select
+                      disabled={solver.running}
+                      value={solver.workerParallelism}
+                      onChange={(event) => solver.setWorkerParallelism(Number(event.currentTarget.value))}
+                    >
+                      {WORKER_LIMIT_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label>
                     <span>Search mode</span>
                     <select
@@ -389,8 +405,20 @@ function LoadedSolverLab({
                       <option value="optimal">Optimal</option>
                     </select>
                   </label>
+                  </>
                 ) : null}
               </div>
+
+              {solver.selectedSolverId === "sokomind-solver" ? (
+                <p>
+                  Browser reports {solver.hardwareConcurrency} logical processors.
+                  Search allows up to {solver.discoveryWorkers.count} worker{solver.discoveryWorkers.count === 1 ? "" : "s"}
+                  {" "}(limited by {solver.discoveryWorkers.limitedBy === "requested" ? "your selection" : solver.discoveryWorkers.limitedBy}).
+                  {solver.mode !== "fast" ? <> Proof allows up to {solver.proofWorkers.count} worker{solver.proofWorkers.count === 1 ? "" : "s"}
+                    {" "}(limited by {solver.proofWorkers.limitedBy === "requested" ? "your selection" : solver.proofWorkers.limitedBy}).</> : null}
+                  {" "}Each phase uses only the workers it has useful work for.
+                </p>
+              ) : null}
 
               {solver.selectedSolver && lesson ? (
                 <div className={styles.lesson}>
@@ -561,6 +589,10 @@ function LoadedSolverLab({
                       <div><dt>Moves</dt><dd>{record.result.status === "solved" ? formatCount(record.result.solution.moves) : "—"}</dd></div>
                       <div><dt>Pushes</dt><dd>{record.result.status === "solved" ? formatCount(record.result.solution.pushes) : "—"}</dd></div>
                       <div><dt>Mode</dt><dd>{record.configuration.solverId === "sokomind-solver" ? record.configuration.mode : "Fixed"}</dd></div>
+                      {record.configuration.solverId === "sokomind-solver" ? <>
+                        <div><dt>Search worker setting</dt><dd>{record.configuration.workerParallelism || "Automatic"}</dd></div>
+                        {record.configuration.proofParallelism > 0 ? <div><dt>Proof worker limit</dt><dd>{record.configuration.proofParallelism}</dd></div> : null}
+                      </> : null}
                     </dl>
                   </article>
                 ))}

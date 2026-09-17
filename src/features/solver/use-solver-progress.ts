@@ -3,8 +3,8 @@ import type { GameSession } from "@/src/core";
 import type { SolverMetadata, SolverProgress, SolverResult, SolverRunHandle, SolverWorkerClient } from "@/src/solver";
 import { phaseLabel, resultSummary } from "./solver-format";
 import {
-  automaticMemoryLimitBytes, errorMessage, fingerprintFor, fingerprintKey,
-  MEBIBYTE, PROGRESS_LOG_INTERVAL_MS, progressLogMessage, sessionKey,
+  errorMessage, fingerprintFor, fingerprintKey,
+  PROGRESS_LOG_INTERVAL_MS, progressLogMessage, sessionKey,
   type SolverSharedState,
 } from "./solver-internals";
 import type { SolverLogEntry, SolverRunFingerprint } from "./solver-ui-types";
@@ -19,7 +19,8 @@ interface UseSolverProgressOptions extends SolverSharedState {
   clientRef: React.RefObject<SolverWorkerClient | null>;
   runRef: React.RefObject<SolverRunHandle | null>;
   runTokenRef: React.RefObject<number>;
-  selectedSolverId: string; timeLimitMs: number; memoryLimitMiB: number;
+  selectedSolverId: string; timeLimitMs: number; maxMemoryBytes: number;
+  workerParallelism: number; proofParallelism: number;
   mode: "fast" | "quality" | "optimal";
   solvers: readonly SolverMetadata[];
 }
@@ -28,7 +29,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
   const {
     session, open, uiPhase, setUiPhase, setStatusMessage, setError, appendLog,
     resetLog, setLiveElapsedMs, elapsedRef, startedAtRef, clientRef, runRef,
-    runTokenRef, selectedSolverId, timeLimitMs, memoryLimitMiB, mode, solvers,
+    runTokenRef, selectedSolverId, timeLimitMs, maxMemoryBytes, workerParallelism, proofParallelism, mode, solvers,
   } = opts;
   const [progress, setProgress] = useState<SolverProgress | null>(null);
   const [result, setResult] = useState<SolverResult | null>(null);
@@ -82,7 +83,6 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
     if (!client || !md || uiPhase === "running" || uiPhase === "cancelling") return;
     const fp = fingerprintFor(session);
     const token = ++runTokenRef.current;
-    const maxMem = memoryLimitMiB > 0 ? memoryLimitMiB * MEBIBYTE : automaticMemoryLimitBytes();
     resetRunState(); setError(null); setRunFingerprint(fp); setRunSolverId(md.id);
     resetLog(); setLiveElapsedMs(0);
     lastProgRef.current = { elapsedMs: Number.NEGATIVE_INFINITY };
@@ -94,8 +94,10 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
     try {
       handle = client.run(md.id, {
         board: session.board, snapshot: session.snapshot, objective: { kind: "moves" },
-        limits: { maxMemoryBytes: maxMem, ...(timeLimitMs > 0 ? { maxElapsedMs: timeLimitMs } : {}) },
-        options: { "sokomind-solver": { mode } },
+        limits: { maxMemoryBytes, ...(timeLimitMs > 0 ? { maxElapsedMs: timeLimitMs } : {}) },
+        options: { "sokomind-solver": {
+          mode, workerParallelism, ...(mode === "fast" ? {} : { proofParallelism }),
+        } },
       }, {
         onProgress(u) {
           if (runTokenRef.current !== token) return;
@@ -136,7 +138,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
       const msg = errorMessage(caught); setUiPhase("error"); setError(msg);
       setStatusMessage(`Search failed: ${msg}`); appendLog(msg, "error", elapsedRef.current);
     });
-  }, [appendLog, memoryLimitMiB, mode, selectedSolver, session, timeLimitMs, uiPhase,
+  }, [appendLog, maxMemoryBytes, workerParallelism, proofParallelism, mode, selectedSolver, session, timeLimitMs, uiPhase,
     clientRef, runTokenRef, runRef, startedAtRef, setLiveElapsedMs, resetLog,
     setUiPhase, setStatusMessage, setError, elapsedRef, resetRunState]);
 

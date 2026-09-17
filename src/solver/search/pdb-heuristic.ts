@@ -55,6 +55,8 @@ export class PdbHeuristicEvaluator {
   readonly #surplusCache = new Map<bigint, number>();
   #cacheHits = 0;
   #cacheMisses = 0;
+  #surplusCacheBytes = 0;
+  #cacheMemoryBudget: ((additionalBytes: number) => boolean) | undefined;
 
   constructor(board: CompiledSearchBoard);
   constructor(partitions: readonly GoalPartition[], pdbs: readonly PatternDatabase[]);
@@ -101,7 +103,14 @@ export class PdbHeuristicEvaluator {
   get partitionCount(): number { return this.#partitions.length; }
   get totalTableEntries(): number { return this.#pdbs.reduce((sum, pdb) => sum + pdb.tableSize, 0); }
   get estimatedRetainedBytes(): number {
+    return this.preprocessingRetainedBytes + this.searchCacheRetainedBytes;
+  }
+  get preprocessingRetainedBytes(): number {
     return this.#pdbs.reduce((sum, pdb) => sum + pdb.estimatedRetainedBytes, 0);
+  }
+  get searchCacheRetainedBytes(): number { return this.#surplusCacheBytes; }
+  setSearchCacheMemoryBudget(budget: (additionalBytes: number) => boolean): void {
+    this.#cacheMemoryBudget = budget;
   }
   get surplusCacheStats(): { hits: number; misses: number; size: number } {
     return { hits: this.#cacheHits, misses: this.#cacheMisses, size: this.#surplusCache.size };
@@ -178,13 +187,25 @@ export class PdbHeuristicEvaluator {
     }
 
     if (boxKey !== undefined) {
-      this.#surplusCache.set(boxKey, surplus);
-      if (this.#surplusCache.size > SURPLUS_CACHE_CAP) {
+      if (this.#surplusCache.size >= SURPLUS_CACHE_CAP) {
         const firstKey = this.#surplusCache.keys().next().value;
-        if (firstKey !== undefined) this.#surplusCache.delete(firstKey);
+        if (firstKey !== undefined) {
+          this.#surplusCache.delete(firstKey);
+          this.#surplusCacheBytes -= this.#cacheEntryBytes(firstKey);
+        }
+      }
+      const additionalBytes = this.#cacheEntryBytes(boxKey);
+      if (this.#cacheMemoryBudget?.(additionalBytes) !== false) {
+        this.#surplusCache.set(boxKey, surplus);
+        this.#surplusCacheBytes += additionalBytes;
       }
     }
 
     return surplus;
+  }
+
+  #cacheEntryBytes(key: bigint): number {
+    // Map entry, boxed value and exact BigInt key payload (conservative estimate).
+    return 96 + Math.ceil(key.toString(16).length / 2);
   }
 }

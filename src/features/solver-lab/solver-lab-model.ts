@@ -7,6 +7,8 @@ export interface SolverLabRunConfiguration {
   readonly mode: "fast" | "quality" | "optimal";
   readonly timeLimitMs: number;
   readonly memoryLimitMiB: number;
+  readonly workerParallelism: number;
+  readonly proofParallelism: number;
 }
 
 export interface SolverLabRunRecord {
@@ -117,6 +119,10 @@ export function compareSolverLabRuns(
   const sameLimits =
     primary.configuration.timeLimitMs === reference.configuration.timeLimitMs &&
     primary.configuration.memoryLimitMiB === reference.configuration.memoryLimitMiB &&
+    (primaryMode === "fixed" ? 0 : primary.configuration.workerParallelism) ===
+      (referenceMode === "fixed" ? 0 : reference.configuration.workerParallelism) &&
+    (primaryMode === "fixed" || primaryMode === "fast" ? 0 : primary.configuration.proofParallelism) ===
+      (referenceMode === "fixed" || referenceMode === "fast" ? 0 : reference.configuration.proofParallelism) &&
     primaryMode === referenceMode;
   return Object.freeze({
     sameInput:

@@ -1,0 +1,166 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { parsePuzzleRows } from "../../src/core/index.ts";
+import { SolverCancelledError } from "../../src/solver/cancellation.ts";
+import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
+import { toDenseBoxes } from "../../src/solver/search/model.ts";
+import { buildPatternDatabaseAsync, UNSOLVED } from "../../src/solver/search/pattern-database.ts";
+import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
+import { ExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
+import { configureSearchScheduler } from "../../src/solver/search/scheduling.ts";
+import { ALL_OFF_EXACT_SEARCH_FEATURES } from "../../src/solver/search/exact-search-features.ts";
+import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
+import type { SolverRequest } from "../../src/solver/contracts.ts";
+
+function corridorFixture(cellCount: number) {
+  const base = compileSearchBoard(parsePuzzleRows(["OOOOOO", "OR XSO", "OOOOOO"]));
+  const board = {
+    ...base,
+    cellCount,
+    neighbors: Array.from({ length: cellCount }, (_, i) =>
+      Int32Array.from([-1, -1, i > 0 ? i - 1 : -1, i < cellCount - 1 ? i + 1 : -1])),
+    positions: Array.from({ length: cellCount }, (_, column) => ({ row: 0, column })),
+  };
+  const goalCells = [cellCount - 2];
+  const regionCells = Array.from({ length: cellCount }, (_, i) => i);
+  return { board, config: { goalCells, regionCells, labelIds: ["X"] } };
+}
+
+describe("PDB resource budgets", () => {
+  it("rejects insufficient memory before allocating the distance table", async () => {
+    const { board, config } = corridorFixture(100);
+    const signal = new AbortController().signal;
+    const original = globalThis.Uint16Array;
+    let allocations = 0;
+    globalThis.Uint16Array = new Proxy(original, {
+      construct(target, args) {
+        allocations++;
+        return Reflect.construct(target, args);
+      },
+    });
+    try {
+      await assert.rejects(buildPatternDatabaseAsync(board, config, signal, {
+        signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
+        // Metadata fits (3080 bytes), but adding the table does not (3280 bytes).
+        maxMemoryBytes: 3100,
+      }), (error: unknown) => error instanceof ExactPreprocessingLimitError && error.reason === "memory");
+      assert.equal(allocations, 0);
+    } finally {
+      globalThis.Uint16Array = original;
+    }
+  });
+
+  it("yields cumulatively and observes cancellation across narrow BFS levels", async () => {
+    const { board, config } = corridorFixture(4200);
+    const controller = new AbortController();
+    let yields = 0;
+    configureSearchScheduler(async () => {
+      yields++;
+      controller.abort("cancel preprocessing");
+    });
+    try {
+      await assert.rejects(buildPatternDatabaseAsync(board, config, controller.signal), SolverCancelledError);
+      assert.equal(yields, 1);
+    } finally {
+      configureSearchScheduler();
+    }
+  });
+
+  it("budgets live queue chunks rather than all previously processed ranks", async () => {
+    const { board, config } = corridorFixture(9000);
+    const signal = new AbortController().signal;
+    const pdb = await buildPatternDatabaseAsync(board, config, signal, {
+      signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
+      // Fits metadata, distance table, scratch and one live 4096-rank chunk.
+      // Retaining/counting all processed ranks would exceed this allowance.
+      maxMemoryBytes: 296_000,
+    });
+    assert.equal(pdb.lookup([1]), 8997);
+  });
+
+  it("retains sound finite entries and ignores missing entries after a build deadline", async () => {
+    const { board, config } = corridorFixture(1000);
+    const signal = new AbortController().signal;
+    let checks = 0;
+    const pdb = await buildPatternDatabaseAsync(board, config, signal, {
+      signal, now: () => ++checks <= 6 ? 0 : 10, deadline: 10, baseMemoryBytes: 0,
+    });
+    assert.equal(pdb.lookup(config.goalCells), 0);
+    assert.equal(pdb.lookup([config.goalCells[0] - 5]), 5);
+    assert.equal(pdb.lookup([1]), UNSOLVED);
+    const evaluator = new PdbHeuristicEvaluator([
+      { ...config, labels: ["X"] },
+    ], [pdb]);
+    assert.equal(evaluator.evaluate([{ id: "X:0", label: "X", cell: 1 }]), 0);
+  });
+});
+
+describe("PDB surplus cache memory", () => {
+  function fixture() {
+    const parsed = parsePuzzleRows(["OOOOOOO", "OR XX O", "O  SS O", "O     O", "OOOOOOO"]);
+    const board = compileSearchBoard(parsed);
+    return { evaluator: new PdbHeuristicEvaluator(board), boxes: toDenseBoxes(board, parsed.initialBoxes) };
+  }
+
+  it("includes cache growth in retained bytes and avoids charging cache hits twice", () => {
+    const { evaluator, boxes } = fixture();
+    const before = evaluator.estimatedRetainedBytes;
+    const costs = new Map([["X", 0]]);
+    const value = evaluator.evaluateWithSurplus(boxes, costs, 1n);
+    assert.ok(evaluator.searchCacheRetainedBytes > 0);
+    assert.equal(evaluator.estimatedRetainedBytes, before + evaluator.searchCacheRetainedBytes);
+    const after = evaluator.estimatedRetainedBytes;
+    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 1n), value);
+    assert.equal(evaluator.estimatedRetainedBytes, after);
+    assert.equal(evaluator.surplusCacheStats.hits, 1);
+  });
+
+  it("skips optional cache allocation when the run has no spare memory", () => {
+    const { evaluator, boxes } = fixture();
+    const costs = new Map([["X", 0]]);
+    const uncached = evaluator.evaluateWithSurplus(boxes, costs);
+    const before = evaluator.estimatedRetainedBytes;
+    evaluator.setSearchCacheMemoryBudget(() => false);
+    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 2n), uncached);
+    assert.equal(evaluator.surplusCacheStats.size, 0);
+    assert.equal(evaluator.estimatedRetainedBytes, before);
+  });
+
+  for (const [name, run] of [["A*", runExactMoveAStar], ["IDA*", runIdaStarSearch]] as const) {
+    it(`includes live cache bytes in ${name}'s run memory estimate`, async () => {
+      const board = parsePuzzleRows(["OOOOOOO", "OS   SO", "O X X O", "O  R  O", "OOOOOOO"]);
+      const request: SolverRequest = {
+        board,
+        snapshot: {
+          puzzleId: "pdb-memory", robot: board.initialRobot, boxes: board.initialBoxes,
+          moves: 0, pushes: 0, solved: false,
+        },
+        objective: { kind: "moves" },
+      };
+      const context = { signal: new AbortController().signal, now: () => performance.now(), reportProgress() {} };
+      const options = { features: { ...ALL_OFF_EXACT_SEARCH_FEATURES, patternDatabase: true } };
+      const uncachedEvaluator = PdbHeuristicEvaluator.prototype.evaluateWithSurplus;
+      PdbHeuristicEvaluator.prototype.evaluateWithSurplus = function (boxes, costs) {
+        return uncachedEvaluator.call(this, boxes, costs);
+      };
+      let uncached;
+      try {
+        uncached = await run(request, context, options);
+      } finally {
+        PdbHeuristicEvaluator.prototype.evaluateWithSurplus = uncachedEvaluator;
+      }
+      const cached = await run(request, context, options);
+      assert.equal(uncached.status, "solved");
+      assert.equal(cached.status, "solved");
+      const uncachedCounters = uncached.metrics.counters!;
+      const cachedCounters = cached.metrics.counters!;
+      assert.ok(cachedCounters.pdbSearchCacheRetainedBytes > 0);
+      assert.equal(
+        cachedCounters.estimatedMemoryBytes - uncachedCounters.estimatedMemoryBytes,
+        cachedCounters.pdbSearchCacheRetainedBytes,
+      );
+    });
+  }
+});

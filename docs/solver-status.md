@@ -21,6 +21,30 @@ proof envelope; bounded proofs require unknown optimality, including at the work
 client boundary. Classic DFS/Greedy reuse a keeper region only when the newly
 occupied cell was outside the parent region; otherwise they recompute full BFS.
 
+Browser Sokomind controls offer Auto or a manual worker ceiling up to twelve.
+Hardware and memory can reduce that ceiling. Discovery reserves 256 MiB per
+lane; browser Quality/Optimal proof reserves 512 MiB per lane plus 128 MiB for
+the coordinator. Available partitions can further reduce occupied workers.
+Non-browser proof parallelism defaults to one; deterministic adapter runs are
+serial. The [performance roadmap](SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md)
+tracks qualification and the remaining scheduler work.
+
+Parallel proof uses a shared pending first-push queue with one active task per
+lane. Automatic algorithm selection uses the lane's divided memory. Active or
+failed task grants stay reserved until safe completion; remaining elapsed time
+is recomputed at dispatch. Late candidates and certificates exceeding their
+work grants cannot establish proof. Aggregate progress publishes bounds and
+active/pending worker counts. Failed partitions retain only their independently
+known prefix bound and prevent an optimal certificate; deadline cutoff remains
+bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
+
+Exact PDB preprocessing checks estimated memory before table/queue allocation,
+releases consumed packed queue chunks, and propagates cancellation. Optional
+PDB-cache growth is included in both kernels' live estimates and cannot consume
+unavailable residual memory. The corrected move-cost PDB remains disabled
+pending broader performance qualification. Quality strategic defaults preserve
+explicit zero-analysis and false-plan-execution controls.
+
 Persisted optimality records use schema 7, proof revision
 `exact-moves-astar-frontier-v2`, and storage key `sokomind.optimal.v6`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records

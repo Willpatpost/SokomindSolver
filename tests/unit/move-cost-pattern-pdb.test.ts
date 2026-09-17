@@ -28,6 +28,8 @@ import {
   allReachableStates,
 } from "../support/exact-solver-oracle.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
+import { verifySolverSolution } from "../../src/solver/verification.ts";
 import type {
   SolverExecutionContext,
   SolverRequest,
@@ -107,77 +109,7 @@ function bruteForceOptimal(
   boxes: readonly DenseBox[],
   robotCell: number,
 ): number {
-  const { cellCount } = board;
-  const k = boxes.length;
-
-  function stateKey(robot: number, bx: readonly DenseBox[]): string {
-    const sorted = [...bx].sort((a, b) => a.label.localeCompare(b.label) || a.cell - b.cell);
-    return `${robot}:${sorted.map(b => `${b.label}@${b.cell}`).join(",")}`;
-  }
-
-  function isSolved(bx: readonly DenseBox[]): boolean {
-    return bx.every(b => board.goalLabelByCell[b.cell] === b.label);
-  }
-
-  const dist = new Map<string, number>();
-  const queue: Array<{ robot: number; boxes: DenseBox[]; cost: number }> = [];
-
-  const initBoxes = boxes.map(b => ({ ...b }));
-  const initKey = stateKey(robotCell, initBoxes);
-  dist.set(initKey, 0);
-  queue.push({ robot: robotCell, boxes: initBoxes, cost: 0 });
-
-  for (let head = 0; head < queue.length; head++) {
-    const state = queue[head];
-    if (isSolved(state.boxes)) return state.cost;
-
-    const occ = new Uint8Array(cellCount);
-    for (const b of state.boxes) occ[b.cell] = 1;
-
-    const walkQueue = [state.robot];
-    const walkDist = new Map<number, number>();
-    walkDist.set(state.robot, 0);
-    for (let wh = 0; wh < walkQueue.length; wh++) {
-      const cell = walkQueue[wh];
-      const d = walkDist.get(cell)!;
-      const nbrs = board.neighbors[cell];
-      for (let dir = 0; dir < 4; dir++) {
-        const next = nbrs[dir];
-        if (next < 0 || occ[next] !== 0 || walkDist.has(next)) continue;
-        walkDist.set(next, d + 1);
-        walkQueue.push(next);
-      }
-    }
-
-    for (let bi = 0; bi < k; bi++) {
-      const box = state.boxes[bi];
-      const nbrs = board.neighbors[box.cell];
-      if (!nbrs) continue;
-
-      for (let d = 0; d < 4; d++) {
-        const dest = nbrs[d];
-        const support = nbrs[OPPOSITE_DIRECTION[d]];
-        if (dest < 0 || support < 0) continue;
-        if (occ[dest] !== 0) continue;
-
-        const walkToSupport = walkDist.get(support);
-        if (walkToSupport === undefined) continue;
-
-        const newCost = state.cost + walkToSupport + 1;
-        const newBoxes = state.boxes.map((b, i) =>
-          i === bi ? { ...b, cell: dest } : { ...b },
-        );
-        const newKey = stateKey(box.cell, newBoxes);
-        const existing = dist.get(newKey);
-        if (existing !== undefined && existing <= newCost) continue;
-
-        dist.set(newKey, newCost);
-        queue.push({ robot: box.cell, boxes: newBoxes, cost: newCost });
-      }
-    }
-  }
-
-  return Infinity;
+  return exactRemainingMoves(board, robotCell, boxes).exactMoves ?? Infinity;
 }
 
 // ==========================================================================
@@ -773,6 +705,30 @@ describe("move-cost-pattern-pdb", () => {
   // Integration: solver with moveCostPatternPdb feature flag
   // -----------------------------------------------------------------------
   describe("solver integration", () => {
+    const oracleRows = ["OOOOOOO", "OS   SO", "O X X O", "O  R  O", "OOOOOOO"];
+    const rotatedRows = Array.from({ length: oracleRows[0].length }, (_, row) =>
+      oracleRows.map((line) => line[row]).reverse().join(""));
+    for (const [name, rows] of [
+      ["base", oracleRows],
+      ["mirror", oracleRows.map((row) => [...row].reverse().join(""))],
+      ["rotation", rotatedRows],
+    ] as const) {
+      it(`matches the independent move oracle in A* and IDA* (${name})`, async () => {
+        const request = makeRequest(rows);
+        const board = compileBoard(rows);
+        const oracle = exactRemainingMoves(board, getRobotCell(board, rows), getBoxes(board, rows));
+        assert.ok(oracle.exactMoves !== null);
+        for (const run of [runExactMoveAStar, runIdaStarSearch]) {
+          const result = await run(request, makeContext(), { features: { moveCostPatternPdb: true } });
+          assert.equal(result.status, "solved");
+          if (result.status !== "solved") throw new Error("Expected a solved oracle fixture.");
+          assert.equal(result.solution.moves, oracle.exactMoves);
+          assert.equal(result.solution.optimality, "proven");
+          assert.equal(verifySolverSolution(request, result.solution).valid, true);
+        }
+      });
+    }
+
     it("solves a small board with moveCostPatternPdb enabled", async () => {
       const rows = [
         "OOOOOOO",

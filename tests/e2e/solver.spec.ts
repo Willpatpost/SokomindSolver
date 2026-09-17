@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { effectiveProofWorkerCount, effectiveWorkerCount, type EffectiveWorkerResult } from "../../src/solver/implementations/sokomind-worker-limits.ts";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("./#/play/ultra-tiny");
@@ -116,6 +117,49 @@ test("solves a typed room with Sokomind Solver and plays its verified route", as
   await dialog.getByRole("button", { name: "Play solution" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("dialog", { name: "First Steps" })).toBeVisible();
+});
+
+test("shows memory-bounded worker ceilings and sends them to Quality search", async ({ page }) => {
+  await page.addInitScript(() => {
+    const requests: unknown[] = [];
+    Reflect.set(window, "solverRequests", requests);
+    const originalPostMessage = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (...args: [unknown, (Transferable[] | StructuredSerializeOptions)?]) {
+      const message = args[0] as { type?: string; request?: unknown } | null;
+      if (message?.type === "solver/run") requests.push(message.request);
+      Reflect.apply(originalPostMessage, this, args);
+    };
+  });
+  await page.reload();
+  const hardware = await page.evaluate(() => navigator.hardwareConcurrency);
+  const summary = (kind: string, workers: EffectiveWorkerResult) =>
+    `${kind} allows up to ${workers.count} worker${workers.count === 1 ? "" : "s"} (limited by ${workers.limitedBy === "requested" ? "your selection" : workers.limitedBy}).`;
+  const largeMemory = 4_096 * 1024 * 1024;
+  const lowMemory = 768 * 1024 * 1024;
+  const dialog = await openSolver(page);
+  const workers = dialog.getByLabel("Search workers");
+  await expect(workers).toHaveValue("0");
+  await expect(workers.locator("option")).toHaveCount(7);
+  await dialog.getByLabel("Mode").selectOption("quality");
+  await dialog.getByLabel("Memory limit").selectOption("4096");
+  await expect(dialog).toContainText(`Browser reports ${hardware} logical processors.`);
+  await expect(dialog).toContainText(summary("Search", effectiveWorkerCount(largeMemory, hardware)));
+  await expect(dialog).toContainText(summary("Proof", effectiveProofWorkerCount(largeMemory, hardware)));
+  await workers.selectOption("4");
+  await expect(dialog).toContainText(summary("Search", effectiveWorkerCount(largeMemory, hardware, 4)));
+  await expect(dialog).toContainText(summary("Proof", effectiveProofWorkerCount(largeMemory, hardware, 4)));
+  await dialog.getByLabel("Memory limit").selectOption("768");
+  await expect(dialog).toContainText(summary("Search", effectiveWorkerCount(lowMemory, hardware, 4)));
+  await expect(dialog).toContainText(summary("Proof", effectiveProofWorkerCount(lowMemory, hardware, 4)));
+  await dialog.getByLabel("Memory limit").selectOption("4096");
+  await workers.selectOption("8");
+  await dialog.getByRole("button", { name: "Start search" }).click();
+  await expect(dialog.getByRole("heading", { name: "Route found" })).toBeVisible();
+  const options = await page.evaluate(() => {
+    const requests = Reflect.get(window, "solverRequests") as { options?: Record<string, unknown> }[];
+    return requests.at(-1)?.options?.["sokomind-solver"];
+  });
+  expect(options).toEqual({ mode: "quality", workerParallelism: 8, proofParallelism: effectiveProofWorkerCount(largeMemory, hardware, 8).count });
 });
 
 test("solves First Steps with A* and plays the verified route", async ({

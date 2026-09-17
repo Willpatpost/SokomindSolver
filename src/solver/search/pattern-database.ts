@@ -79,8 +79,8 @@ function combinadicDecode(
   k: number,
   n: number,
   binom: Float64Array[],
+  result: number[] = new Array<number>(k),
 ): number[] {
-  const result = new Array<number>(k);
   let remaining = index;
   let ceiling = n;
   for (let i = k; i >= 1; i--) {
@@ -117,7 +117,7 @@ function canAllocatePatternDatabase(tableSize: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// PDB construction via reverse-push BFS (level-based packed ranks)
+// PDB construction via reverse-push BFS (chunked packed ranks)
 // ---------------------------------------------------------------------------
 
 function makePdbLookup(
@@ -151,49 +151,81 @@ interface PdbBfsContext {
   readonly k: number;
 }
 
-function expandPdbLevel(
+const PDB_QUEUE_CHUNK_SIZE = 4096;
+
+/** FIFO ranks; consumed chunks are released rather than retained by the queue. */
+class PackedRankQueue {
+  readonly #chunks = new Map<number, Uint32Array>();
+  #head = 0;
+  #tail = 0;
+
+  get size(): number { return this.#tail - this.#head; }
+  get retainedBytes(): number {
+    return this.#chunks.size * (PDB_QUEUE_CHUNK_SIZE * Uint32Array.BYTES_PER_ELEMENT + 64);
+  }
+
+  push(rank: number, checkAllocation?: (additionalBytes: number) => void): void {
+    const chunkId = Math.floor(this.#tail / PDB_QUEUE_CHUNK_SIZE);
+    let chunk = this.#chunks.get(chunkId);
+    if (!chunk) {
+      checkAllocation?.(PDB_QUEUE_CHUNK_SIZE * Uint32Array.BYTES_PER_ELEMENT + 64);
+      chunk = new Uint32Array(PDB_QUEUE_CHUNK_SIZE);
+      this.#chunks.set(chunkId, chunk);
+    }
+    chunk[this.#tail % PDB_QUEUE_CHUNK_SIZE] = rank;
+    this.#tail++;
+  }
+
+  shift(): number {
+    const chunkId = Math.floor(this.#head / PDB_QUEUE_CHUNK_SIZE);
+    const rank = this.#chunks.get(chunkId)![this.#head % PDB_QUEUE_CHUNK_SIZE];
+    this.#head++;
+    if (this.#head % PDB_QUEUE_CHUNK_SIZE === 0) this.#chunks.delete(chunkId);
+    return rank;
+  }
+}
+
+function expandPdbState(
   ctx: PdbBfsContext,
-  currentLevel: Uint32Array,
+  rank: number,
   dist: number,
-  nextLevel: number[],
+  queue: PackedRankQueue,
   positions: number[],
   occupiedRegion: Uint8Array,
   newPositions: number[],
+  checkAllocation?: (additionalBytes: number) => void,
 ): void {
   const { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k } = ctx;
-  for (let ci = 0; ci < currentLevel.length; ci++) {
-    const rank = currentLevel[ci];
-    combinadicDecode(rank, k, regionCount, binom).forEach((v, i) => { positions[i] = v; });
+  combinadicDecode(rank, k, regionCount, binom, positions);
 
-    occupiedRegion.fill(0);
-    for (let i = 0; i < k; i++) occupiedRegion[positions[i]] = 1;
+  occupiedRegion.fill(0);
+  for (let i = 0; i < k; i++) occupiedRegion[positions[i]] = 1;
 
-    for (let bi = 0; bi < k; bi++) {
-      const boardCell = regionCells[positions[bi]];
-      const neighbors = board.neighbors[boardCell];
+  for (let bi = 0; bi < k; bi++) {
+    const boardCell = regionCells[positions[bi]];
+    const neighbors = board.neighbors[boardCell];
 
-      for (let d = 0; d < 4; d++) {
-        const destCell = neighbors[d];
-        if (destCell < 0) continue;
-        const destRegion = cellToRegionIndex[destCell];
-        if (destRegion < 0) continue;
-        if (occupiedRegion[destRegion]) continue;
+    for (let d = 0; d < 4; d++) {
+      const destCell = neighbors[d];
+      if (destCell < 0) continue;
+      const destRegion = cellToRegionIndex[destCell];
+      if (destRegion < 0) continue;
+      if (occupiedRegion[destRegion]) continue;
 
-        const supportCell = board.neighbors[destCell]?.[d] ?? -1;
-        if (supportCell < 0) continue;
-        if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
-        if (board.positions[supportCell] === undefined) continue;
+      const supportCell = board.neighbors[destCell]?.[d] ?? -1;
+      if (supportCell < 0) continue;
+      if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
+      if (board.positions[supportCell] === undefined) continue;
 
-        for (let i = 0; i < k; i++) newPositions[i] = positions[i];
-        newPositions[bi] = destRegion;
-        newPositions.sort((a, b) => a - b);
+      for (let i = 0; i < k; i++) newPositions[i] = positions[i];
+      newPositions[bi] = destRegion;
+      newPositions.sort((a, b) => a - b);
 
-        const newIndex = combinadicEncode(newPositions, binom);
-        if (table[newIndex] !== UNSOLVED) continue;
+      const newIndex = combinadicEncode(newPositions, binom);
+      if (table[newIndex] !== UNSOLVED) continue;
 
-        table[newIndex] = dist;
-        nextLevel.push(newIndex);
-      }
+      queue.push(newIndex, checkAllocation);
+      table[newIndex] = dist;
     }
   }
 }
@@ -201,6 +233,7 @@ function expandPdbLevel(
 function preparePdbBfs(
   board: CompiledSearchBoard,
   config: PatternDatabaseConfig,
+  budget?: ExactPreprocessingBudget,
 ): { ctx: PdbBfsContext; solvedRank: number; retainedBytes: number } | PatternDatabase {
   const { goalCells, regionCells } = config;
   const k = goalCells.length;
@@ -212,8 +245,9 @@ function preparePdbBfs(
     throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
   }
 
-  const regionSet = new Set(regionCells);
   const regionCount = regionCells.length;
+  checkExactPreprocessingBudget(budget, estimatePdbRetainedBytes(board.cellCount, regionCount, k, 0));
+  const regionSet = new Set(regionCells);
   const cellToRegionIndex = new Int32Array(board.cellCount).fill(-1);
   for (let i = 0; i < regionCells.length; i++) {
     cellToRegionIndex[regionCells[i]] = i;
@@ -226,6 +260,7 @@ function preparePdbBfs(
   }
 
   const retainedBytes = estimatePdbRetainedBytes(board.cellCount, regionCount, k, tableSize);
+  checkExactPreprocessingBudget(budget, retainedBytes);
   const table = new Uint16Array(tableSize);
   table.fill(UNSOLVED);
 
@@ -267,14 +302,14 @@ export function buildPatternDatabase(
   const newPositions = new Array<number>(ctx.k);
   const occupiedRegion = new Uint8Array(ctx.regionCount);
 
-  let currentLevel = Uint32Array.from([solvedRank]);
-  let dist = 1;
+  const queue = new PackedRankQueue();
+  queue.push(solvedRank);
 
-  while (currentLevel.length > 0) {
-    const nextLevel: number[] = [];
-    expandPdbLevel(ctx, currentLevel, dist, nextLevel, positions, occupiedRegion, newPositions);
-    currentLevel = Uint32Array.from(nextLevel);
-    dist++;
+  while (queue.size > 0) {
+    const rank = queue.shift();
+    const dist = ctx.table[rank];
+    if (dist >= UNSOLVED - 1) continue;
+    expandPdbState(ctx, rank, dist + 1, queue, positions, occupiedRegion, newPositions);
   }
 
   return finishPdb(ctx, retainedBytes, config.goalCells);
@@ -289,72 +324,38 @@ export async function buildPatternDatabaseAsync(
   budget?: ExactPreprocessingBudget,
 ): Promise<PatternDatabase> {
   checkExactPreprocessingBudget(budget);
-  const prepared = preparePdbBfs(board, config);
+  throwIfSolverCancelled(signal);
+  const prepared = preparePdbBfs(board, config, budget);
   if ("lookup" in prepared) return prepared;
   const { ctx, solvedRank, retainedBytes } = prepared;
 
-  checkExactPreprocessingBudget(budget, retainedBytes);
+  const workspaceBytes = ctx.regionCount + ctx.k * 16;
+  checkExactPreprocessingBudget(budget, retainedBytes + workspaceBytes);
 
   const positions = new Array<number>(ctx.k);
   const newPositions = new Array<number>(ctx.k);
   const occupiedRegion = new Uint8Array(ctx.regionCount);
 
-  let currentLevel = Uint32Array.from([solvedRank]);
-  let dist = 1;
-  let totalSettled = 1;
-
-  throwIfSolverCancelled(signal);
+  const queue = new PackedRankQueue();
+  const checkQueueAllocation = (additionalBytes = 0) => {
+    throwIfSolverCancelled(signal);
+    checkExactPreprocessingBudget(budget, retainedBytes + workspaceBytes + queue.retainedBytes + additionalBytes);
+  };
+  let processed = 0;
 
   try {
-    while (currentLevel.length > 0) {
-      const nextLevel: number[] = [];
-      for (let ci = 0; ci < currentLevel.length; ci++) {
-        if ((ci & 255) === 0) {
-          checkExactPreprocessingBudget(budget, retainedBytes + totalSettled * 4);
-        }
-        if (ci > 0 && (ci % PDB_BFS_YIELD_INTERVAL) === 0) {
-          await delayForEventLoop();
-          throwIfSolverCancelled(signal);
-          checkExactPreprocessingBudget(budget, retainedBytes + totalSettled * 4);
-        }
-
-        const rank = currentLevel[ci];
-        combinadicDecode(rank, ctx.k, ctx.regionCount, ctx.binom).forEach((v, i) => { positions[i] = v; });
-
-        occupiedRegion.fill(0);
-        for (let i = 0; i < ctx.k; i++) occupiedRegion[positions[i]] = 1;
-
-        for (let bi = 0; bi < ctx.k; bi++) {
-          const boardCell = ctx.regionCells[positions[bi]];
-          const neighbors = ctx.board.neighbors[boardCell];
-
-          for (let d = 0; d < 4; d++) {
-            const destCell = neighbors[d];
-            if (destCell < 0) continue;
-            const destRegion = ctx.cellToRegionIndex[destCell];
-            if (destRegion < 0) continue;
-            if (occupiedRegion[destRegion]) continue;
-
-            const supportCell = ctx.board.neighbors[destCell]?.[d] ?? -1;
-            if (supportCell < 0) continue;
-            if (!ctx.regionSet.has(supportCell) && ctx.board.neighbors[supportCell] === undefined) continue;
-            if (ctx.board.positions[supportCell] === undefined) continue;
-
-            for (let i = 0; i < ctx.k; i++) newPositions[i] = positions[i];
-            newPositions[bi] = destRegion;
-            newPositions.sort((a, b) => a - b);
-
-            const newIndex = combinadicEncode(newPositions, ctx.binom);
-            if (ctx.table[newIndex] !== UNSOLVED) continue;
-
-            ctx.table[newIndex] = dist;
-            nextLevel.push(newIndex);
-          }
-        }
+    queue.push(solvedRank, checkQueueAllocation);
+    while (queue.size > 0) {
+      if ((processed & 255) === 0) checkQueueAllocation();
+      if (processed > 0 && (processed % PDB_BFS_YIELD_INTERVAL) === 0) {
+        await delayForEventLoop();
+        checkQueueAllocation();
       }
-      totalSettled += nextLevel.length;
-      currentLevel = Uint32Array.from(nextLevel);
-      dist++;
+      const rank = queue.shift();
+      processed++;
+      const dist = ctx.table[rank];
+      if (dist >= UNSOLVED - 1) continue;
+      expandPdbState(ctx, rank, dist + 1, queue, positions, occupiedRegion, newPositions, checkQueueAllocation);
     }
   } catch (err) {
     if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;

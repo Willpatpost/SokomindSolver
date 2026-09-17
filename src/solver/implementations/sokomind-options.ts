@@ -1,4 +1,5 @@
 import type { SolverRequest } from "../contracts.ts";
+import { DEFAULT_MAX_ENGINE_WORKERS } from "./sokomind-worker-limits.ts";
 
 export type SokomindMode = "fast" | "quality" | "optimal";
 
@@ -12,6 +13,8 @@ export interface SokomindRequestOptions {
   readonly deterministic: boolean;
   readonly maximumIncumbents: number;
   readonly harvestElapsedMs: number;
+  /** Search-worker ceiling; zero chooses hardware/memory-bounded Auto. */
+  readonly workerParallelism: number;
   readonly proofParallelism: number;
   readonly idaReachabilitySnapshots: "all" | "periodic" | "none";
   readonly idaSnapshotPeriod: number;
@@ -27,6 +30,7 @@ export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
     deterministic: false,
     maximumIncumbents: 4,
     harvestElapsedMs: 5_000,
+    workerParallelism: 0,
     proofParallelism: 1,
     idaReachabilitySnapshots: "periodic",
     idaSnapshotPeriod: 4,
@@ -141,6 +145,11 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
       obj.proofParallelism,
       1,
       32,
+    );
+  }
+  if ("workerParallelism" in obj) {
+    validated.workerParallelism = validateInt(
+      "workerParallelism", obj.workerParallelism, 0, DEFAULT_MAX_ENGINE_WORKERS,
     );
   }
   if ("idaReachabilitySnapshots" in obj) {

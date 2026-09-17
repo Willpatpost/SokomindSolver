@@ -8,8 +8,109 @@ and measurable optimality comparisons. Optimal needs substantially stronger and
 cheaper lower bounds as well as useful parallel search; removing the six-worker
 ceiling alone will not establish its target.
 
-This is an analysis and implementation plan. No solver source was changed.
-Current executable source takes precedence over historical benchmark reports.
+This is the implementation roadmap. The original measurements and proposals
+below describe commit `9e6cbd2`; the September 17 audit records subsequent
+implementation. Current executable source takes precedence over historical
+benchmark reports.
+
+## Implementation audit — September 17, 2026
+
+The audit started at `24aa1e3`. That revision already contained production
+30/60/120-second profiles, a 1.1 Quality threshold, MC-PDB rank/support repairs,
+a twelve-worker discovery ceiling, 256 MiB discovery and 512 MiB rewrite
+reservations, larger memory controls, PDB construction deadlines, packed ranks,
+box-only evaluation caching, and cheaper exact-search cutoff paths.
+
+| Item | Status after this implementation batch | Remaining work |
+| --- | --- | --- |
+| 1. Benchmark contracts | Partial: production profiles, strict harness deadlines, compatible proof qualification, Grand Hall eligibility, published-incumbent timestamps | Declare supported/holdout suites; p95 and certificate/preprocessing/occupied-worker telemetry; browser repetitions and target CI |
+| 2. MC-PDB correctness | Correction implemented and independently tested: rank/unrank, reverse support, core-step oracle, transformed A*/IDA* and replay/cutoff checks | Broader performance qualification before enabling; feature remains off |
+| 3. Desktop resources | Controls implemented: Auto/manual ceiling up to 12, hardware/memory explanation, memory-bounded browser proof parallelism, deterministic serial execution | Isolated 1/2/4/6/8/12-worker scaling and measured memory evidence |
+| 4. Mode schedulers | Open: existing bounded discovery/refinement/proof pipeline remains | Separate anytime Quality repair from Optimal proof; launch proof promptly; retain improvements through deadlines |
+| 5. Exact preprocessing | Partial: deadline fallback, live packed queue, pre-allocation checks, cancellation, dynamic PDB-cache accounting | Reuse immutable preprocessing; useful-pattern selection; ordinary/tunnel A* cheap cutoffs; upgrade IDA cached cheap bounds in later contours |
+| 6. Proof balancing | Partial: shared pending queue, per-lane algorithm selection and memory, disjoint work grants, remaining task deadlines, aggregate progress | Deeper splitting of hard partitions, search-aware scheduling and checkpoint redistribution |
+| 7. Stronger lower bounds | Open research | Sound large-board move abstractions and measured bound/build-time tradeoffs |
+| 8. Earlier Fast portfolio | Open | Reduce initial structural-planner monopoly and race complementary bounded plans |
+| 9. Broader Quality repair | Partial foundation: rewrite lanes already reserve memory | Parallel final whole-box repair, repeated-label assignments, two-box/neighborhood operators and improvement-rate scheduling |
+| 10. Hot paths and worker reuse | Partial: PDB allocation/decoding/queue fixes | Reusable discovery/rewrite workers, remaining measured kernel hotspots and preprocessing sharing |
+| 11. Public anytime results | Partial: strategic zero/false overrides restored; aggregate proof bounds published | Complete replay-valid incumbent routes in public progress; Finish with current solution; measured memory |
+| 12. WASM/native | Deferred | Reassess only after profiling and the preceding algorithmic work |
+
+### Changes made after the audit
+
+- [Benchmark qualification](../scripts/solver-v2-benchmark-lib.ts) now rejects
+  results received outside their profile deadline. Production Optimal includes
+  unknown-optimum boards and requires a replay-valid compatible optimal
+  certificate; frozen independent truth must also match when available. Quality
+  cannot qualify using metrics-only bounds or override frozen truth. Published
+  incumbents are timestamped at receipt, with terminal replay as a fallback.
+- [Worker controls](../src/solver/implementations/sokomind-worker-limits.ts)
+  are shared by the browser and scheduler. Auto uses reported logical processors,
+  memory reservations, and a twelve-lane cap; a manual count is a ceiling.
+  Proof reserves 128 MiB for the coordinator and 512 MiB per requested lane.
+  On a reported 16-thread machine at 4 GiB this allows twelve discovery lanes
+  and seven proof lanes, subject to available tasks. Non-browser callers retain
+  proof parallelism one unless explicitly configured.
+- [Parallel proof](../src/solver/implementations/sokomind-proof.ts) now lets
+  idle healthy lanes claim pending first-push partitions. Automatic A*/IDA*
+  selection uses each lane's memory after the coordinator reserve. Active and
+  failed task grants remain reserved; only clean completion refunds unused work.
+  New tasks receive the remaining wall-clock deadline. Late candidates and
+  over-grant certificates are rejected; queued prefixes supply safe bounds,
+  progress can close the global proof gap, and aggregate bounds/workers are
+  published. A failed partition still prevents a certificate.
+- [PDB construction](../src/solver/search/pattern-database.ts) checks memory
+  before allocating tables, releases consumed packed queue chunks, reuses
+  decoding buffers, and yields cumulatively across levels. Cancellation
+  propagates. [PDB evaluation](../src/solver/search/pdb-heuristic.ts) includes
+  optional cache growth in both kernels' live estimates and skips insertions
+  when residual memory cannot accommodate them.
+- Explicit `strategicAnalysisMs: 0` and `strategicPlanExecution: false` now
+  survive Quality defaults. MC-PDB tests use an independent core-step BFS oracle
+  rather than weighted FIFO relaxation, with transformed kernel/replay coverage.
+
+### Next implementation order
+
+1. Implement item 4 together with item 11's usable incumbent route: Quality
+   should allocate useful repair until its deadline; Optimal should overlap a
+   bounded improvement lane with proof and share incumbent updates.
+2. Finish item 1's supported/holdout suite and isolated worker-scaling runs.
+   Keep the unsolved 27-box memory stress fixture separate from solve SLOs.
+3. Reuse immutable preprocessing and upgrade cheap bounds only when useful
+   (item 5), then split hard proof partitions beyond the first push (item 6).
+4. Evaluate stronger lower bounds (item 7), earlier Fast plans (item 8), and
+   broader parallel repair (item 9) against that qualified suite.
+
+This batch establishes resource and qualification contracts. It does not
+establish the three target SLOs, and no new Grand Hall timing is claimed here.
+
+### Validation and local limitations
+
+- Latest complete unit execution: 2,520 passing assertions/tests under the
+  engine coverage command; the ordinary unit invocation passed all 2,518 tests
+  present before the last two coordinator regressions were added.
+- All three coverage gates passed individually. The first focused invocation
+  reported a process-level failure after the integration-budget assertions had
+  all passed; the isolated file and complete focused reruns passed.
+- Typecheck, ESLint, build, nine static delivery checks, documentation paths,
+  generated engine/catalog checks, and project-reference validation passed.
+- All 33 frozen known-outcome regressions and the real two-worker 28-move
+  proof regression passed. The latter explicitly uses nondeterministic execution
+  and asserts the parallel algorithm and worker count; deterministic execution
+  would silently test the serial path.
+- The Solver Dialog/Lab browser suites passed 36 targeted cases across
+  Chromium, Firefox, and WebKit, excluding the long Grand Hall case. Firefox
+  required a test-only `MOZ_DISABLE_CONTENT_SANDBOX=1` environment setting:
+  the managed environment otherwise prevented an empty tab subprocess from
+  launching. No project browser setting was changed.
+- Three isolated samples of each production profile on `ultra-tiny` all
+  qualified. An earlier smoke during overlapping coverage suffered one native
+  Windows Node child exit (`3221225477`, access violation). Its cause is
+  undetermined; investigate worker/runtime shutdown under item 10 rather than
+  treating the subsequent successful repetitions as proof of stability.
+- Local installed Playwright packages reported 1.62.1 while the lockfile
+  declares 1.63.0. Browser results describe that local installation; dependency
+  alignment remains an environment follow-up.
 
 ## Fresh measurements and their limits
 
@@ -389,7 +490,8 @@ console.log({oracle:exactRemainingMoves(board,robot,boxes),bound:evaluateMoveCos
 '@ | node --experimental-strip-types --input-type=module
 ```
 
-Expected: oracle four moves/two pushes, 49 explored states; heuristic five.
+At historical commit `9e6cbd2`: oracle four moves/two pushes, 49 explored
+states; heuristic five. The corrected implementation returns four.
 
 Focused existing oracle, Grand Hall safety, move-cost PDB, and proof-contract tests
 passed 80/80 in about 15.08 seconds. Another 21 focused worker/memory checks passed.

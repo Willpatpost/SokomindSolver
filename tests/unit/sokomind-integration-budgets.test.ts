@@ -60,6 +60,8 @@ describe("Sokomind integration resource contracts", () => {
   const optionCases: readonly Readonly<Record<string, string | number | boolean>>[] = [
     { mode: "quality" },
     { mode: "quality", strategicAnalysisMs: 0, strategicPlanExecution: false },
+    { mode: "quality", strategicAnalysisMs: 0 },
+    { mode: "quality", strategicPlanExecution: false },
     { mode: "quality", strategicAnalysisMs: 250, strategicPlanExecution: false },
     { mode: "quality", strategicAnalysisMs: 250, strategicPlanExecution: true },
   ];
@@ -72,9 +74,10 @@ describe("Sokomind integration resource contracts", () => {
         queueMicrotask(() => controller.abort());
       }) });
       await adapter.solve({ ...requestFor(LARGE_ROOM), options: { "sokomind-solver": options } }, context(controller.signal));
-      const autoStrategic = options.mode === "quality" && !options.strategicAnalysisMs;
+      const autoStrategic = options.mode === "quality" && !Object.hasOwn(options, "strategicAnalysisMs");
       const effectiveMs = autoStrategic ? 500 : (options.strategicAnalysisMs || 0);
-      const effectiveExec = autoStrategic || Boolean(options.strategicPlanExecution);
+      const effectiveExec = Object.hasOwn(options, "strategicPlanExecution")
+        ? Boolean(options.strategicPlanExecution) : autoStrategic;
       const expected = effectiveMs
         ? { maxMs: effectiveMs, inferenceWork: effectiveExec ? 2048 : 0 }
         : undefined;

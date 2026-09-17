@@ -3,7 +3,8 @@ import type { GameSession } from "@/src/core";
 import { useSolverLog } from "./use-solver-log";
 import { useSolverProgress } from "./use-solver-progress";
 import { useSolverWorker } from "./use-solver-worker";
-import { fingerprintFor, fingerprintKey } from "./solver-internals";
+import { automaticMemoryLimitBytes, fingerprintFor, fingerprintKey, MEBIBYTE } from "./solver-internals";
+import { effectiveProofWorkerCount, effectiveWorkerCount } from "../../solver/implementations/sokomind-worker-limits.ts";
 import type { SolverUiPhase } from "./solver-ui-types";
 
 export const TIME_LIMIT_OPTIONS = Object.freeze([
@@ -24,6 +25,13 @@ export const MEMORY_LIMIT_OPTIONS = Object.freeze([
   { value: 4_096, label: "Maximum (4 GiB)" },
 ] as const);
 
+export const WORKER_LIMIT_OPTIONS = Object.freeze([
+  { value: 0, label: "Automatic" },
+  ...[1, 2, 4, 6, 8, 12].map((value) => ({
+    value, label: `${value} worker${value === 1 ? "" : "s"}`,
+  })),
+]);
+
 interface UseSolverControllerOptions {
   readonly open: boolean;
   readonly session: GameSession;
@@ -35,11 +43,17 @@ export function useSolverController({
 }: UseSolverControllerOptions) {
   const [timeLimitMs, setTimeLimitMs] = useState(60_000);
   const [memoryLimitMiB, setMemoryLimitMiB] = useState(0);
+  const [workerParallelism, setWorkerParallelism] = useState(0);
   const [mode, setMode] = useState<"fast" | "quality" | "optimal">("fast");
   const [uiPhase, setUiPhase] = useState<SolverUiPhase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] =
     useState("Connecting to the solver worker.");
+  const hardwareConcurrency = globalThis.navigator?.hardwareConcurrency ?? 2;
+  const maxMemoryBytes = memoryLimitMiB > 0
+    ? memoryLimitMiB * MEBIBYTE : automaticMemoryLimitBytes();
+  const discoveryWorkers = effectiveWorkerCount(maxMemoryBytes, hardwareConcurrency, workerParallelism);
+  const proofWorkers = effectiveProofWorkerCount(maxMemoryBytes, hardwareConcurrency, workerParallelism);
 
   // --- Log & elapsed timer ---
   const log = useSolverLog(uiPhase);
@@ -72,7 +86,9 @@ export function useSolverController({
     runTokenRef: worker.runTokenRef,
     selectedSolverId: worker.selectedSolverId,
     timeLimitMs,
-    memoryLimitMiB,
+    maxMemoryBytes,
+    workerParallelism,
+    proofParallelism: proofWorkers.count,
     mode,
     solvers: worker.solvers,
   });
@@ -128,6 +144,11 @@ export function useSolverController({
     setTimeLimitMs,
     memoryLimitMiB,
     setMemoryLimitMiB,
+    workerParallelism,
+    setWorkerParallelism,
+    hardwareConcurrency,
+    discoveryWorkers,
+    proofWorkers,
     mode,
     setMode,
     uiPhase,

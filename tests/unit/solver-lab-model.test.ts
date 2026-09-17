@@ -52,6 +52,8 @@ function record(
       mode: "fast" as const,
       timeLimitMs: 60_000,
       memoryLimitMiB: 0,
+      workerParallelism: 0,
+      proofParallelism: 1,
       ...overrides,
     }),
     result,
@@ -114,6 +116,23 @@ test("run comparison ignores inactive modes for classic algorithms", () => {
   const reference = record("right", solved, { solverId: "classic-dfs", mode: "optimal" });
 
   assert.equal(compareSolverLabRuns(primary, reference).sameLimits, true);
+});
+
+test("run comparison includes active worker settings", () => {
+  const configuration = { solverId: "sokomind-solver", mode: "quality" as const, workerParallelism: 4, proofParallelism: 2 };
+  const primary = record("left", solved, configuration);
+  assert.equal(compareSolverLabRuns(primary, record("right", solved, configuration)).sameLimits, true);
+  for (const change of [{ workerParallelism: 2 }, { proofParallelism: 1 }]) {
+    assert.equal(compareSolverLabRuns(primary, record("right", solved, { ...configuration, ...change })).sameLimits, false);
+  }
+  assert.equal(compareSolverLabRuns(
+    record("left", solved, { mode: "quality", workerParallelism: 4, proofParallelism: 2 }),
+    record("right", solved, { mode: "fast", workerParallelism: 1, proofParallelism: 1 }),
+  ).sameLimits, true);
+  assert.equal(compareSolverLabRuns(
+    record("left", solved, { ...configuration, mode: "fast", proofParallelism: 1 }),
+    record("right", solved, { ...configuration, mode: "fast", proofParallelism: 2 }),
+  ).sameLimits, true);
 });
 
 test("algorithm lessons disclose strategy, heuristic, and guarantee", () => {

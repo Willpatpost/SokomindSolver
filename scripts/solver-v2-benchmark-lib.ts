@@ -115,6 +115,8 @@ export interface BenchmarkProfile {
   readonly deterministic: boolean;
   readonly workerCount: number;
   readonly requiresKnownOptimum: boolean;
+  /** Production proof targets can run without a frozen independent optimum. */
+  readonly requiresOptimalProof?: boolean;
   readonly classicEligibleOnly: boolean;
   readonly limits: Readonly<SolverLimits>;
   readonly sokomindOptions?: SokomindRequestOptions;
@@ -230,7 +232,8 @@ export const BENCHMARK_PROFILES: Readonly<
     solverVersion: sokomindSolverMetadata.version,
     deterministic: false,
     workerCount: DEFAULT_MAX_ENGINE_WORKERS,
-    requiresKnownOptimum: true,
+    requiresKnownOptimum: false,
+    requiresOptimalProof: true,
     classicEligibleOnly: false,
     limits: PRODUCTION_OPTIMAL_LIMITS,
     sokomindOptions: productionSokomindOptions("optimal", "auto"),
@@ -462,6 +465,11 @@ export interface BenchmarkTuningRun {
   readonly fingerprint: string;
 }
 
+function isDiscoveryTuningProfile(profileId: BenchmarkProfileId): boolean {
+  return profileId === "sokomind-fast" || profileId === "sokomind-quality" ||
+    profileId === "production-fast" || profileId === "production-quality";
+}
+
 /** Resolve once before spawning; children receive the complete validated profile. */
 export function parseBenchmarkTuning(
   raw: string | undefined,
@@ -472,8 +480,8 @@ export function parseBenchmarkTuning(
     if (label !== undefined) throw new Error("--tuning-label requires SOKOMIND_TUNING_JSON");
     return undefined;
   }
-  if (profileIds.some(id => id !== "sokomind-fast" && id !== "sokomind-quality")) {
-    throw new Error("SOKOMIND_TUNING_JSON requires only sokomind-fast or sokomind-quality profiles; other profiles do not support this experiment");
+  if (profileIds.some(id => !isDiscoveryTuningProfile(id))) {
+    throw new Error("SOKOMIND_TUNING_JSON requires only Fast or Quality Sokomind profiles; other profiles do not support this experiment");
   }
   let value: unknown;
   try { value = JSON.parse(raw); } catch {
@@ -547,7 +555,9 @@ export interface BenchmarkSample {
   readonly accepted: boolean;
   readonly featureUnderTest?: ExactSearchFeatureKey;
   readonly featureEnabled?: boolean;
+  /** First observed verified incumbent; terminal replay is the fallback. */
   readonly firstSolutionMs?: number;
+  /** Strict move improvements timestamped at receipt within the harness run. */
   readonly incumbentHistory?: readonly { moves: number; elapsedMs: number }[];
 }
 
@@ -614,16 +624,72 @@ async function solveBenchmarkProfile(
   );
 }
 
+/** Qualify the returned route independently of the adapter's cutoff handling. */
+export function qualifySolvedBenchmark(
+  request: SolverRequest,
+  profile: BenchmarkProfile,
+  result: Extract<SolverResult, { status: "solved" }>,
+  elapsedMs: number,
+  knownOutcome?: KnownFixtureOutcome,
+): Readonly<{
+  accepted: boolean;
+  verified: boolean;
+  proofValid: boolean;
+  matchesKnownOptimum: boolean | undefined;
+  detail?: string;
+}> {
+  const verification = verifySolverSolution(request, result.solution);
+  const proofValid = collectProofIssues(result.proof, result.solution).length === 0;
+  const matchesKnownOptimum = knownOutcome === undefined
+    ? undefined
+    : knownOutcome.kind === "solved" && result.solution.moves === knownOutcome.moves;
+  const common = { verified: verification.valid, proofValid, matchesKnownOptimum };
+  const reject = (detail: string) => Object.freeze({ ...common, accepted: false, detail });
+  if (!verification.valid) return reject(verification.message ?? "Solution failed replay");
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0 ||
+      (profile.limits.maxElapsedMs !== undefined && elapsedMs > profile.limits.maxElapsedMs)) {
+    return reject(`Returned after ${Math.ceil(elapsedMs)}ms; deadline is ${profile.limits.maxElapsedMs ?? "unlimited"}ms`);
+  }
+  if (knownOutcome?.kind === "unsolvable") {
+    return reject("Independent truth marks this fixture unsolvable");
+  }
+  if (profile.qualityMoveThreshold !== undefined) {
+    const threshold = profile.qualityMoveThreshold;
+    const moves = result.solution.moves;
+    const withinKnown = knownOutcome?.kind === "solved" &&
+      moves <= Math.floor(threshold * knownOutcome.moves);
+    // Metrics counters are observational; only a compatible proof carries a bound.
+    const withinBound = knownOutcome === undefined && proofValid && result.proof !== undefined &&
+      (result.proof.kind === "bounded" || result.proof.kind === "optimal") &&
+      result.proof.lowerBound !== undefined &&
+      result.proof.lowerBound >= Math.ceil(moves / threshold);
+    if (!withinKnown && !withinBound) {
+      return reject(knownOutcome?.kind === "solved"
+        ? `${moves} moves exceeds ${Math.floor(threshold * knownOutcome.moves)}-move quality ceiling`
+        : `Compatible lower bound insufficient to certify ${moves}-move solution within ${Math.round((threshold - 1) * 100)}%`);
+    }
+  }
+  if (profile.requiresKnownOptimum || profile.requiresOptimalProof) {
+    if (profile.requiresKnownOptimum && knownOutcome === undefined) {
+      return reject("No independent frozen outcome is available");
+    }
+    if (result.solution.optimality !== "proven" || result.proof?.kind !== "optimal" || !proofValid) {
+      return reject("Expected a structurally valid optimal proof");
+    }
+    if (knownOutcome?.kind === "solved" && !matchesKnownOptimum) {
+      return reject(`Expected the frozen ${knownOutcome.moves}-move optimum`);
+    }
+  }
+  return Object.freeze({ ...common, accepted: true });
+}
+
 export async function runBenchmarkSample(
   fixture: BenchmarkFixture,
   profile: BenchmarkProfile,
   featureRun?: BenchmarkFeatureRun,
   tuningRun?: BenchmarkTuningRun,
 ): Promise<BenchmarkSample> {
-  const tuningEligible =
-    profile.id === "sokomind-fast" || profile.id === "sokomind-quality" ||
-    profile.id === "production-fast" || profile.id === "production-quality";
-  if (tuningRun && (featureRun || !tuningEligible)) {
+  if (tuningRun && (featureRun || !isDiscoveryTuningProfile(profile.id))) {
     throw new Error("Tuning experiments require a Sokomind discovery profile without exact feature comparisons");
   }
   const request = benchmarkRequest(fixture, profile);
@@ -632,13 +698,23 @@ export async function runBenchmarkSample(
   const timeout = watchdogDelay === undefined
     ? undefined
     : setTimeout(() => controller.abort(), watchdogDelay);
+  const startedAt = performance.now();
+  const incumbentHistory: Array<Readonly<{ moves: number; elapsedMs: number }>> = [];
+  const recordIncumbent = (moves: number, elapsedMs: number) => {
+    if (!Number.isSafeInteger(moves) || moves < 0 ||
+        (incumbentHistory.length > 0 && moves >= incumbentHistory[incumbentHistory.length - 1].moves)) return;
+    incumbentHistory.push(Object.freeze({ moves, elapsedMs: Math.ceil(elapsedMs) }));
+  };
   const context: SolverExecutionContext = {
     signal: controller.signal,
-    reportProgress() {},
+    reportProgress(progress) {
+      if (progress.incumbent) {
+        recordIncumbent(progress.incumbent.moves, performance.now() - startedAt);
+      }
+    },
     now: performance.now.bind(performance),
   };
   const rssBeforeBytes = process.memoryUsage.rss();
-  const startedAt = performance.now();
   let result: SolverResult | undefined;
   let error: string | undefined;
   try {
@@ -648,7 +724,10 @@ export async function runBenchmarkSample(
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
-  const elapsedMs = Math.round(performance.now() - startedAt);
+  const elapsedMs = Math.ceil(performance.now() - startedAt);
+  if (result?.status === "solved" && verifySolverSolution(request, result.solution).valid) {
+    recordIncumbent(result.solution.moves, elapsedMs);
+  }
   const rssAfterBytes = process.memoryUsage.rss();
   const peakRssBytes = process.resourceUsage().maxRSS * 1024;
   const knownOutcome = KNOWN_FIXTURE_OUTCOMES_BY_ID[fixture.fixtureId];
@@ -686,6 +765,10 @@ export async function runBenchmarkSample(
     rssBeforeBytes,
     rssAfterBytes,
     peakRssBytes,
+    ...(incumbentHistory.length > 0
+      ? { firstSolutionMs: incumbentHistory[0].elapsedMs,
+          incumbentHistory: Object.freeze([...incumbentHistory]) }
+      : {}),
     ...(knownOutcome
       ? {
           knownOutcomeKind: knownOutcome.kind,
@@ -726,64 +809,14 @@ export async function runBenchmarkSample(
     gap: result.proof?.gap,
   } as const;
   if (result.status === "solved") {
-    const verification = verifySolverSolution(request, result.solution);
-    const proofValid = collectProofIssues(result.proof, result.solution).length === 0;
-    const matchesKnownOptimum = knownOutcome === undefined
-      ? undefined
-      : knownOutcome.kind === "solved" &&
-        result.solution.moves === knownOutcome.moves;
-    let accepted: boolean;
-    let qualityDetail: string | undefined;
-    if (profile.qualityMoveThreshold !== undefined) {
-      const threshold = profile.qualityMoveThreshold;
-      const moves = result.solution.moves;
-      const lb = result.proof?.lowerBound ?? base.lowerBound;
-      const withinKnown = knownOutcome?.kind === "solved" &&
-        moves <= Math.floor(threshold * knownOutcome.moves);
-      const withinBound = typeof lb === "number" && lb > 0 &&
-        lb >= Math.ceil(moves / threshold);
-      accepted = verification.valid && (withinKnown || withinBound);
-      if (!accepted) {
-        qualityDetail = !verification.valid
-          ? verification.message
-          : !withinKnown && !withinBound
-            ? knownOutcome?.kind === "solved"
-              ? `${moves} moves exceeds ${Math.floor(threshold * knownOutcome.moves)}-move quality ceiling`
-              : `Lower bound ${lb ?? "unknown"} insufficient to certify ${moves}-move solution within ${Math.round((threshold - 1) * 100)}%`
-            : undefined;
-      }
-    } else {
-      accepted = verification.valid &&
-        (!profile.requiresKnownOptimum ||
-          (knownOutcome?.kind === "solved" &&
-            result.solution.optimality === "proven" &&
-            proofValid &&
-            matchesKnownOptimum === true));
-    }
+    const qualification = qualifySolvedBenchmark(request, profile, result, elapsedMs, knownOutcome);
     return Object.freeze({
       ...base,
       status: "solved" as const,
       optimality: result.solution.optimality,
       moves: result.solution.moves,
       pushes: result.solution.pushes,
-      verified: verification.valid,
-      proofValid,
-      matchesKnownOptimum,
-      accepted,
-      ...(!accepted
-        ? {
-            detail: qualityDetail ??
-              (!verification.valid
-                ? verification.message
-                : knownOutcome === undefined
-                  ? "No independent frozen outcome is available"
-                  : knownOutcome.kind === "unsolvable"
-                    ? "Independent truth marks this fixture unsolvable"
-                    : !proofValid
-                      ? "Expected a structurally valid optimal proof"
-                      : `Expected the frozen ${knownOutcome.moves}-move optimum`),
-          }
-        : {}),
+      ...qualification,
     });
   }
   if (result.status === "unsolved") {
@@ -799,7 +832,8 @@ export async function runBenchmarkSample(
       reason: result.reason,
       detail: result.detail,
       proofValid,
-      accepted: independentlyProvenUnsolvable,
+      accepted: independentlyProvenUnsolvable &&
+        (profile.limits.maxElapsedMs === undefined || elapsedMs <= profile.limits.maxElapsedMs),
     });
   }
   return Object.freeze({ ...base, status: "cancelled" as const, accepted: false });
@@ -1016,6 +1050,7 @@ function assertBenchmarkChildSampleShape(value: unknown): asserts value is Bench
     "estimatedMemoryBytes",
     "knownOptimalMoves",
     "knownOptimalPushes",
+    "firstSolutionMs",
   ] as const;
   for (const name of optionalNumbers) {
     if (value[name] !== undefined && !isFiniteNonNegative(value[name])) {
@@ -1043,6 +1078,27 @@ function assertBenchmarkChildSampleShape(value: unknown): asserts value is Bench
     if (value[name] !== undefined && typeof value[name] !== "boolean") {
       throw new Error(`Benchmark child field ${name} must be boolean`);
     }
+  }
+  if (value.incumbentHistory !== undefined) {
+    if (!Array.isArray(value.incumbentHistory) || value.incumbentHistory.length === 0) {
+      throw new Error("Benchmark child incumbentHistory must be a non-empty array");
+    }
+    let previousMoves = Infinity;
+    let previousTime = -1;
+    for (const entry of value.incumbentHistory) {
+      if (!isRecord(entry) || !Number.isSafeInteger(entry.moves) || (entry.moves as number) < 0 ||
+          !isFiniteNonNegative(entry.elapsedMs) || entry.elapsedMs < previousTime ||
+          entry.elapsedMs > (value.elapsedMs as number) || (entry.moves as number) >= previousMoves) {
+        throw new Error("Benchmark child incumbentHistory requires improving moves and monotonic elapsed times within the run");
+      }
+      previousMoves = entry.moves as number;
+      previousTime = entry.elapsedMs;
+    }
+    if (value.firstSolutionMs !== value.incumbentHistory[0].elapsedMs) {
+      throw new Error("Benchmark child firstSolutionMs must match its first incumbent");
+    }
+  } else if (value.firstSolutionMs !== undefined) {
+    throw new Error("Benchmark child firstSolutionMs requires incumbentHistory");
   }
   for (const name of ["reason", "detail"] as const) {
     if (value[name] !== undefined && typeof value[name] !== "string") {

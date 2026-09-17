@@ -8,6 +8,7 @@ import type {
 } from "../contracts.ts";
 import { verifySolverSolution } from "../verification.ts";
 import type { SokomindRequestOptions } from "./sokomind-options.ts";
+import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "./sokomind-worker-limits.ts";
 import { compileSearchBoard } from "../search/compiled-board.ts";
 import { selectProofAlgorithm, type ProofAlgorithm } from "../search/proof-algorithm-selection.ts";
 import { runExactMoveAStar, type ExactIncumbent } from "../search/exact-move-astar.ts";
@@ -274,7 +275,8 @@ export interface SokomindProofWorker {
 interface PartitionTracker {
   readonly partitionId: string;
   readonly prefixCost: number;
-  readonly worker: SokomindProofWorker;
+  worker?: SokomindProofWorker;
+  allocatedLimits?: SolverRequest["limits"];
   lowerBound: number;
   completed: boolean;
   exhausted: boolean;
@@ -309,13 +311,6 @@ export async function runConcurrentProof(
   const board = compileSearchBoard(request.board);
   const boxCount = request.snapshot.boxes.length;
 
-  let algorithm: ProofAlgorithm;
-  if (options.proofAlgorithm === "auto") {
-    algorithm = selectProofAlgorithm(board, boxCount, request.limits?.maxMemoryBytes);
-  } else {
-    algorithm = options.proofAlgorithm;
-  }
-
   const partitions = enumerateFirstPushPartitions(request, board);
 
   if (partitions.length === 0) {
@@ -342,18 +337,27 @@ export async function runConcurrentProof(
     return discoveryResult;
   }
 
-  const globalU = discoveryResult.solution.moves;
-  let bestSolution: SolverSolution = discoveryResult.solution;
-  let bestCost = globalU;
-  const proofAlgorithmLabel: SolverProofAlgorithm =
-    concurrentOptions.proofParallelism > 1
-      ? (algorithm === "astar" ? "parallel-move-astar" : "parallel-move-ida-star")
-      : (algorithm === "astar" ? "move-astar" : "move-ida-star");
-
   const workerCount = Math.min(
     concurrentOptions.proofParallelism,
     partitions.length,
   );
+  const perWorkerMemoryLimit = proofLimits?.maxMemoryBytes === undefined
+    ? undefined
+    : Math.floor(
+        (proofLimits.maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES) / workerCount,
+      );
+  if (workerCount < 1 || (perWorkerMemoryLimit !== undefined && perWorkerMemoryLimit <= 0)) {
+    return discoveryResult;
+  }
+  // Automatic selection must use the memory actually available to one lane.
+  const algorithm: ProofAlgorithm = options.proofAlgorithm === "auto"
+    ? selectProofAlgorithm(board, boxCount, perWorkerMemoryLimit)
+    : options.proofAlgorithm;
+  let bestSolution: SolverSolution = discoveryResult.solution;
+  let bestCost = discoveryResult.solution.moves;
+  const proofAlgorithmLabel: SolverProofAlgorithm = workerCount > 1
+    ? (algorithm === "astar" ? "parallel-move-astar" : "parallel-move-ida-star")
+    : (algorithm === "astar" ? "move-astar" : "move-ida-star");
 
   const workers: SokomindProofWorker[] = [];
   try {
@@ -365,11 +369,10 @@ export async function runConcurrentProof(
     return discoveryResult;
   }
 
-  const trackers: PartitionTracker[] = partitions.map((p, i) => ({
+  const trackers: PartitionTracker[] = partitions.map((p) => ({
     partitionId: p.partitionId,
     prefixCost: p.prefixCost,
-    worker: workers[i % workerCount],
-    lowerBound: 0,
+    lowerBound: p.prefixCost,
     completed: false,
     exhausted: false,
     failed: false,
@@ -377,56 +380,39 @@ export async function runConcurrentProof(
 
   const trackerById = new Map(trackers.map((t) => [t.partitionId, t]));
 
-  // Per-worker partition queues: only one partition runs at a time on each
-  // worker to avoid shared mutable state cross-talk (abortController,
-  // pendingUpperBound, activePrefixCost are module-level in the worker).
-  const workerQueues = new Map<SokomindProofWorker, number[]>();
-  for (const worker of workers) {
-    workerQueues.set(worker, []);
-  }
-  for (let i = 0; i < trackers.length; i++) {
-    workerQueues.get(trackers[i].worker)!.push(i);
-  }
+  // Idle lanes claim the next partition; slow or failed lanes cannot strand
+  // work in a private queue. Each lane still runs exactly one task at a time.
+  const pendingPartitions = trackers.map((_, index) => index);
 
-  const perWorkerMemoryLimit = proofLimits?.maxMemoryBytes === undefined
-    ? undefined
-    : Math.floor(proofLimits.maxMemoryBytes / workerCount);
-
-  function dynamicPartitionLimits(): typeof proofLimits {
+  function dynamicPartitionLimits(): typeof proofLimits | null {
     if (proofLimits === undefined) return undefined;
-    const remaining = trackers.filter((t) => !t.completed && !t.failed);
-    const remainingCount = remaining.length;
-    if (remainingCount === 0) return proofLimits;
-    const consumedExpanded = trackers.reduce(
-      (sum, t) => sum + ((t.completed || t.failed) ? (t.metrics?.expandedStates ?? 0) : 0),
-      0,
-    );
-    const consumedGenerated = trackers.reduce(
-      (sum, t) => sum + ((t.completed || t.failed) ? (t.metrics?.generatedStates ?? 0) : 0),
-      0,
-    );
+    const remainingCount = trackers.filter((t) => !t.worker && !t.completed).length;
+    const share = (name: "maxExpandedStates" | "maxGeneratedStates"): number | undefined => {
+      const total = proofLimits[name];
+      if (total === undefined) return undefined;
+      const metricName = name === "maxExpandedStates" ? "expandedStates" : "generatedStates";
+      // Reserve the full grant of active/failed tasks. A silent lane may have
+      // consumed work which has not yet reached the coordinator. Only a clean
+      // completion refunds unused work; progress never makes it spendable twice.
+      const committed = trackers.reduce((sum, t) => sum + (
+        !t.worker ? 0
+        : t.completed && !t.failed ? (t.metrics?.[metricName] ?? t.allocatedLimits?.[name] ?? 0)
+        : (t.allocatedLimits?.[name] ?? 0)
+      ), 0);
+      return Math.floor((total - committed) / Math.max(1, remainingCount));
+    };
+    const maxExpandedStates = share("maxExpandedStates");
+    const maxGeneratedStates = share("maxGeneratedStates");
+    const maxElapsedMs = proofLimits.maxElapsedMs === undefined
+      ? undefined
+      : Math.max(0, Math.floor(proofDeadline - context.now()));
+    if ((maxExpandedStates !== undefined && maxExpandedStates <= 0) ||
+        (maxGeneratedStates !== undefined && maxGeneratedStates <= 0) || maxElapsedMs === 0) return null;
     return {
       ...proofLimits,
-      ...(proofLimits.maxExpandedStates === undefined
-        ? {}
-        : {
-            maxExpandedStates: Math.max(
-              1,
-              Math.floor(
-                (proofLimits.maxExpandedStates - consumedExpanded) / remainingCount,
-              ),
-            ),
-          }),
-      ...(proofLimits.maxGeneratedStates === undefined
-        ? {}
-        : {
-            maxGeneratedStates: Math.max(
-              1,
-              Math.floor(
-                (proofLimits.maxGeneratedStates - consumedGenerated) / remainingCount,
-              ),
-            ),
-          }),
+      ...(maxElapsedMs === undefined ? {} : { maxElapsedMs }),
+      ...(maxExpandedStates === undefined ? {} : { maxExpandedStates }),
+      ...(maxGeneratedStates === undefined ? {} : { maxGeneratedStates }),
       ...(perWorkerMemoryLimit === undefined
         ? {}
         : { maxMemoryBytes: perWorkerMemoryLimit }),
@@ -438,15 +424,18 @@ export async function runConcurrentProof(
   return new Promise<SolverResult>((resolve) => {
     let settled = false;
     const activeByWorker = new Map<SokomindProofWorker, PartitionTracker>();
+    const unavailableWorkers = new Set<SokomindProofWorker>();
     const messageListeners = new Map<SokomindProofWorker, ProofMessageListener>();
     const errorListeners = new Map<SokomindProofWorker, ProofErrorListener>();
     const silenceTimers = new Map<SokomindProofWorker, ReturnType<typeof setTimeout>>();
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastProgressAt = Number.NEGATIVE_INFINITY;
 
     const aggregateProofMetrics = (): SolverRunMetrics => {
       const completedTrackers = trackers.filter(
-        (tracker): tracker is PartitionTracker & { metrics: SolverRunMetrics } =>
-          tracker.metrics !== undefined,
+        (tracker): tracker is PartitionTracker & {
+          metrics: SolverRunMetrics; worker: SokomindProofWorker;
+        } => tracker.metrics !== undefined && tracker.worker !== undefined,
       );
       const completed = completedTrackers.map((tracker) => tracker.metrics);
       const counters: Record<string, number> = {};
@@ -465,6 +454,7 @@ export async function runConcurrentProof(
         "memoryReachabilitySnapshotBytes",
         "pdbTableEntries",
         "pdbRetainedBytes",
+        "pdbSearchCacheRetainedBytes",
         "interactionBoostRetainedBytes",
         "interactionBoostSearchCacheRetainedBytes",
         "deadlockTableRegions",
@@ -507,6 +497,10 @@ export async function runConcurrentProof(
       if (trackers.length > 0) {
         counters.lowerBound = Math.min(...trackers.map(partitionLowerBound));
       }
+      counters.proofWorkerCount = workerCount;
+      counters.activeProofWorkers = activeByWorker.size;
+      counters.pendingProofPartitions = pendingPartitions.length;
+      counters.completedProofPartitions = trackers.filter((t) => t.completed).length;
 
       const perWorkerPeakFrontier = new Map<SokomindProofWorker, number>();
       for (const tracker of completedTrackers) {
@@ -542,6 +536,27 @@ export async function runConcurrentProof(
 
     const combinedMetrics = () =>
       mergeProofMetrics(discoveryResult.metrics, aggregateProofMetrics());
+
+    function reportProgress(force = false): void {
+      const now = context.now();
+      if (!force && now - lastProgressAt < 100) return;
+      lastProgressAt = now;
+      const metrics = combinedMetrics();
+      const lowerBound = Math.min(bestCost, ...trackers.map(partitionLowerBound));
+      context.reportProgress({
+        phase: "proving",
+        ...metrics,
+        incumbent: {
+          moves: bestCost,
+          pushes: bestSolution.pushes,
+          objectiveScore: bestCost,
+        },
+        lowerBound,
+        upperBound: bestCost,
+        gap: bestCost - lowerBound,
+        detail: `Proving optimality: ${activeByWorker.size} active workers, ${pendingPartitions.length} pending partitions`,
+      });
+    }
 
     const clearSilenceTimer = (worker: SokomindProofWorker): void => {
       const timer = silenceTimers.get(worker);
@@ -580,7 +595,9 @@ export async function runConcurrentProof(
     }
 
     function partitionLowerBound(t: PartitionTracker): number {
-      if (t.failed) return 0;
+      // Prefix length is independently known even if the lane fails. Discard
+      // worker-provided bounds on failure, while preserving this safe minimum.
+      if (t.failed) return Math.min(t.prefixCost, bestCost);
       if (t.exhausted && t.completed) return bestCost;
       return t.lowerBound;
     }
@@ -637,14 +654,29 @@ export async function runConcurrentProof(
       }
     }
 
+    function atDeadline(): boolean {
+      if (settled) return true;
+      if (context.signal.aborted) {
+        onAbort();
+        return true;
+      }
+      if (context.now() >= proofDeadline) {
+        finish(solvedResult(false, Math.min(...trackers.map(partitionLowerBound))));
+        return true;
+      }
+      return false;
+    }
+
     function failActive(worker: SokomindProofWorker): void {
-      const tracker = activeByWorker.get(worker);
-      if (!tracker) return;
-      tracker.completed = true;
-      tracker.failed = true;
-      activeByWorker.delete(worker);
-      clearSilenceTimer(worker);
-      dispatchNext(worker);
+      handleWorkerError(worker);
+    }
+
+    function exceedsWorkGrant(tracker: PartitionTracker, metrics: SolverRunMetrics): boolean {
+      const limits = tracker.allocatedLimits;
+      return (limits?.maxExpandedStates !== undefined &&
+        (metrics.expandedStates ?? 0) > limits.maxExpandedStates) ||
+        (limits?.maxGeneratedStates !== undefined &&
+          (metrics.generatedStates ?? 0) > limits.maxGeneratedStates);
     }
 
     function armSilenceTimer(worker: SokomindProofWorker): void {
@@ -652,12 +684,13 @@ export async function runConcurrentProof(
       const configured = concurrentOptions.silenceTimeoutMs ?? 30_000;
       const timeout = Math.max(
         1,
-        Math.min(configured, proofLimits?.maxElapsedMs ?? configured),
+        Math.min(configured, proofDeadline - context.now()),
       );
       silenceTimers.set(worker, setTimeout(() => handleWorkerError(worker), timeout));
     }
 
-    function dispatchPartition(index: number): void {
+    function dispatchPartition(index: number, worker: SokomindProofWorker): void {
+      if (atDeadline()) return;
       const partition = partitions[index];
       const tracker = trackers[index];
 
@@ -666,18 +699,27 @@ export async function runConcurrentProof(
         tracker.completed = true;
         tracker.exhausted = true;
         tracker.lowerBound = partition.prefixCost;
-        dispatchNext(tracker.worker);
+        dispatchNext(worker);
         return;
       }
 
-      activeByWorker.set(tracker.worker, tracker);
+      const limits = dynamicPartitionLimits();
+      if (limits === null) {
+        tracker.completed = true;
+        tracker.failed = true;
+        dispatchNext(worker);
+        return;
+      }
+      tracker.worker = worker;
+      tracker.allocatedLimits = limits;
+      activeByWorker.set(worker, tracker);
 
       const command: ProofStartPartition = {
         type: "proof/start-partition",
         partitionId: partition.partitionId,
         request: {
           ...buildPartitionRequest(request, partition),
-          limits: dynamicPartitionLimits(),
+          limits,
         },
         initialUpperBound: localU,
         prefixCost: partition.prefixCost,
@@ -686,26 +728,26 @@ export async function runConcurrentProof(
         deterministic: options.deterministic,
       };
       try {
-        tracker.worker.postMessage(command);
-        armSilenceTimer(tracker.worker);
+        worker.postMessage(command);
+        armSilenceTimer(worker);
       } catch {
-        failActive(tracker.worker);
+        handleWorkerError(worker);
       }
     }
 
     function dispatchNext(worker: SokomindProofWorker): void {
-      if (settled) return;
-      const queue = workerQueues.get(worker);
-      if (!queue || queue.length === 0) {
+      if (atDeadline() || unavailableWorkers.has(worker) || activeByWorker.has(worker)) return;
+      if (pendingPartitions.length === 0) {
         checkTermination();
         return;
       }
-      const next = queue.shift()!;
-      dispatchPartition(next);
+      const next = pendingPartitions.shift()!;
+      dispatchPartition(next, worker);
       checkTermination();
     }
 
     function handleMessage(worker: SokomindProofWorker, data: unknown): void {
+      if (atDeadline() || unavailableWorkers.has(worker)) return;
       if (!isProofResult(data)) {
         handleWorkerError(worker);
         return;
@@ -734,16 +776,19 @@ export async function runConcurrentProof(
             ),
             counters: result.counters,
           };
-          if (result.lowerBound < tracker.lowerBound) {
+          if (result.lowerBound < tracker.lowerBound || exceedsWorkGrant(tracker, tracker.metrics)) {
             failActive(worker);
           } else if (result.lowerBound > tracker.lowerBound) {
             tracker.lowerBound = result.lowerBound;
           }
+          checkTermination();
+          if (!settled) reportProgress();
           break;
         }
 
         case "proof/solution": {
           const verification = verifySolverSolution(request, result.solution);
+          if (atDeadline()) return;
           if (!verification.valid || result.totalCost !== result.solution.moves) {
             failActive(worker);
             break;
@@ -761,12 +806,16 @@ export async function runConcurrentProof(
                 // worker already terminated
               }
             }
+            checkTermination();
+            if (!settled) reportProgress(true);
           }
           break;
         }
 
         case "proof/partition-complete": {
-          if (result.lowerBound < tracker.lowerBound) {
+          if (result.lowerBound < tracker.lowerBound || exceedsWorkGrant(tracker, result.metrics) ||
+              (result.metrics.expandedStates ?? 0) < (tracker.metrics?.expandedStates ?? 0) ||
+              (result.metrics.generatedStates ?? 0) < (tracker.metrics?.generatedStates ?? 0)) {
             failActive(worker);
             break;
           }
@@ -777,6 +826,7 @@ export async function runConcurrentProof(
           activeByWorker.delete(worker);
           clearSilenceTimer(worker);
           dispatchNext(worker);
+          if (!settled) reportProgress();
           break;
         }
 
@@ -788,6 +838,14 @@ export async function runConcurrentProof(
     }
 
     function handleWorkerError(worker: SokomindProofWorker): void {
+      if (settled || unavailableWorkers.has(worker)) return;
+      unavailableWorkers.add(worker);
+      try {
+        worker.postMessage({ type: "proof/cancel" });
+      } catch {
+        // A crashed lane may no longer accept commands.
+      }
+      worker.terminate();
       clearSilenceTimer(worker);
       const active = activeByWorker.get(worker);
       if (active) {
@@ -795,10 +853,13 @@ export async function runConcurrentProof(
         active.failed = true;
         activeByWorker.delete(worker);
       }
-      const queue = workerQueues.get(worker) ?? [];
-      for (const index of queue.splice(0)) {
-        trackers[index].completed = true;
-        trackers[index].failed = true;
+      if (workers.every((lane) => unavailableWorkers.has(lane))) {
+        for (const index of pendingPartitions.splice(0)) {
+          trackers[index].completed = true;
+          trackers[index].failed = true;
+        }
+      } else {
+        for (const lane of workers) dispatchNext(lane);
       }
       checkTermination();
     }
@@ -832,25 +893,13 @@ export async function runConcurrentProof(
         Math.floor(proofDeadline - context.now()),
       );
       deadlineTimer = setTimeout(() => {
-        for (const tracker of trackers) {
-          if (!tracker.completed) {
-            tracker.completed = true;
-            tracker.failed = true;
-          }
-        }
-        checkTermination();
+        finish(solvedResult(false, Math.min(...trackers.map(partitionLowerBound))));
       }, Math.max(1, deadlineDelayMs));
     }
 
-    // Dispatch only the first partition to each worker; subsequent
-    // partitions are queued and dispatched when the current one completes.
-    for (const [, queue] of workerQueues) {
-      if (queue.length > 0) {
-        const first = queue.shift()!;
-        dispatchPartition(first);
-      }
-    }
+    for (const worker of workers) dispatchNext(worker);
 
     checkTermination();
+    if (!settled) reportProgress(true);
   });
 }

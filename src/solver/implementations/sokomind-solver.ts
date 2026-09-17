@@ -129,7 +129,9 @@ function configuredWorkerCount(
     ),
   );
   const declaredMemoryBytes = request.limits?.maxMemoryBytes ?? Infinity;
-  return effectiveWorkerCount(declaredMemoryBytes, hardware).count;
+  return effectiveWorkerCount(
+    declaredMemoryBytes, hardware, extractSokomindOptions(request).workerParallelism,
+  ).count;
 }
 
 function structuralHeadStartMs(run: SearchRunState): number {
@@ -377,21 +379,28 @@ export function createSokomindSolverAdapter(
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
       const originalOptions = extractSokomindOptions(originalRequest);
+      const rawOptions = originalRequest.options?.["sokomind-solver"] as
+        Readonly<Record<string, unknown>> | undefined;
       const structural = isStructuralPuzzle(originalRequest);
       const autoStrategic =
         originalOptions.mode === "quality" &&
         structural &&
         !originalOptions.deterministic &&
-        originalOptions.strategicAnalysisMs === 0;
-      const request = autoStrategic
+        !Object.hasOwn(rawOptions ?? {}, "strategicAnalysisMs");
+      const serialProof = originalOptions.deterministic && originalOptions.proofParallelism > 1;
+      const request = autoStrategic || serialProof
         ? Object.freeze({
             ...originalRequest,
             options: Object.freeze({
               ...originalRequest.options,
               "sokomind-solver": Object.freeze({
-                ...(originalRequest.options?.["sokomind-solver"] as Record<string, unknown> | undefined),
-                strategicAnalysisMs: 500,
-                strategicPlanExecution: true,
+                ...rawOptions,
+                ...(autoStrategic ? {
+                  strategicAnalysisMs: 500,
+                  strategicPlanExecution: Object.hasOwn(rawOptions ?? {}, "strategicPlanExecution")
+                    ? originalOptions.strategicPlanExecution : true,
+                } : {}),
+                ...(serialProof ? { proofParallelism: 1 } : {}),
               }),
             }),
           })

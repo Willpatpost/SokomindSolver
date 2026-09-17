@@ -921,13 +921,14 @@ export async function runIdaStarSearch(
     const preprocessingStaticMemoryBytes = baseStaticMemoryBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
-      (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+      (pdbEvaluator?.preprocessingRetainedBytes ?? 0) +
       (perimeterTable?.stats.retainedBytes ?? 0) +
       (componentPdbCollection?.retainedBytes ?? 0) +
       (moveCostPdbCollection?.estimatedRetainedBytes ?? 0);
     const currentStaticMemoryBytes = () =>
       preprocessingStaticMemoryBytes +
-      (boostEvaluator?.searchCacheRetainedBytes ?? 0);
+      (boostEvaluator?.searchCacheRetainedBytes ?? 0) +
+      (pdbEvaluator?.searchCacheRetainedBytes ?? 0);
     let transpositionMemoryBytes = 0;
     let dfsStackMemoryBytes = 0;
     let reachabilitySnapshotMemoryBytes = 0;
@@ -938,7 +939,7 @@ export async function runIdaStarSearch(
     let peakEstimatedMemoryBytes = 0;
     estimateInteractionSearchBaseMemory = () =>
       estimateIdaCurrentBytes(
-        preprocessingStaticMemoryBytes,
+        preprocessingStaticMemoryBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0),
         transpositionMemoryBytes + hCacheMemoryBytes,
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
@@ -961,7 +962,8 @@ export async function runIdaStarSearch(
         boostEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
-      pdbRetainedBytes: pdbEvaluator?.estimatedRetainedBytes ?? 0,
+      pdbRetainedBytes: pdbEvaluator?.preprocessingRetainedBytes ?? 0,
+      pdbSearchCacheRetainedBytes: pdbEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       pdbCacheHits: pdbEvaluator?.surplusCacheStats.hits ?? 0,
       pdbCacheMisses: pdbEvaluator?.surplusCacheStats.misses ?? 0,
@@ -977,7 +979,7 @@ export async function runIdaStarSearch(
       deadlockTableRetainedBytes:
         deadlockTableLookup?.estimatedRetainedBytes ?? 0,
       preprocessingRetainedBytes:
-        (pdbEvaluator?.estimatedRetainedBytes ?? 0) +
+        (pdbEvaluator?.preprocessingRetainedBytes ?? 0) +
         (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
         (boostEvaluator?.preprocessingRetainedBytes ?? 0),
       deadlockTableChecks: featureTelemetry.deadlockTableChecks,
@@ -1068,6 +1070,10 @@ export async function runIdaStarSearch(
       const maximum = request.limits?.maxMemoryBytes;
       return maximum !== undefined && currentBytes > maximum;
     };
+    pdbEvaluator?.setSearchCacheMemoryBudget((additionalBytes) => {
+      const maximum = request.limits?.maxMemoryBytes;
+      return maximum === undefined || recordCurrentMemory() + additionalBytes <= maximum;
+    });
 
     const metrics = () =>
       createMetrics(

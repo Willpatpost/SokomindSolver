@@ -114,6 +114,15 @@ describe("parseSokomindOptions", () => {
     assert.throws(() => parseSokomindOptions({ proofParallelism: 0 }), /proofParallelism/);
   });
 
+  it("workerParallelism supports Auto and a manual ceiling", () => {
+    assert.equal(parseSokomindOptions({}).workerParallelism, 0);
+    assert.equal(parseSokomindOptions({ workerParallelism: 0 }).workerParallelism, 0);
+    assert.equal(parseSokomindOptions({ workerParallelism: 12 }).workerParallelism, 12);
+    for (const workerParallelism of [-1, 13, 2.5, "4"]) {
+      assert.throws(() => parseSokomindOptions({ workerParallelism }), /workerParallelism/);
+    }
+  });
+
   it("proofParallelism = 33 throws (max is 32)", () => {
     assert.throws(() => parseSokomindOptions({ proofParallelism: 33 }), /proofParallelism/);
   });

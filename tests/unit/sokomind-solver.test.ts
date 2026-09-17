@@ -218,6 +218,49 @@ describe("Sokomind Solver adapter", () => {
     ]);
   });
 
+  for (const [workerParallelism, deterministic, expectedPeak] of [
+    [0, false, 3], [1, false, 1], [2, false, 2], [12, true, 1],
+  ] as const) {
+    it(`caps useful discovery lanes at worker selection ${workerParallelism}, deterministic=${deterministic}`, async () => {
+      let active = 0;
+      let peak = 0;
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 16,
+        createWorker: () => new ScriptedWorker((self) => {
+          active += 1;
+          peak = Math.max(peak, active);
+          queueMicrotask(() => {
+            active -= 1;
+            self.emit({ type: "done", status: "exhausted", visited: 0, generated: 0 });
+          });
+        }),
+      });
+      await adapter.solve(requestFor(ONE_TYPED_BOX, {
+        limits: { maxMemoryBytes: 4_096 * 1024 * 1024 },
+        options: { "sokomind-solver": { workerParallelism, deterministic } },
+      }), context());
+      assert.equal(peak, expectedPeak);
+    });
+  }
+
+  it("keeps deterministic proof serial even with an explicit parallel ceiling", async () => {
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 16,
+      createWorker: () => new ScriptedWorker((self) => {
+        queueMicrotask(() => self.emit({ type: "done", path: ["down"], visited: 0, generated: 0 }));
+      }),
+      createProofWorker: () => { throw new Error("Deterministic proof must remain serial"); },
+    });
+    const result = await adapter.solve(requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": {
+        mode: "optimal", deterministic: true, workerParallelism: 12,
+        proofParallelism: 2, harvestElapsedMs: 0, maximumIncumbents: 1,
+      } },
+    }), context());
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") assert.equal(result.solution.optimality, "proven");
+  });
+
   it("honors zero-valued resource ceilings before starting a worker", async () => {
     for (const limits of [
       { maxElapsedMs: 0 },

@@ -95,12 +95,14 @@ not yet change the production beam's ordering or its returned route.
 ### Strategic planning
 
 Quality mode automatically enables strategic analysis (500 ms) and plan
-execution on structural puzzles unless the caller explicitly sets a nonzero
-`strategicAnalysisMs` or enables `deterministic: true`. This auto-injection
-produces Grand Hall solutions of ~515 moves within 15 seconds.
+execution on structural puzzles unless the caller supplies `strategicAnalysisMs`
+or enables `deterministic: true`. An explicit zero disables this default;
+an explicit `strategicPlanExecution: false` preserves analysis without plan
+execution. Timing observations depend on the configuration and measurement
+boundary; see [Solver benchmarks](solver-benchmarks.md).
 
 The request option `options["sokomind-solver"].strategicAnalysisMs` accepts an
-integer from 0 to 1,000. When set to a nonzero value it overrides the
+integer from 0 to 1,000. When explicitly set it overrides the
 quality-mode default. Timed strategic planning is incompatible with
 `deterministic: true` and is rejected rather than silently weakening that
 guarantee.
@@ -216,7 +218,13 @@ modes take the same code path — the gate in the source is
 Discovery, harvesting, rewriting, and proof consume one run-wide allowance.
 Elapsed, expanded, and generated work already spent is subtracted before the
 next phase begins. Concurrent proof divides finite state and memory allowances
-between partitions and uses one coordinator deadline. Exact PDB/deadlock
+between partitions and uses one coordinator deadline. Idle healthy lanes claim
+pending first-push partitions from a shared queue; a hard active partition is
+not yet split further. Active/failed grants remain reserved, and clean completion
+can refund unused work. Each dispatch receives the remaining elapsed allowance.
+Automatic algorithm selection uses divided lane memory after the 128 MiB
+coordinator reserve. Aggregate progress publishes the incumbent, bounds,
+active workers, and pending partitions. Exact PDB/deadlock
 preprocessing is covered by the same time, cancellation, and estimated-memory
 ledger. Final metrics merge all phases and partitions rather than replacing
 discovery telemetry with proof telemetry. Work counters are additive; retained
@@ -230,6 +238,14 @@ successful replay on the original request before adopting a candidate. Invalid,
 mismatched, silent, failed-construction, `error`, and `messageerror` paths
 terminate their partition or worker. Completed stale/duplicate terminals are
 ignored. Every exit releases workers, listeners, timers, and abort handlers.
+
+`workerParallelism` accepts 0 (Auto) through 12 and caps discovery lanes together
+with hardware and estimated memory. Browser Quality/Optimal derives a separate
+`proofParallelism` ceiling using a 512 MiB lane allowance; smaller budgets keep
+a single serial proof path. Direct callers default to proof parallelism one.
+Deterministic adapter execution normalizes proof to one lane. The Dialog and
+Solver Lab show effective ceilings and the limiting reason; useful task counts
+can further reduce occupied workers.
 
 ## Classic A\*, IDA\*, and Sokomind Solver compared
 

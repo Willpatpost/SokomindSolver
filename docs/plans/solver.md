@@ -7,19 +7,22 @@ superseded audit, strategic roadmap, fast-analyzer plan, and quality roadmap.
 
 ## Target
 
-Replay-valid Grand Hall solution of at most **650 moves within 3 seconds of
-search** (after analysis), independently generated — not via post-hoc repair.
-Current best: 647 moves via whole-box rescheduling of an existing incumbent.
+The active targets, including analysis and replay verification, are:
 
-The 3-second search gate is deferred until the analyzer reliably produces
-better routes. Quality and generalization come first, then latency.
+- Fast: first verified solution within **30 seconds**, prioritizing latency.
+- Quality: verified solution within **10% of move optimum in 60 seconds**.
+- Optimal: **certified move optimum within 120 seconds**.
+
+See the [performance roadmap](../SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md)
+for the current implementation audit, qualification gaps, and ordered work.
+The earlier 650-move/three-second search goal and 647-move repair observation
+are superseded historical goals, not the current acceptance contract.
 
 ## Next step
 
-Benchmark `partialScheduleEvaluation` on the quality-mode puzzle set and
-promote if candidate ranking improves without regressions. Evaluate whether
-targeted macro intermediates (currently drawn from the terminal-state pool)
-should collect from the full exploration set instead.
+Separate the anytime Quality and Optimal schedulers and publish complete,
+verified incumbent routes. Declare supported and holdout target suites, then
+measure worker scaling and retained preprocessing before promoting experiments.
 
 ## Open work
 
@@ -27,8 +30,8 @@ should collect from the full exploration set instead.
 
 The September 2026 audit corrections restore A* memory-aware allocation,
 enforce discovery generated-state budgets, and add aggregate cache invalidation.
-Strategic analysis is promoted for quality mode (auto-injected at 500 ms with
-plan execution). The remaining P1 controls below are correctness and
+Strategic analysis defaults to 500 ms with plan execution in Quality mode;
+explicit zero and false overrides are preserved. The remaining P1 controls below are correctness and
 measurement prerequisites, not route-quality promotions.
 
 - **P1.1 Macro intermediate retention** - implemented as `macroIntermediateQuota`

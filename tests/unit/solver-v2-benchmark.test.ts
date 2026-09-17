@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Worker } from "node:worker_threads";
+import { classicAStarSolver } from "../../src/solver/implementations/classic-solvers.ts";
+import type { SolverResult } from "../../src/solver/contracts.ts";
 
 import {
   BENCHMARK_PROFILES,
@@ -18,6 +20,7 @@ import {
   parseBenchmarkArguments,
   parseBenchmarkTuning,
   parseChildSample,
+  qualifySolvedBenchmark,
   runBenchmarkSample,
   selectBenchmarkFixtures,
   summarizeBenchmarkSamples,
@@ -26,8 +29,10 @@ import {
 import {
   BENCHMARK_CORPUS,
   INTER_ROOMS,
+  HUGE,
   isClassicEligible,
   ULTRA_TINY,
+  TINY,
 } from "../fixtures/solver-v2/benchmark-corpus.ts";
 import { KNOWN_FIXTURE_OUTCOMES_BY_ID } from "../fixtures/solver-v2/known-optima.ts";
 
@@ -74,6 +79,95 @@ function sample(overrides: Partial<BenchmarkSample> = {}): BenchmarkSample {
 }
 
 describe("Solver V2 benchmark harness", () => {
+  it("runs the three production targets at their deadlines including Grand Hall proof", () => {
+    for (const [profileId, deadline] of [
+      ["production-fast", 30_000], ["production-quality", 60_000], ["production-optimal", 120_000],
+    ] as const) {
+      const profile = BENCHMARK_PROFILES[profileId];
+      assert.equal(profile.limits.maxElapsedMs, deadline);
+      assert.equal(isProfileEligible(HUGE, profile), true);
+    }
+    assert.equal(isProfileEligible(HUGE, BENCHMARK_PROFILES["classic-astar"]), false);
+    assert.equal(BENCHMARK_PROFILES["production-optimal"].requiresOptimalProof, true);
+    for (const profileId of ["production-fast", "production-quality"] as const) {
+      const tuning = parseBenchmarkTuning('{"firstPushWalkWeight":0.05}', [profileId], "treatment");
+      assert.equal(tuning?.profile.firstPushWalkWeight, 0.05);
+    }
+  });
+
+  it("requires compatible certificates and respects independent outcomes and deadlines", () => {
+    const request = benchmarkRequest(ULTRA_TINY, BENCHMARK_PROFILES["production-optimal"]);
+    const result: Extract<SolverResult, {status: "solved"}> = {
+      status: "solved",
+      solution: {steps: [{direction: "down", kind: "push"}], moves: 1, pushes: 1,
+        objective: {kind: "moves"}, objectiveScore: 1, optimality: "proven"},
+      proof: {kind: "optimal", algorithm: "move-astar", objective: {kind: "moves"},
+        lowerBound: 1, upperBound: 1, gap: 0},
+      metrics: {elapsedMs: 1},
+    };
+    const optimal = BENCHMARK_PROFILES["production-optimal"];
+    assert.equal(qualifySolvedBenchmark(request, optimal, result, 120_000).accepted, true);
+    assert.equal(qualifySolvedBenchmark(request, optimal, result, 120_000.01).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, optimal, {...result, proof: undefined}, 1).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, optimal, result, 1,
+      {kind: "solved", moves: 2, pushes: 1}).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, BENCHMARK_PROFILES["classic-astar"], result, 1).accepted, false);
+    for (const profileId of ["production-fast", "production-quality"] as const) {
+      const profile = BENCHMARK_PROFILES[profileId];
+      const deadline = profile.limits.maxElapsedMs!;
+      assert.equal(qualifySolvedBenchmark(request, profile, result, deadline).accepted, true);
+      assert.equal(qualifySolvedBenchmark(request, profile, result, deadline + 0.01).accepted, false);
+    }
+  });
+
+  it("qualifies ten-percent quality at the exact ceiling using sound compatible bounds", async () => {
+    const quality = BENCHMARK_PROFILES["production-quality"];
+    const request = benchmarkRequest(TINY, quality);
+    const exact = await classicAStarSolver.solve(request, {
+      signal: new AbortController().signal, reportProgress() {}, now: performance.now.bind(performance),
+    });
+    assert.equal(exact.status, "solved");
+    if (exact.status !== "solved") throw new Error("Expected the tiny fixture optimum");
+    const steps = [{direction: "left" as const, kind: "walk" as const},
+      {direction: "right" as const, kind: "walk" as const}, ...exact.solution.steps];
+    const ceilingResult: Extract<SolverResult, {status: "solved"}> = {
+      ...exact,
+      solution: {...exact.solution, steps, moves: 22, objectiveScore: 22, optimality: "unknown"},
+      proof: {kind: "bounded", algorithm: "move-astar", objective: {kind: "moves"},
+        lowerBound: 20, upperBound: 22, gap: 2},
+    };
+    const outcome = KNOWN_FIXTURE_OUTCOMES_BY_ID[TINY.fixtureId];
+    assert.equal(qualifySolvedBenchmark(request, quality, ceilingResult, 1, outcome).accepted, true);
+    assert.equal(qualifySolvedBenchmark(request, quality, ceilingResult, 1).accepted, true);
+    assert.equal(qualifySolvedBenchmark(request, quality, {...ceilingResult,
+      proof: {...ceilingResult.proof!, lowerBound: 19, gap: 3}}, 1).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, quality, {...ceilingResult,
+      proof: {...ceilingResult.proof!, upperBound: 23, gap: 3}}, 1).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, quality, {...ceilingResult, proof: undefined,
+      metrics: {...exact.metrics, counters: {lowerBound: 999}}}, 1).accepted, false);
+    const worse = {...ceilingResult, proof: undefined, solution: {...ceilingResult.solution,
+      steps: [...steps.slice(0, 2), ...steps], moves: 24, objectiveScore: 24}};
+    assert.equal(qualifySolvedBenchmark(request, quality, worse, 1, outcome).accepted, false);
+    assert.equal(qualifySolvedBenchmark(request, quality, {...worse,
+      proof: {kind: "bounded", algorithm: "move-astar", objective: {kind: "moves"},
+        lowerBound: 24, upperBound: 24, gap: 0}}, 1, outcome).accepted, false);
+  });
+
+  it("retains timestamped first solutions from real production progress and validates their protocol", async () => {
+    const result = await runBenchmarkSample(ULTRA_TINY, BENCHMARK_PROFILES["production-fast"]);
+    assert.equal(result.accepted, true);
+    assert.equal(result.incumbentHistory?.[0].moves, 1);
+    assert.equal(result.firstSolutionMs, result.incumbentHistory?.[0].elapsedMs);
+    assert.ok(result.firstSolutionMs! <= result.elapsedMs);
+    assert.equal(parseChildSample(JSON.stringify(result), ULTRA_TINY.fixtureId,
+      "production-fast", 0).firstSolutionMs, result.firstSolutionMs);
+    assert.throws(() => parseChildSample(JSON.stringify({...result,
+      incumbentHistory: [{moves: 1, elapsedMs: result.elapsedMs + 1}]}),
+      ULTRA_TINY.fixtureId, "production-fast", 0), /incumbentHistory/);
+    assert.throws(() => parseChildSample(JSON.stringify({...result,
+      firstSolutionMs: result.elapsedMs + 1}), ULTRA_TINY.fixtureId, "production-fast", 0), /firstSolutionMs/);
+  });
+
   it("validates explicit discovery treatments and rejects ignored or no-op experiments", () => {
     const profiles = ["sokomind-fast"] as const;
     const control = parseBenchmarkTuning('{"firstPushWalkWeight":0}', profiles, "control");
