@@ -21,6 +21,7 @@ import {
   DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
   DEFAULT_OPTIMAL_HARVEST_MS,
   DEFAULT_QUALITY_SLICE_MS,
+  QUALITY_INITIAL_SLICE_MS,
   OPTIMAL_RESCHEDULE_TIME_SHARE,
   OPTIMAL_REWRITE_TIME_SHARE,
   adaptiveRewriteAllocation,
@@ -651,7 +652,11 @@ export async function qualityAnytimeImprove(
       if (stalls.window >= MAX_STALLS) break;
     }
 
-    const sliceMs = Math.min(DEFAULT_QUALITY_SLICE_MS, Math.floor(remainingMs / 2));
+    const progressiveCap = Math.min(
+      DEFAULT_QUALITY_SLICE_MS,
+      QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
+    );
+    const sliceMs = Math.min(progressiveCap, Math.floor(remainingMs / 2));
     if (sliceMs < 1) break;
 
     const improvementConsumed = aggregate(run).expandedStates - improvementStartExpanded;
