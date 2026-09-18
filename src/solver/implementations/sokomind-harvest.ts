@@ -658,7 +658,7 @@ export async function qualityAnytimeImprove(
       QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
     );
     const sliceMs = Math.min(progressiveCap, remainingMs);
-    if (sliceMs < 200) break;
+    if (sliceMs < 1) break;
 
     const improvementConsumed = aggregate(run).expandedStates - improvementStartExpanded;
     const remainingImprovementBudget = Math.max(0, configuredRewriteVisited - improvementConsumed);
