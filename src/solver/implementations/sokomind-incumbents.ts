@@ -93,15 +93,8 @@ function simpleHash(input: string): string {
   return h.toString(36);
 }
 
-export function computeHarvestMs(
-  configuredMs: number,
-  requestTimeMs: number | undefined,
-): number {
-  let harvestMs = configuredMs;
-  if (requestTimeMs !== undefined && Number.isFinite(requestTimeMs)) {
-    harvestMs = Math.min(harvestMs, Math.floor(requestTimeMs * 0.1));
-  }
-  return Math.max(harvestMs, 500);
+export function computeHarvestMs(configuredMs: number): number {
+  return Math.max(configuredMs, 500);
 }
 
 const REWRITE_CAP = 3;

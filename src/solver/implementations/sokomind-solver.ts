@@ -135,14 +135,7 @@ function configuredWorkerCount(
 }
 
 function structuralHeadStartMs(run: SearchRunState): number {
-  if (!Number.isFinite(run.deadline)) {
-    return run.structuralHeadStartLimitMs;
-  }
-  const remaining = Math.max(0, run.deadline - run.context.now());
-  return Math.min(
-    run.structuralHeadStartLimitMs,
-    remaining * run.profile.structuralTimeShare,
-  );
+  return run.structuralHeadStartLimitMs;
 }
 
 function withStructuralStateBudget(
