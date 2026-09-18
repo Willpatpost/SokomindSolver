@@ -94,7 +94,8 @@ export async function harvestAndImprove(
   createProofWorker: () => SokomindProofWorker,
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
-  const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs);
+  const requestTimeMs = run.request.limits?.maxElapsedMs;
+  const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
   const collector = new IncumbentCollector(sokomindOptions.maximumIncumbents);
   run.initialSolutionMoves ||= firstIncumbent.moves;
@@ -488,7 +489,8 @@ export async function qualityAnytimeImprove(
   createProofWorker: () => SokomindProofWorker,
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
-  const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs);
+  const requestTimeMs = run.request.limits?.maxElapsedMs;
+  const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
   const { collector, cancelled } = await harvestIncumbents(
     run, state, firstIncumbent, createWorker, sokomindOptions,
@@ -539,11 +541,9 @@ export async function qualityAnytimeImprove(
     );
     const totalRewriteGenerated =
       initialWaveRequest?.limits?.maxGeneratedStates ?? Infinity;
-    const initialWaveBudgetMs = Math.min(
-      QUALITY_INITIAL_WAVE_CAP_MS,
-      configuredElapsed,
-      Number.isFinite(run.deadline) ? Math.max(0, run.deadline - run.context.now()) : Infinity,
-    );
+    const initialWaveBudgetMs = Number.isFinite(run.deadline)
+      ? Math.min(QUALITY_INITIAL_WAVE_CAP_MS, Math.floor((run.deadline - run.context.now()) * 0.4))
+      : Math.min(QUALITY_INITIAL_WAVE_CAP_MS, configuredElapsed);
     const windowDeadline = Math.min(
       run.deadline,
       run.context.now() + initialWaveBudgetMs,
@@ -657,8 +657,8 @@ export async function qualityAnytimeImprove(
       QUALITY_ANYTIME_SLICE_CAP_MS,
       QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
     );
-    const sliceMs = Math.min(progressiveCap, remainingMs);
-    if (sliceMs < 200) break;
+    const sliceMs = Math.min(progressiveCap, Math.floor(remainingMs / 2));
+    if (sliceMs < 1) break;
 
     const improvementConsumed = aggregate(run).expandedStates - improvementStartExpanded;
     const remainingImprovementBudget = Math.max(0, configuredRewriteVisited - improvementConsumed);
@@ -756,7 +756,7 @@ export async function optimalQuickImprove(
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = Math.min(
     DEFAULT_OPTIMAL_HARVEST_MS,
-    computeHarvestMs(sokomindOptions.harvestElapsedMs),
+    computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs),
   );
 
   const { collector, cancelled } = await harvestIncumbents(

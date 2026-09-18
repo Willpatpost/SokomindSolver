@@ -268,20 +268,28 @@ describe("IncumbentCollector", () => {
 });
 
 describe("harvest budget computation", () => {
-  it("returns configured value", () => {
-    assert.equal(computeHarvestMs(5000), 5000);
+  it("uses min of configured and 10% of request time", () => {
+    assert.equal(computeHarvestMs(5000, 20000), 2000);
   });
 
   it("enforces minimum 500ms", () => {
-    assert.equal(computeHarvestMs(100), 500);
+    assert.equal(computeHarvestMs(100, 1000), 500);
+  });
+
+  it("uses configured when no request time", () => {
+    assert.equal(computeHarvestMs(5000, undefined), 5000);
+  });
+
+  it("uses configured when request time is infinite", () => {
+    assert.equal(computeHarvestMs(3000, Infinity), 3000);
   });
 
   it("clamps zero configured to 500ms minimum", () => {
-    assert.equal(computeHarvestMs(0), 500);
+    assert.equal(computeHarvestMs(0, 100000), 500);
   });
 
-  it("returns large configured value unchanged", () => {
-    assert.equal(computeHarvestMs(10000), 10000);
+  it("uses configured when it is already below 10% of request time", () => {
+    assert.equal(computeHarvestMs(1000, 50000), 1000);
   });
 });
 
