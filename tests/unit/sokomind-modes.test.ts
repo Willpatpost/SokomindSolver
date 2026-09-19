@@ -188,7 +188,7 @@ describe("extractSokomindOptions", () => {
 // ===========================================================================
 
 describe("runSequentialProof", () => {
-  it("quality mode proof improves or matches DFS solution", async () => {
+  it("optimal mode proof improves or matches DFS solution", async () => {
     const req = requestFromRows(ONE_BOX);
     const ctx = oracleContext();
 
@@ -199,7 +199,7 @@ describe("runSequentialProof", () => {
     const proofResult = await runSequentialProof(
       req,
       ctx,
-      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality" },
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal" },
       dfsResult,
     );
 
@@ -412,7 +412,7 @@ describe("runSequentialProof", () => {
     assert.equal(verifySolverSolution(request, result.solution).valid, true);
   });
 
-  it("greedy solution replays after proof", async () => {
+  it("greedy solution replays after proof in optimal mode", async () => {
     const req = requestFromRows(ONE_BOX);
     const ctx = oracleContext();
 
@@ -423,7 +423,7 @@ describe("runSequentialProof", () => {
     const proofResult = await runSequentialProof(
       req,
       ctx,
-      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality" },
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal" },
       greedyResult,
     );
 

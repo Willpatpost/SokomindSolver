@@ -397,8 +397,6 @@ export async function qualityAnytimeImprove(
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
   analysisPlan: SokomindAnalysisPlan | undefined,
-  createProofWorker: () => SokomindProofWorker,
-  checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
@@ -636,15 +634,11 @@ export async function qualityAnytimeImprove(
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
-  const discoveryResult: SolverResult = Object.freeze({
+  return Object.freeze({
     status: "solved" as const,
-    solution: best,
+    solution: Object.freeze({ ...best, optimality: "unknown" as const }),
     metrics: metrics(run),
   });
-  return runProof(
-    run.request, run.context, sokomindOptions, discoveryResult,
-    createProofWorker, checkpointOptions,
-  );
 }
 
 // ---------------------------------------------------------------------------

@@ -370,7 +370,6 @@ export function createSokomindSolverAdapter(
     if (sokoOpts.mode === "quality") {
       return qualityAnytimeImprove(
         r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
-        proofWorkerFactory, proofCheckpointOptions,
       );
     }
     if (sokoOpts.mode === "optimal") {
@@ -662,7 +661,7 @@ export function createSokomindSolverAdapter(
 
       const fallback = await runClassicFallback(run);
       if (fallback) {
-        if (sokomindOptions.mode !== "fast" && fallback.status === "solved") {
+        if (sokomindOptions.mode === "optimal" && fallback.status === "solved") {
           return runProof(
             run.request, run.context, sokomindOptions, fallback,
             proofWorkerFactory, proofCheckpointOptions,

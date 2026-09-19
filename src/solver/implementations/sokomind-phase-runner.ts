@@ -521,7 +521,9 @@ class PhaseRunner {
             this.stopForLimit(limit);
             return;
           }
-          if (message.type === "progress" && plan.payload.algorithm === "solution-box-reschedule") {
+          if (message.type === "progress" &&
+              (plan.payload.algorithm === "solution-box-reschedule" ||
+               plan.payload.algorithm === "solution-window-rewrite")) {
             const path = asLegacyPath(message.path);
             if (path && this.acceptPath(path, plan.label, true)) return;
           }

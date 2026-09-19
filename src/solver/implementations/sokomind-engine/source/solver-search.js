@@ -4398,6 +4398,14 @@ function solutionWindowRewriteSearch(payload) {
   }
   path = canonical;
   details = replaySolutionDetails(payload, path, board);
+  let publishedMoves = initialQuality.moves;
+  const publishImprovement = (visited, generated) => {
+    if (typeof postMessage === "function" && details.moves < publishedMoves) {
+      publishedMoves = details.moves;
+      postMessage({type: "progress", visited, generated, path});
+    }
+  };
+  publishImprovement(0, 0);
   const maximumVisited = payload.maxVisited ?? 300000;
   const maximumGenerated = payload.maxGenerated ?? Infinity;
   const permutationBudget = Math.min(
@@ -4451,6 +4459,7 @@ function solutionWindowRewriteSearch(payload) {
         path = candidate;
         details = candidateDetails;
         permutationImprovements++;
+        publishImprovement(permutationVisited, permutationGenerated);
       }
     }
   }
@@ -4516,6 +4525,7 @@ function solutionWindowRewriteSearch(payload) {
             details = candidateDetails;
             improvements++;
             pushWindowImprovements++;
+            publishImprovement(visited, generated);
             startPush = Math.max(0, Math.min(
               startPush + Math.floor(windowPushes / 2),
               details.pushes - windowPushes,
@@ -4606,6 +4616,7 @@ function solutionWindowRewriteSearch(payload) {
         improvements++;
         moveImprovements++;
         moveImproved = true;
+        publishImprovement(visited, generated);
       }
     }
     moveWindowMisses = moveImproved ? 0 : moveWindowMisses + 1;

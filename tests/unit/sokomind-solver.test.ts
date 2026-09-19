@@ -606,16 +606,16 @@ describe("Sokomind Solver adapter", () => {
       assert.ok(Number(repair.payload.rescheduleMaxMs) > 0 && Number(repair.payload.rescheduleMaxMs) <= 100);
       assert.deepEqual(repair.payload.solutionPath, ["Left", "Right", "Down"]);
       assert.ok(workers.every(worker => worker.terminated));
-      const proofExpanded = Number(result.metrics.counters?.proofExpandedStates) || 0;
-      const improvementExpanded = (result.metrics.expandedStates ?? 0) - proofExpanded;
-      assert.ok(improvementExpanded <= 101, `improvement expandedStates=${improvementExpanded} exceeded 101 (proof=${proofExpanded})`);
+      const totalExpanded = result.metrics.expandedStates ?? 0;
+      assert.ok(totalExpanded <= 101, `expandedStates=${totalExpanded} exceeded 101`);
       assert.ok((result.metrics.generatedStates ?? 0) <= 120);
       if (repairOutcome === "cancelled") { assert.equal(result.status, "cancelled"); return; }
       assert.equal(result.status, "solved");
       if (result.status !== "solved") return;
-      // The subsequent exact proof can improve this tiny fixture independently.
+      // Quality does not dispatch proof; the returned route is the improvement result.
       assert.equal(result.metrics.counters?.bestSolutionMoves, repairOutcome === "better" ? 1 : 3);
-      assert.ok(result.solution.moves <= (repairOutcome === "better" ? 1 : 3));
+      assert.equal(result.solution.moves, repairOutcome === "better" ? 1 : 3);
+      assert.equal(result.solution.optimality, "unknown");
       assert.equal(verifySolverSolution(request, result.solution).valid, true);
     });
   }
