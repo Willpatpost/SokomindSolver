@@ -97,100 +97,11 @@ export async function harvestAndImprove(
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
-  const collector = new IncumbentCollector(sokomindOptions.maximumIncumbents);
-  run.initialSolutionMoves ||= firstIncumbent.moves;
-  run.bestSolutionMoves =
-    run.bestSolutionMoves === 0
-      ? firstIncumbent.moves
-      : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
-  invalidateAggregate(run);
-  collector.offer(
-    firstIncumbent,
-    semanticDiversityTrace(run.request, firstIncumbent),
+  const { collector, cancelled } = await harvestIncumbents(
+    run, state, firstIncumbent, createWorker, sokomindOptions,
+    tuning, maxWorkers, analysisPlan, harvestMs,
   );
-
-  run.progressPhase = "harvesting";
-  report(run, `Harvesting diverse incumbents (${harvestMs}ms budget).`, true);
-
-  const harvestDeadline = run.context.now() + harvestMs;
-  let harvestRound = 0;
-  let unproductiveRounds = 0;
-  while (
-    collector.incumbents.length < sokomindOptions.maximumIncumbents &&
-    run.context.now() < harvestDeadline &&
-    !run.context.signal.aborted
-  ) {
-    const remaining = harvestDeadline - run.context.now();
-    if (remaining < 200) break;
-
-    const harvestRequest = withRemainingLimits(run);
-    if (!harvestRequest) break;
-
-    const harvestWorkers = sokomindOptions.deterministic
-      ? 1
-      : Math.max(1, maxWorkers);
-    const plans = diversifiedHarvestPlans(
-      state,
-      harvestRequest,
-      harvestWorkers,
-      tuning,
-      harvestRound,
-      analysisPlan,
-    );
-    try {
-      const outcome = await runPhase(
-        run,
-        plans,
-        createWorker,
-        harvestWorkers,
-        remaining,
-        {
-          collectSolutions: true,
-          maxSolutions: plans.length,
-        },
-      );
-      const acceptedBefore = collector.stats.accepted;
-      const bestBefore = collector.best?.solution;
-      for (const solution of outcome.solutions ?? []) {
-        collector.offer(
-          solution,
-          semanticDiversityTrace(run.request, solution),
-        );
-      }
-      const accepted = collector.stats.accepted - acceptedBefore;
-      const bestAfter = collector.best?.solution;
-      const improvedBest =
-        bestAfter !== undefined &&
-        (bestBefore === undefined || isSolutionBetter(bestAfter, bestBefore));
-      if (bestAfter) {
-        run.bestSolutionMoves = Math.min(run.bestSolutionMoves, bestAfter.moves);
-        invalidateAggregate(run);
-      }
-      if (accepted > 0) {
-        report(
-          run,
-          `Harvested ${collector.incumbents.length} incumbent(s) (${collector.stats.duplicatesRejected} duplicates rejected).`,
-          true,
-        );
-      }
-      const enoughRewriteChoices = collector.incumbents.length >= 3;
-      const productive = accepted > 0 && (improvedBest || !enoughRewriteChoices);
-      unproductiveRounds = productive ? 0 : unproductiveRounds + 1;
-      harvestRound += 1;
-      if (outcome.stopReason === "cancelled" || run.context.signal.aborted) break;
-      if (unproductiveRounds >= 2) break;
-    } catch (error) {
-      run.suppressedHarvestErrors += 1;
-      report(
-        run,
-        `Harvest round suppressed: ${error instanceof Error ? error.message : String(error)}`,
-        true,
-      );
-      break;
-    }
-  }
-
-  if (run.context.signal.aborted) {
+  if (cancelled) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
