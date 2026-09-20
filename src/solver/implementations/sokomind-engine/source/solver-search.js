@@ -4474,6 +4474,58 @@ function solutionWindowRewriteSearch(payload) {
   let improvements = details.moves < initialQuality.moves ? 1 : 0;
   let pushWindowImprovements = 0;
 
+  if (Array.isArray(payload.prioritizedWindows)) {
+    for (const pw of payload.prioritizedWindows) {
+      if (visited >= pushWindowLimit || generated >= maximumGenerated) break;
+      const startPush = pw.startPush, endPush = Math.min(pw.endPush, details.pushes);
+      if (endPush <= startPush) continue;
+      const start = details.boundaries[startPush];
+      const target = details.boundaries[endPush];
+      if (!start || !target) continue;
+      const originalSegmentPushes = endPush - startPush;
+      const budget = Math.min(pw.maxVisited || perWindowVisited, pushWindowLimit - visited);
+      const result = bridgeAStarSearch({
+        algorithm: "bridge-astar",
+        preparedBoard: board,
+        state: serializedSearchState(start.state, board.rows),
+        targetState: serializedSearchState(target.state, board.rows),
+        upperBound: originalSegmentPushes,
+        maxVisited: budget,
+        maxGenerated: maximumGenerated - generated,
+        frontierLimit: payload.frontierLimit || 12000,
+        forcedMacros: false,
+        weight: 1,
+      });
+      visited += result.visited || 0;
+      generated += result.generated || 0;
+      windows++;
+      if (result.path) {
+        const rewrittenEnd = replaySearchPath(start.state, board, result.path);
+        const walking = rewrittenEnd
+          ? reachablePaths(rewrittenEnd, board)
+            .get(pkey(target.state.robot[0], target.state.robot[1]))
+          : null;
+        if (walking) {
+          const candidate = [
+            ...path.slice(0, start.moveIndex),
+            ...result.path,
+            ...walking,
+            ...path.slice(target.moveIndex),
+          ];
+          const candidateDetails = replaySolutionDetails(payload, candidate, board);
+          if (candidateDetails && goal(candidateDetails.state.boxes, board.goals) &&
+              candidateDetails.moves < details.moves) {
+            path = candidate;
+            details = candidateDetails;
+            improvements++;
+            pushWindowImprovements++;
+            publishImprovement(visited, generated);
+          }
+        }
+      }
+    }
+  }
+
   for (const windowPushes of windowSizes) {
     let startPush = Math.max(0, details.pushes - windowPushes);
     while (

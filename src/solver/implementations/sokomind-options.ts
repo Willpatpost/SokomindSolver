@@ -19,6 +19,7 @@ export interface SokomindRequestOptions {
   readonly idaReachabilitySnapshots: "all" | "periodic" | "none";
   readonly idaSnapshotPeriod: number;
   readonly diagnostics: boolean;
+  readonly experimentalOperators: readonly string[];
 }
 
 export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
@@ -35,11 +36,15 @@ export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
     idaReachabilitySnapshots: "periodic",
     idaSnapshotPeriod: 4,
     diagnostics: false,
+    experimentalOperators: Object.freeze([]),
   });
 
 const VALID_MODES: ReadonlySet<string> = new Set(["fast", "quality", "optimal"]);
 const VALID_PROOF_ALGORITHMS: ReadonlySet<string> = new Set(["auto", "astar", "ida-star"]);
 const VALID_IDA_SNAPSHOTS: ReadonlySet<string> = new Set(["all", "periodic", "none"]);
+const VALID_EXPERIMENTAL_OPERATORS: ReadonlySet<string> = new Set([
+  "two-box", "goal-reassignment", "dependency-window", "perturb-and-repair",
+]);
 
 function validateEnum(
   key: string,
@@ -169,6 +174,28 @@ export function parseSokomindOptions(raw: unknown): SokomindRequestOptions {
   }
   if ("diagnostics" in obj) {
     validated.diagnostics = validateBoolean("diagnostics", obj.diagnostics);
+  }
+  if ("experimentalOperators" in obj) {
+    const raw = obj.experimentalOperators;
+    if (!Array.isArray(raw)) {
+      throw new Error("sokomind-solver: experimentalOperators must be an array");
+    }
+    const seen = new Set<string>();
+    for (const entry of raw) {
+      if (typeof entry !== "string" || !VALID_EXPERIMENTAL_OPERATORS.has(entry)) {
+        const allowed = [...VALID_EXPERIMENTAL_OPERATORS].join(", ");
+        throw new Error(
+          `sokomind-solver: experimentalOperators entry must be ${allowed}; got '${String(entry)}'`,
+        );
+      }
+      if (seen.has(entry)) {
+        throw new Error(
+          `sokomind-solver: duplicate experimentalOperators entry: '${entry}'`,
+        );
+      }
+      seen.add(entry);
+    }
+    validated.experimentalOperators = Object.freeze([...raw] as string[]);
   }
 
   const result = Object.freeze({

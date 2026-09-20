@@ -390,6 +390,105 @@ async function harvestIncumbents(
 }
 
 // ---------------------------------------------------------------------------
+// Operator context helpers for broader repair neighborhoods
+// ---------------------------------------------------------------------------
+
+function selectBoxPairs(
+  request: SolverRequest,
+  solution: SolverSolution,
+): readonly (readonly [number, number])[] {
+  const trace = semanticDiversityTrace(request, solution);
+  if (!trace) return [];
+  const pushEntries = trace.pushChain.split(";").filter(Boolean);
+  if (pushEntries.length < 2) return [];
+  const boxIndices = pushEntries.map((entry) => {
+    const hash = entry.indexOf("#");
+    const colon = entry.indexOf(":", hash);
+    return hash >= 0 && colon > hash ? Number(entry.slice(hash + 1, colon)) : -1;
+  }).filter((i) => i >= 0);
+  const interactionScore = new Map<string, number>();
+  for (let i = 0; i < boxIndices.length - 1; i++) {
+    const a = boxIndices[i], b = boxIndices[i + 1];
+    if (a === b) continue;
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    interactionScore.set(key, (interactionScore.get(key) ?? 0) + 1);
+  }
+  return [...interactionScore]
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([key]) => key.split(",").map(Number) as [number, number]);
+}
+
+function selectGoalReassignmentOverrides(
+  request: SolverRequest,
+  solution: SolverSolution,
+): Readonly<Record<number, string>> | undefined {
+  const trace = semanticDiversityTrace(request, solution);
+  if (!trace) return undefined;
+  const goalEntries = trace.boxGoals.split(";").filter(Boolean);
+  const boxGoalMap = new Map<number, string>();
+  for (const entry of goalEntries) {
+    const hash = entry.indexOf("#");
+    const arrow = entry.indexOf(">", hash);
+    if (hash < 0 || arrow < 0) continue;
+    const boxIndex = Number(entry.slice(hash + 1, arrow));
+    const goalCell = entry.slice(arrow + 1);
+    if (!Number.isFinite(boxIndex) || boxIndex < 0) continue;
+    boxGoalMap.set(boxIndex, goalCell);
+  }
+  const boxes = request.snapshot.boxes;
+  const labelGroups = new Map<string, number[]>();
+  for (let i = 0; i < boxes.length; i++) {
+    const group = labelGroups.get(boxes[i].label) ?? [];
+    group.push(i);
+    labelGroups.set(boxes[i].label, group);
+  }
+  for (const [, group] of labelGroups) {
+    if (group.length < 2) continue;
+    const a = group[0], b = group[1];
+    const goalA = boxGoalMap.get(a), goalB = boxGoalMap.get(b);
+    if (!goalA || !goalB || goalA === goalB) continue;
+    return { [a]: goalB, [b]: goalA };
+  }
+  return undefined;
+}
+
+function analyzePushInteractions(
+  request: SolverRequest,
+  solution: SolverSolution,
+): readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[] {
+  const trace = semanticDiversityTrace(request, solution);
+  if (!trace) return [];
+  const pushEntries = trace.pushChain.split(";").filter(Boolean);
+  if (pushEntries.length < 4) return [];
+  const boxIds = pushEntries.map((entry) => {
+    const hash = entry.indexOf("#");
+    const colon = entry.indexOf(":", hash);
+    return hash >= 0 && colon > hash ? Number(entry.slice(hash + 1, colon)) : -1;
+  });
+  const windowSize = 6;
+  const clusters: { startPush: number; endPush: number; maxVisited: number }[] = [];
+  let clusterStart = -1;
+  for (let i = 0; i < boxIds.length - 1; i++) {
+    const boxA = boxIds[i];
+    let interacting = false;
+    for (let j = i + 1; j < Math.min(i + windowSize, boxIds.length); j++) {
+      if (boxIds[j] !== boxA) { interacting = true; break; }
+    }
+    if (interacting) {
+      if (clusterStart < 0) clusterStart = i;
+    } else if (clusterStart >= 0) {
+      clusters.push({ startPush: clusterStart, endPush: Math.min(i + 1, boxIds.length), maxVisited: 20_000 });
+      clusterStart = -1;
+    }
+  }
+  if (clusterStart >= 0) {
+    clusters.push({ startPush: clusterStart, endPush: boxIds.length, maxVisited: 20_000 });
+  }
+  return clusters.slice(0, 8);
+}
+
+// ---------------------------------------------------------------------------
 // Quality: anytime improvement loop
 // ---------------------------------------------------------------------------
 
@@ -543,7 +642,15 @@ export async function qualityAnytimeImprove(
     maxWorkers, run.request.limits?.maxMemoryBytes, archive.size,
   ));
   let sliceIndex = 0;
-  let nextOp: RepairOperator = rewriteCount > 0 ? "box" : "window";
+  const enabledOperators: RepairOperator[] = ["window"];
+  if (rescheduleEligible) enabledOperators.push("box");
+  for (const exp of sokomindOptions.experimentalOperators) {
+    if (exp === "two-box" && rescheduleEligible) enabledOperators.push("two-box");
+    else if (exp === "goal-reassignment" && rescheduleEligible) enabledOperators.push("goal-reassignment");
+    else if (exp === "dependency-window") enabledOperators.push("dependency-window");
+    else if (exp === "perturb-and-repair") enabledOperators.push("perturb-and-repair");
+  }
+  let nextOpIndex = rewriteCount > 0 && enabledOperators.length > 1 ? 1 : 0;
   let slotCancelled = false;
 
   interface SlotResult {
@@ -558,10 +665,8 @@ export async function qualityAnytimeImprove(
   function selectNextTask(): {
     target: ArchivedCandidate; operator: RepairOperator;
   } | undefined {
-    const operators: RepairOperator[] = rescheduleEligible
-      ? [nextOp, nextOp === "window" ? "box" : "window"]
-      : ["window"];
-    for (const op of operators) {
+    for (let i = 0; i < enabledOperators.length; i++) {
+      const op = enabledOperators[(nextOpIndex + i) % enabledOperators.length];
       const target = archive.selectForRepair(op);
       if (target) return { target, operator: op };
     }
@@ -611,6 +716,29 @@ export async function qualityAnytimeImprove(
     );
 
     const sliceStart = run.context.now();
+    const repairContext = operator === "two-box"
+      ? { boxPairs: selectBoxPairs(run.request, target.solution) }
+      : operator === "goal-reassignment"
+        ? { targetOverrides: selectGoalReassignmentOverrides(run.request, target.solution) }
+        : operator === "dependency-window"
+          ? { prioritizedWindows: analyzePushInteractions(run.request, target.solution) }
+          : undefined;
+    if (operator === "goal-reassignment" && !repairContext?.targetOverrides) {
+      archive.recordOutcome({
+        taskId, reason: "exhausted", operator, candidateId: target.id,
+        expanded: 0, generated: 0, elapsedMs: 0, improved: false,
+      });
+      archive.clearInFlight(target.id, operator);
+      return;
+    }
+    if (operator === "dependency-window" && (!repairContext?.prioritizedWindows || repairContext.prioritizedWindows.length === 0)) {
+      archive.recordOutcome({
+        taskId, reason: "exhausted", operator, candidateId: target.id,
+        expanded: 0, generated: 0, elapsedMs: 0, improved: false,
+      });
+      archive.clearInFlight(target.id, operator);
+      return;
+    }
     const promise = improveIncumbent(
       run, state, target.solution, createWorker,
       {
@@ -624,6 +752,7 @@ export async function qualityAnytimeImprove(
       Math.max(1, activeSlots.size + 1),
       rewriteAllocation,
       operator,
+      repairContext,
     ).then((improved): SlotResult => ({
       taskId,
       candidateId: target.id,
@@ -671,11 +800,9 @@ export async function qualityAnytimeImprove(
       run.qualityOperatorStalls += 1;
     }
 
-    const other: RepairOperator = result.operator === "window" ? "box" : "window";
-    if (other !== "box" || rescheduleEligible) {
-      if (!archive.allNeighborhoodsExhausted(other)) {
-        nextOp = other;
-      }
+    const currentIndex = enabledOperators.indexOf(result.operator);
+    if (currentIndex >= 0) {
+      nextOpIndex = (currentIndex + 1) % enabledOperators.length;
     }
   }
 
@@ -685,15 +812,15 @@ export async function qualityAnytimeImprove(
       : Infinity;
     if (Number.isFinite(remainingMs) && remainingMs < 1) break;
 
-    const windowExhausted = archive.allNeighborhoodsExhausted("window");
-    const boxExhausted = !rescheduleEligible || archive.allNeighborhoodsExhausted("box");
-    if (windowExhausted && boxExhausted && activeSlots.size === 0) break;
+    const allExhausted = enabledOperators.every((op) => archive.allNeighborhoodsExhausted(op));
+    if (allExhausted && activeSlots.size === 0) break;
 
     while (activeSlots.size < maxSlots && !run.context.signal.aborted) {
       const next = selectNextTask();
       if (!next) break;
       dispatchTask(next.target, next.operator);
-      nextOp = next.operator === "window" ? "box" : "window";
+      const dispatched = enabledOperators.indexOf(next.operator);
+      if (dispatched >= 0) nextOpIndex = (dispatched + 1) % enabledOperators.length;
     }
 
     if (activeSlots.size === 0) break;

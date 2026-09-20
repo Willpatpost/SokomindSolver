@@ -8354,6 +8354,173 @@ function fixedOrderBoxReschedule(board, initial, events, selected, targetCell, u
   return null;
 }
 
+// Two-box variant: free two selected boxes while fixing all other push events.
+// State = (phase, box1_pos, box2_pos, robot_pos). Tightly bounded.
+function fixedOrderTwoBoxReschedule(board, initial, events, sel1, sel2, target1, target2, upperBound, budget) {
+  const cells = [...board.floor], ids = new Map(cells.map((cell, index) => [cell, index]));
+  const size = cells.length;
+  const fixed = events.filter(event => event.boxIndex !== sel1 && event.boxIndex !== sel2);
+  if (size > 200 || (fixed.length + 1) * size > 4000000 || now() >= budget.deadline) return null;
+  const tableBytes = (fixed.length + 1) * (size * 5 + 192) + size * 256;
+  const generatedAtStart = budget.generated;
+  const hasMemory = () => {
+    const retained = budget.generated - generatedAtStart + 1;
+    const estimatedBytes = budget.baseMemoryBytes + tableBytes + retained * 1024;
+    budget.peakRetained = Math.max(budget.peakRetained, retained);
+    budget.peakEstimatedBytes = Math.max(budget.peakEstimatedBytes, estimatedBytes);
+    if (estimatedBytes >= budget.maxMemoryBytes) budget.memoryExhausted = true;
+    return !budget.memoryExhausted;
+  };
+  if (!hasMemory()) return null;
+  const edges = cells.map(cell => {
+    const [y, x] = cell.split(",").map(Number);
+    return DIRECTION_ENTRIES.map(([, [dy, dx]]) => ids.get(pkey(y + dy, x + dx)) ?? -1);
+  });
+  const t1 = ids.get(target1), t2 = ids.get(target2);
+  if (t1 === undefined || t2 === undefined) return null;
+  const steps = fixed.map(event => {
+    const from = ids.get(event.from), to = ids.get(event.to), direction = edges[from].indexOf(to);
+    return {boxIndex: event.boxIndex, from, to, direction, support: edges[from][OPPOSITE_DIRECTION_INDEX[direction]]};
+  });
+  const positions = new Map(initial.boxes.flatMap((box, index) =>
+    index === sel1 || index === sel2 ? [] : [[index, ids.get(pkey(box[0], box[1]))]]));
+  const masks = [];
+  for (let phase = 0; phase <= steps.length; phase++) {
+    if (now() >= budget.deadline) return null;
+    const mask = new Uint8Array(size);
+    for (const cell of positions.values()) mask[cell] = 1;
+    masks.push(mask);
+    if (phase < steps.length) positions.set(steps[phase].boxIndex, steps[phase].to);
+  }
+  function walk(start, phase, b1, b2, keepParents = false) {
+    const distances = new Int32Array(size).fill(-1);
+    const parents = keepParents ? new Int32Array(size).fill(-1) : null;
+    const queue = new Int32Array(size); let count = 1;
+    queue[0] = start; distances[start] = 0;
+    for (let i = 0; i < count; i++) for (const next of edges[queue[i]]) {
+      if (next < 0 || distances[next] >= 0 || next === b1 || next === b2 || masks[phase][next]) continue;
+      distances[next] = distances[queue[i]] + 1;
+      if (parents) parents[next] = queue[i];
+      queue[count++] = next;
+    }
+    return {distances, parents};
+  }
+  const boxDist1 = new Int32Array(size).fill(-1), q1 = [t1];
+  boxDist1[t1] = 0;
+  for (let i = 0; i < q1.length; i++) for (let dir = 0; dir < 4; dir++) {
+    const prev = edges[q1[i]][dir];
+    if (prev < 0 || edges[prev][dir] < 0 || boxDist1[prev] >= 0) continue;
+    boxDist1[prev] = boxDist1[q1[i]] + 1; q1.push(prev);
+  }
+  const boxDist2 = new Int32Array(size).fill(-1), q2 = [t2];
+  boxDist2[t2] = 0;
+  for (let i = 0; i < q2.length; i++) for (let dir = 0; dir < 4; dir++) {
+    const prev = edges[q2[i]][dir];
+    if (prev < 0 || edges[prev][dir] < 0 || boxDist2[prev] >= 0) continue;
+    boxDist2[prev] = boxDist2[q2[i]] + 1; q2.push(prev);
+  }
+  const remaining = new Float64Array(steps.length + 1), supportDistances = [];
+  for (let phase = 0; phase < steps.length; phase++) {
+    if (now() >= budget.deadline) return null;
+    supportDistances.push(walk(steps[phase].support, phase, -1, -1).distances);
+  }
+  for (let phase = steps.length - 1; phase >= 1; phase--) {
+    const distance = supportDistances[phase][steps[phase - 1].from];
+    if (distance < 0) return null;
+    remaining[phase] = 1 + distance + remaining[phase + 1];
+  }
+  const heuristic = node => {
+    if (boxDist1[node.box1] < 0 || boxDist2[node.box2] < 0) return Infinity;
+    const pushes = steps.length - node.phase + boxDist1[node.box1] + boxDist2[node.box2];
+    if (node.phase === steps.length) return pushes;
+    const distance = supportDistances[node.phase][node.robot];
+    return distance < 0 ? Infinity : Math.max(pushes, distance + 1 + remaining[node.phase + 1]);
+  };
+  const heap = [];
+  const put = node => {
+    let index = heap.length; heap.push(node);
+    while (index) {
+      const parent = (index - 1) >> 1;
+      if (heap[parent].f <= node.f) break;
+      heap[index] = heap[parent]; index = parent;
+    }
+    heap[index] = node;
+  };
+  const pop = () => {
+    const first = heap[0], last = heap.pop();
+    if (heap.length) {
+      let index = 0;
+      while (2 * index + 1 < heap.length) {
+        let child = 2 * index + 1;
+        if (child + 1 < heap.length && heap[child + 1].f < heap[child].f) child++;
+        if (heap[child].f >= last.f) break;
+        heap[index] = heap[child]; index = child;
+      }
+      heap[index] = last;
+    }
+    return first;
+  };
+  const identity = node => `${node.phase}:${node.box1}:${node.box2}:${node.robot}`;
+  const b1Start = initial.boxes[sel1], b2Start = initial.boxes[sel2];
+  const root = {phase: 0, box1: ids.get(pkey(b1Start[0], b1Start[1])),
+    box2: ids.get(pkey(b2Start[0], b2Start[1])), robot: ids.get(pkey(...initial.robot)),
+    g: 0, parent: null};
+  root.f = heuristic(root); put(root);
+  const best = new Map([[identity(root), 0]]);
+  while (heap.length && budget.expanded < budget.maxExpanded &&
+      budget.generated < budget.maxGenerated && !budget.memoryExhausted && now() < budget.deadline) {
+    const node = pop();
+    if (best.get(identity(node)) !== node.g) continue;
+    if (node.f >= upperBound) break;
+    if (node.phase === steps.length && node.box1 === t1 && node.box2 === t2) {
+      const chain = [], path = [];
+      for (let current = node; current.parent; current = current.parent) chain.push(current);
+      for (const child of chain.reverse()) {
+        const p = child.parent, tree = walk(p.robot, p.phase, p.box1, p.box2, true).parents;
+        const moves = [];
+        for (let cell = child.support; cell !== p.robot; cell = tree[cell]) {
+          if (tree[cell] < 0) return null;
+          moves.push(DIRECTION_ENTRIES[edges[tree[cell]].indexOf(cell)][0]);
+        }
+        path.push(...moves.reverse(), DIRECTION_ENTRIES[child.direction][0]);
+      }
+      return path;
+    }
+    budget.expanded++;
+    const reachable = walk(node.robot, node.phase, node.box1, node.box2).distances;
+    const add = (phase, b1, b2, robot, support, direction) => {
+      if (support < 0 || reachable[support] < 0 || b1 === b2 ||
+          budget.generated >= budget.maxGenerated || !hasMemory()) return;
+      const child = {phase, box1: b1, box2: b2, robot, g: node.g + reachable[support] + 1,
+        parent: node, support, direction};
+      const id = identity(child);
+      if ((best.get(id) ?? Infinity) <= child.g) return;
+      child.f = child.g + heuristic(child);
+      if (child.f >= upperBound) return;
+      best.set(id, child.g); put(child); budget.generated++;
+    };
+    if (node.phase < steps.length) {
+      const step = steps[node.phase];
+      if (node.box1 !== step.to && node.box2 !== step.to && !masks[node.phase][step.to]) {
+        add(node.phase + 1, node.box1, node.box2, step.from, step.support, step.direction);
+      }
+    }
+    for (let dir = 0; dir < 4; dir++) {
+      const to = edges[node.box1][dir], support = edges[node.box1][OPPOSITE_DIRECTION_INDEX[dir]];
+      if (to >= 0 && to !== node.box2 && !masks[node.phase][to])
+        add(node.phase, to, node.box2, node.box1, support, dir);
+    }
+    for (let dir = 0; dir < 4; dir++) {
+      const to = edges[node.box2][dir], support = edges[node.box2][OPPOSITE_DIRECTION_INDEX[dir]];
+      if (to >= 0 && to !== node.box1 && !masks[node.phase][to])
+        add(node.phase, node.box1, to, node.box2, support, dir);
+    }
+    budget.peak = Math.max(budget.peak, heap.length);
+    if (budget.expanded % 256 === 0) budget.report(heap.length);
+  }
+  return null;
+}
+
 function evaluatePartialScheduleCost(board, initial, path) {
   if (!path.length) return {feasible: true, moves: 0, pushes: 0, remainingPushEstimate: 0};
   let state = {robot: initial.robot, boxes: initial.boxes};
@@ -8429,11 +8596,16 @@ function solutionBoxRescheduleSearch(payload) {
   const requested = payload.rescheduleBoxIndices;
   const selected = Array.isArray(requested) ? eligible.filter(index => requested.includes(index)) : eligible;
   const attempts = [];
+  const overrides = payload.rescheduleTargetOverrides;
+  const targetCell = boxIndex => {
+    if (overrides && overrides[boxIndex] !== undefined) return overrides[boxIndex];
+    const box = trace.details.state.boxes[boxIndex];
+    return pkey(box[0], box[1]);
+  };
   const attempt = boxIndex => {
     if (budget.expanded >= budget.maxExpanded || budget.generated >= budget.maxGenerated || budget.memoryExhausted || now() >= budget.deadline) return;
     const beforeMoves = path.length, expanded = budget.expanded, generated = budget.generated;
-    const target = trace.details.state.boxes[boxIndex];
-    const candidate = fixedOrderBoxReschedule(board, initial, trace.events, boxIndex, pkey(target[0], target[1]), path.length, budget);
+    const candidate = fixedOrderBoxReschedule(board, initial, trace.events, boxIndex, targetCell(boxIndex), path.length, budget);
     if (candidate && candidate.length < path.length) {
       const replayed = boxReschedulingTrace(payload, candidate, board);
       const fixed = events => events.filter(event => event.boxIndex !== boxIndex);
@@ -8456,11 +8628,35 @@ function solutionBoxRescheduleSearch(payload) {
     return trace.events.filter(event => event.boxIndex === index).length - distance;
   };
   const rounds = strategicLimit(payload.rescheduleRounds, 2, 8);
-  if (rounds && selected.length && !Array.isArray(requested)) attempt([...selected].sort((a, b) => detour(b) - detour(a))[0]);
-  for (let round = 0; round < rounds; round++) {
-    const before = path.length;
-    for (const index of selected) attempt(index);
-    if (before === path.length) break;
+  if (payload.rescheduleMode === "two-box" && Array.isArray(payload.rescheduleBoxPairs)) {
+    for (const pair of payload.rescheduleBoxPairs) {
+      if (!Array.isArray(pair) || pair.length !== 2) continue;
+      const [s1, s2] = pair;
+      if (s1 < 0 || s1 >= initial.boxes.length || s2 < 0 || s2 >= initial.boxes.length || s1 === s2) continue;
+      if (budget.expanded >= budget.maxExpanded || budget.generated >= budget.maxGenerated || budget.memoryExhausted || now() >= budget.deadline) break;
+      const beforeMoves = path.length, expanded = budget.expanded, generated = budget.generated;
+      const candidate = fixedOrderTwoBoxReschedule(board, initial, trace.events, s1, s2,
+        targetCell(s1), targetCell(s2), path.length, budget);
+      if (candidate && candidate.length < path.length) {
+        const replayed = boxReschedulingTrace(payload, candidate, board);
+        const fixed = events => events.filter(event => event.boxIndex !== s1 && event.boxIndex !== s2);
+        if (replayed && JSON.stringify(fixed(replayed.events)) === JSON.stringify(fixed(trace.events))) {
+          path = candidate; trace = replayed;
+          budget.report(0, true, path);
+        }
+      }
+      attempts.push({boxIndex: [s1, s2], label: `${initial.boxes[s1][2]}+${initial.boxes[s2][2]}`,
+        beforeMoves, afterMoves: path.length,
+        expanded: budget.expanded - expanded, generated: budget.generated - generated});
+      budget.report(0, true);
+    }
+  } else {
+    if (rounds && selected.length && !Array.isArray(requested)) attempt([...selected].sort((a, b) => detour(b) - detour(a))[0]);
+    for (let round = 0; round < rounds; round++) {
+      const before = path.length;
+      for (const index of selected) attempt(index);
+      if (before === path.length) break;
+    }
   }
   const scheduleTrace = originalSchedule
     ? buildScheduleTraceDiff(originalSchedule,
@@ -13015,6 +13211,58 @@ function solutionWindowRewriteSearch(payload) {
   );
   let improvements = details.moves < initialQuality.moves ? 1 : 0;
   let pushWindowImprovements = 0;
+
+  if (Array.isArray(payload.prioritizedWindows)) {
+    for (const pw of payload.prioritizedWindows) {
+      if (visited >= pushWindowLimit || generated >= maximumGenerated) break;
+      const startPush = pw.startPush, endPush = Math.min(pw.endPush, details.pushes);
+      if (endPush <= startPush) continue;
+      const start = details.boundaries[startPush];
+      const target = details.boundaries[endPush];
+      if (!start || !target) continue;
+      const originalSegmentPushes = endPush - startPush;
+      const budget = Math.min(pw.maxVisited || perWindowVisited, pushWindowLimit - visited);
+      const result = bridgeAStarSearch({
+        algorithm: "bridge-astar",
+        preparedBoard: board,
+        state: serializedSearchState(start.state, board.rows),
+        targetState: serializedSearchState(target.state, board.rows),
+        upperBound: originalSegmentPushes,
+        maxVisited: budget,
+        maxGenerated: maximumGenerated - generated,
+        frontierLimit: payload.frontierLimit || 12000,
+        forcedMacros: false,
+        weight: 1,
+      });
+      visited += result.visited || 0;
+      generated += result.generated || 0;
+      windows++;
+      if (result.path) {
+        const rewrittenEnd = replaySearchPath(start.state, board, result.path);
+        const walking = rewrittenEnd
+          ? reachablePaths(rewrittenEnd, board)
+            .get(pkey(target.state.robot[0], target.state.robot[1]))
+          : null;
+        if (walking) {
+          const candidate = [
+            ...path.slice(0, start.moveIndex),
+            ...result.path,
+            ...walking,
+            ...path.slice(target.moveIndex),
+          ];
+          const candidateDetails = replaySolutionDetails(payload, candidate, board);
+          if (candidateDetails && goal(candidateDetails.state.boxes, board.goals) &&
+              candidateDetails.moves < details.moves) {
+            path = candidate;
+            details = candidateDetails;
+            improvements++;
+            pushWindowImprovements++;
+            publishImprovement(visited, generated);
+          }
+        }
+      }
+    }
+  }
 
   for (const windowPushes of windowSizes) {
     let startPush = Math.max(0, details.pushes - windowPushes);

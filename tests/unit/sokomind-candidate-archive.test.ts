@@ -362,5 +362,44 @@ describe("CandidateArchive", () => {
       assert.ok(archive.selectForRepair("box"));
       assert.ok(!archive.selectForRepair("window"));
     });
+
+    it("tracks exhaustion independently for 3+ operators", () => {
+      const archive = new CandidateArchive(4);
+      archive.offer(makeSolution([pushStep("up")]), harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      archive.recordOutcome({
+        taskId: "t1", reason: "exhausted", operator: "window",
+        candidateId: id, expanded: 10, generated: 20, elapsedMs: 5, improved: false,
+      });
+      assert.ok(archive.allNeighborhoodsExhausted("window"));
+      assert.ok(!archive.allNeighborhoodsExhausted("box"));
+      assert.ok(!archive.allNeighborhoodsExhausted("two-box"));
+
+      archive.recordOutcome({
+        taskId: "t2", reason: "exhausted", operator: "box",
+        candidateId: id, expanded: 10, generated: 20, elapsedMs: 5, improved: false,
+      });
+      assert.ok(archive.allNeighborhoodsExhausted("box"));
+      assert.ok(!archive.allNeighborhoodsExhausted("two-box"));
+    });
+
+    it("selectForRepair works across experimental operators", () => {
+      const archive = new CandidateArchive(4);
+      archive.offer(makeSolution([pushStep("up")]), harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      assert.ok(archive.selectForRepair("two-box"));
+      assert.ok(archive.selectForRepair("goal-reassignment"));
+      assert.ok(archive.selectForRepair("dependency-window"));
+      assert.ok(archive.selectForRepair("perturb-and-repair"));
+
+      archive.recordOutcome({
+        taskId: "t1", reason: "exhausted", operator: "two-box",
+        candidateId: id, expanded: 10, generated: 20, elapsedMs: 5, improved: false,
+      });
+      assert.equal(archive.selectForRepair("two-box"), undefined);
+      assert.ok(archive.selectForRepair("goal-reassignment"));
+    });
   });
 });

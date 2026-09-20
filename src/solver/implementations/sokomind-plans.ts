@@ -521,7 +521,8 @@ export function solutionReschedulingPlan(
   maxGenerated: number,
   maxElapsedMs: number,
   candidateIndex: number,
-  diagnostics = false,
+  diagnostics: boolean | undefined = false,
+  targetOverrides?: Readonly<Record<number, string>>,
 ): EnginePlan {
   return Object.freeze({
     id: `solution-reschedule-c${candidateIndex}`,
@@ -536,6 +537,62 @@ export function solutionReschedulingPlan(
       rescheduleMaxMs: maxElapsedMs,
       rescheduleRounds: 2,
       ...(diagnostics ? { diagnostics: true } : {}),
+      ...(targetOverrides ? { rescheduleTargetOverrides: targetOverrides } : {}),
+    }),
+  });
+}
+
+export function solutionTwoBoxReschedulingPlan(
+  state: LegacyState,
+  incumbent: SolverSolution,
+  maxVisited: number,
+  maxGenerated: number,
+  maxElapsedMs: number,
+  candidateIndex: number,
+  boxPairs: readonly (readonly [number, number])[],
+  targetOverrides?: Readonly<Record<number, string>>,
+): EnginePlan {
+  return Object.freeze({
+    id: `solution-reschedule-2box-c${candidateIndex}`,
+    label: "Two-box transport rescheduling",
+    mode: "search",
+    payload: Object.freeze({
+      algorithm: "solution-box-reschedule",
+      state,
+      solutionPath: legacyPathFromSolution(incumbent),
+      maxVisited,
+      maxGenerated,
+      rescheduleMaxMs: maxElapsedMs,
+      rescheduleMode: "two-box",
+      rescheduleBoxPairs: boxPairs,
+      ...(targetOverrides ? { rescheduleTargetOverrides: targetOverrides } : {}),
+    }),
+  });
+}
+
+export function dependencyWindowImprovementPlan(
+  state: LegacyState,
+  incumbent: SolverSolution,
+  maxVisited: number,
+  maxGenerated: number,
+  candidateIndex: number,
+  windows: readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[],
+): EnginePlan {
+  return Object.freeze({
+    id: `solution-dep-window-c${candidateIndex}`,
+    label: `Dependency-window rewrite c${candidateIndex}`,
+    mode: "search",
+    payload: Object.freeze({
+      algorithm: "solution-window-rewrite",
+      state,
+      solutionPath: legacyPathFromSolution(incumbent),
+      maxVisited,
+      maxGenerated,
+      permutationVisited: 0,
+      windowPushes: Object.freeze([]),
+      moveWindowVisited: 0,
+      prioritizedWindows: windows,
+      progressIntervalMs: 1_000,
     }),
   });
 }

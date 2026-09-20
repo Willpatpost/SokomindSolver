@@ -86,6 +86,11 @@ export interface WindowRewritePayload extends EnginePayloadBase {
   readonly adaptiveMoveMinimumPriorImprovements?: number;
   readonly moveWindowMissLimit?: number;
   readonly progressIntervalMs?: number;
+  readonly prioritizedWindows?: readonly {
+    readonly startPush: number;
+    readonly endPush: number;
+    readonly maxVisited: number;
+  }[];
 }
 
 export interface BoxReschedulePayload extends EnginePayloadBase {
@@ -96,6 +101,9 @@ export interface BoxReschedulePayload extends EnginePayloadBase {
   readonly rescheduleMaxMs?: number;
   readonly rescheduleRounds?: number;
   readonly diagnostics?: boolean;
+  readonly rescheduleMode?: "single" | "two-box";
+  readonly rescheduleBoxPairs?: readonly (readonly [number, number])[];
+  readonly rescheduleTargetOverrides?: Readonly<Record<number, string>>;
 }
 
 export interface BidirectionalSidePayload extends EnginePayloadBase {

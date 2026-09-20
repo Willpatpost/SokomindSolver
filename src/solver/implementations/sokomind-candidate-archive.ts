@@ -20,7 +20,13 @@ export type TaskEndReason =
   | "cancelled"
   | "failed";
 
-export type RepairOperator = "window" | "box";
+export type RepairOperator =
+  | "window"
+  | "box"
+  | "two-box"
+  | "goal-reassignment"
+  | "dependency-window"
+  | "perturb-and-repair";
 
 export interface QualityTaskOutcome {
   readonly taskId: string;

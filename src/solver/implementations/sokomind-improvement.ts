@@ -13,8 +13,10 @@ import {
   DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
   DEFAULT_IMPROVEMENT_MINIMUM_MOVES,
   DEFAULT_REWRITE_BUDGET_ALLOCATION,
+  dependencyWindowImprovementPlan,
   solutionImprovementPlan,
   solutionReschedulingPlan,
+  solutionTwoBoxReschedulingPlan,
   type RewriteBudgetAllocation,
 } from "./sokomind-plans.ts";
 import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
@@ -37,7 +39,7 @@ export interface SokomindImprovementOptions {
 }
 
 export type { TaskEndReason } from "./sokomind-candidate-archive.ts";
-import type { TaskEndReason } from "./sokomind-candidate-archive.ts";
+import type { RepairOperator, TaskEndReason } from "./sokomind-candidate-archive.ts";
 
 export interface ImprovedIncumbent {
   readonly solution: SolverSolution;
@@ -58,7 +60,12 @@ export async function improveIncumbent(
   reservedGenerated = Infinity,
   memoryConcurrency = 1,
   allocation: RewriteBudgetAllocation = DEFAULT_REWRITE_BUDGET_ALLOCATION,
-  repair: "window" | "box" = "window",
+  repair: RepairOperator = "window",
+  repairContext?: Readonly<{
+    boxPairs?: readonly (readonly [number, number])[];
+    targetOverrides?: Readonly<Record<number, string>>;
+    prioritizedWindows?: readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[];
+  }>,
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -73,7 +80,7 @@ export async function improveIncumbent(
   );
   const memoryLimit = run.request.limits?.maxMemoryBytes ?? Infinity;
   const scaledDefault = defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes);
-  const liveMemoryRescheduling = repair === "box" &&
+  const liveMemoryRescheduling = (repair === "box" || repair === "two-box") &&
     extractSokomindOptions(run.request).mode === "quality";
   const memoryVisitedCap =
     liveMemoryRescheduling
@@ -137,7 +144,8 @@ export async function improveIncumbent(
     run.deadline,
     run.context.now() + maxElapsedMs,
   );
-  for (let pass = 1; pass <= (repair === "box" ? 1 : maxPasses); pass += 1) {
+  const singlePassRepair = repair === "box" || repair === "two-box" || repair === "goal-reassignment";
+  for (let pass = 1; pass <= (singlePassRepair ? 1 : maxPasses); pass += 1) {
     const remainingImprovementMs = Math.max(
       0,
       improvementDeadline - run.context.now(),
@@ -159,20 +167,36 @@ export async function improveIncumbent(
       const outcome = await runPhase(
         run,
         [
-          repair === "box" ? solutionReschedulingPlan(
-            state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
-            Math.floor(remainingImprovementMs), candidateIndex,
-            extractSokomindOptions(run.request).diagnostics,
-          ) : solutionImprovementPlan(
-            state,
-            best,
-            Math.floor(maxVisited),
-            pass,
-            run.profile,
-            candidateIndex,
-            Math.floor(maxGenerated),
-            allocation,
-          ),
+          repair === "box" || repair === "goal-reassignment"
+            ? solutionReschedulingPlan(
+                state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
+                Math.floor(remainingImprovementMs), candidateIndex,
+                extractSokomindOptions(run.request).diagnostics,
+                repairContext?.targetOverrides,
+              )
+            : repair === "two-box"
+              ? solutionTwoBoxReschedulingPlan(
+                  state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
+                  Math.floor(remainingImprovementMs), candidateIndex,
+                  repairContext?.boxPairs ?? [],
+                  repairContext?.targetOverrides,
+                )
+              : repair === "dependency-window"
+                ? dependencyWindowImprovementPlan(
+                    state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
+                    candidateIndex,
+                    repairContext?.prioritizedWindows ?? [],
+                  )
+                : solutionImprovementPlan(
+                    state,
+                    best,
+                    Math.floor(maxVisited),
+                    pass,
+                    run.profile,
+                    candidateIndex,
+                    Math.floor(maxGenerated),
+                    allocation,
+                  ),
         ],
         createWorker,
         1,
