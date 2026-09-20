@@ -24,7 +24,7 @@ test("parallel Node proof workers preserve the inter-rooms 28-move optimum", asy
     limits: { maxElapsedMs: 30_000 },
     options: {
       "sokomind-solver": {
-        mode: "quality",
+        mode: "optimal",
         proofAlgorithm: "astar",
         proofParallelism: 2,
         deterministic: false,
