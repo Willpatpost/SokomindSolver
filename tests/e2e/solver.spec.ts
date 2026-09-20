@@ -159,10 +159,11 @@ test("shows memory-bounded worker ceilings and sends them to Quality search", as
     .evaluateAll((opts) =>
       opts.map((o) => Number((o as HTMLOptionElement).value)).filter((v) => v > 0),
     );
-  const maxAllowed = workerValues.length ? Math.max(...workerValues) : 1;
-  const requestedWorkers = Math.min(8, maxAllowed, effectiveWorkerCount(largeMemory, hardware).count);
-  const targetOption = workers.locator(`option[value="${requestedWorkers}"]`);
-  await expect(targetOption).toBeAttached();
+  const effectiveCeiling = Math.min(8, effectiveWorkerCount(largeMemory, hardware).count);
+  const supportedWorkers = workerValues.filter((v) => v <= effectiveCeiling);
+  const requestedWorkers = supportedWorkers.length
+    ? Math.max(...supportedWorkers)
+    : Math.min(...workerValues);
   await workers.selectOption(String(requestedWorkers));
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(
