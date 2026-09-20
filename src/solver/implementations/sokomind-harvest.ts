@@ -690,22 +690,22 @@ export async function qualityAnytimeImprove(
   function dispatchTask(
     target: ArchivedCandidate,
     operator: RepairOperator,
-  ): void {
+  ): boolean {
     const taskId = `slice-${sliceIndex}`;
     const currentSliceIndex = sliceIndex;
     sliceIndex += 1;
 
     const sliceMs = computeSliceMs();
-    if (sliceMs < 1) return;
+    if (sliceMs < 1) return false;
 
     const remainingRequest = withRemainingLimits(run);
-    if (!remainingRequest) return;
+    if (!remainingRequest) return false;
     const perSliceVisited = Math.min(
       remainingRequest.limits?.maxExpandedStates ?? Infinity,
       operator === "window" && rescheduleEligible ? 50_000 : Infinity,
     );
     const maxGenerated = remainingRequest.limits?.maxGeneratedStates ?? Infinity;
-    if (perSliceVisited < 1 || maxGenerated < 1) return;
+    if (perSliceVisited < 1 || maxGenerated < 1) return false;
 
     archive.markInFlight(target.id, operator);
 
@@ -729,7 +729,7 @@ export async function qualityAnytimeImprove(
         expanded: 0, generated: 0, elapsedMs: 0, improved: false,
       });
       archive.clearInFlight(target.id, operator);
-      return;
+      return true;
     }
     if (operator === "dependency-window" && (!repairContext?.prioritizedWindows || repairContext.prioritizedWindows.length === 0)) {
       archive.recordOutcome({
@@ -737,7 +737,7 @@ export async function qualityAnytimeImprove(
         expanded: 0, generated: 0, elapsedMs: 0, improved: false,
       });
       archive.clearInFlight(target.id, operator);
-      return;
+      return true;
     }
     const promise = improveIncumbent(
       run, state, target.solution, createWorker,
@@ -774,6 +774,7 @@ export async function qualityAnytimeImprove(
     });
 
     activeSlots.set(taskId, promise);
+    return true;
   }
 
   function processResult(result: SlotResult): void {
@@ -818,7 +819,7 @@ export async function qualityAnytimeImprove(
     while (activeSlots.size < maxSlots && !run.context.signal.aborted) {
       const next = selectNextTask();
       if (!next) break;
-      dispatchTask(next.target, next.operator);
+      if (!dispatchTask(next.target, next.operator)) break;
       const dispatched = enabledOperators.indexOf(next.operator);
       if (dispatched >= 0) nextOpIndex = (dispatched + 1) % enabledOperators.length;
     }
