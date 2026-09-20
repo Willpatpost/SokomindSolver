@@ -99,7 +99,8 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
   let peakBrowserProcessMemoryBytes = 0;
   let currentMemory =
     run.budget.coordinatorEstimatedMemoryBytes +
-    run.budget.preparedBoardEstimatedMemoryBytes;
+    run.budget.preparedBoardEstimatedMemoryBytes +
+    run.budget.persistentEstimatedMemoryBytes;
   let historicalPeakCandidate = currentMemory;
   const memoryBreakdown = {
     runtimeBytes: 0,
@@ -211,6 +212,8 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
         run.budget.coordinatorEstimatedMemoryBytes,
       currentPreparedBoardMemoryBytes:
         run.budget.preparedBoardEstimatedMemoryBytes,
+      currentPersistentMemoryBytes:
+        run.budget.persistentEstimatedMemoryBytes,
       workerRuntimeMemoryBytes: memoryBreakdown.runtimeBytes,
       workerBoardMemoryBytes: memoryBreakdown.boardBytes,
       workerRetainedMemoryBytes: memoryBreakdown.retainedBytes,

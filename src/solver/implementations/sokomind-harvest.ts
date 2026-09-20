@@ -6,6 +6,7 @@ import type {
 } from "../contracts.ts";
 import {
   IncumbentCollector,
+  computeDiversitySignature,
   computeHarvestMs,
   isSolutionBetter,
   selectBest,
@@ -43,6 +44,10 @@ import {
 } from "./sokomind-proof.ts";
 import { predictRescheduleValue } from "./sokomind-reschedule-predictor.ts";
 import { improveIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
+import {
+  CandidateArchive,
+  type RepairOperator,
+} from "./sokomind-candidate-archive.ts";
 import {
   aggregate,
   invalidateAggregate,
@@ -422,22 +427,24 @@ export async function qualityAnytimeImprove(
 
   const improvementStartExpanded = aggregate(run).expandedStates;
 
+  // ── Seed archive with harvested incumbents ────────────────────────────
+  const archiveCapacity = Math.max(sokomindOptions.maximumIncumbents * 2, 8);
+  const archive = new CandidateArchive(archiveCapacity);
+  for (const incumbent of collector.incumbents) {
+    archive.offer(
+      incumbent.solution,
+      { sourceOperator: "harvest", parentCandidateId: undefined, taskId: undefined, acceptedAt: run.context.now() },
+      semanticDiversityTrace(run.request, incumbent.solution),
+    );
+  }
+  run.budget.retainPersistent(archive.estimatedMemoryBytes);
+
   // ── Initial parallel rewrite wave on all diverse candidates ──────────
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
   const rewriteConcurrency = sokomindRewriteConcurrency(
     maxWorkers, run.request.limits?.maxMemoryBytes, rewriteCount,
   );
-
-  const rewrittenCandidates: Array<{
-    solution: SolverSolution;
-    discoveryOrder: number;
-    improved: boolean;
-  }> = collector.incumbents.map((incumbent) => ({
-    solution: incumbent.solution,
-    discoveryOrder: incumbent.discoveryOrder,
-    improved: false,
-  }));
 
   if (rewriteCount > 0 && rewriteConcurrency > 0 && !run.context.signal.aborted) {
     run.progressPhase = "improving";
@@ -459,10 +466,14 @@ export async function qualityAnytimeImprove(
     );
     const rewriteStarted = aggregate(run);
 
-    const pending = rewriteCandidates.map((incumbent, candidateIndex) => ({
-      incumbent,
-      candidateIndex,
-    }));
+    const archiveCandidates = archive.candidates.slice();
+    const pending = rewriteCandidates.map((incumbent, candidateIndex) => {
+      const archiveEntry = archiveCandidates.find((c) =>
+        c.solution.moves === incumbent.solution.moves &&
+        c.solution.pushes === incumbent.solution.pushes &&
+        c.signature.pushChainKey === computeDiversitySignature(incumbent.solution, semanticDiversityTrace(run.request, incumbent.solution)).pushChainKey);
+      return { incumbent, candidateIndex, archiveId: archiveEntry?.id ?? `wave-${candidateIndex}` };
+    });
     while (pending.length && !run.context.signal.aborted) {
       const usage = aggregate(run);
       const remainingVisited = Math.max(
@@ -482,8 +493,8 @@ export async function qualityAnytimeImprove(
       const generatedShares = dividedIntegerBudget(remainingGenerated, pending.length);
       const perWorkerElapsed = Math.max(1, Math.floor(remainingElapsed / remainingWaves));
       const wave = pending.splice(0, waveSize);
-      const results = await Promise.all(wave.map(async (
-        { incumbent, candidateIndex },
+      await Promise.all(wave.map(async (
+        { incumbent, candidateIndex, archiveId },
         waveIndex,
       ) => {
         const maxVisited = Math.min(
@@ -491,13 +502,8 @@ export async function qualityAnytimeImprove(
           rescheduleEligible ? 50_000 : Infinity,
         );
         const maxGenerated = generatedShares[waveIndex] ?? 0;
-        if (maxVisited < 1 || maxGenerated < 1) {
-          return {
-            solution: incumbent.solution,
-            discoveryOrder: incumbent.discoveryOrder,
-            improved: false,
-          };
-        }
+        if (maxVisited < 1 || maxGenerated < 1) return;
+        const sliceStart = run.context.now();
         const improved = await improveIncumbent(
           run, state, incumbent.solution, createWorker,
           {
@@ -511,55 +517,68 @@ export async function qualityAnytimeImprove(
           waveSize,
           rewriteAllocation,
         );
-        return {
-          solution: improved.solution,
-          discoveryOrder: incumbent.discoveryOrder,
+        archive.recordOutcome({
+          taskId: `wave-${candidateIndex}`,
+          reason: improved.endReason,
+          operator: "window",
+          candidateId: archiveId,
+          expanded: improved.expandedWork,
+          generated: improved.generatedWork,
+          elapsedMs: run.context.now() - sliceStart,
           improved: improved.improved,
-        };
+        });
+        if (improved.improved) {
+          const oldBytes = archive.estimatedMemoryBytes;
+          archive.offer(
+            improved.solution,
+            { sourceOperator: "window", parentCandidateId: archiveId, taskId: `wave-${candidateIndex}`, acceptedAt: run.context.now() },
+            semanticDiversityTrace(run.request, improved.solution),
+          );
+          run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
+        }
       }));
-      rewrittenCandidates.push(...results);
     }
   }
 
-  let best = selectBest(rewrittenCandidates);
-  run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
-  invalidateAggregate(run);
+  const best0 = archive.globalBest;
+  if (best0) {
+    run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best0.solution.moves);
+    invalidateAggregate(run);
+  }
 
   run.progressPhase = "improving";
-  report(run, `Starting anytime improvement loop (best=${best.moves} moves from ${rewriteCount} rewritten candidates).`, true);
+  report(run, `Starting anytime improvement loop (best=${archive.globalBest?.solution.moves ?? "?"} moves, archive=${archive.size} candidates).`, true);
 
   // ── Anytime loop: alternate between window-rewrite and box-reschedule ─
   const improvementDeadline = Number.isFinite(run.deadline)
     ? run.deadline
     : run.context.now() + configuredElapsed;
-  type Operator = "window" | "box";
-  const stalls: Record<Operator, number> = { window: 0, box: 0 };
-  const MAX_STALLS = 3;
-  let currentOp: Operator = rewriteCount > 0 ? "box" : "window";
+  let currentOp: RepairOperator = rewriteCount > 0 ? "box" : "window";
   let sliceIndex = 0;
 
   while (!run.context.signal.aborted) {
     const remainingMs = improvementDeadline - run.context.now();
     if (remainingMs < 1) break;
 
-    // Both operators stalled — stop improving
-    if (stalls.window >= MAX_STALLS && stalls.box >= MAX_STALLS) break;
+    // Check exhaustion across all archive candidates, not just stall count
+    const windowExhausted = archive.allNeighborhoodsExhausted("window");
+    const boxExhausted = !rescheduleEligible || archive.allNeighborhoodsExhausted("box");
+    if (windowExhausted && boxExhausted) break;
 
-    // Current operator stalled — try the other
-    if (stalls[currentOp] >= 2) {
-      const other: Operator = currentOp === "window" ? "box" : "window";
-      if (stalls[other] < MAX_STALLS) {
-        currentOp = other;
-      } else {
-        break;
-      }
+    // Skip box reschedule if not eligible at all
+    if (currentOp === "box" && !rescheduleEligible) {
+      currentOp = "window";
+      if (windowExhausted) break;
     }
 
-    // Skip box reschedule if not eligible
-    if (currentOp === "box" && !rescheduleEligible) {
-      stalls.box = MAX_STALLS;
-      currentOp = "window";
-      if (stalls.window >= MAX_STALLS) break;
+    // Select a non-exhausted candidate for the current operator
+    let target = archive.selectForRepair(currentOp);
+    if (!target) {
+      const other: RepairOperator = currentOp === "window" ? "box" : "window";
+      if (other === "box" && !rescheduleEligible) break;
+      target = archive.selectForRepair(other);
+      if (!target) break;
+      currentOp = other;
     }
 
     const progressiveCap = Math.min(
@@ -586,12 +605,13 @@ export async function qualityAnytimeImprove(
 
     report(
       run,
-      `Improvement slice ${sliceIndex + 1} (${currentOp}, ${sliceMs}ms budget, best=${best.moves} moves).`,
+      `Slice ${sliceIndex + 1} (${currentOp} on ${target.id}, ${sliceMs}ms, best=${archive.globalBest?.solution.moves ?? "?"}).`,
       true,
     );
 
+    const sliceStart = run.context.now();
     const improved = await improveIncumbent(
-      run, state, best, createWorker,
+      run, state, target.solution, createWorker,
       {
         ...options,
         improvementMaxVisited: perSliceVisited,
@@ -605,35 +625,56 @@ export async function qualityAnytimeImprove(
       currentOp,
     );
 
+    archive.recordOutcome({
+      taskId: `slice-${sliceIndex}`,
+      reason: improved.endReason,
+      operator: currentOp,
+      candidateId: target.id,
+      expanded: improved.expandedWork,
+      generated: improved.generatedWork,
+      elapsedMs: run.context.now() - sliceStart,
+      improved: improved.improved,
+    });
+
     sliceIndex += 1;
     run.qualitySlicesCompleted += 1;
 
     if (improved.cancelled) {
+      run.budget.releasePersistent(archive.estimatedMemoryBytes);
       return Object.freeze({ status: "cancelled", metrics: metrics(run) });
     }
 
     if (improved.improved) {
-      best = improved.solution;
-      run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
+      const oldBytes = archive.estimatedMemoryBytes;
+      archive.offer(
+        improved.solution,
+        { sourceOperator: currentOp, parentCandidateId: target.id, taskId: `slice-${sliceIndex - 1}`, acceptedAt: run.context.now() },
+        semanticDiversityTrace(run.request, improved.solution),
+      );
+      run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
+      run.bestSolutionMoves = Math.min(run.bestSolutionMoves, improved.solution.moves);
       invalidateAggregate(run);
-      stalls[currentOp] = 0;
-      report(run, `Improved to ${best.moves} moves (${currentOp}).`, true);
+      report(run, `Improved to ${improved.solution.moves} moves (${currentOp} on ${target.id}).`, true);
     } else {
-      stalls[currentOp] += 1;
       run.qualityOperatorStalls += 1;
     }
 
-    // Alternate operator after each slice
-    const other: Operator = currentOp === "window" ? "box" : "window";
-    if (stalls[other] < MAX_STALLS && (other !== "box" || rescheduleEligible)) {
-      currentOp = other;
+    // Alternate operator after each slice, picking whichever has non-exhausted work
+    const other: RepairOperator = currentOp === "window" ? "box" : "window";
+    if (other !== "box" || rescheduleEligible) {
+      if (!archive.allNeighborhoodsExhausted(other)) {
+        currentOp = other;
+      }
     }
   }
+
+  run.budget.releasePersistent(archive.estimatedMemoryBytes);
 
   if (run.context.signal.aborted) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
+  const best = archive.globalBest?.solution ?? firstIncumbent;
   return Object.freeze({
     status: "solved" as const,
     solution: Object.freeze({ ...best, optimality: "unknown" as const }),

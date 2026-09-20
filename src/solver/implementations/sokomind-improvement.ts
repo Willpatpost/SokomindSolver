@@ -36,10 +36,16 @@ export interface SokomindImprovementOptions {
   readonly improvementMinimumMoves?: number;
 }
 
+export type { TaskEndReason } from "./sokomind-candidate-archive.ts";
+import type { TaskEndReason } from "./sokomind-candidate-archive.ts";
+
 export interface ImprovedIncumbent {
   readonly solution: SolverSolution;
   readonly cancelled: boolean;
   readonly improved: boolean;
+  readonly endReason: TaskEndReason;
+  readonly expandedWork: number;
+  readonly generatedWork: number;
 }
 
 export async function improveIncumbent(
@@ -101,7 +107,10 @@ export async function improveIncumbent(
     maxElapsedMs === 0 ||
     maxPasses === 0
   ) {
-    return Object.freeze({ solution: incumbent, cancelled: false, improved: false });
+    return Object.freeze({
+      solution: incumbent, cancelled: false, improved: false,
+      endReason: "completed-pass" as TaskEndReason, expandedWork: 0, generatedWork: 0,
+    });
   }
 
   run.progressPhase = "improving";
@@ -122,6 +131,8 @@ export async function improveIncumbent(
   });
 
   let best = incumbent;
+  let endReason: TaskEndReason = "completed-pass";
+  const startSnapshot = aggregate(run);
   const improvementDeadline = Math.min(
     run.deadline,
     run.context.now() + maxElapsedMs,
@@ -172,14 +183,22 @@ export async function improveIncumbent(
         outcome.stopReason === "cancelled" ||
         run.context.signal.aborted
       ) {
+        endReason = "cancelled";
+        const endSnap = aggregate(run);
         return Object.freeze({
           solution: best,
           cancelled: true,
           improved: isSolutionBetter(best, incumbent),
+          endReason,
+          expandedWork: endSnap.expandedStates - startSnapshot.expandedStates,
+          generatedWork: endSnap.generatedStates - startSnapshot.generatedStates,
         });
       }
       const candidate = outcome.solution;
-      if (!candidate || !isSolutionBetter(candidate, best)) break;
+      if (!candidate || !isSolutionBetter(candidate, best)) {
+        if (!outcome.cutoff && !outcome.phaseTimedOut) endReason = "exhausted";
+        break;
+      }
       best = candidate;
       run.solutionImprovements += 1;
       invalidateAggregate(run);
@@ -187,7 +206,12 @@ export async function improveIncumbent(
         run.bestSolutionMoves === 0
           ? candidate.moves
           : Math.min(run.bestSolutionMoves, candidate.moves);
-      if (outcome.phaseTimedOut || outcome.stopReason) break;
+      if (outcome.phaseTimedOut) { endReason = "time-cutoff"; break; }
+      if (outcome.stopReason === "expanded") { endReason = "expanded-cutoff"; break; }
+      if (outcome.stopReason === "generated") { endReason = "generated-cutoff"; break; }
+      if (outcome.stopReason === "memory") { endReason = "memory-cutoff"; break; }
+      if (outcome.stopReason === "elapsed") { endReason = "time-cutoff"; break; }
+      if (outcome.stopReason) break;
     } catch (error) {
       run.suppressedImprovementErrors += 1;
       report(
@@ -195,13 +219,18 @@ export async function improveIncumbent(
         `Improvement pass suppressed: ${error instanceof Error ? error.message : String(error)}`,
         true,
       );
+      endReason = "failed";
       break;
     }
   }
+  const endSnap = aggregate(run);
   return Object.freeze({
     solution: best,
     cancelled: false,
     improved: isSolutionBetter(best, incumbent),
+    endReason,
+    expandedWork: endSnap.expandedStates - startSnapshot.expandedStates,
+    generatedWork: endSnap.generatedStates - startSnapshot.generatedStates,
   });
 }
 

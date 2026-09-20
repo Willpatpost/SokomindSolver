@@ -150,4 +150,42 @@ describe("BudgetTracker", () => {
     );
     assert.equal(result, "cancelled");
   });
+
+  it("persistentEstimatedMemoryBytes survives resetPhase", () => {
+    const tracker = new BudgetTracker();
+    tracker.retainRecord(100);
+    tracker.retainPersistent(500);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 500);
+    tracker.resetPhase();
+    assert.equal(tracker.coordinatorEstimatedMemoryBytes, 0);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 500);
+  });
+
+  it("retainPersistent accumulates bytes", () => {
+    const tracker = new BudgetTracker();
+    tracker.retainPersistent(100);
+    tracker.retainPersistent(200);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 300);
+  });
+
+  it("updatePersistent adjusts delta", () => {
+    const tracker = new BudgetTracker();
+    tracker.retainPersistent(100);
+    tracker.updatePersistent(100, 250);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 250);
+  });
+
+  it("releasePersistent reduces bytes", () => {
+    const tracker = new BudgetTracker();
+    tracker.retainPersistent(300);
+    tracker.releasePersistent(200);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 100);
+  });
+
+  it("releasePersistent clamps to zero", () => {
+    const tracker = new BudgetTracker();
+    tracker.retainPersistent(100);
+    tracker.releasePersistent(500);
+    assert.equal(tracker.persistentEstimatedMemoryBytes, 0);
+  });
 });

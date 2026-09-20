@@ -24,6 +24,7 @@ export class BudgetTracker {
   peakCoordinatorRecordCount = 0;
   coordinatorEstimatedMemoryBytes = 0;
   preparedBoardEstimatedMemoryBytes = 0;
+  persistentEstimatedMemoryBytes = 0;
 
   checkLimit(
     snapshot: AggregateSnapshot,
@@ -72,6 +73,18 @@ export class BudgetTracker {
   resetPhase(): void {
     this.coordinatorRecordCount = 0;
     this.coordinatorEstimatedMemoryBytes = 0;
+  }
+
+  retainPersistent(bytes: number): void {
+    this.persistentEstimatedMemoryBytes += bytes;
+  }
+
+  updatePersistent(oldBytes: number, newBytes: number): void {
+    this.persistentEstimatedMemoryBytes += newBytes - oldBytes;
+  }
+
+  releasePersistent(bytes: number): void {
+    this.persistentEstimatedMemoryBytes = Math.max(0, this.persistentEstimatedMemoryBytes - bytes);
   }
 }
 
