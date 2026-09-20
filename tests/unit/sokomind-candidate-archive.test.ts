@@ -280,4 +280,87 @@ describe("CandidateArchive", () => {
       assert.equal(archive.candidateById("nonexistent"), undefined);
     });
   });
+
+  describe("in-flight tracking", () => {
+    it("marks and clears in-flight status", () => {
+      const archive = new CandidateArchive(4);
+      const sol = makeSolution([pushStep("up")]);
+      archive.offer(sol, harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      assert.ok(!archive.isInFlight(id, "window"));
+      archive.markInFlight(id, "window");
+      assert.ok(archive.isInFlight(id, "window"));
+      assert.ok(!archive.isInFlight(id, "box"));
+      archive.clearInFlight(id, "window");
+      assert.ok(!archive.isInFlight(id, "window"));
+    });
+
+    it("selectForRepair skips in-flight candidates", () => {
+      const archive = new CandidateArchive(4);
+      const sol1 = makeSolution([pushStep("up")]);
+      const sol2 = makeSolution([pushStep("down"), pushStep("left")]);
+      archive.offer(sol1, harvestProvenance());
+      archive.offer(sol2, harvestProvenance());
+
+      const first = archive.candidates[0].id;
+      archive.markInFlight(first, "window");
+
+      const selected = archive.selectForRepair("window");
+      assert.ok(selected);
+      assert.notEqual(selected.id, first);
+    });
+
+    it("selectForRepair returns candidate after clearInFlight", () => {
+      const archive = new CandidateArchive(4);
+      const sol = makeSolution([pushStep("up")]);
+      archive.offer(sol, harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      archive.markInFlight(id, "window");
+      assert.equal(archive.selectForRepair("window"), undefined);
+
+      archive.clearInFlight(id, "window");
+      assert.ok(archive.selectForRepair("window"));
+    });
+
+    it("hasAvailableWork returns false when all in-flight or exhausted", () => {
+      const archive = new CandidateArchive(4);
+      const sol1 = makeSolution([pushStep("up")]);
+      const sol2 = makeSolution([pushStep("down"), pushStep("left")]);
+      archive.offer(sol1, harvestProvenance());
+      archive.offer(sol2, harvestProvenance());
+
+      assert.ok(archive.hasAvailableWork("window"));
+
+      archive.markInFlight(archive.candidates[0].id, "window");
+      archive.recordOutcome({
+        taskId: "t1", reason: "exhausted", operator: "window",
+        candidateId: archive.candidates[1].id, expanded: 100, generated: 200, elapsedMs: 50, improved: false,
+      });
+
+      assert.ok(!archive.hasAvailableWork("window"));
+    });
+
+    it("allNeighborhoodsExhausted is false while in-flight (not exhausted)", () => {
+      const archive = new CandidateArchive(4);
+      const sol = makeSolution([pushStep("up")]);
+      archive.offer(sol, harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      archive.markInFlight(id, "window");
+      assert.ok(!archive.allNeighborhoodsExhausted("window"));
+    });
+
+    it("in-flight for one operator does not affect the other", () => {
+      const archive = new CandidateArchive(4);
+      const sol = makeSolution([pushStep("up")]);
+      archive.offer(sol, harvestProvenance());
+      const id = archive.candidates[0].id;
+
+      archive.markInFlight(id, "window");
+      assert.ok(archive.selectForRepair("box"));
+      assert.ok(!archive.selectForRepair("window"));
+    });
+  });
 });

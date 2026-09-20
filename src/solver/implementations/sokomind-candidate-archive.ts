@@ -93,6 +93,7 @@ export class CandidateArchive {
   #nextId = 0;
   #currentBytes = 0;
   readonly #neighborhoods = new Map<string, NeighborhoodRecord>();
+  readonly #inFlight = new Map<string, Set<string>>();
 
   readonly stats = {
     offered: 0,
@@ -302,6 +303,25 @@ export class CandidateArchive {
     }
   }
 
+  // ── In-flight tracking ──────────────────────────────────────────────
+
+  markInFlight(candidateId: string, operator: RepairOperator): void {
+    let set = this.#inFlight.get(operator);
+    if (!set) {
+      set = new Set();
+      this.#inFlight.set(operator, set);
+    }
+    set.add(candidateId);
+  }
+
+  clearInFlight(candidateId: string, operator: RepairOperator): void {
+    this.#inFlight.get(operator)?.delete(candidateId);
+  }
+
+  isInFlight(candidateId: string, operator: RepairOperator): boolean {
+    return this.#inFlight.get(operator)?.has(candidateId) ?? false;
+  }
+
   // ── Accessors ───────────────────────────────────────────────────────
 
   get candidates(): readonly ArchivedCandidate[] {
@@ -326,7 +346,10 @@ export class CandidateArchive {
 
   selectForRepair(operator: RepairOperator): ArchivedCandidate | undefined {
     for (const candidate of this.#items) {
-      if (!this.isNeighborhoodExhausted(candidate.id, operator)) {
+      if (
+        !this.isNeighborhoodExhausted(candidate.id, operator) &&
+        !this.isInFlight(candidate.id, operator)
+      ) {
         return candidate;
       }
     }
@@ -335,5 +358,12 @@ export class CandidateArchive {
 
   allNeighborhoodsExhausted(operator: RepairOperator): boolean {
     return this.#items.every((c) => this.isNeighborhoodExhausted(c.id, operator));
+  }
+
+  hasAvailableWork(operator: RepairOperator): boolean {
+    return this.#items.some(
+      (c) => !this.isNeighborhoodExhausted(c.id, operator) &&
+             !this.isInFlight(c.id, operator),
+    );
   }
 }

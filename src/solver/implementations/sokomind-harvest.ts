@@ -43,9 +43,10 @@ import {
   type SokomindProofWorker,
 } from "./sokomind-proof.ts";
 import { predictRescheduleValue } from "./sokomind-reschedule-predictor.ts";
-import { improveIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
+import { improveIncumbent, type ImprovedIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
 import {
   CandidateArchive,
+  type ArchivedCandidate,
   type RepairOperator,
 } from "./sokomind-candidate-archive.ts";
 import {
@@ -537,64 +538,80 @@ export async function qualityAnytimeImprove(
   run.progressPhase = "improving";
   report(run, `Starting anytime improvement loop (best=${archive.globalBest?.solution.moves ?? "?"} moves, archive=${archive.size} candidates).`, true);
 
-  // ── Anytime loop: alternate between window-rewrite and box-reschedule ─
-  let currentOp: RepairOperator = rewriteCount > 0 ? "box" : "window";
+  // ── Anytime loop: parallel task-slot coordinator ─────────────────────
+  const maxSlots = Math.max(1, sokomindRewriteConcurrency(
+    maxWorkers, run.request.limits?.maxMemoryBytes, archive.size,
+  ));
   let sliceIndex = 0;
+  let nextOp: RepairOperator = rewriteCount > 0 ? "box" : "window";
+  let slotCancelled = false;
 
-  while (!run.context.signal.aborted) {
+  interface SlotResult {
+    readonly taskId: string;
+    readonly candidateId: string;
+    readonly operator: RepairOperator;
+    readonly improved: ImprovedIncumbent;
+  }
+
+  const activeSlots = new Map<string, Promise<SlotResult>>();
+
+  function selectNextTask(): {
+    target: ArchivedCandidate; operator: RepairOperator;
+  } | undefined {
+    const operators: RepairOperator[] = rescheduleEligible
+      ? [nextOp, nextOp === "window" ? "box" : "window"]
+      : ["window"];
+    for (const op of operators) {
+      const target = archive.selectForRepair(op);
+      if (target) return { target, operator: op };
+    }
+    return undefined;
+  }
+
+  function computeSliceMs(): number {
     const remainingMs = Number.isFinite(run.deadline)
       ? run.deadline - run.context.now()
       : Infinity;
-    if (Number.isFinite(remainingMs) && remainingMs < 1) break;
-
-    // Check exhaustion across all archive candidates, not just stall count
-    const windowExhausted = archive.allNeighborhoodsExhausted("window");
-    const boxExhausted = !rescheduleEligible || archive.allNeighborhoodsExhausted("box");
-    if (windowExhausted && boxExhausted) break;
-
-    // Skip box reschedule if not eligible at all
-    if (currentOp === "box" && !rescheduleEligible) {
-      currentOp = "window";
-      if (windowExhausted) break;
-    }
-
-    // Select a non-exhausted candidate for the current operator
-    let target = archive.selectForRepair(currentOp);
-    if (!target) {
-      const other: RepairOperator = currentOp === "window" ? "box" : "window";
-      if (other === "box" && !rescheduleEligible) break;
-      target = archive.selectForRepair(other);
-      if (!target) break;
-      currentOp = other;
-    }
-
+    if (Number.isFinite(remainingMs) && remainingMs < 1) return 0;
     const progressiveCap = Math.min(
       QUALITY_ANYTIME_SLICE_CAP_MS,
       QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
     );
-    const sliceMs = Number.isFinite(remainingMs)
+    return Number.isFinite(remainingMs)
       ? Math.min(progressiveCap, Math.floor(remainingMs / 2))
       : progressiveCap;
-    if (sliceMs < 1) break;
+  }
+
+  function dispatchTask(
+    target: ArchivedCandidate,
+    operator: RepairOperator,
+  ): void {
+    const taskId = `slice-${sliceIndex}`;
+    const currentSliceIndex = sliceIndex;
+    sliceIndex += 1;
+
+    const sliceMs = computeSliceMs();
+    if (sliceMs < 1) return;
 
     const remainingRequest = withRemainingLimits(run);
-    if (!remainingRequest) break;
-
+    if (!remainingRequest) return;
     const perSliceVisited = Math.min(
       remainingRequest.limits?.maxExpandedStates ?? Infinity,
-      currentOp === "window" && rescheduleEligible ? 50_000 : Infinity,
+      operator === "window" && rescheduleEligible ? 50_000 : Infinity,
     );
     const maxGenerated = remainingRequest.limits?.maxGeneratedStates ?? Infinity;
-    if (perSliceVisited < 1 || maxGenerated < 1) break;
+    if (perSliceVisited < 1 || maxGenerated < 1) return;
+
+    archive.markInFlight(target.id, operator);
 
     report(
       run,
-      `Slice ${sliceIndex + 1} (${currentOp} on ${target.id}, ${sliceMs}ms, best=${archive.globalBest?.solution.moves ?? "?"}).`,
+      `Slice ${currentSliceIndex + 1} (${operator} on ${target.id}, ${sliceMs}ms, best=${archive.globalBest?.solution.moves ?? "?"}).`,
       true,
     );
 
     const sliceStart = run.context.now();
-    const improved = await improveIncumbent(
+    const promise = improveIncumbent(
       run, state, target.solution, createWorker,
       {
         ...options,
@@ -602,59 +619,98 @@ export async function qualityAnytimeImprove(
         improvementMaxElapsedMs: sliceMs,
         improvementMaxPasses: 1,
       },
-      sliceIndex,
+      currentSliceIndex,
       maxGenerated,
-      1,
+      Math.max(1, activeSlots.size + 1),
       rewriteAllocation,
-      currentOp,
-    );
-
-    archive.recordOutcome({
-      taskId: `slice-${sliceIndex}`,
-      reason: improved.endReason,
-      operator: currentOp,
+      operator,
+    ).then((improved): SlotResult => ({
+      taskId,
       candidateId: target.id,
-      expanded: improved.expandedWork,
-      generated: improved.generatedWork,
-      elapsedMs: run.context.now() - sliceStart,
-      improved: improved.improved,
+      operator,
+      improved: { ...improved, expandedWork: improved.expandedWork, generatedWork: improved.generatedWork },
+    })).then((result) => {
+      archive.recordOutcome({
+        taskId: result.taskId,
+        reason: result.improved.endReason,
+        operator: result.operator,
+        candidateId: result.candidateId,
+        expanded: result.improved.expandedWork,
+        generated: result.improved.generatedWork,
+        elapsedMs: run.context.now() - sliceStart,
+        improved: result.improved.improved,
+      });
+      archive.clearInFlight(result.candidateId, result.operator);
+      return result;
     });
 
-    sliceIndex += 1;
+    activeSlots.set(taskId, promise);
+  }
+
+  function processResult(result: SlotResult): void {
+    activeSlots.delete(result.taskId);
     run.qualitySlicesCompleted += 1;
 
-    if (improved.cancelled) {
-      run.budget.releasePersistent(archive.estimatedMemoryBytes);
-      return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+    if (result.improved.cancelled) {
+      slotCancelled = true;
+      return;
     }
 
-    if (improved.improved) {
+    if (result.improved.improved) {
       const oldBytes = archive.estimatedMemoryBytes;
       archive.offer(
-        improved.solution,
-        { sourceOperator: currentOp, parentCandidateId: target.id, taskId: `slice-${sliceIndex - 1}`, acceptedAt: run.context.now() },
-        semanticDiversityTrace(run.request, improved.solution),
+        result.improved.solution,
+        { sourceOperator: result.operator, parentCandidateId: result.candidateId, taskId: result.taskId, acceptedAt: run.context.now() },
+        semanticDiversityTrace(run.request, result.improved.solution),
       );
       run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
-      run.bestSolutionMoves = Math.min(run.bestSolutionMoves, improved.solution.moves);
+      run.bestSolutionMoves = Math.min(run.bestSolutionMoves, result.improved.solution.moves);
       invalidateAggregate(run);
-      report(run, `Improved to ${improved.solution.moves} moves (${currentOp} on ${target.id}).`, true);
+      report(run, `Improved to ${result.improved.solution.moves} moves (${result.operator} on ${result.candidateId}).`, true);
     } else {
       run.qualityOperatorStalls += 1;
     }
 
-    // Alternate operator after each slice, picking whichever has non-exhausted work
-    const other: RepairOperator = currentOp === "window" ? "box" : "window";
+    const other: RepairOperator = result.operator === "window" ? "box" : "window";
     if (other !== "box" || rescheduleEligible) {
       if (!archive.allNeighborhoodsExhausted(other)) {
-        currentOp = other;
+        nextOp = other;
       }
     }
   }
 
+  while (!run.context.signal.aborted && !slotCancelled) {
+    const remainingMs = Number.isFinite(run.deadline)
+      ? run.deadline - run.context.now()
+      : Infinity;
+    if (Number.isFinite(remainingMs) && remainingMs < 1) break;
+
+    const windowExhausted = archive.allNeighborhoodsExhausted("window");
+    const boxExhausted = !rescheduleEligible || archive.allNeighborhoodsExhausted("box");
+    if (windowExhausted && boxExhausted && activeSlots.size === 0) break;
+
+    while (activeSlots.size < maxSlots && !run.context.signal.aborted) {
+      const next = selectNextTask();
+      if (!next) break;
+      dispatchTask(next.target, next.operator);
+      nextOp = next.operator === "window" ? "box" : "window";
+    }
+
+    if (activeSlots.size === 0) break;
+
+    const result = await Promise.race(activeSlots.values());
+    processResult(result);
+  }
+
+  for (const pending of activeSlots.values()) {
+    const result = await pending;
+    processResult(result);
+  }
+  activeSlots.clear();
+
   run.budget.releasePersistent(archive.estimatedMemoryBytes);
 
-  if (run.context.signal.aborted) {
+  if (slotCancelled || run.context.signal.aborted) {
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
