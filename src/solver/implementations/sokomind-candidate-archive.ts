@@ -12,6 +12,7 @@ import {
 
 export type TaskEndReason =
   | "exhausted"
+  | "ineligible"
   | "completed-pass"
   | "time-cutoff"
   | "expanded-cutoff"
@@ -78,6 +79,7 @@ export interface ArchivedCandidate {
   readonly signature: DiversitySignature;
   readonly provenance: CandidateProvenance;
   readonly discoveryOrder: number;
+  readonly revision: number;
 }
 
 const ESTIMATED_CANDIDATE_OVERHEAD_BYTES = 512;
@@ -135,12 +137,14 @@ export class CandidateArchive {
       }
       const oldBytes = estimateCandidateBytes(duplicate.solution);
       this.#items[duplicateIndex] = {
-        id: duplicate.id,
+        id: `c${this.#nextId++}`,
         solution,
         signature: sig,
         provenance,
         discoveryOrder: duplicate.discoveryOrder,
+        revision: duplicate.revision + 1,
       };
+      this.#discardCandidateState(duplicate.id);
       this.#currentBytes += candidateBytes - oldBytes;
       this.#sort();
       this.stats.accepted++;
@@ -168,6 +172,7 @@ export class CandidateArchive {
       signature: sig,
       provenance,
       discoveryOrder: this.#nextOrder++,
+      revision: 0,
     };
     this.#items.push(entry);
     this.#currentBytes += candidateBytes;
@@ -199,7 +204,8 @@ export class CandidateArchive {
     let worstScore = -Infinity;
     for (let i = this.#items.length - 1; i >= 0; i--) {
       const item = this.#items[i];
-      if (item === this.#globalBest) continue;
+      if (item === this.#globalBest && !isSolutionBetter(incoming, item.solution)) continue;
+      if (this.#isCandidateInFlight(item.id)) continue;
       if (!isSolutionBetter(incoming, item.solution) && !this.#isNovel(item)) {
         const score = item.solution.moves * 1000 + item.solution.pushes;
         if (score > worstScore) {
@@ -233,7 +239,22 @@ export class CandidateArchive {
   #evictAt(index: number): void {
     const evicted = this.#items.splice(index, 1)[0];
     this.#currentBytes -= estimateCandidateBytes(evicted.solution);
+    this.#discardCandidateState(evicted.id);
     this.stats.evictions++;
+  }
+
+  #isCandidateInFlight(candidateId: string): boolean {
+    for (const candidates of this.#inFlight.values()) {
+      if (candidates.has(candidateId)) return true;
+    }
+    return false;
+  }
+
+  #discardCandidateState(candidateId: string): void {
+    for (const key of [...this.#neighborhoods.keys()]) {
+      if (key.startsWith(`${candidateId}:`)) this.#neighborhoods.delete(key);
+    }
+    for (const candidates of this.#inFlight.values()) candidates.delete(candidateId);
   }
 
   #updateGlobalBest(): void {
@@ -261,6 +282,9 @@ export class CandidateArchive {
   // ── Neighborhood tracking ───────────────────────────────────────────
 
   recordOutcome(outcome: QualityTaskOutcome): void {
+    // A replaced/evicted candidate has a different revision identity. Ignore a
+    // late result from work that was launched against the retired route.
+    if (!this.candidateById(outcome.candidateId)) return;
     const key = neighborhoodKeyString({
       candidateId: outcome.candidateId,
       operator: outcome.operator,
@@ -271,17 +295,17 @@ export class CandidateArchive {
       existing.totalGenerated += outcome.generated;
       existing.totalElapsedMs += outcome.elapsedMs;
       existing.lastReason = outcome.reason;
-      if (outcome.reason === "exhausted" || outcome.reason === "completed-pass") {
+      if (outcome.reason === "exhausted" || outcome.reason === "completed-pass" || outcome.reason === "ineligible") {
         existing.completedPasses++;
       }
-      if (outcome.reason === "exhausted") {
+      if (outcome.reason === "exhausted" || outcome.reason === "ineligible") {
         existing.exhausted = true;
       }
     } else {
       this.#neighborhoods.set(key, {
-        exhausted: outcome.reason === "exhausted",
+        exhausted: outcome.reason === "exhausted" || outcome.reason === "ineligible",
         completedPasses:
-          outcome.reason === "exhausted" || outcome.reason === "completed-pass" ? 1 : 0,
+          outcome.reason === "exhausted" || outcome.reason === "completed-pass" || outcome.reason === "ineligible" ? 1 : 0,
         totalExpanded: outcome.expanded,
         totalGenerated: outcome.generated,
         totalElapsedMs: outcome.elapsedMs,
@@ -353,7 +377,7 @@ export class CandidateArchive {
   selectForRepair(operator: RepairOperator): ArchivedCandidate | undefined {
     for (const candidate of this.#items) {
       if (
-        !this.isNeighborhoodExhausted(candidate.id, operator) &&
+        this.neighborhoodRecord(candidate.id, operator) === undefined &&
         !this.isInFlight(candidate.id, operator)
       ) {
         return candidate;
@@ -363,12 +387,12 @@ export class CandidateArchive {
   }
 
   allNeighborhoodsExhausted(operator: RepairOperator): boolean {
-    return this.#items.every((c) => this.isNeighborhoodExhausted(c.id, operator));
+    return this.#items.every((c) => this.neighborhoodRecord(c.id, operator) !== undefined);
   }
 
   hasAvailableWork(operator: RepairOperator): boolean {
     return this.#items.some(
-      (c) => !this.isNeighborhoodExhausted(c.id, operator) &&
+      (c) => this.neighborhoodRecord(c.id, operator) === undefined &&
              !this.isInFlight(c.id, operator),
     );
   }

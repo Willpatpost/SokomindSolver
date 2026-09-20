@@ -405,6 +405,29 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(result.metrics.counters?.solutionImprovements, 0);
   });
 
+  it("finishes quality mode without spinning when every repair is ineligible", async () => {
+    const algorithms: unknown[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: () => new ScriptedWorker((self, command) => {
+        algorithms.push(command.payload.algorithm);
+        queueMicrotask(() => self.emit({
+          type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1,
+        }));
+      }),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": { mode: "quality", maximumIncumbents: 1 } },
+      limits: { maxElapsedMs: 1_000 },
+    });
+
+    const result = await adapter.solve(request, context());
+    assert.equal(result.status, "solved");
+    assert.deepEqual(algorithms, ["ultimate"]);
+    assert.ok(result.metrics.elapsedMs < 500);
+    assert.ok((result.metrics.counters?.qualitySlicesCompleted ?? Infinity) <= 2);
+  });
+
   it("replay-verifies and returns a shorter bounded rewrite", async () => {
     const algorithms: unknown[] = [];
     const phases: string[] = [];

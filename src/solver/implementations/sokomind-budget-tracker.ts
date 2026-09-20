@@ -25,6 +25,47 @@ export class BudgetTracker {
   coordinatorEstimatedMemoryBytes = 0;
   preparedBoardEstimatedMemoryBytes = 0;
   persistentEstimatedMemoryBytes = 0;
+  private readonly workerLeases = new Map<string, {
+    expanded: number;
+    generated: number;
+    memory: number;
+  }>();
+
+  leaseWorker(
+    id: string,
+    requested: Readonly<{ expanded?: number; generated?: number; memory?: number }>,
+    available: Readonly<{ expanded?: number; generated?: number; memory?: number }>,
+  ): Readonly<{ expanded?: number; generated?: number; memory?: number }> {
+    const outstanding = [...this.workerLeases.values()].reduce(
+      (sum, lease) => ({
+        expanded: sum.expanded + lease.expanded,
+        generated: sum.generated + lease.generated,
+        memory: sum.memory + lease.memory,
+      }),
+      { expanded: 0, generated: 0, memory: 0 },
+    );
+    const grant = {
+      expanded: leaseAmount(requested.expanded, available.expanded, outstanding.expanded),
+      generated: leaseAmount(requested.generated, available.generated, outstanding.generated),
+      memory: leaseAmount(requested.memory, available.memory, outstanding.memory),
+    };
+    this.workerLeases.set(id, {
+      expanded: grant.expanded ?? 0,
+      generated: grant.generated ?? 0,
+      memory: grant.memory ?? 0,
+    });
+    return grant;
+  }
+
+  releaseWorkerLease(id: string): void {
+    this.workerLeases.delete(id);
+  }
+
+  get leasedWorkerMemoryBytes(): number {
+    let total = 0;
+    for (const lease of this.workerLeases.values()) total += lease.memory;
+    return total;
+  }
 
   checkLimit(
     snapshot: AggregateSnapshot,
@@ -86,6 +127,17 @@ export class BudgetTracker {
   releasePersistent(bytes: number): void {
     this.persistentEstimatedMemoryBytes = Math.max(0, this.persistentEstimatedMemoryBytes - bytes);
   }
+}
+
+function leaseAmount(
+  requested: number | undefined,
+  available: number | undefined,
+  outstanding: number,
+): number | undefined {
+  if (available === undefined) return requested;
+  const remaining = Math.max(0, Math.floor(available) - outstanding);
+  if (requested === undefined || !Number.isFinite(requested)) return remaining;
+  return Math.min(Math.max(0, Math.floor(requested)), remaining);
 }
 
 function finitePositiveLimit(value: number | undefined): number | undefined {

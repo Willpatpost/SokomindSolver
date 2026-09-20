@@ -38,7 +38,7 @@ function collectRequestIssues(value: unknown): Issues {
   if (!checkRecord(value, "request", issues)) return issues;
   let valid = checkExactKeys(
     value,
-    ["board", "snapshot", "objective", "limits", "options"],
+    ["board", "snapshot", "objective", "limits", "options", "initialSolution"],
     "request",
     issues,
   );
@@ -58,6 +58,9 @@ function collectRequestIssues(value: unknown): Issues {
   }
   if (value.options !== undefined) {
     valid = checkOptions(value.options, "request.options", issues) && valid;
+  }
+  if (value.initialSolution !== undefined) {
+    valid = checkSolution(value.initialSolution, "request.initialSolution", issues) && valid;
   }
   void valid;
   return issues;

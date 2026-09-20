@@ -95,6 +95,34 @@ describe("CandidateArchive", () => {
       assert.equal(archive.size, 1);
       assert.equal(archive.globalBest?.solution.moves, 1);
     });
+
+    it("gives a replacement a new revision and discards stale neighborhood state", () => {
+      const archive = new CandidateArchive(4);
+      const trace = { pushChain: "box#0:up", boxGoals: "box#0>1,1" };
+      archive.offer(
+        makeSolution([pushStep("up"), walkStep("left"), walkStep("right")]),
+        harvestProvenance(),
+        trace,
+      );
+      const retired = archive.globalBest!;
+      archive.recordOutcome({
+        taskId: "old", reason: "exhausted", operator: "window",
+        candidateId: retired.id, expanded: 1, generated: 1, elapsedMs: 1, improved: false,
+      });
+
+      assert.ok(archive.offer(makeSolution([pushStep("up")]), harvestProvenance(), trace));
+      const replacement = archive.globalBest!;
+      assert.notEqual(replacement.id, retired.id);
+      assert.equal(replacement.revision, retired.revision + 1);
+      assert.equal(archive.neighborhoodRecord(replacement.id, "window"), undefined);
+      assert.equal(archive.selectForRepair("window")?.id, replacement.id);
+
+      archive.recordOutcome({
+        taskId: "late", reason: "exhausted", operator: "window",
+        candidateId: retired.id, expanded: 10, generated: 10, elapsedMs: 10, improved: false,
+      });
+      assert.equal(archive.neighborhoodRecord(retired.id, "window"), undefined);
+    });
   });
 
   describe("eviction policy", () => {
@@ -157,6 +185,7 @@ describe("CandidateArchive", () => {
         candidateId, expanded: 1000, generated: 2000, elapsedMs: 500, improved: false,
       });
       assert.ok(!archive.isNeighborhoodExhausted(candidateId, "window"));
+      assert.equal(archive.selectForRepair("window"), undefined);
 
       archive.recordOutcome({
         taskId: "t2", reason: "exhausted", operator: "window",

@@ -57,6 +57,8 @@ export interface PhaseRunOptions {
   readonly collectSolutions?: boolean;
   readonly maxSolutions?: number;
   readonly memoryConcurrency?: number;
+  readonly memoryLimitBytes?: number;
+  readonly onSolutionPublished?: (solution: SolverSolution) => void;
 }
 
 export interface PhaseOutcome {
@@ -66,11 +68,14 @@ export interface PhaseOutcome {
   readonly analysisPlan?: SokomindAnalysisPlan;
   readonly checkpoints?: readonly LegacySearchCheckpoint[];
   readonly stopReason?: PhaseStopReason;
+  readonly localStopReason?: PhaseStopReason;
   readonly phaseTimedOut?: boolean;
   readonly watchdogTimedOut?: boolean;
   readonly cutoff: boolean;
   readonly startedWorkers: number;
   readonly failedWorkers: number;
+  readonly expandedWork: number;
+  readonly generatedWork: number;
   readonly errors: readonly string[];
 }
 
@@ -94,6 +99,49 @@ function recordMapForPlan(
 function phaseTimerDelay(run: SearchRunState): number | undefined {
   if (!Number.isFinite(run.deadline)) return undefined;
   return Math.max(0, run.deadline - run.context.now());
+}
+
+function nonNegativeFinite(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : 0;
+}
+
+function numericAllowance(value: unknown): number | undefined {
+  return typeof value === "number" && value >= 0 ? value : undefined;
+}
+
+function finiteRemaining(limit: number | undefined, used: number): number | undefined {
+  return limit === undefined || !Number.isFinite(limit)
+    ? undefined
+    : Math.max(0, limit - used);
+}
+
+function localStopReason(
+  plan: EnginePlan,
+  message: EngineResult,
+): PhaseStopReason | undefined {
+  const details =
+    typeof message.boxRescheduling === "object" && message.boxRescheduling !== null
+      ? message.boxRescheduling as Readonly<Record<string, unknown>>
+      : undefined;
+  const termination = message.terminationReason?.toLowerCase() ?? "";
+  const stopped = Boolean(
+    message.cutoff ||
+    message.status === "cutoff" ||
+    details?.budgetExhausted,
+  );
+  if (!stopped) return undefined;
+  if (details?.memoryExhausted || termination.includes("memory")) return "memory";
+  const maxVisited = nonNegativeFinite(plan.payload.maxVisited);
+  const maxGenerated = nonNegativeFinite(plan.payload.maxGenerated);
+  if (termination.includes("expanded") || (maxVisited > 0 && nonNegativeFinite(message.visited) >= maxVisited)) {
+    return "expanded";
+  }
+  if (termination.includes("generated") || (maxGenerated > 0 && nonNegativeFinite(message.generated) >= maxGenerated)) {
+    return "generated";
+  }
+  return "elapsed";
 }
 
 interface ActiveWorkerEntry {
@@ -126,6 +174,10 @@ class PhaseRunner {
   private failedWorkers = 0;
   private nextPlanIndex = 0;
   private publishedSolution: SolverSolution | undefined;
+  private localStopReason: PhaseStopReason | undefined;
+  private expandedWork = 0;
+  private generatedWork = 0;
+  private readonly workerWork = new Map<string, { expanded: number; generated: number }>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private watchdogTimer: ReturnType<typeof setTimeout> | undefined;
   private resetWatchdog = () => {};
@@ -155,6 +207,8 @@ class PhaseRunner {
         cutoff: false,
         startedWorkers: 0,
         failedWorkers: 0,
+        expandedWork: 0,
+        generatedWork: 0,
         errors: Object.freeze([]),
       });
     }
@@ -282,6 +336,7 @@ class PhaseRunner {
     );
     entry.worker.terminate();
     this.run.registry.deactivate(id);
+    this.run.budget.releaseWorkerLease(id);
     this.run.completedWorkers += 1;
     invalidateAggregate(this.run);
   }
@@ -289,7 +344,7 @@ class PhaseRunner {
   private finish(
     outcome: Omit<
       PhaseOutcome,
-      "cutoff" | "startedWorkers" | "failedWorkers" | "errors"
+      "cutoff" | "startedWorkers" | "failedWorkers" | "expandedWork" | "generatedWork" | "errors"
     > = {},
   ): void {
     if (this.settled) return;
@@ -313,6 +368,9 @@ class PhaseRunner {
       cutoff: this.cutoff,
       startedWorkers: this.startedWorkers,
       failedWorkers: this.failedWorkers,
+      expandedWork: this.expandedWork,
+      generatedWork: this.generatedWork,
+      ...(this.localStopReason ? { localStopReason: this.localStopReason } : {}),
       errors: Object.freeze([...this.errors]),
     });
   }
@@ -353,6 +411,7 @@ class PhaseRunner {
         report(this.run, `${label} returned a candidate that failed replay.`, true);
         return false;
       }
+      this.options.onSolutionPublished?.(solution);
       const limitAfterReplay = reachedLimit(this.run);
       if (limitAfterReplay) {
         this.stopForLimit(limitAfterReplay);
@@ -448,6 +507,7 @@ class PhaseRunner {
   ): void {
     const entry = this.active.get(id);
     if (!entry) return;
+    this.localStopReason = this.localStopReason ?? localStopReason(entry.plan, message);
     this.cutoff ||= Boolean(message.cutoff) || message.status === "cutoff";
     if (message.status === "failed" || message.error) {
       this.failedWorkers += 1;
@@ -514,8 +574,17 @@ class PhaseRunner {
         }
         this.resetWatchdog();
         const message: EngineResult = data;
+        const previousWork = this.workerWork.get(executionId) ?? { expanded: 0, generated: 0 };
+        const nextExpanded = nonNegativeFinite(message.visited);
+        const nextGenerated = nonNegativeFinite(message.generated);
+        this.expandedWork += Math.max(0, nextExpanded - previousWork.expanded);
+        this.generatedWork += Math.max(0, nextGenerated - previousWork.generated);
+        this.workerWork.set(executionId, { expanded: nextExpanded, generated: nextGenerated });
         updateTelemetry(this.run, executionId, message);
         try {
+          if (message.type === "done") {
+            this.localStopReason = this.localStopReason ?? localStopReason(plan, message);
+          }
           const limit = reachedLimit(this.run);
           if (limit) {
             this.stopForLimit(limit);
@@ -614,27 +683,72 @@ class PhaseRunner {
       const coordinatorMemoryReserve =
         this.run.budget.coordinatorEstimatedMemoryBytes +
         this.run.budget.preparedBoardEstimatedMemoryBytes;
-      const memoryShare =
+      const requestedMemory =
         plan.payload.maxMemoryBytes === undefined &&
-        configuredMemory !== undefined &&
-        Number.isFinite(configuredMemory)
-          ? Math.max(
+        this.options.memoryLimitBytes !== undefined
+          ? Math.max(1, Math.floor(this.options.memoryLimitBytes))
+          : plan.payload.maxMemoryBytes === undefined &&
+            configuredMemory !== undefined &&
+            Number.isFinite(configuredMemory)
+            ? Math.max(
               1,
               Math.floor(
                 Math.max(0, configuredMemory - coordinatorMemoryReserve) /
                   this._memoryConcurrency,
               ),
-            )
-          : undefined;
+              )
+            : undefined;
+      const usage = aggregate(this.run);
+      const leases = this.run.budget.leaseWorker(
+        executionId,
+        {
+          expanded: numericAllowance(plan.payload.maxVisited),
+          generated: numericAllowance(plan.payload.maxGenerated),
+          memory: requestedMemory,
+        },
+        {
+          expanded: finiteRemaining(
+            this.run.request.limits?.maxExpandedStates,
+            usage.expandedStates,
+          ),
+          generated: finiteRemaining(
+            this.run.request.limits?.maxGeneratedStates,
+            usage.generatedStates,
+          ),
+          memory: finiteRemaining(
+            configuredMemory,
+            coordinatorMemoryReserve + this.run.budget.persistentEstimatedMemoryBytes,
+          ),
+        },
+      );
+      if (this.run.request.limits?.maxExpandedStates !== undefined && leases.expanded === 0) {
+        this.stopForLimit("expanded");
+        return;
+      }
+      if (this.run.request.limits?.maxGeneratedStates !== undefined && leases.generated === 0) {
+        this.stopForLimit("generated");
+        return;
+      }
+      if (configuredMemory !== undefined && leases.memory === 0) {
+        this.stopForLimit("memory");
+        return;
+      }
+      const payload = Object.freeze({
+        ...plan.payload,
+        ...(leases.expanded === undefined ? {} : { maxVisited: leases.expanded }),
+        ...(leases.generated === undefined ? {} : { maxGenerated: leases.generated }),
+        ...(leases.memory === undefined ? {} : { maxMemoryBytes: leases.memory }),
+      });
+      this.active.set(executionId, {
+        worker,
+        plan: Object.freeze({ ...plan, payload }),
+        onMessage,
+        onError,
+        onMessageError,
+      });
       worker.postMessage({
         mode: plan.mode,
-        payload:
-          memoryShare === undefined
-            ? plan.payload
-            : Object.freeze({
-                ...plan.payload,
-                maxMemoryBytes: memoryShare,
-              }),
+        payload,
       });
       this.resetWatchdog();
     } catch (error) {

@@ -8,7 +8,7 @@ import { BudgetTracker } from "../../src/solver/implementations/sokomind-budget-
 import { bidirectionalSide } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import type { EngineResult } from "../../src/solver/implementations/sokomind-engine/engine-protocol.ts";
 import { toLegacyState } from "../../src/solver/implementations/sokomind-legacy.ts";
-import { bidirectionalPlans, discoveryPlans, structuralPlan } from "../../src/solver/implementations/sokomind-plans.ts";
+import { bidirectionalPlans, configuredBudget, discoveryPlans, structuralPlan } from "../../src/solver/implementations/sokomind-plans.ts";
 import { runPhase, type SokomindEngineWorker } from "../../src/solver/implementations/sokomind-phase-runner.ts";
 import { aggregate, reachedLimit, retainLegacyRecord, type SearchRunState } from "../../src/solver/implementations/sokomind-run-state.ts";
 import { resolveSokomindTuning } from "../../src/solver/implementations/sokomind-tuning.ts";
@@ -46,6 +46,77 @@ function runState(request = requestFor()): SearchRunState {
 }
 
 describe("Sokomind integration resource contracts", () => {
+  it("turns an internal unlimited allowance into a finite engine budget", () => {
+    assert.equal(configuredBudget(Infinity, 500_000), 500_000);
+  });
+
+  it("leases aggregate worker resources without overcommitting them", () => {
+    const budget = new BudgetTracker();
+    const first = budget.leaseWorker(
+      "first",
+      { expanded: 1000, generated: 2000, memory: 1024 },
+      { expanded: 1000, generated: 2000, memory: 1024 },
+    );
+    const second = budget.leaseWorker(
+      "second",
+      { expanded: 1000, generated: 2000, memory: 1024 },
+      { expanded: 1000, generated: 2000, memory: 1024 },
+    );
+    assert.deepEqual(first, { expanded: 1000, generated: 2000, memory: 1024 });
+    assert.deepEqual(second, { expanded: 0, generated: 0, memory: 0 });
+    budget.releaseWorkerLease("first");
+    assert.equal(budget.leaseWorker("third", { memory: 1024 }, { memory: 1024 }).memory, 1024);
+  });
+
+  it("publishes every verified repair route and reports a task-local cutoff", async () => {
+    const run = runState();
+    const published: number[] = [];
+    const result = await runPhase(
+      run,
+      [{
+        id: "repair", label: "Repair", mode: "search",
+        payload: {
+          algorithm: "solution-box-reschedule",
+          state: toLegacyState(run.request),
+          solutionPath: ["Left", "Right", "Right", "Down", "Down"],
+          maxVisited: 1,
+          maxGenerated: 10,
+        },
+      }],
+      () => {
+        const listeners = new Set<(event: { data: unknown }) => void>();
+        return {
+          postMessage() {
+            queueMicrotask(() => {
+              for (const listener of listeners) {
+                listener({ data: { type: "progress", path: ["Left", "Right", "Right", "Down", "Down"], visited: 0, generated: 1 } });
+                listener({ data: { type: "progress", path: ["Right", "Down", "Down"], visited: 0, generated: 2 } });
+                listener({ data: {
+                  type: "done", path: ["Right", "Down", "Down"], visited: 1, generated: 3,
+                  boxRescheduling: { budgetExhausted: true, memoryExhausted: false, attempts: [] },
+                } });
+              }
+            });
+          },
+          addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+            if (type === "message") listeners.add(listener);
+          },
+          removeEventListener(type: string, listener: (event: { data: unknown }) => void) {
+            if (type === "message") listeners.delete(listener);
+          },
+          terminate() {},
+        } as SokomindEngineWorker;
+      },
+      1,
+      1000,
+      { onSolutionPublished: (candidate) => published.push(candidate.moves) },
+    );
+    assert.deepEqual(published, [5, 3, 3], JSON.stringify(result));
+    assert.equal(result.solution?.moves, 3);
+    assert.equal(result.localStopReason, "expanded");
+    assert.equal(result.expandedWork, 1);
+    assert.equal(result.generatedWork, 3);
+  });
   it("activates explicit move-aware tuning consistently in structural and direct lanes", () => {
     const request = requestFor();
     const state = toLegacyState(request);

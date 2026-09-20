@@ -461,6 +461,9 @@ export function configuredBudget(
   fallback: number,
 ): number {
   if (value === undefined) return fallback;
+  // Internal schedulers use Infinity to mean "no request-level limit". Engine
+  // plans still require a finite local allowance, so use their finite fallback.
+  if (value === Infinity) return fallback;
   return Math.floor(finiteNonNegative(value));
 }
 
@@ -523,6 +526,7 @@ export function solutionReschedulingPlan(
   candidateIndex: number,
   diagnostics: boolean | undefined = false,
   targetOverrides?: Readonly<Record<number, string>>,
+  rescheduleRounds = 2,
 ): EnginePlan {
   return Object.freeze({
     id: `solution-reschedule-c${candidateIndex}`,
@@ -535,7 +539,7 @@ export function solutionReschedulingPlan(
       maxVisited,
       maxGenerated,
       rescheduleMaxMs: maxElapsedMs,
-      rescheduleRounds: 2,
+      rescheduleRounds,
       ...(diagnostics ? { diagnostics: true } : {}),
       ...(targetOverrides ? { rescheduleTargetOverrides: targetOverrides } : {}),
     }),

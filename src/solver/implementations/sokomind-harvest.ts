@@ -488,6 +488,22 @@ function analyzePushInteractions(
   return clusters.slice(0, 8);
 }
 
+function evenlySpacedCandidates(
+  candidates: readonly ArchivedCandidate[],
+  count: number,
+): readonly ArchivedCandidate[] {
+  if (count <= 0 || candidates.length === 0) return [];
+  if (count >= candidates.length) return [...candidates];
+  if (count === 1) return [candidates[0]];
+  const selected: ArchivedCandidate[] = [];
+  for (let index = 0; index < count; index += 1) {
+    selected.push(candidates[Math.round(
+      index * (candidates.length - 1) / (count - 1),
+    )]);
+  }
+  return selected;
+}
+
 // ---------------------------------------------------------------------------
 // Quality: anytime improvement loop
 // ---------------------------------------------------------------------------
@@ -518,8 +534,12 @@ export async function qualityAnytimeImprove(
   const rescheduleEligible = supportsBoxRescheduling(state);
 
   // ── Seed archive with harvested incumbents ────────────────────────────
-  const archiveCapacity = Math.max(sokomindOptions.maximumIncumbents * 2, 8);
-  const archive = new CandidateArchive(archiveCapacity);
+  const archiveCapacity = Math.max(sokomindOptions.maximumIncumbents * 8, 32);
+  const configuredMemory = run.request.limits?.maxMemoryBytes;
+  const archiveByteLimit = configuredMemory !== undefined && Number.isFinite(configuredMemory)
+    ? Math.max(1, Math.min(64 * 1024 * 1024, Math.floor(configuredMemory * 0.02)))
+    : 32 * 1024 * 1024;
+  const archive = new CandidateArchive(archiveCapacity, archiveByteLimit);
   for (const incumbent of collector.incumbents) {
     archive.offer(
       incumbent.solution,
@@ -528,6 +548,34 @@ export async function qualityAnytimeImprove(
     );
   }
   run.budget.retainPersistent(archive.estimatedMemoryBytes);
+  const improvementStarted = aggregate(run);
+  const localVisitedCap = configuredBudget(
+    options.improvementMaxVisited,
+    defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes),
+  );
+  const qualityVisitedBudget = options.improvementMaxVisited === undefined
+    ? Infinity
+    : configuredBudget(options.improvementMaxVisited, localVisitedCap);
+
+  function offerArchived(
+    solution: SolverSolution,
+    provenance: Parameters<CandidateArchive["offer"]>[1],
+  ): boolean {
+    const oldBytes = archive.estimatedMemoryBytes;
+    const accepted = archive.offer(
+      solution,
+      provenance,
+      semanticDiversityTrace(run.request, solution),
+    );
+    run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
+    if (accepted) {
+      run.bestSolutionMoves = run.bestSolutionMoves === 0
+        ? solution.moves
+        : Math.min(run.bestSolutionMoves, solution.moves);
+      invalidateAggregate(run);
+    }
+    return accepted;
+  }
 
   // ── Initial parallel rewrite wave on all diverse candidates ──────────
   const rewriteCandidates = selectForRewrite(collector.incumbents);
@@ -541,12 +589,21 @@ export async function qualityAnytimeImprove(
     report(run, `Rewriting ${rewriteCount} diverse incumbent(s) in parallel.`, true);
 
     const initialWaveRequest = withRemainingLimits(run);
-    const totalRewriteVisited =
-      initialWaveRequest?.limits?.maxExpandedStates ?? Infinity;
+    const totalRewriteVisited = Math.min(
+      initialWaveRequest?.limits?.maxExpandedStates ?? localVisitedCap,
+      localVisitedCap,
+      qualityVisitedBudget,
+    );
     const totalRewriteGenerated =
       initialWaveRequest?.limits?.maxGeneratedStates ?? Infinity;
+    // Keep the initial rewrite from consuming the entire short-run remainder.
+    // Verified publications are archived during the wave; reserve most of the
+    // remaining time for complementary box/window repairs over those basins.
     const initialWaveBudgetMs = Number.isFinite(run.deadline)
-      ? Math.min(QUALITY_INITIAL_WAVE_CAP_MS, Math.max(0, run.deadline - run.context.now()))
+      ? Math.min(
+          QUALITY_INITIAL_WAVE_CAP_MS,
+          Math.max(0, Math.floor((run.deadline - run.context.now()) * 0.35)),
+        )
       : QUALITY_INITIAL_WAVE_CAP_MS;
     const windowDeadline = Math.min(
       run.deadline,
@@ -579,7 +636,10 @@ export async function qualityAnytimeImprove(
       const remainingWaves = Math.ceil(pending.length / rewriteConcurrency);
       const visitedShares = dividedIntegerBudget(remainingVisited, pending.length);
       const generatedShares = dividedIntegerBudget(remainingGenerated, pending.length);
-      const perWorkerElapsed = Math.max(1, Math.floor(remainingElapsed / remainingWaves));
+      const perWorkerElapsed = Math.max(1, Math.min(
+        Math.floor(remainingElapsed / remainingWaves),
+        configuredBudget(options.improvementMaxElapsedMs, QUALITY_INITIAL_WAVE_CAP_MS),
+      ));
       const wave = pending.splice(0, waveSize);
       await Promise.all(wave.map(async (
         { incumbent, candidateIndex, archiveId },
@@ -599,6 +659,14 @@ export async function qualityAnytimeImprove(
             improvementMaxVisited: maxVisited,
             improvementMaxElapsedMs: perWorkerElapsed,
             improvementMaxPasses: 1,
+            onCandidatePublished: (solution) => {
+              offerArchived(solution, {
+                sourceOperator: "window",
+                parentCandidateId: archiveId,
+                taskId: `wave-${candidateIndex}`,
+                acceptedAt: run.context.now(),
+              });
+            },
           },
           candidateIndex,
           maxGenerated,
@@ -616,13 +684,10 @@ export async function qualityAnytimeImprove(
           improved: improved.improved,
         });
         if (improved.improved) {
-          const oldBytes = archive.estimatedMemoryBytes;
-          archive.offer(
+          offerArchived(
             improved.solution,
             { sourceOperator: "window", parentCandidateId: archiveId, taskId: `wave-${candidateIndex}`, acceptedAt: run.context.now() },
-            semanticDiversityTrace(run.request, improved.solution),
           );
-          run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
         }
       }));
     }
@@ -658,13 +723,39 @@ export async function qualityAnytimeImprove(
     readonly candidateId: string;
     readonly operator: RepairOperator;
     readonly improved: ImprovedIncumbent;
+    readonly leasedExpanded: number;
+    readonly leasedGenerated: number;
   }
 
   const activeSlots = new Map<string, Promise<SlotResult>>();
+  let leasedExpanded = 0;
+  let leasedGenerated = 0;
+  const taskMemoryBytes = configuredMemory !== undefined && Number.isFinite(configuredMemory)
+    ? Math.max(1, Math.floor(Math.max(
+        0,
+        configuredMemory -
+          run.budget.coordinatorEstimatedMemoryBytes -
+          run.budget.preparedBoardEstimatedMemoryBytes -
+          archive.estimatedMemoryBytes,
+      ) / maxSlots))
+    : undefined;
+  const initialBoxPortfolio = rescheduleEligible
+    ? evenlySpacedCandidates(archive.candidates, Math.min(maxSlots, archive.size))
+    : [];
+  const initialBoxPortfolioSize = initialBoxPortfolio.length;
+  let initialBoxPortfolioDispatched = 0;
 
   function selectNextTask(): {
     target: ArchivedCandidate; operator: RepairOperator;
   } | undefined {
+    if (initialBoxPortfolioDispatched < initialBoxPortfolioSize) {
+      const target = archive.candidateById(
+        initialBoxPortfolio[initialBoxPortfolioDispatched].id,
+      );
+      if (target) return { target, operator: "box" };
+      initialBoxPortfolioDispatched += 1;
+      return selectNextTask();
+    }
     for (let i = 0; i < enabledOperators.length; i++) {
       const op = enabledOperators[(nextOpIndex + i) % enabledOperators.length];
       const target = archive.selectForRepair(op);
@@ -673,14 +764,24 @@ export async function qualityAnytimeImprove(
     return undefined;
   }
 
-  function computeSliceMs(): number {
+  function computeSliceMs(extended = false): number {
     const remainingMs = Number.isFinite(run.deadline)
       ? run.deadline - run.context.now()
       : Infinity;
     if (Number.isFinite(remainingMs) && remainingMs < 1) return 0;
+    if (extended) {
+      const configuredCap = configuredBudget(
+        options.improvementMaxElapsedMs,
+        Number.isFinite(remainingMs) ? remainingMs : QUALITY_INITIAL_WAVE_CAP_MS,
+      );
+      return Number.isFinite(remainingMs)
+        ? Math.min(configuredCap, Math.max(1, Math.floor(remainingMs)))
+        : configuredCap;
+    }
     const progressiveCap = Math.min(
       QUALITY_ANYTIME_SLICE_CAP_MS,
       QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
+      configuredBudget(options.improvementMaxElapsedMs, QUALITY_ANYTIME_SLICE_CAP_MS),
     );
     return Number.isFinite(remainingMs)
       ? Math.min(progressiveCap, Math.floor(remainingMs / 2))
@@ -695,16 +796,43 @@ export async function qualityAnytimeImprove(
     const currentSliceIndex = sliceIndex;
     sliceIndex += 1;
 
-    const sliceMs = computeSliceMs();
+    const initialPortfolioTask =
+      operator === "box" &&
+      initialBoxPortfolioDispatched < initialBoxPortfolioSize;
+    const sliceMs = computeSliceMs(initialPortfolioTask);
     if (sliceMs < 1) return false;
 
     const remainingRequest = withRemainingLimits(run);
     if (!remainingRequest) return false;
-    const perSliceVisited = Math.min(
-      remainingRequest.limits?.maxExpandedStates ?? Infinity,
-      operator === "window" && rescheduleEligible ? 50_000 : Infinity,
+    const defaultVisited = operator === "window"
+      ? Math.min(50_000, localVisitedCap)
+      : localVisitedCap;
+    const remainingExpanded = remainingRequest.limits?.maxExpandedStates;
+    const slotsToFill = Math.max(1, maxSlots - activeSlots.size);
+    const usedImprovement = Math.max(
+      0,
+      aggregate(run).expandedStates - improvementStarted.expandedStates,
     );
-    const maxGenerated = remainingRequest.limits?.maxGeneratedStates ?? Infinity;
+    const remainingQualityVisited = Number.isFinite(qualityVisitedBudget)
+      ? Math.max(0, qualityVisitedBudget - usedImprovement - leasedExpanded)
+      : Infinity;
+    const perSliceVisited = Math.min(
+      remainingExpanded === undefined
+        ? defaultVisited
+        : Math.floor(Math.max(0, remainingExpanded - leasedExpanded) / slotsToFill),
+      defaultVisited,
+      Number.isFinite(remainingQualityVisited)
+        ? Math.floor(remainingQualityVisited / slotsToFill)
+        : defaultVisited,
+    );
+    const remainingGenerated = remainingRequest.limits?.maxGeneratedStates;
+    const defaultGenerated = Math.max(perSliceVisited, perSliceVisited * 8);
+    const maxGenerated = Math.min(
+      remainingGenerated === undefined
+        ? defaultGenerated
+        : Math.floor(Math.max(0, remainingGenerated - leasedGenerated) / slotsToFill),
+      defaultGenerated,
+    );
     if (perSliceVisited < 1 || maxGenerated < 1) return false;
 
     archive.markInFlight(target.id, operator);
@@ -725,7 +853,7 @@ export async function qualityAnytimeImprove(
           : undefined;
     if (operator === "goal-reassignment" && !repairContext?.targetOverrides) {
       archive.recordOutcome({
-        taskId, reason: "exhausted", operator, candidateId: target.id,
+        taskId, reason: "ineligible", operator, candidateId: target.id,
         expanded: 0, generated: 0, elapsedMs: 0, improved: false,
       });
       archive.clearInFlight(target.id, operator);
@@ -733,12 +861,14 @@ export async function qualityAnytimeImprove(
     }
     if (operator === "dependency-window" && (!repairContext?.prioritizedWindows || repairContext.prioritizedWindows.length === 0)) {
       archive.recordOutcome({
-        taskId, reason: "exhausted", operator, candidateId: target.id,
+        taskId, reason: "ineligible", operator, candidateId: target.id,
         expanded: 0, generated: 0, elapsedMs: 0, improved: false,
       });
       archive.clearInFlight(target.id, operator);
       return true;
     }
+    leasedExpanded += perSliceVisited;
+    leasedGenerated += maxGenerated;
     const promise = improveIncumbent(
       run, state, target.solution, createWorker,
       {
@@ -746,10 +876,19 @@ export async function qualityAnytimeImprove(
         improvementMaxVisited: perSliceVisited,
         improvementMaxElapsedMs: sliceMs,
         improvementMaxPasses: 1,
+        improvementMaxMemoryBytes: taskMemoryBytes,
+        onCandidatePublished: (solution) => {
+          offerArchived(solution, {
+            sourceOperator: operator,
+            parentCandidateId: target.id,
+            taskId,
+            acceptedAt: run.context.now(),
+          });
+        },
       },
       currentSliceIndex,
       maxGenerated,
-      Math.max(1, activeSlots.size + 1),
+      maxSlots,
       rewriteAllocation,
       operator,
       repairContext,
@@ -758,6 +897,8 @@ export async function qualityAnytimeImprove(
       candidateId: target.id,
       operator,
       improved: { ...improved, expandedWork: improved.expandedWork, generatedWork: improved.generatedWork },
+      leasedExpanded: perSliceVisited,
+      leasedGenerated: maxGenerated,
     })).then((result) => {
       archive.recordOutcome({
         taskId: result.taskId,
@@ -779,6 +920,8 @@ export async function qualityAnytimeImprove(
 
   function processResult(result: SlotResult): void {
     activeSlots.delete(result.taskId);
+    leasedExpanded = Math.max(0, leasedExpanded - result.leasedExpanded);
+    leasedGenerated = Math.max(0, leasedGenerated - result.leasedGenerated);
     run.qualitySlicesCompleted += 1;
 
     if (result.improved.cancelled) {
@@ -787,13 +930,10 @@ export async function qualityAnytimeImprove(
     }
 
     if (result.improved.improved) {
-      const oldBytes = archive.estimatedMemoryBytes;
-      archive.offer(
+      offerArchived(
         result.improved.solution,
         { sourceOperator: result.operator, parentCandidateId: result.candidateId, taskId: result.taskId, acceptedAt: run.context.now() },
-        semanticDiversityTrace(run.request, result.improved.solution),
       );
-      run.budget.updatePersistent(oldBytes, archive.estimatedMemoryBytes);
       run.bestSolutionMoves = Math.min(run.bestSolutionMoves, result.improved.solution.moves);
       invalidateAggregate(run);
       report(run, `Improved to ${result.improved.solution.moves} moves (${result.operator} on ${result.candidateId}).`, true);
@@ -820,6 +960,12 @@ export async function qualityAnytimeImprove(
       const next = selectNextTask();
       if (!next) break;
       if (!dispatchTask(next.target, next.operator)) break;
+      if (
+        next.operator === "box" &&
+        initialBoxPortfolioDispatched < initialBoxPortfolioSize
+      ) {
+        initialBoxPortfolioDispatched += 1;
+      }
       const dispatched = enabledOperators.indexOf(next.operator);
       if (dispatched >= 0) nextOpIndex = (dispatched + 1) % enabledOperators.length;
     }

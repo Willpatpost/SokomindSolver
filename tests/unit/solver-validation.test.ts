@@ -84,6 +84,21 @@ describe("solver runtime validation", () => {
     assert.ok(issues.some(({ path }) => path === "request.snapshot.solved"));
   });
 
+  it("accepts and structurally validates an initial solution", () => {
+    const valid = { ...request(), initialSolution: solution() };
+    assert.equal(isSolverRequest(valid), true);
+    assert.deepEqual(getSolverRequestValidationIssues(valid), []);
+
+    const invalid = {
+      ...valid,
+      initialSolution: { ...solution(), moves: 2 },
+    };
+    assert.equal(isSolverRequest(invalid), false);
+    assert.ok(getSolverRequestValidationIssues(invalid).some(
+      ({ path }) => path === "request.initialSolution.moves",
+    ));
+  });
+
   it("enforces objective, limits, and JSON-safe option invariants", () => {
     const invalidObjective = {
       ...request(),
