@@ -153,8 +153,13 @@ test("shows memory-bounded worker ceilings and sends them to Quality search", as
   await expect(dialog).toContainText(summary("Search", effectiveWorkerCount(lowMemory, hardware, 4)));
   await expect(dialog).toContainText(summary("Proof", effectiveProofWorkerCount(lowMemory, hardware, 4)));
   await dialog.getByLabel("Memory limit").selectOption("4096");
-  const maxSearchWorkers = effectiveWorkerCount(largeMemory, hardware).count;
-  const requestedWorkers = Math.min(8, maxSearchWorkers);
+  const workerValues = await workers
+    .locator("option")
+    .evaluateAll((opts) =>
+      opts.map((o) => Number((o as HTMLOptionElement).value)).filter((v) => v > 0),
+    );
+  const maxAllowed = workerValues.length ? Math.max(...workerValues) : 1;
+  const requestedWorkers = Math.min(8, maxAllowed, effectiveWorkerCount(largeMemory, hardware).count);
   await workers.selectOption(String(requestedWorkers));
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(
