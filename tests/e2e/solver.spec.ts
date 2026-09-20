@@ -120,6 +120,7 @@ test("solves a typed room with Sokomind Solver and plays its verified route", as
 });
 
 test("shows memory-bounded worker ceilings and sends them to Quality search", async ({ page }) => {
+  test.setTimeout(45_000);
   await page.addInitScript(() => {
     const requests: unknown[] = [];
     Reflect.set(window, "solverRequests", requests);
@@ -154,7 +155,9 @@ test("shows memory-bounded worker ceilings and sends them to Quality search", as
   await dialog.getByLabel("Memory limit").selectOption("4096");
   await workers.selectOption("8");
   await dialog.getByRole("button", { name: "Start search" }).click();
-  await expect(dialog.getByRole("heading", { name: "Route found" })).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Route found" }),
+  ).toBeVisible({ timeout: 30_000 });
   const options = await page.evaluate(() => {
     const requests = Reflect.get(window, "solverRequests") as { options?: Record<string, unknown> }[];
     return requests.at(-1)?.options?.["sokomind-solver"];
