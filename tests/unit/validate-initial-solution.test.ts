@@ -72,7 +72,7 @@ describe("validateInitialSolution", () => {
   it("rejects a solution with an invalid direction", () => {
     const request = requestFor(TINY_PUZZLE);
     const solution = makeSolution([
-      { direction: "diagonal" as any, kind: "walk" },
+      { direction: "diagonal" as unknown as "up", kind: "walk" },
     ]);
     const result = validateInitialSolution(request, solution);
     assert.equal(typeof result, "string");
@@ -82,7 +82,7 @@ describe("validateInitialSolution", () => {
   it("rejects a solution with an invalid kind", () => {
     const request = requestFor(TINY_PUZZLE);
     const solution = makeSolution([
-      { direction: "down", kind: "jump" as any },
+      { direction: "down", kind: "jump" as unknown as "walk" },
     ]);
     const result = validateInitialSolution(request, solution);
     assert.equal(typeof result, "string");
