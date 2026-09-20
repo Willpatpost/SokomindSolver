@@ -9,6 +9,8 @@ import { preparationPlan, structuralPlan, checkpointContinuationPlans } from "..
 import { parseSokomindOptions } from "../../src/solver/implementations/sokomind-options.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
+const TIMING_SCALE = Math.max(1, Number(process.env.SOKOMIND_TIMING_SCALE) || 1);
+
 const puzzle: PuzzleDefinition = {
   id: "strategic-two", title: "Strategic two", difficulty: "tutorial", boxes: 2,
   rows: ["OOOOOOO", "O  R  O", "O A X O", "O a S O", "O     O", "OOOOOOO"],
@@ -43,7 +45,7 @@ function prepare(definition = puzzle, config: Record<string, number> = {}) {
   const request = requestFor(definition);
   const state = toLegacyState(request);
   const result = search({algorithm: "analyze-puzzle", state,
-    strategicAnalysis: {maxMs: 1000, ...config}});
+    strategicAnalysis: {maxMs: 1000 * TIMING_SCALE, ...config}});
   const analysis = result.analysis as {strategicPlan: Plan};
   return {request, state, analysis, plan: analysis.strategicPlan};
 }
