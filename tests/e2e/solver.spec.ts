@@ -153,7 +153,9 @@ test("shows memory-bounded worker ceilings and sends them to Quality search", as
   await expect(dialog).toContainText(summary("Search", effectiveWorkerCount(lowMemory, hardware, 4)));
   await expect(dialog).toContainText(summary("Proof", effectiveProofWorkerCount(lowMemory, hardware, 4)));
   await dialog.getByLabel("Memory limit").selectOption("4096");
-  await workers.selectOption("8");
+  const maxSearchWorkers = effectiveWorkerCount(largeMemory, hardware).count;
+  const requestedWorkers = Math.min(8, maxSearchWorkers);
+  await workers.selectOption(String(requestedWorkers));
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(
     dialog.getByRole("heading", { name: "Route found" }),
@@ -162,7 +164,7 @@ test("shows memory-bounded worker ceilings and sends them to Quality search", as
     const requests = Reflect.get(window, "solverRequests") as { options?: Record<string, unknown> }[];
     return requests.at(-1)?.options?.["sokomind-solver"];
   });
-  expect(options).toEqual({ mode: "quality", workerParallelism: 8, proofParallelism: effectiveProofWorkerCount(largeMemory, hardware, 8).count });
+  expect(options).toEqual({ mode: "quality", workerParallelism: requestedWorkers, proofParallelism: effectiveProofWorkerCount(largeMemory, hardware, requestedWorkers).count });
 });
 
 test("solves First Steps with A* and plays the verified route", async ({
