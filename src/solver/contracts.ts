@@ -62,6 +62,7 @@ export interface SolverRequest {
   readonly objective: SolverObjective;
   readonly limits?: SolverLimits;
   readonly options?: SolverOptions;
+  readonly initialSolution?: SolverSolution;
 }
 
 export type SolverExecutionTarget = "main-thread" | "web-worker";

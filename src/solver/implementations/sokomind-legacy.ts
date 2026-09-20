@@ -582,3 +582,27 @@ export function legacyPathFromSolution(
     solution.steps.map(({ direction }) => LEGACY_DIRECTION_NAMES[direction]),
   );
 }
+
+export function validateInitialSolution(
+  request: SolverRequest,
+  candidate: SolverSolution,
+): SolverSolution | string {
+  if (
+    !candidate ||
+    typeof candidate !== "object" ||
+    !Array.isArray(candidate.steps) ||
+    candidate.steps.length === 0
+  ) {
+    return "initialSolution must be a non-empty solution object";
+  }
+  const steps: readonly SolutionStep[] = candidate.steps;
+  for (const step of steps) {
+    if (!step || typeof step !== "object") return "initialSolution contains an invalid step";
+    if (step.kind !== "walk" && step.kind !== "push") return `initialSolution step has invalid kind: ${String(step.kind)}`;
+    if (!LEGACY_DIRECTION_NAMES[step.direction]) return `initialSolution step has invalid direction: ${String(step.direction)}`;
+  }
+  const path = legacyPathFromSolution(candidate);
+  const replayed = solutionFromLegacyPath(request, path);
+  if (!replayed) return "initialSolution failed board replay — moves are illegal for this board/snapshot";
+  return replayed;
+}

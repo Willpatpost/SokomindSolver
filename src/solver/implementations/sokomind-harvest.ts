@@ -416,16 +416,6 @@ export async function qualityAnytimeImprove(
 
   const rewriteAllocation = adaptiveRewriteAllocation(run.request);
   const rescheduleEligible = supportsBoxRescheduling(state);
-  const configuredRewriteVisited = configuredBudget(
-    options.improvementMaxVisited,
-    defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes),
-  );
-  const configuredElapsed = configuredBudget(
-    options.improvementMaxElapsedMs,
-    DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
-  );
-
-  const improvementStartExpanded = aggregate(run).expandedStates;
 
   // ── Seed archive with harvested incumbents ────────────────────────────
   const archiveCapacity = Math.max(sokomindOptions.maximumIncumbents * 2, 8);
@@ -451,15 +441,13 @@ export async function qualityAnytimeImprove(
     report(run, `Rewriting ${rewriteCount} diverse incumbent(s) in parallel.`, true);
 
     const initialWaveRequest = withRemainingLimits(run);
-    const totalRewriteVisited = Math.min(
-      configuredRewriteVisited,
-      initialWaveRequest?.limits?.maxExpandedStates ?? Infinity,
-    );
+    const totalRewriteVisited =
+      initialWaveRequest?.limits?.maxExpandedStates ?? Infinity;
     const totalRewriteGenerated =
       initialWaveRequest?.limits?.maxGeneratedStates ?? Infinity;
     const initialWaveBudgetMs = Number.isFinite(run.deadline)
-      ? Math.min(QUALITY_INITIAL_WAVE_CAP_MS, Math.floor((run.deadline - run.context.now()) * 0.4))
-      : Math.min(QUALITY_INITIAL_WAVE_CAP_MS, configuredElapsed);
+      ? Math.min(QUALITY_INITIAL_WAVE_CAP_MS, Math.max(0, run.deadline - run.context.now()))
+      : QUALITY_INITIAL_WAVE_CAP_MS;
     const windowDeadline = Math.min(
       run.deadline,
       run.context.now() + initialWaveBudgetMs,
@@ -550,15 +538,14 @@ export async function qualityAnytimeImprove(
   report(run, `Starting anytime improvement loop (best=${archive.globalBest?.solution.moves ?? "?"} moves, archive=${archive.size} candidates).`, true);
 
   // ── Anytime loop: alternate between window-rewrite and box-reschedule ─
-  const improvementDeadline = Number.isFinite(run.deadline)
-    ? run.deadline
-    : run.context.now() + configuredElapsed;
   let currentOp: RepairOperator = rewriteCount > 0 ? "box" : "window";
   let sliceIndex = 0;
 
   while (!run.context.signal.aborted) {
-    const remainingMs = improvementDeadline - run.context.now();
-    if (remainingMs < 1) break;
+    const remainingMs = Number.isFinite(run.deadline)
+      ? run.deadline - run.context.now()
+      : Infinity;
+    if (Number.isFinite(remainingMs) && remainingMs < 1) break;
 
     // Check exhaustion across all archive candidates, not just stall count
     const windowExhausted = archive.allNeighborhoodsExhausted("window");
@@ -585,18 +572,15 @@ export async function qualityAnytimeImprove(
       QUALITY_ANYTIME_SLICE_CAP_MS,
       QUALITY_INITIAL_SLICE_MS * (2 ** Math.min(sliceIndex, 4)),
     );
-    const sliceMs = Math.min(progressiveCap, Math.floor(remainingMs / 2));
+    const sliceMs = Number.isFinite(remainingMs)
+      ? Math.min(progressiveCap, Math.floor(remainingMs / 2))
+      : progressiveCap;
     if (sliceMs < 1) break;
-
-    const improvementConsumed = aggregate(run).expandedStates - improvementStartExpanded;
-    const remainingImprovementBudget = Math.max(0, configuredRewriteVisited - improvementConsumed);
-    if (remainingImprovementBudget < 1) break;
 
     const remainingRequest = withRemainingLimits(run);
     if (!remainingRequest) break;
 
     const perSliceVisited = Math.min(
-      remainingImprovementBudget,
       remainingRequest.limits?.maxExpandedStates ?? Infinity,
       currentOp === "window" && rescheduleEligible ? 50_000 : Infinity,
     );

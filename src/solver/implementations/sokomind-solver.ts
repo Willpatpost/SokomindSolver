@@ -15,6 +15,7 @@ import {
   finiteNonNegative,
   preparedBoardMemoryEstimate,
   toLegacyState,
+  validateInitialSolution,
   withPreparedBoard,
   type LegacySearchCheckpoint,
   type LegacyState,
@@ -463,6 +464,20 @@ export function createSokomindSolverAdapter(
         });
       }
 
+      let validatedInitialSolution: SolverSolution | undefined;
+      if (request.initialSolution) {
+        const validated = validateInitialSolution(request, request.initialSolution);
+        if (typeof validated === "string") {
+          return Object.freeze({
+            status: "unsolved" as const,
+            reason: "unsupported" as const,
+            detail: validated,
+            metrics: metrics(run),
+          });
+        }
+        validatedInitialSolution = validated;
+      }
+
       context.reportProgress({
         phase: "preparing",
         elapsedMs: 0,
@@ -533,8 +548,10 @@ export function createSokomindSolverAdapter(
             cutoff ||= outcome.cutoff || Boolean(outcome.phaseTimedOut);
             errors = [...errors, ...outcome.errors];
             if (outcome.solution) {
+              const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+                ? validatedInitialSolution : outcome.solution;
               return solvedWithImprovement(
-                run, state, outcome.solution, createWorker, options,
+                run, state, incumbent, createWorker, options,
                 sokomindOptions, boundHarvestAndImprove,
                 tuning, maxWorkers, analysisPlan,
               );
@@ -605,8 +622,10 @@ export function createSokomindSolverAdapter(
           cutoff ||= outcome.cutoff;
           errors = [...errors, ...outcome.errors];
           if (outcome.solution) {
+            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+              ? validatedInitialSolution : outcome.solution;
             return solvedWithImprovement(
-              run, state, outcome.solution, createWorker, options,
+              run, state, incumbent, createWorker, options,
               sokomindOptions, boundHarvestAndImprove,
               tuning, maxWorkers, analysisPlan,
             );
@@ -637,14 +656,27 @@ export function createSokomindSolverAdapter(
           cutoff ||= outcome.cutoff;
           errors = [...errors, ...outcome.errors];
           if (outcome.solution) {
+            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+              ? validatedInitialSolution : outcome.solution;
             return solvedWithImprovement(
-              run, state, outcome.solution, createWorker, options,
+              run, state, incumbent, createWorker, options,
               sokomindOptions, boundHarvestAndImprove,
               tuning, maxWorkers, analysisPlan,
             );
           }
           if (outcome.stopReason) stopReason = outcome.stopReason;
         }
+      }
+
+      if (validatedInitialSolution) {
+        if (stopReason === "cancelled" || context.signal.aborted) {
+          return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+        }
+        return solvedWithImprovement(
+          run, state, validatedInitialSolution, createWorker, options,
+          sokomindOptions, boundHarvestAndImprove,
+          tuning, maxWorkers, analysisPlan,
+        );
       }
 
       if (stopReason === "cancelled" || context.signal.aborted) {
