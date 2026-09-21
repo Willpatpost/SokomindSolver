@@ -378,6 +378,11 @@ export type {
 } from "./solution-usage.ts";
 
 export {
+  scoreSolution,
+  type SolutionScore,
+} from "./solution-scoring.ts";
+
+export {
   analyzeInteraction,
   analyzeInteractionFromTrace,
 } from "./interaction-analysis.ts";

@@ -115,6 +115,8 @@ import {
 } from "./generator-diagnostics.ts";
 import type { PuzzleQualityProfile } from "./quality-gate.ts";
 import { assessCandidateQuality, type StoryQualityPolicy, type StoryQualityRejectionCode } from "./story-quality-policy.ts";
+import { scoreSolution, type SolutionScore } from "./solution-scoring.ts";
+import { refinePuzzle } from "./puzzle-refiner.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -345,6 +347,7 @@ export interface ForgeCandidate {
   readonly finalistEvaluation?: FinalistEvaluation | FinalistEvaluationV4;
   readonly curationObjectives?: CurationObjectives;
   readonly qualityProfile?: PuzzleQualityProfile;
+  readonly solutionScore?: SolutionScore;
 }
 
 export type ForgeRejectionReason =
@@ -1157,16 +1160,34 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     counterfactualTotal,
   };
 
+  const finalPuzzle = { ...puzzle, id: `forge-${seed}-${boardHash(puzzle.rows)}` };
+  let solScore: SolutionScore | undefined;
+  if (evalResult.steps && ev.solved) {
+    try {
+      solScore = scoreSolution(finalPuzzle, {
+        steps: evalResult.steps,
+        moves: ev.solutionMoves,
+        pushes: ev.solutionPushes,
+        objective: { kind: "moves" },
+        objectiveScore: ev.solutionMoves,
+        optimality: "unknown",
+      });
+    } catch {
+      // scoring is best-effort
+    }
+  }
+
   return {
     ok: true,
     candidate: {
-      puzzle: { ...puzzle, id: `forge-${seed}-${boardHash(puzzle.rows)}` },
+      puzzle: finalPuzzle,
       provenance,
       evaluation: ev,
       solutionSteps: evalResult.steps ?? undefined,
       passiveStory: evalResult.passiveStory ?? undefined,
       counterfactualStory,
       qualityProfile,
+      solutionScore: solScore,
       mechanismConstruction: rawResult.mechanismConstruction,
       mechanismConstructionVerification,
       storyAwareTyping,
@@ -1446,6 +1467,9 @@ function paretoScore(c: ForgeCandidate): number {
   }
   if (c.provenance.counterfactualTotal && c.provenance.counterfactualTotal > 0) {
     score += (c.provenance.counterfactualEdges! / c.provenance.counterfactualTotal) * 10;
+  }
+  if (c.solutionScore) {
+    score += c.solutionScore.composite * 20;
   }
   return score;
 }
@@ -1780,6 +1804,26 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
       } else seen.set(hash, c);
     }
     const deduped = [...seen.values()];
+
+    changePhase("refinement");
+    const refinementCandidates = deduped.filter(
+      (c) => c.solutionScore && c.solutionScore.composite < 0.5,
+    ).slice(0, 5);
+    for (const c of refinementCandidates) {
+      if (!c.solutionScore) continue;
+      try {
+        const refined = await refinePuzzle(c.puzzle, c.solutionScore, 15, c.provenance.seed);
+        if (refined.improved) {
+          const idx = deduped.indexOf(c);
+          if (idx >= 0) {
+            deduped[idx] = { ...c, puzzle: refined.puzzle, solutionScore: refined.solutionScore };
+          }
+        }
+      } catch {
+        // refinement is best-effort
+      }
+    }
+
     const cheapRanked = [...deduped].sort((a, b) => cheapEvalScore(b) - cheapEvalScore(a) || a.puzzle.id.localeCompare(b.puzzle.id));
     const finalists = budgets ? cheapRanked.slice(0, budgets.finalistRetain) : deduped;
     let enriched = finalists;

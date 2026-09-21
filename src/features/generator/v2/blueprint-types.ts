@@ -155,20 +155,20 @@ export interface ReverseSearchProfile {
 }
 
 export const DEFAULT_SEARCH_PROFILE: ReverseSearchProfile = {
-  beamWidth: 8,
+  beamWidth: 16,
   maxDepth: 80,
-  restartCount: 3,
-  diverseArchiveSize: 24,
+  restartCount: 6,
+  diverseArchiveSize: 48,
   diversityRadius: 2,
   stochasticTieBreaking: true,
   antiImmediateUndo: true,
 };
 
 export const EXPERT_SEARCH_PROFILE: ReverseSearchProfile = {
-  beamWidth: 12,
+  beamWidth: 24,
   maxDepth: 140,
-  restartCount: 5,
-  diverseArchiveSize: 32,
+  restartCount: 10,
+  diverseArchiveSize: 64,
   diversityRadius: 3,
   stochasticTieBreaking: true,
   antiImmediateUndo: true,
@@ -176,10 +176,10 @@ export const EXPERT_SEARCH_PROFILE: ReverseSearchProfile = {
 };
 
 export const MASTER_SEARCH_PROFILE: ReverseSearchProfile = {
-  beamWidth: 16,
+  beamWidth: 32,
   maxDepth: 200,
-  restartCount: 8,
-  diverseArchiveSize: 48,
+  restartCount: 16,
+  diverseArchiveSize: 96,
   diversityRadius: 4,
   stochasticTieBreaking: true,
   antiImmediateUndo: true,

@@ -34,8 +34,8 @@ export interface BeamSearchParams {
 
 export const DEFAULT_BEAM_PARAMS: BeamSearchParams = {
   seed: 0,
-  beamWidth: 8,
-  maxDepth: 60,
+  beamWidth: 16,
+  maxDepth: 100,
   diversityRadius: 2,
   weights: DEFAULT_WEIGHTS,
 };

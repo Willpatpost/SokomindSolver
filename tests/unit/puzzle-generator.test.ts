@@ -316,7 +316,7 @@ test("classifyFromMetrics: simple tutorial case", () => {
 });
 
 test("classifyFromMetrics: intermediate boundary", () => {
-  const d = classifyFromMetrics(50, 30, 4);
+  const d = classifyFromMetrics(30, 20, 4);
   assert.equal(d, "intermediate");
 });
 
@@ -326,7 +326,7 @@ test("classifyFromMetrics: master when exceeding all thresholds", () => {
 });
 
 test("classifyFromMetrics: beginner range", () => {
-  const d = classifyFromMetrics(20, 10, 2);
+  const d = classifyFromMetrics(12, 8, 2);
   assert.equal(d, "beginner");
 });
 

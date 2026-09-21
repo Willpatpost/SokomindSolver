@@ -8,6 +8,7 @@ import {
   type StructuralBlueprint,
   type TopologyFamily,
 } from "./blueprint-types.ts";
+import { pickTemplate, rasterizeTemplate, type StampedRoom } from "./room-templates.ts";
 
 interface PlacedRoom {
   id: number;
@@ -15,6 +16,7 @@ interface PlacedRoom {
   y: number;
   width: number;
   height: number;
+  stamp?: StampedRoom;
 }
 
 function randomInt(rng: () => number, min: number, max: number): number {
@@ -121,6 +123,7 @@ function placeRooms(
     for (let i = 0; i < roomCount; i++) {
       const w = randomInt(rng, params.minRoomSize, params.maxRoomSize);
       const h = randomInt(rng, params.minRoomSize, params.maxRoomSize);
+      const stamp = pickTemplate(rng, w, h);
 
       let placed = false;
       for (let tries = 0; tries < 80; tries++) {
@@ -129,7 +132,7 @@ function placeRooms(
 
         if (overlapsAny(rooms, x, y, w, h, margin)) continue;
 
-        rooms.push({ id: i, x, y, width: w, height: h });
+        rooms.push({ id: i, x, y, width: w, height: h, stamp });
         placed = true;
         break;
       }
@@ -258,12 +261,16 @@ function rasterizeRoomsAndPassages(
   }
 
   for (const room of rooms) {
-    for (let dy = 0; dy < room.height; dy++) {
-      for (let dx = 0; dx < room.width; dx++) {
-        const gy = room.y + dy;
-        const gx = room.x + dx;
-        if (gy > 0 && gy < boardHeight - 1 && gx > 0 && gx < boardWidth - 1) {
-          grid[gy][gx] = " ";
+    if (room.stamp) {
+      rasterizeTemplate(room.stamp, room.x, room.y, grid, boardWidth, boardHeight);
+    } else {
+      for (let dy = 0; dy < room.height; dy++) {
+        for (let dx = 0; dx < room.width; dx++) {
+          const gy = room.y + dy;
+          const gx = room.x + dx;
+          if (gy > 0 && gy < boardHeight - 1 && gx > 0 && gx < boardWidth - 1) {
+            grid[gy][gx] = " ";
+          }
         }
       }
     }

@@ -2,6 +2,7 @@ import type { Difficulty } from "../../../core/model.ts";
 import type { TopologyFamily } from "./blueprint-types.ts";
 import type { ForgeGenerationMode } from "./forge-sampling.ts";
 import type { StoryQualityFamily } from "./story-quality-policy.ts";
+import type { SolutionScore } from "./solution-scoring.ts";
 
 export interface CatalogPresentationInput {
   readonly difficulty: Difficulty;
@@ -9,6 +10,7 @@ export interface CatalogPresentationInput {
   readonly mode: ForgeGenerationMode;
   readonly storyFamilies?: readonly StoryQualityFamily[];
   readonly ordinal: number;
+  readonly solutionScore?: SolutionScore;
 }
 
 const TOPOLOGY_NAMES: Readonly<Record<TopologyFamily, string>> = {
@@ -37,13 +39,71 @@ const MODE_FALLBACK: Readonly<Record<ForgeGenerationMode, { readonly title: stri
   mechanism: { title: "Moving Parts", hint: "Treat each box as part of a mechanism and identify which move enables the next." },
 };
 
+interface SolutionDerivedPresentation {
+  readonly adjective: string;
+  readonly hint: string;
+}
+
+function deriveFromSolutionScore(score: SolutionScore): SolutionDerivedPresentation {
+  if (score.deadEndRecovery >= 0.4) {
+    return {
+      adjective: "Staged",
+      hint: "Creating space may require temporarily displacing a box away from its destination.",
+    };
+  }
+  if (score.choicePoints >= 0.5) {
+    return {
+      adjective: "Forked",
+      hint: "There is a critical early decision where only one path avoids a dead end.",
+    };
+  }
+  if (score.roomTransitions >= 0.6) {
+    return {
+      adjective: "Roaming",
+      hint: "Plan the corridor crossing before committing boxes to rooms.",
+    };
+  }
+  if (score.directionChanges >= 0.5) {
+    return {
+      adjective: "Tangled",
+      hint: "Straightforward routes are traps here — boxes often need to travel away from their goal first.",
+    };
+  }
+  if (score.pushVariety >= 0.8) {
+    return {
+      adjective: "Coordinated",
+      hint: "Consider which box needs to move first; the order matters more than the distance.",
+    };
+  }
+  if (score.composite >= 0.4) {
+    return {
+      adjective: "Layered",
+      hint: "Each push constrains the next — look for the move that unlocks the most options.",
+    };
+  }
+  return {
+    adjective: "Narrow",
+    hint: "The path is tighter than it looks; test each push mentally before committing.",
+  };
+}
+
 /** Create stable catalog copy from facts already measured during generation. */
 export function createCatalogPresentation(input: CatalogPresentationInput): { readonly title: string; readonly hint: string } {
+  const ordinal = Math.max(1, Math.trunc(input.ordinal));
+  const topoName = TOPOLOGY_NAMES[input.family];
+
+  if (input.solutionScore && input.solutionScore.composite > 0) {
+    const derived = deriveFromSolutionScore(input.solutionScore);
+    return {
+      title: `${derived.adjective} ${topoName} ${ordinal}`,
+      hint: derived.hint,
+    };
+  }
+
   const story = input.storyFamilies?.find((family) => family in STORY_PRESENTATION);
   const presentation = story ? STORY_PRESENTATION[story] : MODE_FALLBACK[input.mode];
-  const ordinal = Math.max(1, Math.trunc(input.ordinal));
   return {
-    title: `${presentation.title}: ${TOPOLOGY_NAMES[input.family]} ${ordinal}`,
+    title: `${presentation.title}: ${topoName} ${ordinal}`,
     hint: presentation.hint,
   };
 }

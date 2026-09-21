@@ -9,7 +9,7 @@ import type { SolverAdapter, SolverResult, SolutionStep } from "../../src/solver
 import type { Direction, PuzzleDefinition } from "../../src/core/model.ts";
 
 const fixture = JSON.parse(readFileSync(new URL("../fixtures/generator/generated-quality-samples.json", import.meta.url), "utf8"));
-const sample = fixture.samples.find((s: { seed: number }) => s.seed === 310049);
+const sample = fixture.samples.find((s: { seed: number; boxCount: number }) => s.boxCount === 3);
 const puzzle: PuzzleDefinition = { id: "evidence-fixture", title: "Evidence", difficulty: "beginner", boxes: 3, rows: sample.rows };
 const directions: Record<string, Direction> = { u: "up", d: "down", l: "left", r: "right" };
 const steps: SolutionStep[] = [...sample.witness as string].map((letter) => ({ direction: directions[letter.toLowerCase()], kind: letter === letter.toUpperCase() ? "push" : "walk" }));

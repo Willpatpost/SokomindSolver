@@ -5,7 +5,7 @@ import type {
   SolverSolution,
 } from "../../solver/contracts.ts";
 import { createSession } from "../../core/game-session.ts";
-import { classicGreedySolver } from "../../solver/implementations/classic-solvers.ts";
+import { classicAStarSolver, classicGreedySolver } from "../../solver/implementations/classic-solvers.ts";
 import type { ClassificationResult } from "./generator-types.ts";
 
 interface DifficultyThresholds {
@@ -15,11 +15,11 @@ interface DifficultyThresholds {
 }
 
 const DIFFICULTY_THRESHOLDS: Record<Difficulty, DifficultyThresholds> = {
-  tutorial: { maxMoves: 10, maxPushes: 5, maxBoxes: 2 },
-  beginner: { maxMoves: 25, maxPushes: 15, maxBoxes: 3 },
-  intermediate: { maxMoves: 80, maxPushes: 40, maxBoxes: 5 },
-  advanced: { maxMoves: 200, maxPushes: 80, maxBoxes: 7 },
-  expert: { maxMoves: 500, maxPushes: 200, maxBoxes: 10 },
+  tutorial: { maxMoves: 6, maxPushes: 3, maxBoxes: 2 },
+  beginner: { maxMoves: 15, maxPushes: 10, maxBoxes: 3 },
+  intermediate: { maxMoves: 45, maxPushes: 25, maxBoxes: 5 },
+  advanced: { maxMoves: 120, maxPushes: 50, maxBoxes: 7 },
+  expert: { maxMoves: 300, maxPushes: 120, maxBoxes: 10 },
   master: {
     maxMoves: Number.POSITIVE_INFINITY,
     maxPushes: Number.POSITIVE_INFINITY,
@@ -70,10 +70,18 @@ export async function classifyPuzzleDifficulty(
     board: session.board,
     snapshot: session.snapshot,
     objective: { kind: "moves" as const },
-    limits: { maxElapsedMs: 5_000, maxExpandedStates: 500_000 },
+    limits: { maxElapsedMs: 15_000, maxExpandedStates: 2_000_000 },
   };
   const context = createMainThreadContext(signal);
-  const result: SolverResult = await classicGreedySolver.solve(request, context);
+  let result: SolverResult = await classicAStarSolver.solve(request, context);
+
+  if (result.status !== "solved") {
+    const fallbackRequest = {
+      ...request,
+      limits: { maxElapsedMs: 5_000, maxExpandedStates: 500_000 },
+    };
+    result = await classicGreedySolver.solve(fallbackRequest, context);
+  }
 
   if (result.status !== "solved") return null;
 
@@ -98,10 +106,18 @@ export async function solvePuzzleForSteps(
     board: session.board,
     snapshot: session.snapshot,
     objective: { kind: "moves" as const },
-    limits: { maxElapsedMs: 10_000, maxExpandedStates: 1_000_000 },
+    limits: { maxElapsedMs: 15_000, maxExpandedStates: 2_000_000 },
   };
   const context = createMainThreadContext(signal);
-  const result: SolverResult = await classicGreedySolver.solve(request, context);
+  let result: SolverResult = await classicAStarSolver.solve(request, context);
+
+  if (result.status !== "solved") {
+    const fallbackRequest = {
+      ...request,
+      limits: { maxElapsedMs: 10_000, maxExpandedStates: 1_000_000 },
+    };
+    result = await classicGreedySolver.solve(fallbackRequest, context);
+  }
 
   if (result.status !== "solved") return null;
   return result.solution;
