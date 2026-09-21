@@ -254,13 +254,23 @@ export function HomePage() {
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => navigate(playHash(continueId))}
-          >
-            {stats.totalSolved > 0 ? "Continue playing" : "Start playing"}
-          </button>
+          <div className={styles.primaryRow}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => navigate(playHash(continueId))}
+            >
+              {continueTarget ? "Resume room" : stats.totalSolved > 0 ? "Continue playing" : "Start playing"}
+            </button>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              data-variant="random"
+              onClick={pickRandom}
+            >
+              Random puzzle
+            </button>
+          </div>
           <div className={styles.secondaryButtons}>
             <button
               type="button"
@@ -286,16 +296,9 @@ export function HomePage() {
             <button
               type="button"
               className={styles.secondaryButton}
-              onClick={() => navigate(solverLabHash())}
+              onClick={() => navigate(solverLabHash(continueId))}
             >
               Solver Lab
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={pickRandom}
-            >
-              Random puzzle
             </button>
           </div>
         </div>

@@ -34,14 +34,14 @@ export function DeadlockDialog({
           cannot be solved from this position.
         </p>
         <div className={styles.actions}>
-          <button type="button" onClick={onDismiss}>
-            Keep playing
+          <button type="button" data-autofocus onClick={onUndo}>
+            Undo last move
           </button>
           <button type="button" onClick={onRestart}>
             Restart room
           </button>
-          <button type="button" data-autofocus onClick={onUndo}>
-            Undo last move
+          <button type="button" onClick={onDismiss}>
+            Keep playing
           </button>
         </div>
       </section>

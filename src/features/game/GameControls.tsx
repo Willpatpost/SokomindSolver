@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Direction } from "@/src/core/model";
+import { ConfirmDialog } from "@/src/shared/ui/ConfirmDialog";
 import styles from "./GameControls.module.css";
 
 function HintThinkingLabel() {
@@ -52,6 +53,8 @@ export function GameControls({
   onReset,
   variant = "full",
 }: GameControlsProps) {
+  const [confirmUndoAll, setConfirmUndoAll] = useState(false);
+
   return (
     <section
       className={styles.controls}
@@ -95,7 +98,7 @@ export function GameControls({
           </button>
         )}
         {variant === "full" && onUndoN && undoDepth >= 10 && (
-          <button type="button" onClick={() => onUndoN(Infinity)} disabled={disabled}>
+          <button type="button" onClick={() => setConfirmUndoAll(true)} disabled={disabled}>
             <span>Undo all</span>
           </button>
         )}
@@ -113,6 +116,16 @@ export function GameControls({
           <kbd>R</kbd>
         </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmUndoAll}
+        title={`Undo all ${undoDepth} moves?`}
+        message="This will reset the board to the starting position."
+        confirmLabel="Undo all"
+        destructive
+        onConfirm={() => onUndoN?.(Infinity)}
+        onClose={() => setConfirmUndoAll(false)}
+      />
     </section>
   );
 }

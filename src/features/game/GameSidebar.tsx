@@ -14,6 +14,7 @@ interface GameSidebarProps {
   readonly canHint?: boolean;
   readonly hintThinking?: boolean;
   readonly elapsed?: number;
+  readonly showLegend?: boolean;
   readonly onMove: (direction: Direction) => void;
   readonly onUndo: () => void;
   readonly onUndoN?: (count: number) => void;
@@ -30,6 +31,7 @@ export const GameSidebar = memo(function GameSidebar({
   canHint = false,
   hintThinking = false,
   elapsed = 0,
+  showLegend = true,
   onMove,
   onUndo,
   onUndoN,
@@ -139,23 +141,25 @@ export const GameSidebar = memo(function GameSidebar({
         ) : null}
       </section>
 
-      <section className={styles.legend} aria-label="Board legend">
-        <h2>Reading the room</h2>
-        <div className={styles.legendItems}>
-          <div className={styles.legendItem}>
-            <span className={styles.legendMark}>×</span>
-            <span>Box — push onto a goal</span>
+      {showLegend && (
+        <section className={styles.legend} aria-label="Board legend">
+          <h2>Reading the room</h2>
+          <div className={styles.legendItems}>
+            <div className={styles.legendItem}>
+              <span className={styles.legendMark}>×</span>
+              <span>Box — push onto a goal</span>
+            </div>
+            <div className={styles.legendItem}>
+              <span className={styles.legendMark} data-type="goal">A</span>
+              <span>Goal — match its letter</span>
+            </div>
+            <div className={styles.legendItem}>
+              <span className={styles.legendMark} data-type="keeper">••</span>
+              <span>Keeper — that&apos;s you</span>
+            </div>
           </div>
-          <div className={styles.legendItem}>
-            <span className={styles.legendMark} data-type="goal">A</span>
-            <span>Goal — match its letter</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={styles.legendMark} data-type="keeper">••</span>
-            <span>Keeper — that&apos;s you</span>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
     </aside>
   );
 });

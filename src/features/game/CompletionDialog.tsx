@@ -278,65 +278,69 @@ export function CompletionDialog({
             <div><strong>{formatTime(elapsedTime)}</strong><span>Time</span></div>
           ) : null}
         </div>
-        <div className={styles.ratingRow}>
-          <span className={styles.gradeLetter} style={{ color: grade.color }}>{grade.letter}</span>
-          <span className={styles.ratingValue}>Route style: {grade.label}</span>
-        </div>
-        <div className={styles.difficultyFeedback}>
-          <span className={styles.feedbackLabel}>How was the difficulty?</span>
-          <div className={styles.feedbackButtons} role="group" aria-label="Rate this puzzle's difficulty">
-            {RATING_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={styles.feedbackButton}
-                data-selected={selectedRating === opt.value || undefined}
-                aria-pressed={selectedRating === opt.value}
-                onClick={() => handleRate(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {ratingSummary && (
-            <div className={styles.ratingSummary}>
-              <span className={styles.ratingSummaryLabel}>
-                Your {ratingSummary.total} ratings at this tier:
-              </span>
-              <div className={styles.ratingBar}>
-                {ratingSummary.easy > 0 && (
-                  <span
-                    className={styles.ratingSegment}
-                    data-kind="easy"
-                    style={{ flex: ratingSummary.easy }}
-                    title={`${ratingSummary.easy} easy`}
-                  />
-                )}
-                {ratingSummary.right > 0 && (
-                  <span
-                    className={styles.ratingSegment}
-                    data-kind="right"
-                    style={{ flex: ratingSummary.right }}
-                    title={`${ratingSummary.right} right`}
-                  />
-                )}
-                {ratingSummary.hard > 0 && (
-                  <span
-                    className={styles.ratingSegment}
-                    data-kind="hard"
-                    style={{ flex: ratingSummary.hard }}
-                    title={`${ratingSummary.hard} hard`}
-                  />
-                )}
+        <details className={styles.detailsToggle}>
+          <summary>
+            <span className={styles.gradeLetter} style={{ color: grade.color }}>{grade.letter}</span>
+            Route style: {grade.label} · Rate difficulty
+          </summary>
+          <div className={styles.detailsContent}>
+            <div className={styles.difficultyFeedback}>
+              <span className={styles.feedbackLabel}>How was the difficulty?</span>
+              <div className={styles.feedbackButtons} role="group" aria-label="Rate this puzzle's difficulty">
+                {RATING_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={styles.feedbackButton}
+                    data-selected={selectedRating === opt.value || undefined}
+                    aria-pressed={selectedRating === opt.value}
+                    onClick={() => handleRate(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-              <div className={styles.ratingCounts}>
-                <span>{ratingSummary.easy} easy</span>
-                <span>{ratingSummary.right} right</span>
-                <span>{ratingSummary.hard} hard</span>
-              </div>
+              {ratingSummary && (
+                <div className={styles.ratingSummary}>
+                  <span className={styles.ratingSummaryLabel}>
+                    Your {ratingSummary.total} ratings at this tier:
+                  </span>
+                  <div className={styles.ratingBar}>
+                    {ratingSummary.easy > 0 && (
+                      <span
+                        className={styles.ratingSegment}
+                        data-kind="easy"
+                        style={{ flex: ratingSummary.easy }}
+                        title={`${ratingSummary.easy} easy`}
+                      />
+                    )}
+                    {ratingSummary.right > 0 && (
+                      <span
+                        className={styles.ratingSegment}
+                        data-kind="right"
+                        style={{ flex: ratingSummary.right }}
+                        title={`${ratingSummary.right} right`}
+                      />
+                    )}
+                    {ratingSummary.hard > 0 && (
+                      <span
+                        className={styles.ratingSegment}
+                        data-kind="hard"
+                        style={{ flex: ratingSummary.hard }}
+                        title={`${ratingSummary.hard} hard`}
+                      />
+                    )}
+                  </div>
+                  <div className={styles.ratingCounts}>
+                    <span>{ratingSummary.easy} easy</span>
+                    <span>{ratingSummary.right} right</span>
+                    <span>{ratingSummary.hard} hard</span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </details>
         {onCompareReplay ? (
           <button type="button" className={styles.replayStudy} onClick={onCompareReplay}>
             Review and compare replay

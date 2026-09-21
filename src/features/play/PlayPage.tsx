@@ -209,6 +209,8 @@ function ValidatedPlayPage({
   const stopButtonRef = useRef<HTMLButtonElement>(null);
   const pauseResumeRef = useRef<HTMLButtonElement>(null);
   const [replayComparisonOpen, setReplayComparisonOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     document.title = `${session.puzzle.title} · Sokomind`;
   }, [session.puzzle.title]);
@@ -226,6 +228,17 @@ function ValidatedPlayPage({
       pauseResumeRef.current?.focus();
     }
   }, [game.manualPaused]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setOverflowOpen(false);
+      }
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [overflowOpen]);
 
   useSwipeControls(boardWrapRef, {
     enabled: game.inputEnabled,
@@ -409,24 +422,36 @@ function ValidatedPlayPage({
                 <span aria-hidden="true">S</span>
                 <span className={styles.buttonLabel}>Solve</span>
               </button>
-              <button
-                aria-label="Share this puzzle and route"
-                className={styles.utilityButton}
-                type="button"
-                onClick={() => void game.handleShare()}
-              >
-                <span aria-hidden="true">{"\u2197"}</span>
-                <span className={styles.buttonLabel}>Share</span>
-              </button>
-              <button
-                aria-label="How to play"
-                className={styles.utilityButton}
-                type="button"
-                onClick={game.openHelp}
-              >
-                <span aria-hidden="true">?</span>
-                <span className={styles.buttonLabel}>Help</span>
-              </button>
+              <div className={styles.overflowWrap} ref={overflowRef}>
+                <button
+                  aria-label="More actions"
+                  aria-expanded={overflowOpen}
+                  className={styles.utilityButton}
+                  type="button"
+                  onClick={() => setOverflowOpen((v) => !v)}
+                >
+                  <span aria-hidden="true">{"\u22ef"}</span>
+                  <span className={styles.buttonLabel}>More</span>
+                </button>
+                {overflowOpen && (
+                  <div className={styles.overflowMenu} role="menu">
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => { void game.handleShare(); setOverflowOpen(false); }}
+                    >
+                      <span aria-hidden="true">{"\u2197"}</span> Share
+                    </button>
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => { game.openHelp(); setOverflowOpen(false); }}
+                    >
+                      <span aria-hidden="true">?</span> How to play
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -570,6 +595,7 @@ function ValidatedPlayPage({
           )?.moves}
           canHint={game.hint.canHint}
           hintThinking={game.hint.phase === "thinking"}
+          showLegend={Object.keys(progress.completed).length < 3}
           session={session}
           onMove={game.attemptMove}
           onHint={game.hint.requestHint}

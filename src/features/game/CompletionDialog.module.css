@@ -258,29 +258,55 @@
   color: var(--sage-700);
 }
 
-.ratingRow {
+.detailsToggle {
+  margin-bottom: 20px;
+}
+
+.detailsToggle summary {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 20px;
+  padding: 8px 14px;
+  border: 1px solid rgb(23 25 22 / 0.08);
+  border-radius: 10px;
+  background: rgb(243 240 231 / 0.4);
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: var(--ink-muted);
+  cursor: pointer;
+  list-style: none;
+  transition: background 150ms ease;
+}
+
+.detailsToggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.detailsToggle summary:hover {
+  background: rgb(243 240 231 / 0.7);
+}
+
+.detailsToggle[open] summary {
+  margin-bottom: 14px;
+}
+
+.detailsContent {
+  animation: details-in 200ms ease both;
+}
+
+@keyframes details-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .gradeLetter {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.6rem;
+  font-size: 1.2rem;
   font-weight: 700;
   line-height: 1;
-}
-
-.ratingValue {
-  font-size: 0.78rem;
-  font-weight: 800;
-  color: var(--sage-700);
-  padding: 3px 10px;
-  border: 1px solid var(--sage-500);
-  border-radius: 6px;
-  background: rgb(86 110 89 / 0.08);
 }
 
 .difficultyFeedback {
@@ -564,8 +590,15 @@
   animation: none;
 }
 
+:global(html[data-motion="reduced"]) .detailsContent {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :global(html:not([data-motion="full"])) .completion {
+    animation: none;
+  }
+  :global(html:not([data-motion="full"])) .detailsContent {
     animation: none;
   }
 }
@@ -665,7 +698,7 @@
     min-height: auto;
   }
 
-  .ratingRow {
+  .detailsToggle {
     margin-bottom: 12px;
   }
 
@@ -708,8 +741,13 @@
   border-color: var(--sage-500);
 }
 
-:global(html[data-theme="dark"]) .ratingValue {
-  background: rgb(86 110 89 / 0.15);
+:global(html[data-theme="dark"]) .detailsToggle summary {
+  border-color: rgb(255 255 255 / 0.06);
+  background: rgb(34 36 32 / 0.4);
+}
+
+:global(html[data-theme="dark"]) .detailsToggle summary:hover {
+  background: rgb(34 36 32 / 0.6);
 }
 
 :global(html[data-theme="dark"]) .tierCelebration {
@@ -839,7 +877,7 @@
     border: 1px solid GrayText;
   }
 
-  .ratingValue {
+  .detailsToggle summary {
     border: 1px solid ButtonText;
   }
 

@@ -280,6 +280,19 @@
   gap: 10px;
 }
 
+.primaryRow {
+  display: flex;
+  gap: 10px;
+}
+
+.primaryRow > .primaryButton:first-child {
+  flex: 1.4;
+}
+
+.primaryRow > .primaryButton:last-child {
+  flex: 1;
+}
+
 .primaryButton {
   display: flex;
   align-items: center;
@@ -297,8 +310,16 @@
   transition: background 150ms ease;
 }
 
+.primaryButton[data-variant="random"] {
+  background: var(--sage-600);
+}
+
 .primaryButton:hover {
   background: var(--sage-600);
+}
+
+.primaryButton[data-variant="random"]:hover {
+  background: var(--sage-500);
 }
 
 .primaryButton:focus-visible {
