@@ -207,6 +207,7 @@ export interface ForgeConfig {
   readonly counterfactualBudget?: Partial<CounterfactualBudget>;
   readonly storyQualityPolicy?: StoryQualityPolicy;
   readonly storyDiversityPolicy?: StoryDiversityPolicy;
+  readonly useRoomTemplates?: boolean;
 }
 
 export interface ForgeAcceptanceGates {
@@ -540,6 +541,7 @@ export function generateBlueprintCandidate(
       minRoomSize: bpMinRoomSize,
       maxRoomSize: bpMaxRoomSize,
       passageWidths,
+      useRoomTemplates: config.useRoomTemplates,
     },
     config.blueprintRetries,
   );
@@ -576,6 +578,7 @@ export function generateBlueprintCandidate(
           minRooms: bpMinRooms, maxRooms: bpMaxRooms,
           minRoomSize: bpMinRoomSize, maxRoomSize: bpMaxRoomSize,
           passageWidths,
+          useRoomTemplates: config.useRoomTemplates,
         };
         const constrained = constrainBlueprintParams(baseParams, geoReqs, seed);
         const constrainedBp = generateBlueprintWithRetry(constrained, config.blueprintRetries);

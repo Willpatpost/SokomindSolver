@@ -69,6 +69,7 @@ export interface BlueprintParams {
   readonly passageWidths?: readonly (1 | 2)[];
   readonly boardWidth: number;
   readonly boardHeight: number;
+  readonly useRoomTemplates?: boolean;
 }
 
 export const DEFAULT_BLUEPRINT_PARAMS: BlueprintParams = {

@@ -548,7 +548,7 @@ async function main(): Promise<void> {
     const budgets = qualityPreset ? QUALITY_PRESETS[qualityPreset] : base.funnelBudgets;
     const config: ForgeConfig = { ...base, baseSeed: base.baseSeed + seedOffset, retainTarget: target,
       reverseCandidatesPerBlueprint: reverseVariants, reuseEvidence: true, goalPlacementAttempts: 3, witnessFirst: true, participationSearch: true,
-      scalableRecipes: true,
+      scalableRecipes: true, useRoomTemplates: true,
       storyDiversityPolicy: STRICT_STORY_DIVERSITY_POLICY,
       v4EvaluatorPolicy: CATALOG_EVALUATOR_POLICY,
       batchSize: attemptBudget ?? base.batchSize,

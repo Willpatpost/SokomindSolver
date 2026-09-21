@@ -123,7 +123,7 @@ function placeRooms(
     for (let i = 0; i < roomCount; i++) {
       const w = randomInt(rng, params.minRoomSize, params.maxRoomSize);
       const h = randomInt(rng, params.minRoomSize, params.maxRoomSize);
-      const stamp = pickTemplate(rng, w, h);
+      const stamp = params.useRoomTemplates ? pickTemplate(rng, w, h) : undefined;
 
       let placed = false;
       for (let tries = 0; tries < 80; tries++) {

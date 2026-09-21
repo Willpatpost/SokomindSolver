@@ -15,11 +15,11 @@ interface DifficultyThresholds {
 }
 
 const DIFFICULTY_THRESHOLDS: Record<Difficulty, DifficultyThresholds> = {
-  tutorial: { maxMoves: 6, maxPushes: 3, maxBoxes: 2 },
-  beginner: { maxMoves: 15, maxPushes: 10, maxBoxes: 3 },
-  intermediate: { maxMoves: 45, maxPushes: 25, maxBoxes: 5 },
-  advanced: { maxMoves: 120, maxPushes: 50, maxBoxes: 7 },
-  expert: { maxMoves: 300, maxPushes: 120, maxBoxes: 10 },
+  tutorial: { maxMoves: 10, maxPushes: 5, maxBoxes: 2 },
+  beginner: { maxMoves: 25, maxPushes: 15, maxBoxes: 3 },
+  intermediate: { maxMoves: 80, maxPushes: 40, maxBoxes: 5 },
+  advanced: { maxMoves: 200, maxPushes: 80, maxBoxes: 7 },
+  expert: { maxMoves: 500, maxPushes: 200, maxBoxes: 10 },
   master: {
     maxMoves: Number.POSITIVE_INFINITY,
     maxPushes: Number.POSITIVE_INFINITY,
