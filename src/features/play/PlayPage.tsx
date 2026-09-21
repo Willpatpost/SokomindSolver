@@ -426,6 +426,7 @@ function ValidatedPlayPage({
                 <button
                   aria-label="More actions"
                   aria-expanded={overflowOpen}
+                  aria-haspopup="menu"
                   className={styles.utilityButton}
                   type="button"
                   onClick={() => setOverflowOpen((v) => !v)}
@@ -434,7 +435,7 @@ function ValidatedPlayPage({
                   <span className={styles.buttonLabel}>More</span>
                 </button>
                 {overflowOpen && (
-                  <div className={styles.overflowMenu} role="menu">
+                  <div className={styles.overflowMenu} role="menu" aria-label="More actions">
                     <button
                       role="menuitem"
                       type="button"
