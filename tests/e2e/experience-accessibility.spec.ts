@@ -11,7 +11,13 @@ async function openExperienceControls(page: Page): Promise<Locator> {
 }
 
 async function openHowToPlay(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "How to play" }).click();
+  const more = page.getByRole("button", { name: "More actions" });
+  if (await more.isVisible()) {
+    await more.click();
+    await page.getByRole("menuitem", { name: "How to play" }).click();
+  } else {
+    await page.getByRole("button", { name: "How to play" }).click();
+  }
   const dialog = page.getByRole("dialog", { name: "How to play" });
   await expect(dialog).toBeVisible();
   return dialog;

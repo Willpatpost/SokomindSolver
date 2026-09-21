@@ -86,9 +86,8 @@ test("share control renders an outbound arrow instead of entity text", async ({
 }) => {
   await page.goto("./#/play/ultra-tiny");
 
-  const share = page.getByRole("button", {
-    name: "Share this puzzle and route",
-  });
+  await page.getByRole("button", { name: "More actions" }).click();
+  const share = page.getByRole("menuitem", { name: /Share/ });
   await expect(share).toContainText("↗");
   await expect(share).toContainText("Share");
   await expect(share).not.toContainText("&nearr;");

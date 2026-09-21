@@ -7,7 +7,8 @@ test("keeps Help and movement controls reachable on mobile", async ({
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
 
-  await page.getByRole("button", { name: "How to play" }).click();
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "How to play" }).click();
   await expect(page.getByRole("dialog", { name: "How to play" })).toBeVisible();
   await page.getByRole("button", { name: "Close instructions" }).click();
 

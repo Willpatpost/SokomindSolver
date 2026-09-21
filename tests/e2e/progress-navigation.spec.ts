@@ -65,7 +65,7 @@ test("Continue prefers a saved session over the first unsolved puzzle", async ({
   }, COMPLETED_AT);
 
   await page.goto("./");
-  await page.getByRole("button", { name: "Continue playing" }).click();
+  await page.getByRole("button", { name: "Resume room" }).click();
 
   await expect(page).toHaveURL(/#\/play\/tutorial-push$/);
   await expect(page.getByRole("heading", { name: "One Push Wonder" })).toBeVisible();
