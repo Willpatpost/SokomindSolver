@@ -792,7 +792,7 @@ export async function runConcurrentProof(
         case "proof/solution": {
           const verification = verifySolverSolution(request, result.solution);
           if (atDeadline()) return;
-          if (!verification.valid || result.totalCost !== result.solution.moves) {
+          if (!verification.valid || result.totalCost !== result.solution.moves || result.solution.moves < tracker.prefixCost) {
             failActive(worker);
             break;
           }

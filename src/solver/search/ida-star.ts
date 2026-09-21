@@ -1556,6 +1556,8 @@ export async function runIdaStarSearch(
             popFrame();
             continue;
           }
+          // Single-entry replacement: collisions lose cached g-values but
+          // the bigint check above prevents false dominance pruning.
           const oldTTSize = transposition.size;
           transposition.set(frame.zobristKey, {
             bigintKey: frame.exactKey,

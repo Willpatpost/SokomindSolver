@@ -269,6 +269,33 @@ describe("CandidateArchive", () => {
       assert.ok(archive.allNeighborhoodsExhausted("box"));
       assert.ok(!archive.allNeighborhoodsExhausted("window"));
     });
+
+    it("cutoff without completed pass is not retryable but completed-pass is", () => {
+      const archive = new CandidateArchive(4);
+      archive.offer(makeSolution([pushStep("up")]), harvestProvenance());
+      archive.offer(makeSolution([pushStep("down"), pushStep("left")]), harvestProvenance());
+
+      for (const c of archive.candidates) {
+        archive.recordOutcome({
+          taskId: "t", reason: "time-cutoff", operator: "window",
+          candidateId: c.id, expanded: 50, generated: 100, elapsedMs: 25, improved: false,
+        });
+      }
+
+      assert.ok(archive.allNeighborhoodsExhausted("window"));
+      assert.equal(archive.selectForRepair("window"), undefined);
+      assert.ok(!archive.hasAvailableWork("window"));
+
+      const c0 = archive.candidates[0].id;
+      archive.recordOutcome({
+        taskId: "t2", reason: "completed-pass", operator: "box",
+        candidateId: c0, expanded: 200, generated: 400, elapsedMs: 100, improved: true,
+      });
+
+      assert.ok(!archive.allNeighborhoodsExhausted("box"));
+      assert.ok(archive.selectForRepair("box") !== undefined);
+      assert.ok(archive.hasAvailableWork("box"));
+    });
   });
 
   describe("byte limits", () => {

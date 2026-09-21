@@ -374,10 +374,16 @@ export class CandidateArchive {
     return this.#items.find((item) => item.id === id);
   }
 
+  #isRetryable(record: NeighborhoodRecord | undefined): boolean {
+    if (record === undefined) return true;
+    if (record.exhausted) return false;
+    return record.completedPasses > 0;
+  }
+
   selectForRepair(operator: RepairOperator): ArchivedCandidate | undefined {
     for (const candidate of this.#items) {
       if (
-        this.neighborhoodRecord(candidate.id, operator) === undefined &&
+        this.#isRetryable(this.neighborhoodRecord(candidate.id, operator)) &&
         !this.isInFlight(candidate.id, operator)
       ) {
         return candidate;
@@ -387,12 +393,14 @@ export class CandidateArchive {
   }
 
   allNeighborhoodsExhausted(operator: RepairOperator): boolean {
-    return this.#items.every((c) => this.neighborhoodRecord(c.id, operator) !== undefined);
+    return this.#items.every(
+      (c) => !this.#isRetryable(this.neighborhoodRecord(c.id, operator)),
+    );
   }
 
   hasAvailableWork(operator: RepairOperator): boolean {
     return this.#items.some(
-      (c) => this.neighborhoodRecord(c.id, operator) === undefined &&
+      (c) => this.#isRetryable(this.neighborhoodRecord(c.id, operator)) &&
              !this.isInFlight(c.id, operator),
     );
   }
