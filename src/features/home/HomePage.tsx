@@ -265,7 +265,6 @@ export function HomePage() {
             <button
               type="button"
               className={styles.primaryButton}
-              data-variant="random"
               onClick={pickRandom}
             >
               Random puzzle

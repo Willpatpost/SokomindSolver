@@ -176,7 +176,7 @@
 }
 
 :global(html[data-theme="dark"]) .shortcuts span {
-  color: var(--ink-800);
+  color: var(--ink-900);
   background: rgb(40 42 38);
 }
 

@@ -310,16 +310,8 @@
   transition: background 150ms ease;
 }
 
-.primaryButton[data-variant="random"] {
-  background: var(--sage-600);
-}
-
 .primaryButton:hover {
   background: var(--sage-600);
-}
-
-.primaryButton[data-variant="random"]:hover {
-  background: var(--sage-500);
 }
 
 .primaryButton:focus-visible {
