@@ -29,7 +29,6 @@ import { GameSidebar } from "@/src/features/game/GameSidebar";
 import { KeyboardShortcuts } from "@/src/features/game/KeyboardShortcuts";
 import { MoveNotation } from "@/src/features/game/MoveNotation";
 import { MoveTimeline } from "@/src/features/game/MoveTimeline";
-import { BoardSkeleton } from "@/src/features/game/BoardSkeleton";
 import { useSwipeControls } from "@/src/features/game/use-swipe-controls";
 import {
   homeHash,
@@ -157,11 +156,7 @@ function LoadedPlayPage({ puzzleId, actionLog, freshAttempt }: PlayPageProps) {
     );
   }
   if (!puzzle) {
-    return (
-      <main className={styles.page}>
-        <BoardSkeleton />
-      </main>
-    );
+    return <main className={styles.page} />;
   }
 
   if (actionLog !== undefined) {
