@@ -892,3 +892,13 @@
     color: LinkText;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .backButton,
+  :global(html:not([data-motion="full"])) .undoRedo,
+  :global(html:not([data-motion="full"])) .fillToggle,
+  :global(html:not([data-motion="full"])) .importActions,
+  :global(html:not([data-motion="full"])) .actions {
+    transition: none;
+  }
+}

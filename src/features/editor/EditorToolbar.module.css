@@ -207,3 +207,10 @@
     border: 1px solid ButtonText;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .tool,
+  :global(html:not([data-motion="full"])) .typedTool {
+    transition: none;
+  }
+}

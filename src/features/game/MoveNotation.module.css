@@ -104,3 +104,9 @@
     border: 1px solid ButtonText;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .copyButton {
+    transition: none;
+  }
+}

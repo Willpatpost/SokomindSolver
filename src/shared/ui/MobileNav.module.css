@@ -95,3 +95,9 @@
     color: Highlight;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .item {
+    transition: none;
+  }
+}

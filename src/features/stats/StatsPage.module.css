@@ -581,3 +581,13 @@
     border: 1px solid GrayText;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .backButton,
+  :global(html:not([data-motion="full"])) .exportButton,
+  :global(html:not([data-motion="full"])) .resetButton,
+  :global(html:not([data-motion="full"])) .resetCancel,
+  :global(html:not([data-motion="full"])) .barFill {
+    transition: none;
+  }
+}

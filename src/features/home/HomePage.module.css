@@ -492,3 +492,13 @@
     background: Highlight;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .tier,
+  :global(html:not([data-motion="full"])) .tierBar,
+  :global(html:not([data-motion="full"])) .progressTrack,
+  :global(html:not([data-motion="full"])) .recentItem,
+  :global(html:not([data-motion="full"])) .primaryButton {
+    transition: none;
+  }
+}

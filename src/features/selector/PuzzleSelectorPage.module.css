@@ -766,3 +766,16 @@
     background: Highlight;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .backButton,
+  :global(html:not([data-motion="full"])) .nextButton,
+  :global(html:not([data-motion="full"])) .randomButton,
+  :global(html:not([data-motion="full"])) .filterChip,
+  :global(html:not([data-motion="full"])) .difficultyCard,
+  :global(html:not([data-motion="full"])) .collectionCard,
+  :global(html:not([data-motion="full"])) .puzzleItem,
+  :global(html:not([data-motion="full"])) .cardTrack {
+    transition: none;
+  }
+}

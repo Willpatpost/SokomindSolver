@@ -170,3 +170,9 @@
     outline: 3px solid Highlight;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .cell {
+    transition: none;
+  }
+}

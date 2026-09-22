@@ -483,3 +483,9 @@
     background: LinkText;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-motion="full"])) .tierBar {
+    transition: none;
+  }
+}

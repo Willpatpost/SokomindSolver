@@ -1,5 +1,5 @@
-import type { Direction, GameSession, Position } from "@/src/core/model";
-import { numericPositionKey, positionKey } from "@/src/core/position";
+import type { Direction, GameSession, Position } from "../../core/model.ts";
+import { numericPositionKey, positionKey } from "../../core/index.ts";
 
 const DIRECTIONS: readonly { dir: Direction; dr: number; dc: number }[] = [
   { dir: "up", dr: -1, dc: 0 },
