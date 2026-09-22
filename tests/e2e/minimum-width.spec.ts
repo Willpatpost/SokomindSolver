@@ -44,7 +44,7 @@ test("all play actions and mobile movement guidance remain reachable", async ({
   }
 
   await expect(
-    page.getByText("Swipe the board to move, or use the controls below."),
+    page.getByText("Swipe or tap the board to move, or use the controls below."),
   ).toBeVisible();
   await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "How to play" }).click();

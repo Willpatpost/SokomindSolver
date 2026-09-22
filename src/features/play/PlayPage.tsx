@@ -544,6 +544,7 @@ function ValidatedPlayPage({
             className={styles.boardWrap}
             ref={boardWrapRef}
             onClick={tapToMove.handleBoardClick}
+            onPointerDown={tapToMove.handleBoardPointerDown}
             style={zoom.zoomed ? {
               overflow: "hidden",
               touchAction: "none",
