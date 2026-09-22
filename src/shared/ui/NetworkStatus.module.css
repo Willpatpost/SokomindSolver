@@ -20,6 +20,12 @@
   background: color-mix(in srgb, rgb(26 28 25), var(--coral-500) 12%);
 }
 
+@media (prefers-contrast: more) {
+  .notice {
+    border-width: 2px;
+  }
+}
+
 @media (forced-colors: active) {
   .notice {
     border: 2px solid CanvasText;

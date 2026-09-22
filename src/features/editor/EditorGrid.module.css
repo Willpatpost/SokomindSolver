@@ -171,6 +171,12 @@
   }
 }
 
+@media (prefers-contrast: more) {
+  .grid {
+    border-width: 2px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :global(html:not([data-motion="full"])) .cell {
     transition: none;

@@ -551,6 +551,36 @@
   background: rgb(40 42 38);
 }
 
+@media (prefers-contrast: more) {
+  .iconButton {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .panel {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.2);
+  }
+
+  .themeFamilyOption {
+    border-color: var(--ink-muted);
+  }
+
+  .themeSwatch {
+    border-color: rgb(23 25 22 / 0.3);
+  }
+
+  .motionSetting select,
+  .previewButton {
+    border-color: var(--ink-muted);
+  }
+
+  .previewButton:disabled,
+  .iconButton:disabled {
+    opacity: 0.55;
+  }
+}
+
 @media (forced-colors: active) {
   .iconButton {
     border: 2px solid ButtonText;

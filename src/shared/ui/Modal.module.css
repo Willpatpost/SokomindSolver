@@ -44,6 +44,12 @@
   background: var(--modal-backdrop);
 }
 
+@media (prefers-contrast: more) {
+  .dialog::backdrop {
+    background: rgb(0 0 0 / 0.6);
+  }
+}
+
 @media (forced-colors: active) {
   .dialog {
     border: 2px solid ButtonBorder;

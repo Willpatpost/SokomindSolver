@@ -85,3 +85,32 @@
 :global(html[data-theme="dark"]) .dismiss:hover {
   background: rgb(255 255 255 / 0.08);
 }
+
+@media (prefers-contrast: more) {
+  .banner {
+    border-width: 2px;
+    border-color: rgb(74 127 150 / 0.6);
+  }
+
+  .reload {
+    border: 1px solid rgb(23 25 22 / 0.2);
+  }
+}
+
+@media (forced-colors: active) {
+  .banner {
+    border: 2px solid ButtonBorder;
+    box-shadow: none;
+  }
+
+  .reload {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .dismiss {
+    border: 2px solid ButtonText;
+  }
+}

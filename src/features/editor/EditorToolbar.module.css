@@ -208,6 +208,17 @@
   }
 }
 
+@media (prefers-contrast: more) {
+  .tool,
+  .typedTool {
+    border-color: var(--ink-muted);
+  }
+
+  .labelSelect select {
+    border-color: var(--ink-muted);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :global(html:not([data-motion="full"])) .tool,
   :global(html:not([data-motion="full"])) .typedTool {

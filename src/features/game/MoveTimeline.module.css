@@ -89,6 +89,12 @@
   }
 }
 
+@media (prefers-contrast: more) {
+  .bar {
+    border: 1px solid rgb(23 25 22 / 0.2);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :global(html:not([data-motion="full"])) .segment {
     transition: none;

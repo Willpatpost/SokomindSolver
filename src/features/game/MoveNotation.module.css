@@ -91,6 +91,16 @@
   color: var(--sage-500);
 }
 
+@media (prefers-contrast: more) {
+  .copyButton {
+    border-color: rgb(23 25 22 / 0.25);
+  }
+
+  .notation {
+    border: 1px solid rgb(23 25 22 / 0.15);
+  }
+}
+
 @media (forced-colors: active) {
   .copyButton {
     border: 1px solid ButtonText;

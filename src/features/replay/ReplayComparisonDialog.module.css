@@ -376,6 +376,25 @@
   }
 }
 
+@media (prefers-contrast: more) {
+  .close,
+  .controls > button {
+    border-color: var(--ink-muted);
+  }
+
+  .routeSelectors select,
+  .speed select {
+    border-color: var(--ink-muted);
+  }
+
+  .timeline,
+  .comparisonPanel,
+  .state {
+    border-width: 2px;
+    border-color: rgb(23 25 22 / 0.25);
+  }
+}
+
 @media (forced-colors: active) {
   .marker,
   .markerLegend li > span {
