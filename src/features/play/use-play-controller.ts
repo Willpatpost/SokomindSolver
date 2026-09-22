@@ -58,6 +58,7 @@ function countLabel(count: number, singular: string): string {
 interface PlayControllerOptions {
   readonly onToggleFavorite?: () => boolean;
   readonly onToggleZen?: () => boolean;
+  readonly onBeforeMove?: () => void;
 }
 
 export function usePlayController(
@@ -495,6 +496,7 @@ export function usePlayController(
     enabled: !playback.active,
     gameplayEnabled: inputEnabled,
     onMove: attemptMove,
+    onBeforeMove: options.onBeforeMove,
     onUndo: handleUndo,
     onReset: requestReset,
     onHint: hint.requestHint,

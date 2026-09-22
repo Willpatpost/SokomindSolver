@@ -119,7 +119,7 @@ test("light mode preserves distinct typed box and storage colors", async ({
 test("the six-step route trail fades and shrinks with age", async ({ page }) => {
   await page.goto("./#/play/beginner-typed-line");
   await setExperience(page, { motion: "full" });
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
 
   for (const key of [
     "ArrowLeft",
@@ -160,7 +160,7 @@ test("rapid keeper input never animates farther than one adjacent cell", async (
 }) => {
   await page.goto("./#/play/beginner-typed-line");
   await setExperience(page, { motion: "full" });
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
 
   const route = [
     "ArrowLeft",
@@ -328,7 +328,7 @@ test("completion dialog reflows at 200 percent text size", async ({ page }) => {
   await page.locator("html").evaluate((element) => {
     element.style.fontSize = "200%";
   });
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
 
   const dialog = page.getByRole("dialog", { name: "First Steps" });

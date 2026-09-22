@@ -84,7 +84,7 @@ test("completion hierarchy remains contained and operable at 320 pixels", async 
   page,
 }) => {
   await page.goto("./#/play/ultra-tiny");
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
 
   const dialog = page.getByRole("dialog", { name: "First Steps" });

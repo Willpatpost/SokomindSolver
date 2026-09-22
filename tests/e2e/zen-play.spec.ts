@@ -48,7 +48,7 @@ test("Zen mode is reversible, persistent, and keeps critical actions available",
 test("pausing locks keyboard and swipe movement until play resumes", async ({ page }) => {
   await page.goto("./#/play/beginner-typed-line");
   await expect(page.getByRole("button", { name: "Move left" })).toBeEnabled();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByTestId("moves-count")).toHaveText("1");
 

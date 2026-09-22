@@ -202,9 +202,12 @@ function ValidatedPlayPage({
     setZenMode(enabled);
     return enabled;
   }, [preferences.zenMode, setZenMode]);
+  const cancelWalkRef = useRef<() => void>(() => {});
+  const cancelWalk = useCallback(() => cancelWalkRef.current(), []);
   const game = usePlayController(definition, actionLog, freshAttempt, {
     onToggleFavorite: handleToggleFavorite,
     onToggleZen: handleToggleZen,
+    onBeforeMove: cancelWalk,
   });
   const { session, progress } = game;
   const boardWrapRef = useRef<HTMLDivElement>(null);
@@ -251,6 +254,9 @@ function ValidatedPlayPage({
     reducedMotion: game.reducedMotion,
     applyDirection: game.attemptMove,
   });
+  useEffect(() => {
+    cancelWalkRef.current = tapToMove.cancelWalk;
+  }, [tapToMove.cancelWalk]);
 
   const zoom = usePinchZoom(boardWrapRef);
 
@@ -544,7 +550,6 @@ function ValidatedPlayPage({
             className={styles.boardWrap}
             ref={boardWrapRef}
             onClick={tapToMove.handleBoardClick}
-            onPointerDown={tapToMove.handleBoardPointerDown}
             style={zoom.zoomed ? {
               overflow: "hidden",
               touchAction: "none",
@@ -582,7 +587,7 @@ function ValidatedPlayPage({
 
           <p className={styles.mobileMoveCue}>
             <span className={styles.swipeGlyphs} aria-hidden="true">← ↑ ↓ →</span>
-            <span>Swipe or tap the board to move, or use the controls below.</span>
+            <span>Click, swipe, or tap the board to move, or use the controls below.</span>
           </p>
 
           {zenMode ? (
@@ -593,7 +598,7 @@ function ValidatedPlayPage({
                 canHint={game.hint.canHint}
                 hintThinking={game.hint.phase === "thinking"}
                 disabled={!game.inputEnabled}
-                onMove={game.attemptMove}
+                onMove={(dir) => { tapToMove.cancelWalk(); game.attemptMove(dir); }}
                 onUndo={game.handleUndo}
                 onHint={game.hint.requestHint}
                 onReset={game.requestReset}
@@ -629,7 +634,7 @@ function ValidatedPlayPage({
           hintThinking={game.hint.phase === "thinking"}
           showLegend={Object.keys(progress.completed).length < 3}
           session={session}
-          onMove={game.attemptMove}
+          onMove={(dir) => { tapToMove.cancelWalk(); game.attemptMove(dir); }}
           onHint={game.hint.requestHint}
           onReset={game.requestReset}
           onUndo={game.handleUndo}

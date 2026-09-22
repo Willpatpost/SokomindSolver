@@ -21,6 +21,7 @@ interface GameKeyboardOptions {
   /** Whether shortcuts that mutate or leave the current room may run. */
   readonly gameplayEnabled?: boolean;
   readonly onMove: (direction: Direction) => void;
+  readonly onBeforeMove?: () => void;
   readonly onUndo: () => void;
   readonly onReset: () => void;
   readonly onHint?: () => void;
@@ -37,6 +38,7 @@ export function useGameKeyboard({
   enabled = true,
   gameplayEnabled = true,
   onMove,
+  onBeforeMove,
   onUndo,
   onReset,
   onHint,
@@ -80,6 +82,7 @@ export function useGameKeyboard({
       const direction = KEY_DIRECTIONS[event.key];
       if (direction) {
         event.preventDefault();
+        onBeforeMove?.();
         onMove(direction);
         return;
       }
@@ -113,5 +116,5 @@ export function useGameKeyboard({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, gameplayEnabled, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
+  }, [enabled, gameplayEnabled, onBeforeMove, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
 }

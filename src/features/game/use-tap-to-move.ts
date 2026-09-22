@@ -17,7 +17,6 @@ export function useTapToMove({
 }: UseTapToMoveOptions) {
   const walkTokenRef = useRef(0);
   const walkTimerRef = useRef<number | undefined>(undefined);
-  const lastTouchRef = useRef(0);
 
   const cancelWalk = useCallback(() => {
     walkTokenRef.current += 1;
@@ -32,7 +31,6 @@ export function useTapToMove({
   const handleBoardClick = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
       if (!enabled) return;
-      if (Date.now() - lastTouchRef.current > 800) return;
 
       const target = event.target as HTMLElement;
       if (target.closest("button, a, [role='button']")) return;
@@ -88,14 +86,5 @@ export function useTapToMove({
     [applyDirection, cancelWalk, enabled, reducedMotion, sessionRef],
   );
 
-  const handleBoardPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
-      if (event.pointerType === "touch") {
-        lastTouchRef.current = Date.now();
-      }
-    },
-    [],
-  );
-
-  return { handleBoardClick, handleBoardPointerDown, cancelWalk };
+  return { handleBoardClick, cancelWalk };
 }

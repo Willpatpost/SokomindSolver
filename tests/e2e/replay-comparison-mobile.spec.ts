@@ -5,7 +5,7 @@ test("replay study remains contained and operable on a phone viewport", async ({
 }) => {
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
   const completion = page.getByRole("dialog", { name: "First Steps" });
   await completion.getByRole("button", { name: /Review and compare replay/u }).click();

@@ -5,7 +5,7 @@ import { PUZZLE_METADATA } from "../../src/catalog/puzzle-metadata";
 test.beforeEach(async ({ page }) => {
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
 });
 
 test("loads below the Pages subpath and passes an accessibility scan", async ({
@@ -61,7 +61,7 @@ test("verified optimal clears receive the highest milestone treatment", async ({
     }));
   }, fingerprint);
   await page.reload();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
 
   const dialog = page.getByRole("dialog", { name: "First Steps" });
@@ -106,7 +106,7 @@ test("the final room in an existing collection announces collection completion",
     }));
   }, priorPuzzleIds);
   await page.reload();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
 
   const dialog = page.getByRole("dialog", { name: "First Steps" });

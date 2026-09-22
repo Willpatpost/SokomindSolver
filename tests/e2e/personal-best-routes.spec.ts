@@ -38,7 +38,7 @@ test("retains replay-verified personal-best history and exposes storage controls
 }) => {
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
 
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowRight");
@@ -118,7 +118,7 @@ test("quota-limited route storage never prevents play or summary progress", asyn
   });
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
 
   const completion = page.getByRole("dialog", { name: "First Steps" });

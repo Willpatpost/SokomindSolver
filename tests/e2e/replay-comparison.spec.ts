@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 async function saveTwoPersonalBests(page: Page) {
   await page.goto("./#/play/ultra-tiny");
   await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowDown");
@@ -80,7 +80,7 @@ test("a single saved route still provides replay, seek, speed, and textual state
   const settings = page.getByRole("dialog", { name: "Sound & motion" });
   await settings.getByRole("combobox", { name: /motion/i }).selectOption("reduced");
   await settings.getByRole("button", { name: "Close" }).click();
-  await page.getByTestId("game-board").click();
+  await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");
   const completion = page.getByRole("dialog", { name: "First Steps" });
   await completion.getByRole("button", { name: /Review and compare replay/u }).click();
