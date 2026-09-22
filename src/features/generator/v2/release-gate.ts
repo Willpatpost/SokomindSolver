@@ -28,6 +28,8 @@ import {
   checkStoryDiversityForRelease, summarizeStoryDiversity, storyDiversityLimits,
   type StoryCatalogDiversity,
 } from "./story-diversity.ts";
+import { boardHash } from "./puzzle-identity.ts";
+import { replayWitness } from "./generation-evidence.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -57,6 +59,10 @@ export interface ReleaseGateConfig {
   readonly minDistinctModes: number;
   /** Minimum number of distinct box-count values across the entire catalog. */
   readonly minDistinctBoxCounts: number;
+  /** Require playtest evidence on every candidate for release (default true). */
+  readonly requirePlaytestEvidence?: boolean;
+  /** Minimum enjoyment rating to pass release gate (1-5). */
+  readonly minEnjoymentRating?: number;
 }
 
 export const DEFAULT_RELEASE_GATE_CONFIG: ReleaseGateConfig = {
@@ -75,6 +81,8 @@ export const DEFAULT_RELEASE_GATE_CONFIG: ReleaseGateConfig = {
   minDistinctTopologies: 2,
   minDistinctModes: 2,
   minDistinctBoxCounts: 2,
+  requirePlaytestEvidence: true,
+  minEnjoymentRating: 2,
 };
 
 // ---------------------------------------------------------------------------
@@ -574,6 +582,23 @@ export function checkReleaseGate(
       // Legacy structural counters are not bounded-search proofs. The current
       // story policy checks realized mechanisms without penalizing unknown probes.
     }
+
+    if (config.requirePlaytestEvidence) {
+      if (!pack.playtestEvidence) {
+        errors.push(`Puzzle "${pack.id}": missing mandatory playtest evidence`);
+      } else {
+        if (pack.playtestEvidence.testerIds.length === 0) {
+          errors.push(`Puzzle "${pack.id}": playtest evidence has no testers`);
+        }
+        if (pack.playtestEvidence.solveTimeSeconds <= 0) {
+          errors.push(`Puzzle "${pack.id}": playtest solve time must be positive`);
+        }
+        const minEnjoyment = config.minEnjoymentRating ?? 1;
+        if (pack.playtestEvidence.enjoymentRating < minEnjoyment) {
+          errors.push(`Puzzle "${pack.id}": enjoyment rating ${pack.playtestEvidence.enjoymentRating} below minimum ${minEnjoyment}`);
+        }
+      }
+    }
   }
 
   // ---- 5. Difficulty gap ----
@@ -680,6 +705,43 @@ export function checkReleaseGate(
     storyDiversity,
     totalPuzzles,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fresh promotion verification — Item 28
+// ---------------------------------------------------------------------------
+
+export interface PromotionFreshnessResult {
+  readonly passed: boolean;
+  readonly errors: readonly string[];
+}
+
+export function verifyPromotionFreshness(
+  packs: readonly ReviewCandidatePack[],
+): PromotionFreshnessResult {
+  const errors: string[] = [];
+  for (const pack of packs) {
+    if (pack.rows && pack.rows.length > 0) {
+      const computedHash = boardHash(pack.rows);
+      if (computedHash !== pack.boardHash) {
+        errors.push(`Puzzle "${pack.id}": board hash mismatch (stored=${pack.boardHash}, computed=${computedHash})`);
+      }
+    }
+
+    if (pack.rows && pack.solutionSteps && pack.solutionSteps.length > 0) {
+      const puzzle = { id: pack.id, title: pack.id, rows: pack.rows, difficulty: pack.difficulty, boxes: pack.boxCount };
+      if (!replayWitness(puzzle, pack.solutionSteps)) {
+        errors.push(`Puzzle "${pack.id}": solution does not replay against stored rows`);
+      }
+    } else if (!pack.solutionSteps || pack.solutionSteps.length === 0) {
+      errors.push(`Puzzle "${pack.id}": missing solution steps for replay verification`);
+    }
+
+    if (!pack.qualityPassed) {
+      errors.push(`Puzzle "${pack.id}": quality gate not passed`);
+    }
+  }
+  return { passed: errors.length === 0, errors };
 }
 
 // ---------------------------------------------------------------------------

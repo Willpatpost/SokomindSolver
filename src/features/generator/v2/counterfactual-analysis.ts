@@ -21,6 +21,14 @@ const DEFAULT_COUNTERFACTUAL_BUDGET: CounterfactualBudget = Object.freeze({
   minDelayedPushes: 2,
 });
 
+export const FINALIST_COUNTERFACTUAL_BUDGET: CounterfactualBudget = Object.freeze({
+  maxProbes: 32,
+  maxStatesPerProbe: 1024,
+  maxTotalStates: 8192,
+  maxElapsedMs: 500,
+  minDelayedPushes: 2,
+});
+
 /** "solved" means the query has a witness; freeze-enabler only asks for a target push. */
 export type CounterfactualOutcome = "solved" | "exhausted" | "unknown";
 export type CounterfactualProbeKind = "alternative-push" | "preserve-goal" | "freeze-enabler";
@@ -167,10 +175,20 @@ function collectProbes(
       support: push.keeperSupport, destination: push.to,
     });
   }
-  // Round-robin families and spread alternatives across the complete solution.
-  // This avoids spending every probe on the first few pushes of a long puzzle.
+  // Prioritize probes by importance:
+  // 1. Dependencies (staging, enablers) get highest priority
+  // 2. Plausible alternatives with goal-relevant boxes
+  // 3. Other plausible alternatives spread across the solution
+  // 4. Remaining alternatives
   const plausible = alternatives.filter((probe) => probe.plausible);
   const other = alternatives.filter((probe) => !probe.plausible);
+
+  const goalRelevant = plausible.filter((p) => {
+    const dist = distances[p.boxId].get(key(state.boxes[p.boxId]));
+    return dist !== undefined && dist <= 3;
+  });
+  const nonGoalRelevant = plausible.filter((p) => !goalRelevant.includes(p));
+
   const spread = (items: Probe[]) => {
     const result: Probe[] = [];
     const intervals = [[0, items.length - 1]];
@@ -183,7 +201,7 @@ function collectProbes(
     }
     return result;
   };
-  const families = [dependencies, spread(plausible), spread(other)];
+  const families = [dependencies, goalRelevant, spread(nonGoalRelevant), spread(other)];
   const result: Probe[] = [];
   for (let index = 0; families.some((family) => index < family.length); index++) {
     for (const family of families) if (family[index]) result.push(family[index]);

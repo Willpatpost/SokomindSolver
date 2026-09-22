@@ -60,8 +60,16 @@ export function buildPuzzleFromScramble(
   scrambled: ScrambledState,
   difficulty: Difficulty,
 ): PuzzleDefinition {
-  const { template, boxPositions, robotPosition } = scrambled;
+  const { template, boxPositions } = scrambled;
+  let { robotPosition } = scrambled;
   const grid: string[][] = template.grid.map((row) => [...row]);
+
+  const goalKeys = new Set(template.goalPositions.map(posKey));
+  const boxKeys = new Set(boxPositions.map(posKey));
+
+  if (goalKeys.has(posKey(robotPosition))) {
+    robotPosition = relocateRobot(grid, goalKeys, boxKeys, robotPosition);
+  }
 
   for (const gp of template.goalPositions) {
     grid[gp.row][gp.column] = "S";
@@ -82,6 +90,37 @@ export function buildPuzzleFromScramble(
     boxes: boxPositions.length,
     rows,
   };
+}
+
+function relocateRobot(
+  grid: readonly (readonly string[])[],
+  goalKeys: ReadonlySet<string>,
+  boxKeys: ReadonlySet<string>,
+  original: GridPosition,
+): GridPosition {
+  const h = grid.length;
+  const w = grid[0].length;
+  const deltas: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const visited = new Set<string>();
+  const queue: GridPosition[] = [original];
+  visited.add(posKey(original));
+
+  while (queue.length > 0) {
+    const pos = queue.shift()!;
+    for (const [dr, dc] of deltas) {
+      const nr = pos.row + dr;
+      const nc = pos.column + dc;
+      if (nr < 0 || nr >= h || nc < 0 || nc >= w) continue;
+      const k = posKey({ row: nr, column: nc });
+      if (visited.has(k)) continue;
+      visited.add(k);
+      if (grid[nr][nc] === "O") continue;
+      const candidate = { row: nr, column: nc };
+      if (!goalKeys.has(k) && !boxKeys.has(k)) return candidate;
+      queue.push(candidate);
+    }
+  }
+  return original;
 }
 
 export async function generatePuzzle(

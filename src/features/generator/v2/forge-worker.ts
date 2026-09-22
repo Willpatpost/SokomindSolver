@@ -1,15 +1,14 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { setImmediate } from "node:timers/promises";
 import { completeCandidateFromBlueprint, generateBlueprintCandidate, generateRawCandidate } from "./puzzle-forge.ts";
-import type { ForgeConfig, BlueprintCandidate, ReverseStart } from "./puzzle-forge.ts";
+import type { ForgeConfig, BlueprintCandidate, ReverseStart, RefinementTaskResult } from "./puzzle-forge.ts";
 import type { ForgeTask } from "./forge-protocol.ts";
 import { classifyDifficultyByBoxCount } from "./difficulty-model.ts";
 import { evaluateFinalistV4, computeCurationObjectives } from "./finalist-evaluator.ts";
 import { configureSearchScheduler } from "../../../solver/search/scheduling.ts";
 import { evaluatePuzzle } from "./puzzle-evaluator.ts";
+import { refinePuzzle } from "./puzzle-refiner.ts";
 
-// This isolate runs one CPU job at a time. Yield often enough for host messages,
-// without imposing the browser timer's minimum sleep every 256 search states.
 let lastYield = performance.now();
 configureSearchScheduler(async () => {
   if (performance.now() - lastYield >= 25) {
@@ -34,6 +33,11 @@ async function execute(task: ForgeTask): Promise<unknown> {
       const deepScore = objectives.interaction + objectives.dependency + objectives.decisionQuality +
         objectives.structuralRichness + objectives.solverChallenge - objectives.tedium * 3;
       return { finalist, objectives, deepScore };
+    }
+    case "refinement": {
+      const p = task.payload;
+      const refined = await refinePuzzle(p.puzzle, p.solutionScore, p.solutionSteps, p.maxIterations, p.seed, undefined, p.budget);
+      return { refined } satisfies RefinementTaskResult;
     }
   }
   throw new Error("Unknown forge task kind");

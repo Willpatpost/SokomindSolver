@@ -1,6 +1,8 @@
 import type { Difficulty } from "../../../core/model.ts";
 import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
 
+export type BoxCountBand = "small" | "medium" | "large" | "huge";
+
 export interface V4DifficultyProfile {
   readonly structuralScale: number;
   readonly solutionDepth: number;
@@ -8,6 +10,7 @@ export interface V4DifficultyProfile {
   readonly tediumPenalty: number;
   readonly composite: number;
   readonly classification: Difficulty;
+  readonly boxCountBand: BoxCountBand;
   readonly confidenceNote: string;
 }
 
@@ -169,14 +172,17 @@ export function computeV4Profile(ev: PuzzleEvaluationVector): V4DifficultyProfil
     tediumPenalty,
     composite,
   );
+  const boxCountBand: BoxCountBand =
+    ev.boxCount >= 14 ? "huge" : ev.boxCount >= 8 ? "large" : ev.boxCount >= 4 ? "medium" : "small";
   const confidenceNote =
-    `classified from structural scale, solution depth, reasoning complexity, and tedium; ${ev.boxCount} boxes is a scale input`;
+    `classified from structural scale, solution depth, reasoning complexity, and tedium; ${ev.boxCount} boxes (${boxCountBand}) is a scale input, not a difficulty rating`;
 
   return {
     structuralScale,
     solutionDepth,
     humanReasoningComplexity,
     tediumPenalty,
+    boxCountBand,
     composite,
     classification,
     confidenceNote,

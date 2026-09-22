@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   evaluateFinalist,
+  evaluateFinalistV4,
   computeCurationObjectives,
   nonDominatedSort,
   computeNoveltyScores,
@@ -307,4 +308,33 @@ test("diagnosePopulation handles empty population", () => {
   assert.equal(diag.totalCandidates, 0);
   assert.equal(diag.frontCount, 0);
   assert.equal(diag.frontSizes.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// V4 distinct routes
+// ---------------------------------------------------------------------------
+
+test("evaluateFinalistV4 retains solver steps in evidence", async () => {
+  const puzzle = PUZZLE_BY_ID["ultra-tiny"];
+  assert.ok(puzzle);
+  const result = await evaluateFinalistV4(puzzle);
+  const solved = result.solverEvidence.filter(e => e.status === "solved");
+  for (const ev of solved) {
+    assert.ok(ev.steps, `${ev.solverId} should retain steps`);
+    assert.ok(ev.steps!.length > 0, `${ev.solverId} steps should be non-empty`);
+  }
+});
+
+test("evaluateFinalistV4 produces distinctRoutes with push fingerprints", async () => {
+  const puzzle = PUZZLE_BY_ID["ultra-tiny"];
+  assert.ok(puzzle);
+  const result = await evaluateFinalistV4(puzzle);
+  assert.ok(result.distinctRoutes.length >= 1, "at least one distinct route");
+  const fps = new Set(result.distinctRoutes.map(r => r.pushFingerprint));
+  assert.equal(fps.size, result.distinctRoutes.length, "no duplicate fingerprints");
+  for (const route of result.distinctRoutes) {
+    assert.ok(route.steps.length > 0, "route steps must be non-empty");
+    assert.ok(route.pushes > 0, "route must have pushes");
+    assert.equal(typeof route.pushFingerprint, "string");
+  }
 });

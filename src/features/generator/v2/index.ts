@@ -187,12 +187,19 @@ export {
   deriveGeometryRequirements,
   selectTargetMechanisms,
   constrainBlueprintParams,
+  mechanismCombinationKey,
+  buildMechanismCoverage,
+  enumerateFeasiblePairs,
+  coverageGap,
+  selectMechanismsWithCoverage,
   MECHANISM_CATALOG,
 } from "./mechanism-plan.ts";
 
 export type {
   MechanismCatalogEntry,
   MechanismPlacementResult,
+  MechanismCombinationRecord,
+  MechanismCoverageMap,
 } from "./mechanism-plan.ts";
 
 export {
@@ -224,6 +231,13 @@ export {
   validateBlueprintGeometry,
   validateFinalGeometry,
   resolveBoxTypingMode,
+  qualifyCandidate,
+  validateQuotaQualitySeparation,
+  checkRunLimits,
+  serializeCheckpoint,
+  resumableSeeds,
+  buildRunManifest,
+  computeUsefulOutput,
   DEFAULT_FORGE_CONFIG,
   DEFAULT_FORGE_GATES,
   QUALITY_PRESETS,
@@ -235,6 +249,9 @@ export type {
   FunnelBudgets,
   FunnelStageStats,
   QualityPreset,
+  QualificationInput,
+  QualificationResult,
+  QuotaQualityValidation,
   SolverCallReduction,
   BlueprintCandidate,
   ForgeConfig,
@@ -245,6 +262,12 @@ export type {
   ForgeRejectionReason,
   ForgeRejection,
   ForgeRunResult,
+  ForgeRunLimits,
+  ForgeRunManifest,
+  ResumableCheckpoint,
+  UsefulOutputMetrics,
+  RefinementTaskPayload,
+  RefinementTaskResult,
   ForgeSummary,
 } from "./puzzle-forge.ts";
 
@@ -270,12 +293,21 @@ export {
   framePuzzleRows,
   boardHash,
   symmetryHash,
+  layoutHash,
+  layoutSymmetryHash,
+  structuralSimilarity,
+  findNearDuplicates,
   createGeneratedPuzzleId,
+} from "./puzzle-identity.ts";
+
+export type {
+  StructuralSimilarityResult,
 } from "./puzzle-identity.ts";
 
 export type {
   GeneratedPuzzleManifest,
   GeneratedPuzzleManifestEntry,
+  PlaytestEvidence,
   ReviewCandidatePack,
   ReviewCatalog,
   ReviewCatalogTierSummary,
@@ -304,6 +336,7 @@ export {
   checkReleaseGate,
   checkReviewManifestBinding,
   formatReleaseVerdict,
+  verifyPromotionFreshness,
   DEFAULT_RELEASE_GATE_CONFIG,
 } from "./release-gate.ts";
 
@@ -311,16 +344,24 @@ export type {
   ReleaseGateTierQuota,
   ReleaseGateConfig,
   ReleaseGateVerdict,
+  PromotionFreshnessResult,
 } from "./release-gate.ts";
 
 export {
   enumerateForgeCombinations,
   createForgeSchedule,
+  createAdaptiveForgeSchedule,
+  combinationKey,
+  computeSamplingWeights,
+  buildRejectionHistory,
+  mergeRejectionHistories,
 } from "./forge-sampling.ts";
 
 export type {
   ForgeCombination,
   ForgeScheduleEntry,
+  CombinationRejectionRecord,
+  RejectionHistory,
 } from "./forge-sampling.ts";
 
 export {
@@ -365,6 +406,7 @@ export {
 } from "./catalog-presentation.ts";
 
 export type {
+  BoxCountBand,
   V4DifficultyProfile,
   V4DifficultyThresholds,
   V4BenchmarkEntry,
@@ -379,16 +421,22 @@ export type {
 
 export {
   scoreSolution,
+  measureTedium,
   type SolutionScore,
+  type TediumMetrics,
 } from "./solution-scoring.ts";
 
 export {
   analyzeInteraction,
   analyzeInteractionFromTrace,
+  classifyNecessity,
 } from "./interaction-analysis.ts";
 
 export type {
   InteractionMetrics,
+  MechanismNecessity,
+  BoxNecessityProfile,
+  NecessityAnalysis,
 } from "./interaction-analysis.ts";
 
 export {
@@ -494,6 +542,7 @@ export type {
   SolverEvidence,
   FinalistEvaluation,
   FinalistEvaluationV4,
+  DistinctRoute,
   CurationObjectives,
   FinalistEvaluatorConfig,
 } from "./finalist-evaluator.ts";
@@ -540,6 +589,9 @@ export {
   selectWithDiversityQuotas,
   buildNormalizationContext,
   diagnosePopulation,
+  buildProgressionProfile,
+  selectForProgression,
+  DEFAULT_TIER_QUOTAS,
 } from "./curation.ts";
 
 export type {
@@ -547,6 +599,8 @@ export type {
   DiversityQuotas,
   NormalizationContext,
   PopulationDiagnostics,
+  TierQuota,
+  ProgressionProfile,
 } from "./curation.ts";
 
 export { WALL_CHAR } from "./tile-semantics.ts";
@@ -573,7 +627,25 @@ export type {
   StoryQualityMeasurements, StoryQualityReport, StoryQualityRejectionCode, StoryQualityViolation,
 } from "./story-quality-policy.ts";
 
-export { analyzeCounterfactualStory } from "./counterfactual-analysis.ts";
+export { detectShortcuts } from "./shortcut-detection.ts";
+export type {
+  BoxUsageProfile,
+  RouteComparison,
+  ShortcutAnalysis,
+} from "./shortcut-detection.ts";
+
+export {
+  progressiveBudget,
+  DEFAULT_PROGRESSIVE_POLICY,
+} from "./generation-evidence.ts";
+
+export type {
+  ProgressiveEvaluationPolicy,
+  ProgressiveEvaluationTier,
+  GenerationSearchBudget,
+} from "./generation-evidence.ts";
+
+export { analyzeCounterfactualStory, FINALIST_COUNTERFACTUAL_BUDGET } from "./counterfactual-analysis.ts";
 export type {
   CounterfactualBudget,
   CounterfactualOutcome,

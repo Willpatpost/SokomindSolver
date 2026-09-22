@@ -163,3 +163,100 @@ export function createGeneratedPuzzleId(
 ): string {
   return `gen-v2-${seed}-${boardHash(rows)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Structural similarity — Item 18: catalog-wide near-duplicate detection
+// ---------------------------------------------------------------------------
+
+function toLayoutChar(ch: string): string {
+  if (ch === WALL) return WALL;
+  return " ";
+}
+
+export function layoutHash(rows: readonly string[]): string {
+  const canonical = canonicalizeRows(rows);
+  const layout = canonical.map((row) => [...row].map(toLayoutChar).join(""));
+  return toHex8(fnv1a32(layout.join("\n")));
+}
+
+export function layoutSymmetryHash(rows: readonly string[]): string {
+  const transforms = [
+    rows,
+    mirrorHorizontal(rows),
+    mirrorVertical(rows),
+    rotate180(rows),
+  ];
+
+  let minSerialized: string | undefined;
+  for (const t of transforms) {
+    const canonical = canonicalizeRows(t);
+    const layout = canonical.map((row) => [...row].map(toLayoutChar).join(""));
+    const serialized = layout.join("\n");
+    if (minSerialized === undefined || serialized < minSerialized) {
+      minSerialized = serialized;
+    }
+  }
+
+  return toHex8(fnv1a32(minSerialized!));
+}
+
+export interface StructuralSimilarityResult {
+  readonly similarity: number;
+  readonly layoutMatch: boolean;
+  readonly symmetryLayoutMatch: boolean;
+  readonly cellOverlap: number;
+  readonly dimensionMatch: boolean;
+}
+
+export function structuralSimilarity(
+  rowsA: readonly string[],
+  rowsB: readonly string[],
+): StructuralSimilarityResult {
+  const canonA = canonicalizeRows(rowsA);
+  const canonB = canonicalizeRows(rowsB);
+
+  const hA = canonA.length;
+  const wA = canonA[0]?.length ?? 0;
+  const hB = canonB.length;
+  const wB = canonB[0]?.length ?? 0;
+
+  const dimensionMatch = hA === hB && wA === wB;
+  const lHash = layoutHash(rowsA) === layoutHash(rowsB);
+  const slHash = layoutSymmetryHash(rowsA) === layoutSymmetryHash(rowsB);
+
+  if (!dimensionMatch) {
+    return { similarity: 0, layoutMatch: lHash, symmetryLayoutMatch: slHash, cellOverlap: 0, dimensionMatch: false };
+  }
+
+  let matching = 0;
+  let total = 0;
+  for (let r = 0; r < hA; r++) {
+    for (let c = 0; c < wA; c++) {
+      total++;
+      const a = toLayoutChar(canonA[r][c]);
+      const b = toLayoutChar(canonB[r][c]);
+      if (a === b) matching++;
+    }
+  }
+
+  const cellOverlap = total > 0 ? matching / total : 0;
+  const similarity = lHash ? 1.0 : slHash ? 0.95 : cellOverlap;
+
+  return { similarity, layoutMatch: lHash, symmetryLayoutMatch: slHash, cellOverlap, dimensionMatch };
+}
+
+export function findNearDuplicates(
+  candidate: readonly string[],
+  catalog: readonly { readonly id: string; readonly rows: readonly string[] }[],
+  threshold: number = 0.85,
+): readonly { readonly id: string; readonly similarity: number }[] {
+  const results: { id: string; similarity: number }[] = [];
+  for (const entry of catalog) {
+    const result = structuralSimilarity(candidate, entry.rows);
+    if (result.similarity >= threshold) {
+      results.push({ id: entry.id, similarity: result.similarity });
+    }
+  }
+  results.sort((a, b) => b.similarity - a.similarity);
+  return results;
+}

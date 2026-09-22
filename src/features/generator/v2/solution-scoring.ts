@@ -1,5 +1,5 @@
 import type { PuzzleDefinition, Direction, Position } from "../../../core/model.ts";
-import type { SolverSolution } from "../../../solver/contracts.ts";
+import type { SolverSolution, SolutionStep } from "../../../solver/contracts.ts";
 import { createSession, stepSnapshot } from "../../../core/game-session.ts";
 
 export interface SolutionScore {
@@ -9,6 +9,15 @@ export interface SolutionScore {
   readonly choicePoints: number;
   readonly roomTransitions: number;
   readonly composite: number;
+}
+
+export interface TediumMetrics {
+  readonly longestForcedRunLength: number;
+  readonly longestWalkStreak: number;
+  readonly walkToPushRatio: number;
+  readonly repeatedTraversalCells: number;
+  readonly totalWalks: number;
+  readonly totalPushes: number;
 }
 
 function distToNearest(pos: Position, targets: readonly Position[]): number {
@@ -96,5 +105,55 @@ export function scoreSolution(
     choicePoints,
     roomTransitions,
     composite,
+  };
+}
+
+export function measureTedium(steps: readonly SolutionStep[]): TediumMetrics {
+  let totalWalks = 0;
+  let totalPushes = 0;
+  let longestWalkStreak = 0;
+  let currentWalkStreak = 0;
+  let longestForcedRunLength = 0;
+  let currentForcedRun = 0;
+  let lastPushDir: string | null = null;
+  const visitedCells = new Map<string, number>();
+  let row = 0;
+  let col = 0;
+
+  for (const step of steps) {
+    if (step.kind === "walk") {
+      totalWalks++;
+      currentWalkStreak++;
+      if (currentWalkStreak > longestWalkStreak) longestWalkStreak = currentWalkStreak;
+    } else {
+      totalPushes++;
+      currentWalkStreak = 0;
+      if (lastPushDir === step.direction) {
+        currentForcedRun++;
+        if (currentForcedRun > longestForcedRunLength) longestForcedRunLength = currentForcedRun;
+      } else {
+        currentForcedRun = 1;
+      }
+      lastPushDir = step.direction;
+    }
+
+    const dr = step.direction === "up" ? -1 : step.direction === "down" ? 1 : 0;
+    const dc = step.direction === "left" ? -1 : step.direction === "right" ? 1 : 0;
+    row += dr;
+    col += dc;
+    const key = `${row},${col}`;
+    visitedCells.set(key, (visitedCells.get(key) ?? 0) + 1);
+  }
+
+  const repeatedTraversalCells = [...visitedCells.values()].filter(c => c >= 3).length;
+  const walkToPushRatio = totalPushes > 0 ? totalWalks / totalPushes : 0;
+
+  return {
+    longestForcedRunLength,
+    longestWalkStreak,
+    walkToPushRatio,
+    repeatedTraversalCells,
+    totalWalks,
+    totalPushes,
   };
 }

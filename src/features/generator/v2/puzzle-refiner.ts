@@ -1,14 +1,23 @@
 import type { PuzzleDefinition } from "../../../core/model.ts";
-import type { SolverResult } from "../../../solver/contracts.ts";
+import type { SolverResult, SolverSolution, SolutionStep } from "../../../solver/contracts.ts";
 import { createSession } from "../../../core/game-session.ts";
 import { classicAStarSolver } from "../../../solver/implementations/classic-solvers.ts";
 import { validatePuzzleRows } from "../../../core/puzzle.ts";
 import { scoreSolution, type SolutionScore } from "./solution-scoring.ts";
 
+export interface RefinementBudget {
+  readonly maxIterations?: number;
+  readonly maxElapsedMs?: number;
+  readonly maxSolverCalls?: number;
+}
+
 export interface RefinementResult {
   readonly puzzle: PuzzleDefinition;
+  readonly solutionSteps: readonly SolutionStep[];
   readonly solutionScore: SolutionScore;
   readonly iterations: number;
+  readonly solverCalls: number;
+  readonly elapsedMs: number;
   readonly improved: boolean;
 }
 
@@ -183,23 +192,48 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+function isConstrainedImprovement(
+  baseline: SolutionScore,
+  candidate: SolutionScore,
+  solution: SolverSolution,
+): boolean {
+  if (candidate.composite <= baseline.composite) return false;
+  if (candidate.pushVariety < baseline.pushVariety * 0.8) return false;
+  if (candidate.directionChanges < baseline.directionChanges * 0.7) return false;
+  const movesPerPush = solution.moves / Math.max(solution.pushes, 1);
+  if (movesPerPush > 12) return false;
+  return true;
+}
+
 export async function refinePuzzle(
   puzzle: PuzzleDefinition,
   baseScore: SolutionScore,
+  baseSteps: readonly SolutionStep[],
   maxIterations: number = 20,
   seed: number = 42,
   signal?: AbortSignal,
+  budget?: RefinementBudget,
 ): Promise<RefinementResult> {
+  const startMs = performance.now();
+  const iterLimit = budget?.maxIterations ?? maxIterations;
+  const msLimit = budget?.maxElapsedMs ?? Infinity;
+  const callLimit = budget?.maxSolverCalls ?? Infinity;
+
   const rng = mulberry32(seed);
   let bestPuzzle = puzzle;
   let bestScore = baseScore;
+  let bestSteps: readonly SolutionStep[] = baseSteps;
   let improved = false;
+  let totalSolverCalls = 0;
+  let iter = 0;
 
   const perturbations: Perturbation[] = ["add-wall", "remove-wall", "swap-goals", "move-robot"];
 
-  for (let iter = 0; iter < maxIterations; iter++) {
+  for (; iter < iterLimit; iter++) {
     if (signal?.aborted) break;
     if (bestScore.composite >= 0.7) break;
+    if (performance.now() - startMs >= msLimit) break;
+    if (totalSolverCalls >= callLimit) break;
 
     const pertType = perturbations[Math.floor(rng() * perturbations.length)];
     const grid = parseGrid(bestPuzzle.rows);
@@ -263,6 +297,7 @@ export async function refinePuzzle(
 
     let solveResult: SolverResult;
     try {
+      totalSolverCalls++;
       solveResult = await trySolve(candidate, signal);
     } catch {
       continue;
@@ -277,17 +312,21 @@ export async function refinePuzzle(
       continue;
     }
 
-    if (candidateScore.composite > bestScore.composite) {
+    if (isConstrainedImprovement(bestScore, candidateScore, solveResult.solution)) {
       bestPuzzle = candidate;
       bestScore = candidateScore;
+      bestSteps = solveResult.solution.steps;
       improved = true;
     }
   }
 
   return {
     puzzle: bestPuzzle,
+    solutionSteps: bestSteps,
     solutionScore: bestScore,
-    iterations: maxIterations,
+    iterations: iter,
+    solverCalls: totalSolverCalls,
+    elapsedMs: performance.now() - startMs,
     improved,
   };
 }

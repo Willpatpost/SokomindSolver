@@ -169,6 +169,7 @@ function makeCandidate(
   return {
     puzzle,
     provenance,
+    evidenceBoardHash: boardHash(puzzle.rows),
     evaluation: makeEvaluation(evalOverrides),
     qualityProfile: {
       story: syntheticStoryReport(boardHash(puzzle.rows), provenance.boxCount, provenance.genericBoxCount),
@@ -355,6 +356,7 @@ describe("release-gate", () => {
       });
       const config: ReleaseGateConfig = {
         ...DEFAULT_RELEASE_GATE_CONFIG,
+        requirePlaytestEvidence: false,
         minTotalPuzzles: 5,
         tierQuotas: {
           tutorial: { min: 0, target: 0 },
@@ -704,6 +706,7 @@ describe("release-gate", () => {
       });
       const verdict = checkReleaseGate(catalog, {
         ...DEFAULT_RELEASE_GATE_CONFIG,
+        requirePlaytestEvidence: false,
         minTotalPuzzles: 10,
         tierQuotas: {
           tutorial: { min: 0, target: 0 },

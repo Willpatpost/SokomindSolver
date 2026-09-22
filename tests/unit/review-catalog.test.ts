@@ -13,6 +13,7 @@ import {
   type V4DifficultyProfile,
 } from "../../src/features/generator/v2/index.ts";
 import type { PuzzleDefinition, Difficulty } from "../../src/core/model.ts";
+import { boardHash } from "../../src/features/generator/v2/puzzle-identity.ts";
 import { analyzeCounterfactualStory } from "../../src/features/generator/v2/counterfactual-analysis.ts";
 import { DELAYED_FALSE_START } from "../fixtures/generator/counterfactual-stories.ts";
 import { fixtureTrace } from "../support/counterfactual-replay.ts";
@@ -136,10 +137,12 @@ function makeCandidate(
   provOverrides: Partial<ForgeProvenance> = {},
   puzzleOverrides: Partial<PuzzleDefinition> = {},
 ): ForgeCandidate {
+  const puzzle = makePuzzle(puzzleOverrides);
   return {
-    puzzle: makePuzzle(puzzleOverrides),
+    puzzle,
     provenance: makeProvenance(provOverrides),
     evaluation: makeEvaluation(evalOverrides),
+    evidenceBoardHash: boardHash(puzzle.rows),
   };
 }
 
@@ -249,6 +252,7 @@ describe("review-catalog", () => {
         tediumPenalty: 0.15,
         composite: 11.6,
         classification: "intermediate",
+        boxCountBand: "medium",
         confidenceNote: "solid intermediate",
       };
       const pack = buildReviewPack(
@@ -453,6 +457,7 @@ describe("review-catalog", () => {
         tediumPenalty: 0.2,
         composite: 10.5,
         classification: "intermediate",
+        boxCountBand: "medium",
         confidenceNote: "high confidence",
       };
       const pack = buildReviewPack(

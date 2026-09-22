@@ -10,6 +10,7 @@ import { nonDominatedSort, computeNoveltyScores } from "../../src/features/gener
 import { buildReviewPack, buildReviewCatalog, formatReviewSummary } from "../../src/features/generator/v2/review-catalog.ts";
 import { checkReleaseGate } from "../../src/features/generator/v2/release-gate.ts";
 import { curateForgeCandidates, buildV4Fingerprint, type ForgeCandidate } from "../../src/features/generator/v2/puzzle-forge.ts";
+import { boardHash } from "../../src/features/generator/v2/puzzle-identity.ts";
 import { evaluatePuzzleWithSteps } from "../../src/features/generator/v2/puzzle-evaluator.ts";
 import { typedStoryInput } from "../support/story-quality.ts";
 import { SHARED_PACKING_STORY } from "../fixtures/generator/story-quality-fixtures.ts";
@@ -165,6 +166,7 @@ test("real review packs expose evidence, participation, phases and neighbors; re
   const evaluated = await evaluatePuzzleWithSteps(input.puzzle);
   const candidate: ForgeCandidate = {
     puzzle: input.puzzle, evaluation: evaluated.vector, passiveStory: input.passiveStory!,
+    evidenceBoardHash: boardHash(input.puzzle.rows),
     provenance: { seed: 42, family: "hub", boxCount: 3, mode: "plain", difficulty: "beginner", tightened: false,
       cellsRemoved: 0, typingMode: "hybrid", genericBoxCount: quality.measurements.genericBoxCount,
       typedBoxCount: quality.measurements.typedBoxCount },

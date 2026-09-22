@@ -289,19 +289,57 @@ export function candidateToRows(
   candidate: BeamCandidate,
 ): string[] {
   const grid: string[][] = template.grid.map((row) => [...row]);
+  const pk = (p: GridPosition) => `${p.row},${p.column}`;
+  const goalKeys = new Set(template.goalPositions.map(pk));
+  const boxKeys = new Set(candidate.boxPositions.map(pk));
+
+  let robotPos = candidate.robotPosition;
+  if (goalKeys.has(pk(robotPos))) {
+    robotPos = relocateRobotInGrid(grid, goalKeys, boxKeys, robotPos);
+  }
 
   for (const goal of template.goalPositions) {
     grid[goal.row][goal.column] = "S";
   }
 
   for (const box of candidate.boxPositions) {
-    grid[box.row][box.column] =
-      grid[box.row][box.column] === "S" ? "X" : "X";
+    grid[box.row][box.column] = "X";
   }
 
-  grid[candidate.robotPosition.row][candidate.robotPosition.column] = "R";
+  grid[robotPos.row][robotPos.column] = "R";
 
   return grid.map((row) => row.join(""));
+}
+
+function relocateRobotInGrid(
+  grid: readonly (readonly string[])[],
+  goalKeys: ReadonlySet<string>,
+  boxKeys: ReadonlySet<string>,
+  original: GridPosition,
+): GridPosition {
+  const h = grid.length;
+  const w = grid[0].length;
+  const pk = (p: GridPosition) => `${p.row},${p.column}`;
+  const visited = new Set<string>();
+  const queue: GridPosition[] = [original];
+  visited.add(pk(original));
+
+  while (queue.length > 0) {
+    const pos = queue.shift()!;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      const nr = pos.row + dr;
+      const nc = pos.column + dc;
+      if (nr < 0 || nr >= h || nc < 0 || nc >= w) continue;
+      const candidate: GridPosition = { row: nr, column: nc };
+      const k = pk(candidate);
+      if (visited.has(k)) continue;
+      visited.add(k);
+      if (grid[nr][nc] === "O") continue;
+      if (!goalKeys.has(k) && !boxKeys.has(k)) return candidate;
+      queue.push(candidate);
+    }
+  }
+  return original;
 }
 
 export function candidateToAscii(
@@ -464,6 +502,31 @@ export interface ArchiveCandidate {
   readonly objectiveComposite: number;
 }
 
+function objectiveVectorDistance(a: ReverseObjectiveVector, b: ReverseObjectiveVector): number {
+  const dScramble = a.scrambleDepth - b.scrambleDepth;
+  const dBox = a.boxDiversity - b.boxDiversity;
+  const dRoom = a.roomTraffic - b.roomTraffic;
+  const dSupport = a.supportCompetition - b.supportCompetition;
+  const dMech = a.mechanismProgress - b.mechanismProgress;
+  const dDep = a.dependencyPotential - b.dependencyPotential;
+  const dRisk = a.structuralRisk - b.structuralRisk;
+  const dRep = a.repetitionPenalty - b.repetitionPenalty;
+  return Math.sqrt(
+    dScramble * dScramble + dBox * dBox + dRoom * dRoom +
+    dSupport * dSupport + dMech * dMech + dDep * dDep +
+    dRisk * dRisk + dRep * dRep,
+  );
+}
+
+function minObjectiveDistance(candidate: ArchiveCandidate, selected: readonly ArchiveCandidate[]): number {
+  let min = Infinity;
+  for (const s of selected) {
+    const d = objectiveVectorDistance(candidate.objectiveVector, s.objectiveVector);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
 export function extractArchiveCandidates(
   archive: DiverseArchive,
   ctx: ReturnType<typeof buildScoringContext>,
@@ -489,28 +552,46 @@ export function extractArchiveCandidates(
     return { candidate, objectiveVector, objectiveComposite };
   });
 
-  // Sort by objective composite descending
   scored.sort((a, b) => b.objectiveComposite - a.objectiveComposite);
 
-  // Select diverse top candidates
   const selected: ArchiveCandidate[] = [];
   const usedFingerprints = new Set<string>();
+  const remaining = new Set(scored);
 
-  for (const entry of scored) {
-    if (selected.length >= count) break;
-    const fp = stateFingerprint(entry.candidate.boxPositions);
-    if (usedFingerprints.has(fp)) continue;
-    usedFingerprints.add(fp);
-    selected.push(entry);
+  // Always take the best candidate first
+  if (scored.length > 0) {
+    selected.push(scored[0]);
+    usedFingerprints.add(stateFingerprint(scored[0].candidate.boxPositions));
+    remaining.delete(scored[0]);
   }
 
-  // Fill remaining slots if diversity filter was too strict
-  if (selected.length < count) {
-    for (const entry of scored) {
-      if (selected.length >= count) break;
-      if (selected.includes(entry)) continue;
-      selected.push(entry);
+  // Greedy diversity-aware selection: balance quality and objective vector spread
+  while (selected.length < count && remaining.size > 0) {
+    let bestEntry: ArchiveCandidate | undefined;
+    let bestScore = -Infinity;
+
+    for (const entry of remaining) {
+      const fp = stateFingerprint(entry.candidate.boxPositions);
+      if (usedFingerprints.has(fp)) {
+        remaining.delete(entry);
+        continue;
+      }
+      const qualityNorm = scored.length > 1
+        ? (entry.objectiveComposite - scored[scored.length - 1].objectiveComposite) /
+          Math.max(scored[0].objectiveComposite - scored[scored.length - 1].objectiveComposite, 1e-6)
+        : 1.0;
+      const diversityNorm = minObjectiveDistance(entry, selected);
+      const combined = qualityNorm * 0.5 + diversityNorm * 0.5;
+      if (combined > bestScore) {
+        bestScore = combined;
+        bestEntry = entry;
+      }
     }
+
+    if (!bestEntry) break;
+    selected.push(bestEntry);
+    usedFingerprints.add(stateFingerprint(bestEntry.candidate.boxPositions));
+    remaining.delete(bestEntry);
   }
 
   return selected;

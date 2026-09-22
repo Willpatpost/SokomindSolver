@@ -158,6 +158,16 @@ export interface ReviewCandidatePack {
   // Measured solution-story evidence; Phase 7 also uses it for catalog curation.
   readonly passiveStory?: PassiveStorySummary;
   readonly storyExplanations?: readonly string[];
+  readonly playtestEvidence?: PlaytestEvidence;
+}
+
+export interface PlaytestEvidence {
+  readonly testerIds: readonly string[];
+  readonly solveTimeSeconds: number;
+  readonly difficultyRating: 1 | 2 | 3 | 4 | 5;
+  readonly enjoymentRating: 1 | 2 | 3 | 4 | 5;
+  readonly notes?: string;
+  readonly timestamp: string;
 }
 
 export interface ReviewCatalogTierSummary {

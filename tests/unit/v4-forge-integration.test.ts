@@ -214,12 +214,14 @@ describe("V4 forge integration", () => {
       puzzle: { id: "a", title: "Test A", rows: [], boxes: 3, difficulty: "intermediate" },
       provenance: baseProv,
       evaluation: baseEval,
+      evidenceBoardHash: "",
     };
 
     const c2: ForgeCandidate = {
       puzzle: { id: "b", title: "Test B", rows: [], boxes: 3, difficulty: "intermediate" },
       provenance: { ...baseProv, family: "hub" },
       evaluation: baseEval,
+      evidenceBoardHash: "",
     };
 
     const fp1 = buildV4Fingerprint(c1);

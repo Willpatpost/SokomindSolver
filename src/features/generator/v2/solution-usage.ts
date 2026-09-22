@@ -2,10 +2,21 @@ import type { SolutionStep } from "../../../solver/contracts.ts";
 import { directionDelta } from "../../../core/position.ts";
 import { isBoxChar, isRobotChar } from "./tile-semantics.ts";
 
+export interface BoxParticipationMetrics {
+  readonly boxIndex: number;
+  readonly pushCount: number;
+  readonly netDisplacement: number;
+  readonly revisits: number;
+  readonly meaningful: boolean;
+}
+
 export interface SolutionUsageMetrics {
   readonly solutionFloorCoverage: number;
   readonly solutionUnusedFloorRatio: number;
   readonly cellsUsedBySolution: number;
+  readonly boxParticipation?: readonly BoxParticipationMetrics[];
+  readonly meaningfulBoxCount?: number;
+  readonly gratuitousBoxCount?: number;
 }
 
 const WALL = "O";
@@ -24,6 +35,7 @@ export function analyzeSolutionUsage(
 
   let robot = { row: 0, column: 0 };
   const boxes: Array<{ row: number; column: number }> = [];
+  const boxStarts: Array<{ row: number; column: number }> = [];
 
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
@@ -31,11 +43,14 @@ export function analyzeSolutionUsage(
       if (isRobotChar(ch)) robot = { row: r, column: c };
       if (isBoxChar(ch)) {
         boxes.push({ row: r, column: c });
+        boxStarts.push({ row: r, column: c });
       }
     }
   }
 
   const usedCells = new Set<string>();
+  const boxPushCounts = new Uint16Array(boxes.length);
+  const boxCellsSeen: Set<string>[] = boxes.map(() => new Set());
 
   usedCells.add(`${robot.row},${robot.column}`);
   for (const b of boxes) usedCells.add(`${b.row},${b.column}`);
@@ -50,8 +65,14 @@ export function analyzeSolutionUsage(
 
       const bi = boxes.findIndex((b) => b.row === nr && b.column === nc);
       if (bi >= 0) {
+        boxPushCounts[bi]++;
         const destR = nr + delta.row;
         const destC = nc + delta.column;
+        const prevKey = `${nr},${nc}`;
+        if (boxCellsSeen[bi].has(`${destR},${destC}`)) {
+          boxCellsSeen[bi].add(prevKey);
+        }
+        boxCellsSeen[bi].add(`${destR},${destC}`);
         boxes[bi] = { row: destR, column: destC };
         usedCells.add(`${destR},${destC}`);
       }
@@ -60,6 +81,15 @@ export function analyzeSolutionUsage(
     robot = { row: nr, column: nc };
     usedCells.add(`${nr},${nc}`);
   }
+
+  const boxParticipation: BoxParticipationMetrics[] = boxes.map((b, i) => {
+    const netDisplacement = Math.abs(b.row - boxStarts[i].row) + Math.abs(b.column - boxStarts[i].column);
+    const revisits = Math.max(0, boxCellsSeen[i].size - boxPushCounts[i]);
+    const meaningful = boxPushCounts[i] >= 1 && netDisplacement >= 1;
+    return { boxIndex: i, pushCount: boxPushCounts[i], netDisplacement, revisits, meaningful };
+  });
+  const meaningfulBoxCount = boxParticipation.filter(b => b.meaningful).length;
+  const gratuitousBoxCount = boxParticipation.filter(b => b.pushCount > 0 && !b.meaningful).length;
 
   let floorUsed = 0;
   for (const key of usedCells) {
@@ -76,5 +106,8 @@ export function analyzeSolutionUsage(
     solutionFloorCoverage: Math.min(1, coverage),
     solutionUnusedFloorRatio: Math.max(0, 1 - coverage),
     cellsUsedBySolution: floorUsed,
+    boxParticipation,
+    meaningfulBoxCount,
+    gratuitousBoxCount,
   };
 }

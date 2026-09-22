@@ -152,3 +152,97 @@ export function analyzeInteraction(
   }
   return analyzeInteractionFromTrace(result.trace, structuralChokepoints, boardWidth);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-route necessity classification
+// ---------------------------------------------------------------------------
+
+export type MechanismNecessity = "required" | "observed" | "bypassed" | "inconclusive";
+
+export interface BoxNecessityProfile {
+  readonly boxIndex: number;
+  readonly necessity: MechanismNecessity;
+  readonly routesUsing: number;
+  readonly routesTotal: number;
+  readonly minPushesAcrossRoutes: number;
+  readonly maxPushesAcrossRoutes: number;
+}
+
+export interface NecessityAnalysis {
+  readonly boxes: readonly BoxNecessityProfile[];
+  readonly requiredCount: number;
+  readonly observedCount: number;
+  readonly bypassedCount: number;
+  readonly inconclusiveCount: number;
+}
+
+export function classifyNecessity(
+  grid: readonly (readonly string[])[],
+  routes: readonly { readonly steps: readonly SolutionStep[] }[],
+  _structuralChokepoints?: ReadonlySet<number>,
+  _boardWidth?: number,
+): NecessityAnalysis {
+  const boxCount = grid.reduce(
+    (count, row) => count + row.filter(isBoxChar).length,
+    0,
+  );
+
+  if (routes.length === 0 || boxCount === 0) {
+    return {
+      boxes: Array.from({ length: boxCount }, (_, i) => ({
+        boxIndex: i, necessity: "inconclusive" as const,
+        routesUsing: 0, routesTotal: 0,
+        minPushesAcrossRoutes: 0, maxPushesAcrossRoutes: 0,
+      })),
+      requiredCount: 0, observedCount: 0, bypassedCount: 0, inconclusiveCount: boxCount,
+    };
+  }
+
+  const pushesByBoxByRoute: number[][] = [];
+  for (const route of routes) {
+    const result = buildCanonicalSolutionTrace(grid, route.steps);
+    if (!result.ok) {
+      pushesByBoxByRoute.push(new Array(boxCount).fill(-1));
+      continue;
+    }
+    pushesByBoxByRoute.push(result.trace.boxes.map(b => b.pushCount));
+  }
+
+  const validRouteCount = pushesByBoxByRoute.filter(r => r[0] !== -1).length;
+  const boxes: BoxNecessityProfile[] = [];
+
+  for (let bi = 0; bi < boxCount; bi++) {
+    const pushValues = pushesByBoxByRoute.map(r => r[bi]).filter(v => v >= 0);
+    const routesUsing = pushValues.filter(v => v > 0).length;
+    const minPushes = pushValues.length > 0 ? Math.min(...pushValues) : 0;
+    const maxPushes = pushValues.length > 0 ? Math.max(...pushValues) : 0;
+
+    let necessity: MechanismNecessity;
+    if (validRouteCount === 0) {
+      necessity = "inconclusive";
+    } else if (routesUsing === validRouteCount) {
+      necessity = "required";
+    } else if (routesUsing === 0) {
+      necessity = "bypassed";
+    } else {
+      necessity = "observed";
+    }
+
+    boxes.push({
+      boxIndex: bi,
+      necessity,
+      routesUsing,
+      routesTotal: validRouteCount,
+      minPushesAcrossRoutes: minPushes,
+      maxPushesAcrossRoutes: maxPushes,
+    });
+  }
+
+  return {
+    boxes,
+    requiredCount: boxes.filter(b => b.necessity === "required").length,
+    observedCount: boxes.filter(b => b.necessity === "observed").length,
+    bypassedCount: boxes.filter(b => b.necessity === "bypassed").length,
+    inconclusiveCount: boxes.filter(b => b.necessity === "inconclusive").length,
+  };
+}

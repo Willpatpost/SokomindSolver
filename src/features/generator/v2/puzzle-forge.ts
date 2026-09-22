@@ -2,14 +2,15 @@ import type { Difficulty, PuzzleDefinition } from "../../../core/model.ts";
 import type { SolutionStep } from "../../../solver/contracts.ts";
 import type { TopologyFamily, GeometryProfile, ReverseSearchProfile, FunctionalBlueprint, SolvedBlueprint } from "./blueprint-types.ts";
 import { ForgeWorkerPool, getForgePoolSize, type PoolStats } from "./forge-pool.ts";
-import { GenerationEvidence, witnessFromPullHistory } from "./generation-evidence.ts";
+import { GenerationEvidence, witnessFromPullHistory, progressiveBudget } from "./generation-evidence.ts";
+import type { ProgressiveEvaluationPolicy } from "./generation-evidence.ts";
 import type { FinalistTaskPayload } from "./finalist-worker.ts";
 import {
   EXPERT_SEARCH_PROFILE,
   MASTER_SEARCH_PROFILE,
 } from "./blueprint-types.ts";
 import type { BeamSearchParams } from "./reverse-beam-search.ts";
-import type { PuzzleEvaluationVector } from "./puzzle-evaluator.ts";
+import type { PuzzleEvaluationVector, PuzzleEvaluationResult } from "./puzzle-evaluator.ts";
 import type { PassiveStoryProfile } from "./passive-story-analysis.ts";
 import { summarizePassiveStory } from "./passive-story-analysis.ts";
 import {
@@ -35,7 +36,7 @@ import {
 } from "./blueprint-graph.ts";
 import { analyzeGrid, parseRowsToGrid, type StructuralMetrics } from "./structural-metrics.ts";
 import { createRng } from "../board-template.ts";
-import { enumerateForgeCombinations, createForgeSchedule, type ForgeGenerationMode } from "./forge-sampling.ts";
+import { enumerateForgeCombinations, createForgeSchedule, createAdaptiveForgeSchedule, type ForgeGenerationMode, type RejectionHistory } from "./forge-sampling.ts";
 import { boardHash } from "./puzzle-identity.ts";
 import {
   TOPOLOGY_FAMILIES,
@@ -116,7 +117,7 @@ import {
 import type { PuzzleQualityProfile } from "./quality-gate.ts";
 import { assessCandidateQuality, type StoryQualityPolicy, type StoryQualityRejectionCode } from "./story-quality-policy.ts";
 import { scoreSolution, type SolutionScore } from "./solution-scoring.ts";
-import { refinePuzzle } from "./puzzle-refiner.ts";
+import type { RefinementBudget, RefinementResult } from "./puzzle-refiner.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,6 +209,36 @@ export interface ForgeConfig {
   readonly storyQualityPolicy?: StoryQualityPolicy;
   readonly storyDiversityPolicy?: StoryDiversityPolicy;
   readonly useRoomTemplates?: boolean;
+  readonly rejectionHistory?: RejectionHistory;
+  readonly runLimits?: ForgeRunLimits;
+  readonly progressiveEvaluation?: ProgressiveEvaluationPolicy;
+}
+
+export interface ForgeRunLimits {
+  readonly maxElapsedMs?: number;
+  readonly maxSolverCalls?: number;
+  readonly maxMemoryMb?: number;
+}
+
+export function checkRunLimits(
+  limits: ForgeRunLimits | undefined,
+  elapsedMs: number,
+  solverCalls: number,
+): { exceeded: boolean; reason?: string } {
+  if (!limits) return { exceeded: false };
+  if (limits.maxElapsedMs !== undefined && elapsedMs >= limits.maxElapsedMs) {
+    return { exceeded: true, reason: `elapsed time ${Math.round(elapsedMs)}ms >= limit ${limits.maxElapsedMs}ms` };
+  }
+  if (limits.maxSolverCalls !== undefined && solverCalls >= limits.maxSolverCalls) {
+    return { exceeded: true, reason: `solver calls ${solverCalls} >= limit ${limits.maxSolverCalls}` };
+  }
+  if (limits.maxMemoryMb !== undefined) {
+    const rssMb = process.memoryUsage.rss() / (1024 * 1024);
+    if (rssMb >= limits.maxMemoryMb) {
+      return { exceeded: true, reason: `RSS ${Math.round(rssMb)}MB >= limit ${limits.maxMemoryMb}MB` };
+    }
+  }
+  return { exceeded: false };
 }
 
 export interface ForgeAcceptanceGates {
@@ -252,6 +283,41 @@ export const DEFAULT_FORGE_GATES: ForgeAcceptanceGates = {
   maxOnePushBoxCount: 0,
   minCrossTypeInteractions: 1,
 };
+
+export interface QuotaQualityValidation {
+  readonly valid: boolean;
+  readonly violations: readonly string[];
+}
+
+export function validateQuotaQualitySeparation(
+  config: ForgeConfig,
+  referenceGates: ForgeAcceptanceGates = DEFAULT_FORGE_GATES,
+): QuotaQualityValidation {
+  const violations: string[] = [];
+  const g = config.gates;
+  const ref = referenceGates;
+
+  if (g.minSolutionPushes < ref.minSolutionPushes) {
+    violations.push(`minSolutionPushes (${g.minSolutionPushes}) is below reference (${ref.minSolutionPushes})`);
+  }
+  if (g.maxUnusedFloorRatio > ref.maxUnusedFloorRatio) {
+    violations.push(`maxUnusedFloorRatio (${g.maxUnusedFloorRatio}) is above reference (${ref.maxUnusedFloorRatio})`);
+  }
+  if (g.maxEmptyWalkRatio > ref.maxEmptyWalkRatio) {
+    violations.push(`maxEmptyWalkRatio (${g.maxEmptyWalkRatio}) is above reference (${ref.maxEmptyWalkRatio})`);
+  }
+  if (g.maxRepetitivePushRatio > ref.maxRepetitivePushRatio) {
+    violations.push(`maxRepetitivePushRatio (${g.maxRepetitivePushRatio}) is above reference (${ref.maxRepetitivePushRatio})`);
+  }
+  if (g.minSolverExpandedStates < ref.minSolverExpandedStates) {
+    violations.push(`minSolverExpandedStates (${g.minSolverExpandedStates}) is below reference (${ref.minSolverExpandedStates})`);
+  }
+  if (g.minPushesPerBox < ref.minPushesPerBox) {
+    violations.push(`minPushesPerBox (${g.minPushesPerBox}) is below reference (${ref.minPushesPerBox})`);
+  }
+
+  return { valid: violations.length === 0, violations };
+}
 
 export const DEFAULT_FORGE_CONFIG: ForgeConfig = {
   batchSize: 200,
@@ -333,6 +399,8 @@ export interface ForgeCandidate {
   readonly puzzle: PuzzleDefinition;
   readonly provenance: ForgeProvenance;
   readonly evaluation: PuzzleEvaluationVector;
+  /** Board hash at the time evidence was computed; stale evidence is rejected. */
+  readonly evidenceBoardHash: string;
   /** Passive evidence only; it does not affect gates or ranking in Phase 2. */
   readonly passiveStory?: PassiveStoryProfile;
   /** Phase 3 construction intent and localized post-generation evidence. */
@@ -432,9 +500,45 @@ export interface BlueprintCandidate {
   readonly compositionType?: string;
 }
 
+export interface ForgeRunManifest {
+  readonly generatorVersion: string;
+  readonly nodeVersion: string;
+  readonly configFingerprint: string;
+  readonly baseSeed: number;
+  readonly batchSize: number;
+  readonly startTimestamp: number;
+  readonly endTimestamp: number;
+  readonly platform: string;
+}
+
+export function buildRunManifest(config: ForgeConfig, startMs: number): ForgeRunManifest {
+  const configStr = JSON.stringify({
+    families: config.families, boxCounts: config.boxCounts, modes: config.modes,
+    difficulties: config.difficulties, gates: config.gates,
+    funnelBudgets: config.funnelBudgets, typingPolicy: config.typingPolicy,
+  });
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < configStr.length; i++) {
+    hash ^= configStr.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return {
+    generatorVersion: "v4.2",
+    nodeVersion: process.version,
+    configFingerprint: (hash >>> 0).toString(16).padStart(8, "0"),
+    baseSeed: config.baseSeed,
+    batchSize: config.batchSize,
+    startTimestamp: Math.round(startMs),
+    endTimestamp: Date.now(),
+    platform: `${process.platform}-${process.arch}`,
+  };
+}
+
 export interface ForgeRunResult {
   readonly performance?: ForgePerformance;
   readonly storySelection?: StorySelectionReport;
+  readonly manifest?: ForgeRunManifest;
+  readonly limitExceeded?: string;
   readonly config: ForgeConfig;
   readonly candidates: readonly ForgeCandidate[];
   readonly rejections: readonly ForgeRejection[];
@@ -461,6 +565,10 @@ export interface ForgeSummary {
   readonly metricRanges: Readonly<
     Record<string, { min: number; max: number; avg: number }>
   >;
+}
+
+class RunLimitExceeded extends Error {
+  constructor(reason: string) { super(reason); this.name = "RunLimitExceeded"; }
 }
 
 // ---------------------------------------------------------------------------
@@ -759,12 +867,26 @@ export interface ReverseStart {
   readonly pullHistory?: readonly PullRecord[];
 }
 
+export interface RefinementTaskPayload {
+  readonly puzzle: PuzzleDefinition;
+  readonly solutionScore: SolutionScore;
+  readonly solutionSteps: readonly SolutionStep[];
+  readonly maxIterations: number;
+  readonly seed: number;
+  readonly budget: RefinementBudget;
+}
+
+export interface RefinementTaskResult {
+  readonly refined: RefinementResult;
+}
+
 export type ForgeTask =
   | { kind: "blueprint"; config: ForgeConfig; entry: import("./forge-sampling.ts").ForgeScheduleEntry }
   | { kind: "reverse"; config: ForgeConfig; blueprint: BlueprintCandidate }
   | { kind: "complete"; config: ForgeConfig; blueprint: BlueprintCandidate; forcedReverseState?: ReverseStart; prepared?: RawGenerationResult }
   | { kind: "finalist"; policy: V4EvaluatorPolicy; payload: FinalistTaskPayload }
-  | { kind: "evaluate"; puzzle: PuzzleDefinition };
+  | { kind: "evaluate"; puzzle: PuzzleDefinition }
+  | { kind: "refinement"; payload: RefinementTaskPayload };
 
 export type CompletionResult = (
   | { ok: true; candidate: ForgeCandidate; solverCalls: number; cacheHits?: number; witnessFallbacks?: number; rankedCandidates?: readonly ArchiveCandidate[] }
@@ -1094,35 +1216,18 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     }
   }
 
-  // Apply gates
   evidence?.mark("quality");
-  const gateResult = applyGates(
-    ev,
-    config.gates,
-    depRate,
-    genericBoxCount,
-    typedBoxCount,
-  );
-  if (gateResult) {
-    return { ok: false, reason: gateResult, solverCalls };
-  }
-
-  const structuralGateResult = applyStructuralGates(puzzle.rows, config.gates);
-  if (structuralGateResult) {
-    return { ok: false, reason: structuralGateResult, solverCalls };
-  }
-
-  const qualityProfile = assessCandidateQuality({
-    puzzle, evaluation: ev, trace: evalResult.trace, passiveStory: evalResult.passiveStory,
+  const qualification = qualifyCandidate({
+    puzzle, evaluation: ev, evalResult, gates: config.gates,
+    storyQualityPolicy: config.storyQualityPolicy,
     construction: rawResult.mechanismConstruction,
     constructionRequired: mode === "mechanism", typing: storyAwareTyping,
-  }, config.storyQualityPolicy);
-  if (!qualityProfile.passed) {
-    return {
-      ok: false, reason: qualityProfile.story?.violations[0]?.code ?? "quality-gate-failed",
-      solverCalls, qualityProfile,
-    };
+    depRate, genericBoxCount, typedBoxCount,
+  });
+  if (!qualification.passed) {
+    return { ok: false, reason: qualification.reason, solverCalls, qualityProfile: qualification.qualityProfile };
   }
+  const { qualityProfile } = qualification;
 
   const counterfactualGrid = puzzleChanged ? parseRowsToGrid(puzzle.rows) : finalGrid;
   evidence?.mark("counterfactual");
@@ -1180,12 +1285,14 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     }
   }
 
+  const evidenceBoardHash = boardHash(finalPuzzle.rows);
   return {
     ok: true,
     candidate: {
       puzzle: finalPuzzle,
       provenance,
       evaluation: ev,
+      evidenceBoardHash,
       solutionSteps: evalResult.steps ?? undefined,
       passiveStory: evalResult.passiveStory ?? undefined,
       counterfactualStory,
@@ -1201,6 +1308,60 @@ async function finishCandidate(bc: BlueprintCandidate, config: ForgeConfig,
     },
     solverCalls,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Centralized qualification — runs all gates and quality assessment
+// ---------------------------------------------------------------------------
+
+export interface QualificationInput {
+  readonly puzzle: PuzzleDefinition;
+  readonly evaluation: PuzzleEvaluationVector;
+  readonly evalResult: PuzzleEvaluationResult;
+  readonly gates: ForgeAcceptanceGates;
+  readonly storyQualityPolicy?: StoryQualityPolicy;
+  readonly construction?: MechanismConstructionPlan;
+  readonly constructionRequired?: boolean;
+  readonly typing?: StoryAwareTypingPlan;
+  readonly evidenceBoardHash?: string;
+  readonly depRate?: number;
+  readonly genericBoxCount?: number;
+  readonly typedBoxCount?: number;
+}
+
+export type QualificationResult =
+  | { readonly passed: true; readonly qualityProfile: PuzzleQualityProfile }
+  | { readonly passed: false; readonly reason: ForgeRejectionReason; readonly qualityProfile?: PuzzleQualityProfile };
+
+export function qualifyCandidate(input: QualificationInput): QualificationResult {
+  if (input.evidenceBoardHash !== undefined && input.evidenceBoardHash !== boardHash(input.puzzle.rows)) {
+    return { passed: false, reason: "replay-validation-failed" };
+  }
+
+  const gateResult = applyGates(
+    input.evaluation, input.gates, input.depRate,
+    input.genericBoxCount ?? 0, input.typedBoxCount ?? 0,
+  );
+  if (gateResult) return { passed: false, reason: gateResult };
+
+  const structuralGateResult = applyStructuralGates(input.puzzle.rows, input.gates);
+  if (structuralGateResult) return { passed: false, reason: structuralGateResult };
+
+  const qualityProfile = assessCandidateQuality({
+    puzzle: input.puzzle, evaluation: input.evaluation,
+    trace: input.evalResult.trace, passiveStory: input.evalResult.passiveStory,
+    construction: input.construction, constructionRequired: input.constructionRequired,
+    typing: input.typing,
+  }, input.storyQualityPolicy);
+  if (!qualityProfile.passed) {
+    return {
+      passed: false,
+      reason: qualityProfile.story?.violations[0]?.code ?? "quality-gate-failed",
+      qualityProfile,
+    };
+  }
+
+  return { passed: true, qualityProfile };
 }
 
 // ---------------------------------------------------------------------------
@@ -1506,6 +1667,53 @@ export interface ForgeCheckpoint {
   readonly evaluationWork?: import("./generation-evidence.ts").GenerationWork;
 }
 
+export interface ResumableCheckpoint {
+  readonly configHash: string;
+  readonly completedSeeds: readonly number[];
+  readonly candidates: readonly ForgeCandidate[];
+  readonly rejections: readonly ForgeRejection[];
+  readonly phase: string;
+  readonly elapsedMs: number;
+  readonly solverCalls: number;
+  readonly timestamp: number;
+}
+
+export function serializeCheckpoint(
+  config: ForgeConfig,
+  candidates: readonly ForgeCandidate[],
+  rejections: readonly ForgeRejection[],
+  phase: string,
+  elapsedMs: number,
+  solverCalls: number,
+): ResumableCheckpoint {
+  const configStr = JSON.stringify({
+    families: config.families, boxCounts: config.boxCounts, modes: config.modes,
+    difficulties: config.difficulties, baseSeed: config.baseSeed, batchSize: config.batchSize,
+  });
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < configStr.length; i++) {
+    hash ^= configStr.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const configHash = (hash >>> 0).toString(16).padStart(8, "0");
+
+  const completedSeeds = [
+    ...candidates.map((c) => c.provenance.seed),
+    ...rejections.map((r) => r.seed),
+  ];
+  const uniqueSeeds = [...new Set(completedSeeds)].sort((a, b) => a - b);
+
+  return { configHash, completedSeeds: uniqueSeeds, candidates, rejections, phase, elapsedMs, solverCalls, timestamp: Date.now() };
+}
+
+export function resumableSeeds(
+  checkpoint: ResumableCheckpoint,
+  schedule: readonly { readonly seed: number }[],
+): readonly number[] {
+  const completed = new Set(checkpoint.completedSeeds);
+  return schedule.filter((e) => !completed.has(e.seed)).map((e) => e.seed);
+}
+
 export interface ForgeProgress {
   readonly phase: string;
   readonly elapsedMs: number;
@@ -1712,6 +1920,10 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
   const changePhase = (next: string) => {
     phaseMs[phase] = performance.now() - phaseStart;
     phase = next; phaseStart = performance.now(); options.onProgress?.(snapshot());
+    if (config.runLimits) {
+      const check = checkRunLimits(config.runLimits, performance.now() - start, solverCalls);
+      if (check.exceeded) throw new RunLimitExceeded(check.reason!);
+    }
   };
   const timer = options.onProgress ? setInterval(() => options.onProgress!(snapshot()), 1000) : undefined;
   try {
@@ -1723,7 +1935,11 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
       collector.recordRejection({ reason, tier: bc.difficulty, family: bc.family, mode: bc.mode, requestedBoxCount: bc.boxCount });
     };
     const budgets = config.funnelBudgets;
-    const schedule = createForgeSchedule(enumerateForgeCombinations(config), budgets?.rawAttemptBudget ?? config.batchSize, config.baseSeed);
+    const allCombinations = enumerateForgeCombinations(config);
+    const scheduleBatchSize = budgets?.rawAttemptBudget ?? config.batchSize;
+    const schedule = config.rejectionHistory
+      ? createAdaptiveForgeSchedule(allCombinations, scheduleBatchSize, config.baseSeed, config.rejectionHistory)
+      : createForgeSchedule(allCombinations, scheduleBatchSize, config.baseSeed);
     const blueprints = await pool.map(schedule, async (entry) => {
       const submitted = performance.now();
       const result = await pool.submit<BlueprintResult>({ kind: "blueprint", config, entry } satisfies ForgeTask, "blueprint");
@@ -1793,9 +2009,18 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
       collector.recordBoxScale({ requestedBoxes: bc.boxCount, actualBoxes: counts.boxes, goalCount: counts.goals,
         genericBoxes: counts.generic, typedBoxes: counts.typed, difference: counts.boxes - bc.boxCount });
     }
+    let exactDuplicatesRejected = 0;
+    let finalCandidates: readonly ForgeCandidate[] = completedCandidates;
+    let storySelection: StorySelectionReport | undefined;
+    let limitExceeded: string | undefined;
+    let funnelDedupSurvivors = 0;
+    let funnelCheapEvalSurvivors = 0;
+    let funnelFinalistEvaluated = 0;
+    let funnelQualityPassed = 0;
+    let funnelDifficultyPassed = 0;
+    try {
     changePhase("ranking");
     const seen = new Map<string, ForgeCandidate>();
-    let exactDuplicatesRejected = 0;
     for (const c of completedCandidates) {
       const hash = boardHash(c.puzzle.rows);
       const prior = seen.get(hash);
@@ -1810,21 +2035,80 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
 
     changePhase("refinement");
     const refinementCandidates = deduped.filter(
-      (c) => c.solutionScore && c.solutionScore.composite < 0.5,
+      (c) => c.solutionScore && c.solutionSteps && c.solutionScore.composite < 0.5,
     ).slice(0, 5);
-    for (const c of refinementCandidates) {
-      if (!c.solutionScore) continue;
+    const refinementResults = await pool.map(refinementCandidates, (c) =>
+      pool.submit<RefinementTaskResult>({
+        kind: "refinement",
+        payload: {
+          puzzle: c.puzzle,
+          solutionScore: c.solutionScore!,
+          solutionSteps: c.solutionSteps!,
+          maxIterations: 15,
+          seed: c.provenance.seed,
+          budget: { maxElapsedMs: 30_000, maxSolverCalls: 50 },
+        },
+      } satisfies ForgeTask, "refinement"),
+    );
+    for (let ri = 0; ri < refinementCandidates.length; ri++) {
+      const c = refinementCandidates[ri];
+      const { refined } = refinementResults[ri];
+      solverCalls += refined.solverCalls;
+      if (!refined.improved) continue;
       try {
-        const refined = await refinePuzzle(c.puzzle, c.solutionScore, 15, c.provenance.seed);
-        if (refined.improved) {
-          const idx = deduped.indexOf(c);
-          if (idx >= 0) {
-            deduped[idx] = { ...c, puzzle: refined.puzzle, solutionScore: refined.solutionScore };
-          }
+        const refinedPuzzle = { ...refined.puzzle, id: `forge-${c.provenance.seed}-${boardHash(refined.puzzle.rows)}` };
+        const evalResult = await evaluatePuzzleWithSteps(refinedPuzzle, undefined, undefined, refined.solutionSteps);
+        if (!evalResult.vector.solved || !evalResult.steps) continue;
+        const qualification = qualifyCandidate({
+          puzzle: refinedPuzzle, evaluation: evalResult.vector, evalResult,
+          gates: config.gates, storyQualityPolicy: config.storyQualityPolicy,
+          construction: c.mechanismConstruction,
+          constructionRequired: c.provenance.mode === "mechanism",
+          typing: c.storyAwareTyping,
+        });
+        if (!qualification.passed) continue;
+        const { qualityProfile } = qualification;
+        const idx = deduped.indexOf(c);
+        if (idx >= 0) {
+          deduped[idx] = {
+            ...c,
+            puzzle: refinedPuzzle,
+            solutionSteps: refined.solutionSteps,
+            solutionScore: refined.solutionScore,
+            evaluation: evalResult.vector,
+            evidenceBoardHash: boardHash(refinedPuzzle.rows),
+            passiveStory: evalResult.passiveStory ?? undefined,
+            qualityProfile,
+          };
         }
       } catch {
-        // refinement is best-effort
+        // refinement is best-effort — keep original candidate
       }
+    }
+
+    // Post-refinement dedup: refinement can map two formerly-distinct boards to
+    // the same rows. Re-scan and keep the higher-scoring duplicate.
+    {
+      const postSeen = new Map<string, ForgeCandidate>();
+      const kept: ForgeCandidate[] = [];
+      for (const c of deduped) {
+        const hash = boardHash(c.puzzle.rows);
+        const prior = postSeen.get(hash);
+        if (prior) {
+          const winner = paretoScore(c) > paretoScore(prior) ? c : prior;
+          const loser = winner === c ? prior : c;
+          rejectCandidate(loser.provenance, "duplicate-exact");
+          exactDuplicatesRejected++;
+          postSeen.set(hash, winner);
+          const loserIdx = kept.indexOf(loser);
+          if (loserIdx >= 0) kept[loserIdx] = winner;
+        } else {
+          postSeen.set(hash, c);
+          kept.push(c);
+        }
+      }
+      deduped.length = 0;
+      deduped.push(...kept);
     }
 
     const cheapRanked = [...deduped].sort((a, b) => cheapEvalScore(b) - cheapEvalScore(a) || a.puzzle.id.localeCompare(b.puzzle.id));
@@ -1833,11 +2117,25 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
     // Catalog configurations opt into finalist evaluation even without structural pruning.
     if (budgets || config.v4EvaluatorPolicy) {
       changePhase("finalists");
-      const evaluated = await pool.map(finalists, (c) => pool.submit<FinalistResult>({
-        kind: "finalist", policy: config.v4EvaluatorPolicy ?? DEFAULT_V4_POLICY,
-        payload: { puzzle: c.puzzle, witnessSteps: c.solutionSteps, evaluation: c.evaluation,
-          dependencyRealizationRate: c.provenance.dependencyRealizationRate },
-      } satisfies ForgeTask, "finalist"));
+      const basePolicy = config.v4EvaluatorPolicy ?? DEFAULT_V4_POLICY;
+      const evaluated = await pool.map(finalists, (c, i) => {
+        let policy = basePolicy;
+        if (config.progressiveEvaluation) {
+          const budget = progressiveBudget(config.progressiveEvaluation, i, finalists.length);
+          const m = budget.maxElapsedMs / config.progressiveEvaluation.baseBudget.maxElapsedMs;
+          policy = { ...basePolicy,
+            fastProbeMaxElapsedMs: Math.round(basePolicy.fastProbeMaxElapsedMs * m),
+            fastProbeMaxStates: Math.round(basePolicy.fastProbeMaxStates * m),
+            exactEvidenceMaxElapsedMs: Math.round(basePolicy.exactEvidenceMaxElapsedMs * m),
+            exactEvidenceMaxStates: Math.round(basePolicy.exactEvidenceMaxStates * m),
+          };
+        }
+        return pool.submit<FinalistResult>({
+          kind: "finalist", policy,
+          payload: { puzzle: c.puzzle, witnessSteps: c.solutionSteps, evaluation: c.evaluation,
+            dependencyRealizationRate: c.provenance.dependencyRealizationRate },
+        } satisfies ForgeTask, "finalist");
+      });
       enriched = [];
       for (let i = 0; i < finalists.length; i++) {
         const c = finalists[i], result = evaluated[i];
@@ -1862,24 +2160,37 @@ async function runForgePipeline(config: ForgeConfig, pool: ForgeWorkerPool,
     const selection = curateForgeCandidates(budgets ? enriched.slice(0, budgets.deepRetain) : enriched,
       budgets?.catalogQuota ?? config.retainTarget, config.diversityQuotas, config.storyDiversityPolicy);
     for (let i = 0; i < selection.candidates.length; i++) collector.recordCurated();
+    finalCandidates = selection.candidates;
+    storySelection = selection.report;
+    funnelDedupSurvivors = deduped.length;
+    funnelCheapEvalSurvivors = finalists.length;
+    funnelFinalistEvaluated = finalists.length;
+    funnelQualityPassed = finalists.length;
+    funnelDifficultyPassed = enriched.length;
+    } catch (e) {
+      if (!(e instanceof RunLimitExceeded)) throw e;
+      limitExceeded = e.message;
+      finalCandidates = completedCandidates;
+    }
     const rejectionCounts = {} as Record<ForgeRejectionReason, number>;
     for (const r of rejections) rejectionCounts[r.reason] = (rejectionCounts[r.reason] ?? 0) + 1;
     rejected = rejections.length;
-    changePhase("complete");
+    phase = "complete"; phaseMs[phase] = 0;
     const cpu = process.cpuUsage(cpuStart);
     const cpuMs = (cpu.user + cpu.system) / 1000;
     const progress = snapshot();
     const performanceStats: ForgePerformance = { ...progress, cpuMs, averageBusyCores: cpuMs / Math.max(progress.elapsedMs, 1),
       solverCalls, evidenceCacheHits, witnessFallbacks, reverseVariantsEvaluated, phaseMs };
-    return { config, candidates: selection.candidates, storySelection: selection.report, rejections,
-      totalAttempted: schedule.length, totalValid: completedCandidates.length, totalRetained: selection.candidates.length,
+    const manifest = buildRunManifest(config, start);
+    return { config, candidates: finalCandidates, storySelection, rejections, manifest, limitExceeded,
+      totalAttempted: schedule.length, totalValid: completedCandidates.length, totalRetained: finalCandidates.length,
       elapsedMs: progress.elapsedMs, rejectionCounts, exactDuplicatesRejected, diagnostics: collector.build(), performance: performanceStats,
       ...(budgets ? { funnelStats: {
         stageA_blueprintGenerated: blueprintCandidates.length, stageB_structuralSurvivors: survivors.length,
-        stageC_reverseSurvivors: completedCandidates.length, stageD_dedupSurvivors: deduped.length,
-        stageE_cheapEvalSurvivors: finalists.length, stageF_finalistEvaluated: finalists.length,
-        stageG_qualityGatePassed: finalists.length, stageH_difficultyPassed: enriched.length,
-        stageI_curatedFinal: selection.candidates.length,
+        stageC_reverseSurvivors: completedCandidates.length, stageD_dedupSurvivors: funnelDedupSurvivors,
+        stageE_cheapEvalSurvivors: funnelCheapEvalSurvivors, stageF_finalistEvaluated: funnelFinalistEvaluated,
+        stageG_qualityGatePassed: funnelQualityPassed, stageH_difficultyPassed: funnelDifficultyPassed,
+        stageI_curatedFinal: finalCandidates.length,
         solverCallReduction: { totalAttempts: schedule.length, blueprintSurvivors: blueprintCandidates.length,
           structuralSurvivors: survivors.length, solverCallsMade: solverCalls,
           solverCallsAvoided: blueprintCandidates.length - survivors.length,
@@ -1968,6 +2279,35 @@ export function summarizeForgeRun(result: ForgeRunResult): ForgeSummary {
     modeDistribution: modeDist,
     motifDistribution: motifDist,
     metricRanges,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Useful output metrics — Item 26
+// ---------------------------------------------------------------------------
+
+export interface UsefulOutputMetrics {
+  readonly retainedPerAttempt: number;
+  readonly retainedPerMinute: number;
+  readonly retainedPerSolverCall: number;
+  readonly qualifiedPerAttempt: number;
+  readonly qualifiedPerMinute: number;
+  readonly wallClockEfficiency: number;
+  readonly yieldRate: number;
+}
+
+export function computeUsefulOutput(result: ForgeRunResult): UsefulOutputMetrics {
+  const { totalAttempted, totalValid, totalRetained, elapsedMs } = result;
+  const minutes = elapsedMs / 60_000;
+  const calls = result.performance?.solverCalls ?? 1;
+  return {
+    retainedPerAttempt: totalAttempted > 0 ? totalRetained / totalAttempted : 0,
+    retainedPerMinute: minutes > 0 ? totalRetained / minutes : 0,
+    retainedPerSolverCall: calls > 0 ? totalRetained / calls : 0,
+    qualifiedPerAttempt: totalAttempted > 0 ? totalValid / totalAttempted : 0,
+    qualifiedPerMinute: minutes > 0 ? totalValid / minutes : 0,
+    wallClockEfficiency: result.performance ? result.performance.averageBusyCores : 0,
+    yieldRate: totalValid > 0 ? totalRetained / totalValid : 0,
   };
 }
 

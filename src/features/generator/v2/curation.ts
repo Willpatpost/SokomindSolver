@@ -316,3 +316,122 @@ export function diagnosePopulation<T>(
     noveltyRange,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Progression and pacing — Item 19
+// ---------------------------------------------------------------------------
+
+import type { Difficulty } from "../../../core/model.ts";
+
+export interface TierQuota {
+  readonly tier: Difficulty;
+  readonly min: number;
+  readonly max: number;
+  readonly weight: number;
+}
+
+export interface ProgressionProfile {
+  readonly tierCounts: Readonly<Record<Difficulty, number>>;
+  readonly gaps: readonly Difficulty[];
+  readonly surplus: readonly Difficulty[];
+  readonly balance: number;
+}
+
+const TIER_ORDER: readonly Difficulty[] = [
+  "tutorial", "beginner", "intermediate", "advanced", "expert", "master",
+];
+
+export const DEFAULT_TIER_QUOTAS: readonly TierQuota[] = [
+  { tier: "tutorial", min: 1, max: 5, weight: 0.1 },
+  { tier: "beginner", min: 2, max: 8, weight: 0.2 },
+  { tier: "intermediate", min: 3, max: 10, weight: 0.25 },
+  { tier: "advanced", min: 2, max: 8, weight: 0.2 },
+  { tier: "expert", min: 1, max: 5, weight: 0.15 },
+  { tier: "master", min: 1, max: 3, weight: 0.1 },
+];
+
+export function buildProgressionProfile(
+  tierCounts: Readonly<Record<Difficulty, number>>,
+  quotas: readonly TierQuota[] = DEFAULT_TIER_QUOTAS,
+): ProgressionProfile {
+  const gaps: Difficulty[] = [];
+  const surplus: Difficulty[] = [];
+
+  for (const q of quotas) {
+    const count = tierCounts[q.tier] ?? 0;
+    if (count < q.min) gaps.push(q.tier);
+    if (count > q.max) surplus.push(q.tier);
+  }
+
+  const total = Object.values(tierCounts).reduce((s, v) => s + v, 0);
+  if (total === 0) return { tierCounts, gaps: TIER_ORDER.slice(), surplus: [], balance: 0 };
+
+  let balanceSum = 0;
+  for (const q of quotas) {
+    const actual = (tierCounts[q.tier] ?? 0) / total;
+    balanceSum += Math.abs(actual - q.weight);
+  }
+  const balance = 1 - Math.min(balanceSum, 1);
+
+  return { tierCounts, gaps, surplus, balance };
+}
+
+export function selectForProgression<T>(
+  candidates: readonly (CuratedCandidate<T> & { readonly tier: Difficulty })[],
+  totalQuota: number,
+  tierQuotas: readonly TierQuota[] = DEFAULT_TIER_QUOTAS,
+): CuratedCandidate<T>[] {
+  const byTier = new Map<Difficulty, (CuratedCandidate<T> & { readonly tier: Difficulty })[]>();
+  for (const tier of TIER_ORDER) byTier.set(tier, []);
+  for (const c of candidates) {
+    const arr = byTier.get(c.tier);
+    if (arr) arr.push(c);
+  }
+
+  for (const arr of byTier.values()) {
+    arr.sort((a, b) => {
+      if (a.front !== b.front) return a.front - b.front;
+      return b.noveltyScore - a.noveltyScore;
+    });
+  }
+
+  const selected: CuratedCandidate<T>[] = [];
+
+  // Pass 1: fill minimums
+  for (const q of tierQuotas) {
+    const arr = byTier.get(q.tier) ?? [];
+    let taken = 0;
+    for (const c of arr) {
+      if (selected.length >= totalQuota) break;
+      if (taken >= q.min) break;
+      selected.push(c);
+      taken++;
+    }
+  }
+
+  // Pass 2: fill remaining quota respecting maximums, by front/novelty
+  const remaining = candidates
+    .filter((c) => !selected.includes(c))
+    .sort((a, b) => {
+      if (a.front !== b.front) return a.front - b.front;
+      return b.noveltyScore - a.noveltyScore;
+    });
+
+  const tierCounts = new Map<Difficulty, number>();
+  for (const c of selected as (CuratedCandidate<T> & { tier: Difficulty })[]) {
+    tierCounts.set(c.tier, (tierCounts.get(c.tier) ?? 0) + 1);
+  }
+
+  const quotaMap = new Map(tierQuotas.map((q) => [q.tier, q]));
+
+  for (const c of remaining) {
+    if (selected.length >= totalQuota) break;
+    const q = quotaMap.get(c.tier);
+    const count = tierCounts.get(c.tier) ?? 0;
+    if (q && count >= q.max) continue;
+    selected.push(c);
+    tierCounts.set(c.tier, count + 1);
+  }
+
+  return selected;
+}

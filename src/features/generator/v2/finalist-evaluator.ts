@@ -27,6 +27,7 @@ export interface SolverEvidence {
   readonly generatedStates?: number;
   readonly elapsedMs?: number;
   readonly optimalityProven?: boolean;
+  readonly steps?: readonly SolutionStep[];
 }
 
 export interface FinalistEvaluation {
@@ -88,6 +89,7 @@ async function runSolver(
         generatedStates: result.metrics.generatedStates,
         elapsedMs: result.metrics.elapsedMs,
         optimalityProven: result.solution.optimality === "proven",
+        steps: result.solution.steps,
       };
     }
     return {
@@ -213,12 +215,29 @@ export function computeCurationObjectives(
 // V4 multi-role evaluator
 // ---------------------------------------------------------------------------
 
+export interface DistinctRoute {
+  readonly solverId: string;
+  readonly steps: readonly SolutionStep[];
+  readonly moves: number;
+  readonly pushes: number;
+  readonly pushFingerprint: string;
+}
+
 export interface FinalistEvaluationV4 extends FinalistEvaluation {
   readonly roleResults: ReadonlyMap<SolverRole, SolverEvidence>;
   readonly policyApplied: V4EvaluatorPolicy;
   readonly witnessValid: boolean;
   readonly proofSkipped: boolean;
   readonly proofSkipReason?: string;
+  readonly distinctRoutes: readonly DistinctRoute[];
+}
+
+function pushFingerprint(steps: readonly SolutionStep[]): string {
+  const pushes: string[] = [];
+  for (const s of steps) {
+    if (s.kind === "push") pushes.push(s.direction[0]);
+  }
+  return pushes.join("");
 }
 
 function countFloorCells(puzzle: PuzzleDefinition): number {
@@ -355,6 +374,33 @@ export async function evaluateFinalistV4(
   const solverAgreement =
     moveValues.length >= 2 && moveValues.every((m) => m === moveValues[0]);
 
+  // Collect distinct routes: deduplicate by push fingerprint
+  const routesSeen = new Map<string, DistinctRoute>();
+  const allSources: SolverEvidence[] = [...allEvidence];
+  if (witnessSteps && witnessValid) {
+    allSources.push({
+      solverId: "witness",
+      status: "solved",
+      moves: witnessSteps.length,
+      pushes: witnessSteps.filter((s) => s.kind === "push").length,
+      steps: witnessSteps,
+    });
+  }
+  for (const ev of allSources) {
+    if (ev.status !== "solved" || !ev.steps || ev.steps.length === 0) continue;
+    const fp = pushFingerprint(ev.steps);
+    if (!routesSeen.has(fp)) {
+      routesSeen.set(fp, {
+        solverId: ev.solverId,
+        steps: ev.steps,
+        moves: ev.moves ?? ev.steps.length,
+        pushes: ev.pushes ?? ev.steps.filter((s) => s.kind === "push").length,
+        pushFingerprint: fp,
+      });
+    }
+  }
+  const distinctRoutes = [...routesSeen.values()];
+
   return {
     solverEvidence: allEvidence,
     solverAgreement,
@@ -375,5 +421,6 @@ export async function evaluateFinalistV4(
     witnessValid,
     proofSkipped,
     proofSkipReason,
+    distinctRoutes,
   };
 }

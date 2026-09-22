@@ -554,6 +554,7 @@ export function createMechanismPlan(
   boxCount: number,
   seed: number,
   targetMechanisms?: readonly MechanismType[],
+  coverage?: MechanismCoverageMap,
 ): MechanismPlan | null {
   const rng = createRng(seed);
   const feasible = feasibleMechanisms(blueprint, boxCount);
@@ -568,7 +569,9 @@ export function createMechanismPlan(
   } else {
     const targetCount = mechanismCountForTier(tier, feasible.length, rng);
     if (targetCount === 0) return null;
-    selected = selectMechanisms(feasible, targetCount, blueprint, rng);
+    selected = coverage
+      ? selectMechanismsWithCoverage(feasible, targetCount, blueprint, rng, coverage)
+      : selectMechanisms(feasible, targetCount, blueprint, rng);
     if (selected.length === 0) return null;
   }
 
@@ -2110,4 +2113,130 @@ export function verifyMechanismEvidence(
       missingEvidence,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Mechanism coverage tracking — Item 16: expand combinations deliberately
+// ---------------------------------------------------------------------------
+
+export interface MechanismCombinationRecord {
+  readonly attempts: number;
+  readonly successes: number;
+}
+
+export type MechanismCoverageMap = ReadonlyMap<string, MechanismCombinationRecord>;
+
+export function mechanismCombinationKey(types: readonly MechanismType[]): string {
+  return [...types].sort().join("+");
+}
+
+export function buildMechanismCoverage(
+  entries: readonly { readonly mechanisms: readonly MechanismType[]; readonly succeeded: boolean }[],
+): MechanismCoverageMap {
+  const map = new Map<string, { attempts: number; successes: number }>();
+  for (const entry of entries) {
+    const key = mechanismCombinationKey(entry.mechanisms);
+    const rec = map.get(key);
+    if (rec) {
+      rec.attempts++;
+      if (entry.succeeded) rec.successes++;
+    } else {
+      map.set(key, { attempts: 1, successes: entry.succeeded ? 1 : 0 });
+    }
+  }
+  return map as MechanismCoverageMap;
+}
+
+export function enumerateFeasiblePairs(
+  feasible: readonly MechanismType[],
+): readonly (readonly [MechanismType, MechanismType])[] {
+  const pairs: [MechanismType, MechanismType][] = [];
+  for (let i = 0; i < feasible.length; i++) {
+    for (let j = i + 1; j < feasible.length; j++) {
+      pairs.push([feasible[i], feasible[j]]);
+    }
+  }
+  return pairs;
+}
+
+export function coverageGap(
+  feasible: readonly MechanismType[],
+  coverage: MechanismCoverageMap,
+  maxComboSize: number = 2,
+): readonly { readonly combination: readonly MechanismType[]; readonly attempts: number; readonly successes: number }[] {
+  const gaps: { combination: MechanismType[]; attempts: number; successes: number }[] = [];
+
+  for (const m of feasible) {
+    const key = mechanismCombinationKey([m]);
+    const rec = coverage.get(key);
+    gaps.push({ combination: [m], attempts: rec?.attempts ?? 0, successes: rec?.successes ?? 0 });
+  }
+
+  if (maxComboSize >= 2) {
+    for (const [a, b] of enumerateFeasiblePairs(feasible)) {
+      const key = mechanismCombinationKey([a, b]);
+      const rec = coverage.get(key);
+      gaps.push({ combination: [a, b], attempts: rec?.attempts ?? 0, successes: rec?.successes ?? 0 });
+    }
+  }
+
+  gaps.sort((a, b) => a.attempts - b.attempts);
+  return gaps;
+}
+
+export function selectMechanismsWithCoverage(
+  feasible: MechanismType[],
+  count: number,
+  blueprint: FunctionalBlueprint,
+  rng: () => number,
+  coverage: MechanismCoverageMap,
+  noveltyBonus: number = 2.0,
+): MechanismType[] {
+  if (count === 0 || feasible.length === 0) return [];
+  if (count === 1) {
+    const weights = feasible.map((m) => {
+      const base = topologyScore(m, blueprint);
+      const key = mechanismCombinationKey([m]);
+      const rec = coverage.get(key);
+      const attempts = rec?.attempts ?? 0;
+      const bonus = attempts === 0 ? noveltyBonus : noveltyBonus / (1 + attempts);
+      return base + bonus;
+    });
+    return [weightedPick(feasible, weights, rng)];
+  }
+
+  const selected: MechanismType[] = [];
+  const remaining = [...feasible];
+
+  const firstWeights = remaining.map((m) => {
+    const base = topologyScore(m, blueprint);
+    const key = mechanismCombinationKey([m]);
+    const rec = coverage.get(key);
+    const attempts = rec?.attempts ?? 0;
+    return base + (attempts === 0 ? noveltyBonus : noveltyBonus / (1 + attempts));
+  });
+  const first = weightedPick(remaining, firstWeights, rng);
+  selected.push(first);
+  remaining.splice(remaining.indexOf(first), 1);
+
+  while (selected.length < count && remaining.length > 0) {
+    const scores = remaining.map((candidate) => {
+      const compatSum = selected.reduce(
+        (sum, sel) => sum + mechanismCompatibility(candidate, sel),
+        0,
+      );
+      const avgCompat = compatSum / selected.length;
+      const topoScore = topologyScore(candidate, blueprint);
+      const comboKey = mechanismCombinationKey([...selected, candidate]);
+      const rec = coverage.get(comboKey);
+      const attempts = rec?.attempts ?? 0;
+      const bonus = attempts === 0 ? noveltyBonus : noveltyBonus / (1 + attempts);
+      return avgCompat * 0.4 + topoScore * 0.3 + bonus * 0.3;
+    });
+    const next = weightedPick(remaining, scores, rng);
+    selected.push(next);
+    remaining.splice(remaining.indexOf(next), 1);
+  }
+
+  return selected;
 }

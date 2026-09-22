@@ -174,3 +174,52 @@ export function witnessFromPullHistory(puzzle: PuzzleDefinition, history: readon
   }
   return snapshot.solved ? steps : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Progressive evaluation budgets — Item 22
+// ---------------------------------------------------------------------------
+
+export interface ProgressiveEvaluationPolicy {
+  readonly baseBudget: GenerationSearchBudget;
+  readonly tiers: readonly ProgressiveEvaluationTier[];
+}
+
+export interface ProgressiveEvaluationTier {
+  readonly rankFraction: number;
+  readonly budgetMultiplier: number;
+}
+
+export const DEFAULT_PROGRESSIVE_POLICY: ProgressiveEvaluationPolicy = {
+  baseBudget: DEFAULT_GENERATION_SEARCH_BUDGET,
+  tiers: [
+    { rankFraction: 0.1, budgetMultiplier: 4.0 },
+    { rankFraction: 0.3, budgetMultiplier: 2.0 },
+    { rankFraction: 0.6, budgetMultiplier: 1.0 },
+    { rankFraction: 1.0, budgetMultiplier: 0.5 },
+  ],
+};
+
+export function progressiveBudget(
+  policy: ProgressiveEvaluationPolicy,
+  rank: number,
+  totalCandidates: number,
+): GenerationSearchBudget {
+  if (totalCandidates <= 0) return policy.baseBudget;
+  const fraction = rank / totalCandidates;
+
+  let multiplier = 1.0;
+  for (const tier of policy.tiers) {
+    if (fraction <= tier.rankFraction) {
+      multiplier = tier.budgetMultiplier;
+      break;
+    }
+  }
+
+  return {
+    maxExpandedStates: Math.round(policy.baseBudget.maxExpandedStates * multiplier),
+    maxElapsedMs: Math.round(policy.baseBudget.maxElapsedMs * multiplier),
+    maxCalls: Math.max(1, Math.round(policy.baseBudget.maxCalls * multiplier)),
+    probeExpandedStates: Math.round(policy.baseBudget.probeExpandedStates * multiplier),
+    probeElapsedMs: Math.round(policy.baseBudget.probeElapsedMs * multiplier),
+  };
+}

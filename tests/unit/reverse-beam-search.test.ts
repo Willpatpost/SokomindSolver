@@ -28,6 +28,7 @@ import {
   type BeamSearchParams,
   type GoalPlacementParams,
   type SolvedBlueprint,
+  type BeamCandidate,
   type PullHistoryEntry,
 } from "../../src/features/generator/v2/index.ts";
 import { scrambleByReversePull } from "../../src/features/generator/reverse-play.ts";
@@ -282,6 +283,24 @@ test("candidate ASCII: contains R, S, and X markers", () => {
   for (const row of rows) {
     assert.equal(row.length, template.grid[0].length);
   }
+});
+
+test("candidateToRows: robot-on-goal is relocated, preserving all goals", () => {
+  const solved = getSolved(1000);
+  const template = toSolvedTemplate(solved);
+  const fakeCandidate: BeamCandidate = {
+    boxPositions: [],
+    robotPosition: template.goalPositions[0],
+    score: { composite: 0, fingerprint: 0 } as any,
+    depth: 0,
+    pullHistory: [],
+  };
+  const rows = candidateToRows(template, fakeCandidate);
+  const flat = rows.join("");
+  const robotCount = [...flat].filter(c => c === "R").length;
+  const goalCount = [...flat].filter(c => c === "S").length;
+  assert.equal(robotCount, 1, "exactly one robot");
+  assert.equal(goalCount, template.goalPositions.length, "all goals preserved");
 });
 
 // ---------------------------------------------------------------------------
