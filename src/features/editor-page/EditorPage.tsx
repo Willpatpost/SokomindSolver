@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DIFFICULTIES,
   type Difficulty,
@@ -24,7 +24,11 @@ import { EditorGrid } from "@/src/features/editor/EditorGrid";
 import { EditorPlaytest } from "@/src/features/editor/EditorPlaytest";
 import { EditorToolbar } from "@/src/features/editor/EditorToolbar";
 import { ConfirmDialog } from "@/src/shared/ui/ConfirmDialog";
-import { GeneratorDialog } from "@/src/features/generator/GeneratorDialog";
+const GeneratorDialog = lazy(() =>
+  import("@/src/features/generator/GeneratorDialog").then((m) => ({
+    default: m.GeneratorDialog,
+  })),
+);
 import { editorHash, homeHash, useRouter } from "@/src/router";
 import styles from "./EditorPage.module.css";
 
@@ -867,11 +871,15 @@ export function EditorPage({ customData }: EditorPageProps) {
         onClose={() => setClearConfirmOpen(false)}
       />
 
-      <GeneratorDialog
-        open={generatorOpen}
-        onClose={() => setGeneratorOpen(false)}
-        onAccept={handleGeneratorAccept}
-      />
+      {generatorOpen && (
+        <Suspense fallback={null}>
+          <GeneratorDialog
+            open={generatorOpen}
+            onClose={() => setGeneratorOpen(false)}
+            onAccept={handleGeneratorAccept}
+          />
+        </Suspense>
+      )}
 
       <Modal
         open={importOpen}

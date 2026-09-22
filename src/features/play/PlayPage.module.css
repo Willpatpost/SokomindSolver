@@ -589,6 +589,12 @@
   touch-action: none;
 }
 
+.boardZoomLayer {
+  display: grid;
+  place-items: center;
+  width: 100%;
+}
+
 .mobileMoveCue {
   display: none;
 }

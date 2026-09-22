@@ -30,6 +30,8 @@ import { KeyboardShortcuts } from "@/src/features/game/KeyboardShortcuts";
 import { MoveNotation } from "@/src/features/game/MoveNotation";
 import { MoveTimeline } from "@/src/features/game/MoveTimeline";
 import { useSwipeControls } from "@/src/features/game/use-swipe-controls";
+import { useTapToMove } from "@/src/features/game/use-tap-to-move";
+import { usePinchZoom } from "@/src/features/game/use-pinch-zoom";
 import {
   homeHash,
   Link,
@@ -240,9 +242,21 @@ function ValidatedPlayPage({
     return () => document.removeEventListener("click", handleClick, true);
   }, [overflowOpen]);
 
+  const sessionRef = useRef(session);
+  useEffect(() => { sessionRef.current = session; });
+
+  const tapToMove = useTapToMove({
+    sessionRef,
+    enabled: game.inputEnabled,
+    reducedMotion: game.reducedMotion,
+    applyDirection: game.attemptMove,
+  });
+
+  const zoom = usePinchZoom(boardWrapRef);
+
   useSwipeControls(boardWrapRef, {
     enabled: game.inputEnabled,
-    onSwipe: game.attemptMove,
+    onSwipe: (dir) => { tapToMove.cancelWalk(); game.attemptMove(dir); },
   });
 
   useEffect(() => {
@@ -526,7 +540,22 @@ function ValidatedPlayPage({
             </div>
           </div> : null}
 
-          <div className={styles.boardWrap} ref={boardWrapRef}>
+          <div
+            className={styles.boardWrap}
+            ref={boardWrapRef}
+            onClick={tapToMove.handleBoardClick}
+            style={zoom.zoomed ? {
+              overflow: "hidden",
+              touchAction: "none",
+            } : undefined}
+          >
+            <div
+              className={styles.boardZoomLayer}
+              style={zoom.zoomed ? {
+                transform: `translate(${zoom.translateX}px, ${zoom.translateY}px) scale(${zoom.scale})`,
+                transformOrigin: "center center",
+              } : undefined}
+            >
             {game.manualPaused && (
               <div className={styles.pauseOverlay} role="alert" aria-label="Game paused">
                 <div className={styles.pauseContent}>
@@ -547,11 +576,12 @@ function ValidatedPlayPage({
               deadlockedBoxIds={game.deadlockedBoxIds}
               experienceEvent={game.experienceEvent}
             />
+            </div>
           </div>
 
           <p className={styles.mobileMoveCue}>
             <span className={styles.swipeGlyphs} aria-hidden="true">← ↑ ↓ →</span>
-            <span>Swipe the board to move, or use the controls below.</span>
+            <span>Swipe or tap the board to move, or use the controls below.</span>
           </p>
 
           {zenMode ? (
