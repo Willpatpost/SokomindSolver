@@ -179,8 +179,6 @@ export interface NecessityAnalysis {
 export function classifyNecessity(
   grid: readonly (readonly string[])[],
   routes: readonly { readonly steps: readonly SolutionStep[] }[],
-  _structuralChokepoints?: ReadonlySet<number>,
-  _boardWidth?: number,
 ): NecessityAnalysis {
   const boxCount = grid.reduce(
     (count, row) => count + row.filter(isBoxChar).length,

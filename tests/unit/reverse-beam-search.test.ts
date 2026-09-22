@@ -291,7 +291,7 @@ test("candidateToRows: robot-on-goal is relocated, preserving all goals", () => 
   const fakeCandidate: BeamCandidate = {
     boxPositions: [],
     robotPosition: template.goalPositions[0],
-    score: { composite: 0, fingerprint: 0 } as any,
+    score: { composite: 0, boxesOffGoals: 0, roomCrossings: 0, boxDispersion: 0, chokepointInteractions: 0, tunnelOccupancy: 0, distanceFromSolved: 0, supportConstraints: 0, deadlockPressure: 0 },
     depth: 0,
     pullHistory: [],
   };

@@ -100,7 +100,7 @@ test("selectMechanismsWithCoverage prefers unexplored mechanisms", () => {
     Array.from({ length: 50 }, () => ({ mechanisms: ["gatekeeper" as MechanismType], succeeded: true })),
   );
 
-  let seed = 100;
+  const seed = 100;
   const counts: Record<string, number> = {};
   for (let i = 0; i < 100; i++) {
     const rng = mulberry32(seed + i);
@@ -122,7 +122,7 @@ test("selectMechanismsWithCoverage still respects compatibility", () => {
   const feasible: MechanismType[] = ["gatekeeper", "packing-chain", "gate-reopening"];
   const emptyCoverage = new Map();
 
-  let seed = 42;
+  const seed = 42;
   const pairCounts: Record<string, number> = {};
   for (let i = 0; i < 100; i++) {
     const rng = mulberry32(seed + i);

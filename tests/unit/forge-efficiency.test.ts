@@ -12,6 +12,8 @@ import {
 import type {
   ForgeRunResult,
   ForgeRunLimits,
+  ForgeCandidate,
+  ForgeRejection,
 } from "../../src/features/generator/v2/puzzle-forge.ts";
 import {
   progressiveBudget,
@@ -125,8 +127,8 @@ test("serializeCheckpoint produces valid checkpoint with config hash", () => {
   const candidates = [
     { puzzle: { id: "p1", rows: [], difficulty: "beginner" as const }, provenance: { seed: 1 } },
     { puzzle: { id: "p2", rows: [], difficulty: "beginner" as const }, provenance: { seed: 3 } },
-  ] as any;
-  const rejections = [{ seed: 2, reason: "unsolvable" }] as any;
+  ] as unknown as ForgeCandidate[];
+  const rejections = [{ seed: 2, reason: "unsolvable" }] as unknown as ForgeRejection[];
 
   const cp = serializeCheckpoint(config, candidates, rejections, "construction", 5000, 42);
   assert.ok(cp.configHash.length === 8);
@@ -205,7 +207,7 @@ test("computeUsefulOutput computes rates from run result", () => {
     totalValid: 20,
     totalRetained: 5,
     elapsedMs: 60_000,
-    performance: { solverCalls: 500, averageBusyCores: 3.5 } as any,
+    performance: { solverCalls: 500, averageBusyCores: 3.5 } as unknown as ForgeRunResult["performance"],
   };
   const metrics = computeUsefulOutput(result as ForgeRunResult);
   assert.equal(metrics.retainedPerAttempt, 0.05);
