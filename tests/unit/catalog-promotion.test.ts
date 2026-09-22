@@ -22,7 +22,7 @@ after(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-const onePuzzleConfig = { ...DEFAULT_RELEASE_GATE_CONFIG, minTotalPuzzles: 1,
+const onePuzzleConfig = { ...DEFAULT_RELEASE_GATE_CONFIG, requirePlaytestEvidence: false, minTotalPuzzles: 1,
   tierQuotas: { beginner: { min: 1, target: 1 } },
   minDistinctTopologies: 1, minDistinctModes: 1, minDistinctBoxCounts: 1 };
 

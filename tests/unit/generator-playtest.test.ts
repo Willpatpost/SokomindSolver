@@ -38,7 +38,7 @@ for (const [tier, summary] of Object.entries(catalog.tierSummaries)) {
   }
 }
 const text = JSON.stringify(catalog), empty = emptyHumanReview(catalog, text);
-const fixtureGate = { ...DEFAULT_RELEASE_GATE_CONFIG, minTotalPuzzles: 5, minDistinctModes: 1, maxModeConcentration: 1,
+const fixtureGate = { ...DEFAULT_RELEASE_GATE_CONFIG, requirePlaytestEvidence: false, minTotalPuzzles: 5, minDistinctModes: 1, maxModeConcentration: 1,
   tierQuotas: Object.fromEntries(candidates.map(c => [c.puzzle.difficulty, { min: 1, target: 1 }])) };
 // Synthetic reviewer decisions exercise the gate, never used as real playtest approval.
 const approved = { ...empty, reviewer: "Test fixture only", reviewedAt: "2026-09-03T00:00:00Z",

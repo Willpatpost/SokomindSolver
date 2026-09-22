@@ -594,6 +594,7 @@ export function extractArchiveCandidates(
     remaining.delete(bestEntry);
   }
 
+  selected.sort((a, b) => b.objectiveComposite - a.objectiveComposite);
   return selected;
 }
 
