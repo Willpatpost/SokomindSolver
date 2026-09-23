@@ -50,9 +50,12 @@ Deadline cutoff remains bounded. Deeper partition splitting and immutable prepro
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume
-unavailable residual memory. The corrected move-cost PDB remains disabled
-pending broader performance qualification. Quality strategic defaults preserve
-explicit zero-analysis and false-plan-execution controls.
+unavailable residual memory. The move-cost PDB's reverse build now charges
+each push from the cell the box vacated, where the push leaves the keeper;
+the earlier edge could overestimate. A build whose table fills stops and
+falls back to its completed radius instead of dropping states. It remains
+disabled pending broader performance qualification. Quality strategic defaults
+preserve explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
 `exact-moves-pattern-key-v1`, and storage key `sokomind.optimal.v7`.

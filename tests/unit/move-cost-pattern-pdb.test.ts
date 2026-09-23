@@ -1070,4 +1070,107 @@ describe("move-cost-pattern-pdb", () => {
       assert.equal(violations, 0, `${violations} admissibility violations found`);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // A push leaves the keeper on the vacated cell, so a straight run of pushes
+  // must not be credited with a cheaper keeper position.
+  // -----------------------------------------------------------------------
+  describe("corridor pushes", () => {
+    it("equals the oracle for every solvable state of a one-box corridor", () => {
+      const rows = [
+        "OOOOOOOOO",
+        "OR X   SO",
+        "OOOOOOOOO",
+      ];
+      const board = compileBoard(rows);
+      const boxes = getBoxes(board, rows);
+      const robotCell = getRobotCell(board, rows);
+      const goalCells = [...board.goalCellsByLabel.values()].flat();
+      const pattern = makePattern(board, boxes[0].label, goalCells);
+      const pdb = buildMoveCostPatternPdb(board, pattern, {
+        maxSettledStates: 1_000_000,
+        maxBuildMs: 5_000,
+        maxUsefulDistance: 200,
+      });
+      assert.ok(pdb.stats.complete);
+
+      const workspace = new PatternWalkWorkspace(board.cellCount);
+      let checked = 0;
+      for (const state of allReachableStates(board, robotCell, boxes).values()) {
+        if (state.exactMoves === null) continue;
+        checked++;
+        const sortedCells = Uint16Array.from(state.boxes.map(b => b.cell)).sort();
+        const pdbValue = evaluateMoveCostPattern(
+          board, pdb, sortedCells, state.robot, workspace,
+        );
+        assert.equal(
+          pdbValue,
+          state.exactMoves,
+          `robot=${state.robot} boxes=[${sortedCells}]`,
+        );
+      }
+      assert.ok(checked >= 10, `only ${checked} solvable states`);
+    });
+  });
+
+  describe("table capacity stress", () => {
+    it("small tables stop building instead of dropping states", () => {
+      const rows = [
+        "OOOOOOOOOO",
+        "O        O",
+        "O        O",
+        "O  S  S  O",
+        "O        O",
+        "O  X  X  O",
+        "O   R    O",
+        "O        O",
+        "OOOOOOOOOO",
+      ];
+      const board = compileBoard(rows);
+      const pattern = selectGoalPatterns(board)[0];
+      assert.equal(pattern.boxCount, 2);
+      const options = { maxBuildMs: 60_000, maxUsefulDistance: 600 };
+      const reference = buildMoveCostPatternPdb(board, pattern, {
+        ...options,
+        maxSettledStates: 20_000,
+      });
+      assert.ok(reference.stats.complete);
+      assert.equal(reference.stats.overflowed, false);
+
+      const region = [...pattern.boxRegionCells].sort((a, b) => a - b);
+      const n = region.length;
+      const k = pattern.boxCount;
+      const binom = precomputeBinomials(n, k);
+      const indices = new Uint16Array(k);
+      let overflowedBuilds = 0;
+
+      for (const maxSettledStates of [50, 100, 400, 800]) {
+        const small = buildMoveCostPatternPdb(board, pattern, {
+          ...options,
+          maxSettledStates,
+        });
+        if (small.stats.overflowed) {
+          overflowedBuilds++;
+          assert.equal(small.stats.complete, false);
+        }
+
+        for (let rank = 0; rank < binom[n][k]; rank++) {
+          unrankCombination(rank, n, k, binom, indices);
+          const cells = Uint16Array.from(indices, (index) => region[index]);
+          for (const player of region) {
+            if (cells.includes(player)) continue;
+            const exact = reference.lowerBoundBoundary(cells, player);
+            if (exact === 0) continue;
+            const bound = small.lowerBoundBoundary(cells, player);
+            assert.ok(
+              bound <= exact,
+              `maxSettledStates=${maxSettledStates} boxes=[${cells}] player=${player}: ${bound} > ${exact}`,
+            );
+          }
+        }
+      }
+
+      assert.ok(overflowedBuilds > 0, "no build reached the table capacity");
+    });
+  });
 });

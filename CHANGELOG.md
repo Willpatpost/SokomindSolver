@@ -119,6 +119,13 @@ published a stable release.
   afresh when handed a different board.
 - The bundled Sokomind engine's local pattern-deadlock memo has the same
   corrected key, so it no longer prunes live states and loses solution quality.
+- The opt-in move-cost pattern database no longer overestimates. Its reverse
+  build credited a push to any keeper position reachable from the pushing
+  side, skipping the walk from the cell the box vacated, so a straight run of
+  pushes could cost more than the true remainder. A build whose table fills
+  now stops instead of dropping states that its radius fallback assumed were
+  settled. The table is off by default and no production caller enables it,
+  so stored certificates are unaffected.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

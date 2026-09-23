@@ -351,6 +351,7 @@ export interface MoveCostPatternPdbStats {
   completedRadius: number;
   maxSettledDistance: number;
   complete: boolean;
+  overflowed: boolean;
 
   queries: number;
   boundaryHits: number;
@@ -431,17 +432,20 @@ export function buildMoveCostPatternPdb(
 
     const stateRank = encodeBoundaryState(ctx, goalRegionIndices, ri);
     if (!table.has(stateRank)) {
-      table.set(stateRank, 0);
+      if (!table.set(stateRank, 0)) {
+        throw new Error("MC-PDB: seed states exceed the table capacity.");
+      }
       buckets[0].push(stateRank);
     }
   }
 
   let settledCount = 0;
   let currentBucket = 0;
+  let overflowed = false;
 
   const buildDeadline = buildStart + opts.maxBuildMs;
 
-  while (currentBucket < maxBuckets) {
+  build: while (currentBucket < maxBuckets) {
     if (buckets[currentBucket].length === 0) {
       if (currentBucket > completedRadius && settledCount > 0) {
         completedRadius = currentBucket;
@@ -482,73 +486,61 @@ export function buildMoveCostPatternPdb(
         scratchBoxCells[i] = regionIndexToCell[scratchBoxRegion[i]];
       }
 
-      for (let b = 0; b < k; b++) {
-        const boxCell = scratchBoxCells[b];
-        const nbrs = board.neighbors[boxCell];
-        if (!nbrs) continue;
+      // A push leaves the keeper on the cell the box vacated, so only pushes
+      // that moved a box off the keeper's cell end in this state. Crediting
+      // it to a keeper elsewhere would skip the walk from the vacated cell.
+      const playerNbrs = board.neighbors[playerCell];
+      if (!playerNbrs) continue;
 
-        for (let d = 0; d < SEARCH_DIRECTION_COUNT; d++) {
-          const prevCell = nbrs[OPPOSITE_DIRECTION[d]];
-          if (prevCell < 0) continue;
-          const prevRI = cellToRegionIndex[prevCell];
-          if (prevRI < 0) continue;
+      for (let d = 0; d < SEARCH_DIRECTION_COUNT; d++) {
+        const boxCell = playerNbrs[d];
+        if (boxCell < 0) continue;
+        let b = -1;
+        for (let i = 0; i < k; i++) {
+          if (scratchBoxCells[i] === boxCell) { b = i; break; }
+        }
+        if (b < 0) continue;
 
-          const prevNbrs = board.neighbors[prevCell];
-          if (!prevNbrs) continue;
-          const supportCell = prevNbrs[OPPOSITE_DIRECTION[d]];
-          if (supportCell < 0) continue;
+        const supportCell = playerNbrs[OPPOSITE_DIRECTION[d]];
+        if (supportCell < 0) continue;
+        let supportOccupied = false;
+        for (let j = 0; j < k; j++) {
+          if (scratchBoxCells[j] === supportCell) { supportOccupied = true; break; }
+        }
+        if (supportOccupied) continue;
 
-          let prevOccupied = false;
-          let supportOccupied = false;
-          for (let j = 0; j < k; j++) {
-            if (j === b) continue;
-            if (scratchBoxCells[j] === prevCell) prevOccupied = true;
-            if (scratchBoxCells[j] === supportCell) supportOccupied = true;
-            if (prevOccupied || supportOccupied) break;
+        for (let i = 0; i < k; i++) {
+          childRegion[i] = i === b ? playerRI : scratchBoxRegion[i];
+        }
+        childRegion.sort();
+
+        workspace.occupancy.fill(0);
+        for (let i = 0; i < k; i++) {
+          workspace.occupancy[regionIndexToCell[childRegion[i]]] = 1;
+        }
+        workspace.flood(board, supportCell);
+
+        for (let ri = 0; ri < regionSize; ri++) {
+          const qCell = regionIndexToCell[ri];
+          if (workspace.occupancy[qCell] !== 0) continue;
+          const walkFromQ = workspace.distanceTo(qCell);
+          if (walkFromQ < 0) continue;
+
+          const predDist = bucketDist + walkFromQ + 1;
+          if (predDist > opts.maxUsefulDistance) continue;
+
+          const predRank = encodeBoundaryState(ctx, childRegion, ri);
+          const existing = table.get(predRank);
+          if (existing !== undefined && existing <= predDist) continue;
+
+          // Stop instead of dropping the state: the radius fallback is only
+          // admissible while every state inside the radius is settled.
+          if (!table.set(predRank, predDist)) {
+            overflowed = true;
+            break build;
           }
-          if (prevOccupied || supportOccupied) continue;
-
-          for (let i = 0; i < k; i++) {
-            childRegion[i] = i === b ? prevRI : scratchBoxRegion[i];
-          }
-          childRegion.sort();
-
-          const childCells = new Uint16Array(k);
-          for (let i = 0; i < k; i++) {
-            childCells[i] = regionIndexToCell[childRegion[i]];
-          }
-          workspace.occupancy.fill(0);
-          for (let i = 0; i < k; i++) {
-            workspace.occupancy[childCells[i]] = 1;
-          }
-
-          workspace.flood(board, supportCell);
-
-          const walkToPlayer = workspace.distanceTo(playerCell);
-          if (walkToPlayer < 0) continue;
-
-          const edgeCost = walkToPlayer + 1;
-          const newDist = bucketDist + edgeCost;
-
-          if (newDist > opts.maxUsefulDistance) continue;
-
-          for (let ri = 0; ri < regionSize; ri++) {
-            const qCell = regionIndexToCell[ri];
-            if (workspace.occupancy[qCell] !== 0) continue;
-            const walkFromQ = workspace.distanceTo(qCell);
-            if (walkFromQ < 0) continue;
-
-            const predDist = bucketDist + walkFromQ + 1;
-            if (predDist > opts.maxUsefulDistance) continue;
-
-            const predRank = encodeBoundaryState(ctx, childRegion, ri);
-            const existing = table.get(predRank);
-            if (existing !== undefined && existing <= predDist) continue;
-
-            table.set(predRank, predDist);
-            if (predDist < maxBuckets) {
-              buckets[predDist].push(predRank);
-            }
+          if (predDist < maxBuckets) {
+            buckets[predDist].push(predRank);
           }
         }
       }
@@ -559,8 +551,8 @@ export function buildMoveCostPatternPdb(
     }
   }
 
-  const complete = currentBucket >= maxBuckets ||
-    (buckets.every(b => b.length === 0) && table.settledCount === table.size);
+  const complete = !overflowed && (currentBucket >= maxBuckets ||
+    (buckets.every(b => b.length === 0) && table.settledCount === table.size));
 
   const retainedBytes = table.estimatedBytes;
 
@@ -573,6 +565,7 @@ export function buildMoveCostPatternPdb(
     completedRadius: Math.max(completedRadius, -1),
     maxSettledDistance,
     complete,
+    overflowed,
     queries: 0,
     boundaryHits: 0,
     radiusFallbacks: 0,
