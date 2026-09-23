@@ -12,6 +12,7 @@ import {
   formatRate,
   phaseLabel,
   resultSummary,
+  solverAnnouncement,
 } from "./solver-format";
 import {
   MEMORY_LIMIT_OPTIONS,
@@ -65,23 +66,10 @@ export function SolverDialog({
     [solver.logEntries],
   );
 
-  const srAnnouncement = useMemo(() => {
-    switch (solver.uiPhase) {
-      case "running":
-        return "Solver started";
-      case "solved":
-        if (solvedResult) {
-          return `Solution found: ${solvedResult.solution.moves} moves, ${solvedResult.solution.pushes} pushes`;
-        }
-        return "Solution found";
-      case "unsolved":
-        return "Solver timed out";
-      case "cancelled":
-        return "Solver cancelled";
-      default:
-        return "";
-    }
-  }, [solver.uiPhase, solvedResult]);
+  const srAnnouncement = useMemo(
+    () => solverAnnouncement(solver.uiPhase, solver.result ?? null),
+    [solver.uiPhase, solver.result],
+  );
 
   const handleClose = () => {
     solver.cancel("Solver dialog closed");
@@ -259,8 +247,10 @@ export function SolverDialog({
 
                   <p className={styles.note}>
                     All searches evaluate routes by total movement. A* and IDA*
-                    prove a minimum; the other searches return their best verified
-                    route. Pushes remain statistics, not an objective.
+                    prove a minimum when they finish within the time and memory
+                    limits; Sokomind Solver marks a route optimal only when it
+                    completes an explicit proof; other searches return their best
+                    verified route. Pushes remain statistics, not an objective.
                   </p>
                 </div>
               </details>

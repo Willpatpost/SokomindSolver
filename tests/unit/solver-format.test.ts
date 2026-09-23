@@ -8,6 +8,7 @@ import {
   formatRate,
   phaseLabel,
   resultSummary,
+  solverAnnouncement,
 } from "../../src/features/solver/solver-format.ts";
 import type { SolverResult } from "../../src/solver/contracts.ts";
 
@@ -304,5 +305,61 @@ describe("resultSummary", () => {
       metrics: STUB_METRICS,
     };
     assert.match(resultSummary(result), /does not support/i);
+  });
+});
+
+describe("solverAnnouncement", () => {
+  function solved(optimality: "unknown" | "proven"): SolverResult {
+    return {
+      status: "solved",
+      solution: {
+        steps: [],
+        moves: 42,
+        pushes: 15,
+        objective: { kind: "moves" },
+        objectiveScore: 42,
+        optimality,
+      },
+      metrics: STUB_METRICS,
+    };
+  }
+
+  it("announces start and cancellation", () => {
+    assert.equal(solverAnnouncement("running", null), "Solver started");
+    assert.equal(solverAnnouncement("cancelled", null), "Solver cancelled");
+  });
+
+  it("announces a solved route without claiming optimality it lacks", () => {
+    const announcement = solverAnnouncement("solved", solved("unknown"));
+    assert.equal(announcement, "Solution found: 42 moves, 15 pushes");
+    assert.doesNotMatch(announcement, /optimal/i);
+  });
+
+  it("announces a proven route as optimal", () => {
+    assert.equal(
+      solverAnnouncement("solved", solved("proven")),
+      "Solution found: 42 moves, 15 pushes, proven optimal",
+    );
+  });
+
+  const unsolvedCases = [
+    ["exhausted", /without a solution/],
+    ["limit-reached", /limit/],
+    ["unsupported", /support/],
+  ] as const;
+  for (const [reason, expected] of unsolvedCases) {
+    it(`announces an ${reason} result by its reason, not as a timeout`, () => {
+      const announcement = solverAnnouncement("unsolved", {
+        status: "unsolved",
+        reason,
+        metrics: STUB_METRICS,
+      });
+      assert.match(announcement, expected);
+      assert.doesNotMatch(announcement, /timed out/i);
+    });
+  }
+
+  it("stays silent while idle", () => {
+    assert.equal(solverAnnouncement("ready", null), "");
   });
 });

@@ -3,6 +3,7 @@ import type {
   SolverProofKind,
   SolverResult,
 } from "@/src/solver";
+import type { SolverUiPhase } from "./solver-ui-types";
 
 const INTEGER_FORMAT = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 0,
@@ -109,5 +110,34 @@ export function resultSummary(result: SolverResult): string {
           : "The search limit was reached before a solution was found.";
       }
       return result.detail ?? "This solver does not support the request.";
+  }
+}
+
+// Screen-reader text for a finished or running search. Unsolved results can
+// be exhausted, limited or unsupported, so none is announced as a timeout.
+export function solverAnnouncement(
+  phase: SolverUiPhase,
+  result: SolverResult | null,
+): string {
+  switch (phase) {
+    case "running":
+      return "Solver started";
+    case "cancelled":
+      return "Solver cancelled";
+    case "solved": {
+      if (result?.status !== "solved") return "Solution found";
+      const { moves, pushes, optimality } = result.solution;
+      const proven = optimality === "proven" ? ", proven optimal" : "";
+      return `Solution found: ${moves} moves, ${pushes} pushes${proven}`;
+    }
+    case "unsolved":
+      if (result?.status !== "unsolved") return "Solver stopped without a solution";
+      if (result.reason === "exhausted") return "Search finished without a solution";
+      if (result.reason === "limit-reached") {
+        return "Solver stopped at a search limit before finding a solution";
+      }
+      return "This solver does not support this puzzle";
+    default:
+      return "";
   }
 }

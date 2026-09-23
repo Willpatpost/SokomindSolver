@@ -94,3 +94,9 @@ published a stable release.
   engines stop at their grants and so found it within the limit. A route whose
   reported work passes a state limit, or that arrives after cancellation, is
   still not accepted, and repair candidates are archived only once kept.
+- The solver dialog's screen-reader announcement no longer calls every
+  unsolved result a timeout. It names the reason (search finished, search
+  limit, or unsupported puzzle) and says "proven optimal" only for a proven
+  route. The advanced-settings note now says A* and IDA* prove a minimum only
+  when they finish within the limits, and that Sokomind Solver marks a route
+  optimal only after an explicit proof.
