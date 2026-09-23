@@ -7,7 +7,6 @@ import { extractSokomindOptions, type SokomindRequestOptions } from "./sokomind-
 import {
   MEMORY_TIER_LOW,
   MEMORY_TIER_MEDIUM,
-  adaptiveRewriteAllocation,
   configuredBudget,
   defaultImprovementMaxVisited,
   DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS,
@@ -279,7 +278,7 @@ export async function solvedWithImprovement(
   createWorker: () => SokomindEngineWorker,
   options: SokomindImprovementOptions,
   sokomindOptions: SokomindRequestOptions,
-  harvestAndImprove: ((
+  improveByMode: (
     run: SearchRunState,
     state: import("./sokomind-legacy.ts").LegacyState,
     firstIncumbent: SolverSolution,
@@ -289,9 +288,9 @@ export async function solvedWithImprovement(
     tuning: Readonly<Record<string, number>>,
     maxWorkers: number,
     analysisPlan?: import("./sokomind-legacy.ts").SokomindAnalysisPlan,
-  ) => Promise<SolverResult>) | undefined,
-  tuning?: Readonly<Record<string, number>>,
-  maxWorkers?: number,
+  ) => Promise<SolverResult>,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
   analysisPlan?: import("./sokomind-legacy.ts").SokomindAnalysisPlan,
 ): Promise<SolverResult> {
   if (sokomindOptions.mode === "fast") {
@@ -308,38 +307,15 @@ export async function solvedWithImprovement(
     });
   }
 
-  if (tuning && maxWorkers !== undefined && harvestAndImprove) {
-    return harvestAndImprove(
-      run,
-      state,
-      incumbent,
-      createWorker,
-      options,
-      sokomindOptions,
-      tuning,
-      maxWorkers,
-      analysisPlan,
-    );
-  }
-
-  const improved = await improveIncumbent(
+  return improveByMode(
     run,
     state,
     incumbent,
     createWorker,
     options,
-    0,
-    Infinity,
-    1,
-    adaptiveRewriteAllocation(run.request),
+    sokomindOptions,
+    tuning,
+    maxWorkers,
+    analysisPlan,
   );
-  if (improved.cancelled) {
-    return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-  }
-  const discoveryResult: SolverResult = Object.freeze({
-    status: "solved" as const,
-    solution: improved.solution,
-    metrics: metrics(run),
-  });
-  return discoveryResult;
 }

@@ -53,9 +53,11 @@ measurement prerequisites, not route-quality promotions.
 
 ### Delivered P2 implementation
 
-- **P2.1 Reschedule-value predictor** - implemented in
-  `src/solver/implementations/sokomind-reschedule-predictor.ts` and used by the
-  quality-mode harvesting path. Optimal-mode eligibility is preserved.
+- **P2.1 Reschedule-value predictor** - implemented and unit-tested in
+  `src/solver/implementations/sokomind-reschedule-predictor.ts`, but not wired
+  into production. The harvesting path that called it was unreachable and has
+  been removed; Quality mode reschedules whenever `supportsBoxRescheduling()`
+  holds. Wiring the predictor needs benchmark qualification.
 - **P2.2 Route diagnosis script** - available through `npm run diagnose:solver-route`.
 
 ### Remaining modularization work

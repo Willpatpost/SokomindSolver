@@ -9,7 +9,7 @@ import type {
 } from "../contracts.ts";
 import { runClassicSearch } from "../search/engine.ts";
 import { BudgetTracker } from "./sokomind-budget-tracker.ts";
-import { harvestAndImprove, qualityAnytimeImprove, optimalQuickImprove, runProof } from "./sokomind-harvest.ts";
+import { qualityAnytimeImprove, optimalQuickImprove, runProof } from "./sokomind-harvest.ts";
 import { solvedWithImprovement, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
 import {
   finiteNonNegative,
@@ -357,7 +357,7 @@ export function createSokomindSolverAdapter(
   const proofWorkerFactory = options.createProofWorker ?? defaultCreateProofWorker;
   const proofCheckpointOptions = options.checkpointOptions;
 
-  const boundHarvestAndImprove = (
+  const improveByMode = (
     r: SearchRunState,
     s: LegacyState,
     first: SolverSolution,
@@ -379,10 +379,7 @@ export function createSokomindSolverAdapter(
         proofWorkerFactory, proofCheckpointOptions,
       );
     }
-    return harvestAndImprove(
-      r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
-      proofWorkerFactory, proofCheckpointOptions,
-    );
+    throw new Error(`sokomind-solver: no improvement schedule for mode '${sokoOpts.mode}'`);
   };
 
   return Object.freeze({
@@ -545,7 +542,7 @@ export function createSokomindSolverAdapter(
                 ? validatedInitialSolution : outcome.solution;
               return solvedWithImprovement(
                 run, state, incumbent, createWorker, options,
-                sokomindOptions, boundHarvestAndImprove,
+                sokomindOptions, improveByMode,
                 tuning, maxWorkers, analysisPlan,
               );
             }
@@ -616,7 +613,7 @@ export function createSokomindSolverAdapter(
               ? validatedInitialSolution : outcome.solution;
             return solvedWithImprovement(
               run, state, incumbent, createWorker, options,
-              sokomindOptions, boundHarvestAndImprove,
+              sokomindOptions, improveByMode,
               tuning, maxWorkers, analysisPlan,
             );
           }
@@ -647,7 +644,7 @@ export function createSokomindSolverAdapter(
               ? validatedInitialSolution : outcome.solution;
             return solvedWithImprovement(
               run, state, incumbent, createWorker, options,
-              sokomindOptions, boundHarvestAndImprove,
+              sokomindOptions, improveByMode,
               tuning, maxWorkers, analysisPlan,
             );
           }
@@ -661,7 +658,7 @@ export function createSokomindSolverAdapter(
         }
         return solvedWithImprovement(
           run, state, validatedInitialSolution, createWorker, options,
-          sokomindOptions, boundHarvestAndImprove,
+          sokomindOptions, improveByMode,
           tuning, maxWorkers, analysisPlan,
         );
       }

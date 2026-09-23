@@ -170,8 +170,8 @@ code that must retain Fast/Optimal compatibility.
 
 | File | Current lines and symbols | Required work |
 |---|---|---|
-| [sokomind-solver.ts](../../src/solver/implementations/sokomind-solver.ts) | 347 `createSokomindSolverAdapter`; 359 `boundHarvestAndImprove`; 390 onward `solve`; 270 `runClassicFallback`; 663 fallback dispatch | Route Quality to the dedicated scheduler; handle initial incumbents; eliminate the fallback Quality-to-proof transition; preserve cumulative metrics |
-| [sokomind-harvest.ts](../../src/solver/implementations/sokomind-harvest.ts) | 55 `runProof`; 84 `harvestAndImprove`; 297 `harvestIncumbents`; 390 `qualityAnytimeImprove`; 455 initial-wave budget; 524 best selection; 539 stall state; 575 improvement cap; 644 final proof call; 654 `optimalQuickImprove` | Extract Quality scheduling, replace fixed loop, retain Optimal behavior |
+| [sokomind-solver.ts](../../src/solver/implementations/sokomind-solver.ts) | 347 `createSokomindSolverAdapter`; 359 `improveByMode` (formerly `boundHarvestAndImprove`); 390 onward `solve`; 270 `runClassicFallback`; 663 fallback dispatch | Route Quality to the dedicated scheduler; handle initial incumbents; eliminate the fallback Quality-to-proof transition; preserve cumulative metrics |
+| [sokomind-harvest.ts](../../src/solver/implementations/sokomind-harvest.ts) | 55 `runProof`; 297 `harvestIncumbents`; 390 `qualityAnytimeImprove`; 455 initial-wave budget; 524 best selection; 539 stall state; 575 improvement cap; 644 final proof call; 654 `optimalQuickImprove` | Extract Quality scheduling, replace fixed loop, retain Optimal behavior |
 | [sokomind-improvement.ts](../../src/solver/implementations/sokomind-improvement.ts) | 32 `SokomindImprovementOptions`; 39 `ImprovedIncumbent`; 45 `improveIncumbent`; 208 `solvedWithImprovement` | Rich task outcomes, resumable repair, candidate publication; audit memory-derived visited caps and phase deadlines |
 | [sokomind-plans.ts](../../src/solver/implementations/sokomind-plans.ts) | 35 `defaultImprovementMaxVisited`; 42–48 time constants; 112 `structuralPlan`; 395 `diversifiedHarvestPlans`; 447 `sokomindRewriteConcurrency`; 467 `solutionImprovementPlan`; 517 `solutionReschedulingPlan` | Separate live-memory and work policy; build task-specific bounded payloads; add operator/cursor options without changing proof heuristics |
 | [sokomind-incumbents.ts](../../src/solver/implementations/sokomind-incumbents.ts) | 29 `isSolutionBetter`; 39 `computeDiversitySignature`; 96 `computeHarvestMs`; 109 `selectForRewrite`; 138 `selectBest`; 156 `IncumbentCollector`; 167 `offer` | Preserve existing comparator; evolve diversity retention and eviction; stop tying early Quality harvest to total timeout |
@@ -344,9 +344,10 @@ Never dispatch global proof work from this coordinator.
    If improvement continues afterward, add a dedicated completed-work baseline
    or import that work exactly once before `withRemainingLimits`. Otherwise the
    scheduler could forget fallback work or double-count the legacy portion.
-4. Audit all indirect paths through `solvedWithImprovement`, `harvestAndImprove`
-   and `boundHarvestAndImprove`. Keep mode dispatch explicit and avoid a generic
-   non-Fast branch for proof.
+4. Audit all indirect paths through `solvedWithImprovement` and
+   `improveByMode`. Keep mode dispatch explicit and avoid a generic non-Fast
+   branch for proof. The unreachable `harvestAndImprove` fallthrough has been
+   removed; an unknown mode now throws.
 5. Preserve `optimalQuickImprove`, classic A*/IDA*, certificate validation, and
    proof persistence behavior. Do not remove proof APIs just because Quality
    no longer calls them.

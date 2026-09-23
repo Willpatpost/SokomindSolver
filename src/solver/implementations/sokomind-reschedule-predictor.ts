@@ -10,6 +10,8 @@ export interface ReschedulePrediction {
   readonly floorBoxRatio: number;
 }
 
+// Not wired into production: Quality and Optimal reschedule whenever
+// supportsBoxRescheduling holds. Gating on this needs benchmark evidence.
 export function predictRescheduleValue(
   state: LegacyState,
   incumbent: SolverSolution,

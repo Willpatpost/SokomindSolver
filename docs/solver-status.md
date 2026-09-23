@@ -166,9 +166,10 @@ rejection, replay verification, or resource limits.
   (`intermediateOf`) is written but not yet consumed by beam selection.
   A configured quota alone is not evidence it ran.
 
-Quality-mode rescheduling is gated by `predictRescheduleValue()` in
-`sokomind-reschedule-predictor.ts`. Puzzles with low walk-push ratio and few
-boxes skip whole-box repair. Optimal mode always reschedules when eligible.
+Quality and Optimal modes both reschedule whenever `supportsBoxRescheduling()`
+holds. `predictRescheduleValue()` in `sokomind-reschedule-predictor.ts` is
+tested but not wired into any production path; gating Quality rescheduling on
+it would change behavior and needs benchmark qualification first.
 
 Supply validated tuning to the adapter through its `tuning` option. The Node
 benchmark commands also accept `SOKOMIND_TUNING_JSON`, e.g.

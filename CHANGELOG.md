@@ -40,6 +40,12 @@ published a stable release.
   cancel test accepts only the cancelled outcome, and browser specs wait on
   `page.clock` or web-first assertions instead of fixed sleeps.
 
+- Removed the unreachable Sokomind `harvestAndImprove` schedule and the
+  single-rewrite fallback in `solvedWithImprovement`. Quality and Optimal
+  already dispatch to their own schedulers, and an unknown mode now throws
+  instead of falling through. The reschedule-value predictor is kept, but the
+  docs now say it is not wired into production.
+
 ### Fixed
 
 - Exact pattern-database combination counts no longer wrap at 32 bits on large
