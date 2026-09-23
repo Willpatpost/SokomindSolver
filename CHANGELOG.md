@@ -85,6 +85,11 @@ published a stable release.
 - Legacy `#puzzle=` and `#custom=` links now redirect in place without
   committing the route a second time, so the page no longer loses track of
   the previous route and treats a switch to another puzzle as a fresh attempt.
+- Clicks and taps on a pinch-zoomed board land on the cell under the pointer.
+  The mapping subtracted unscaled padding from the zoomed board's scaled size,
+  so a click near a cell's edge could pick its neighbour. Pieces on a zoomed
+  board also slide in from the adjacent cell instead of from as many cells
+  away as the zoom factor.
 - A first visit no longer shows "A new version of Sokomind is available".
   The first worker briefly waits before activating by itself, which was
   mistaken for an update; only a worker waiting behind an active one counts

@@ -1,22 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Client coordinates of a cell centre, using the same padding-aware mapping
-// as the board click handler.
-async function cellCentre(page: Page, row: number, column: number) {
+const COLOR_LINE_COLUMNS = 9;
+
+// Client coordinates of a point `across` the way over a cell at its mid
+// height, measured from the rendered cell so any zoom transform is included.
+async function cellPoint(page: Page, row: number, column: number, across = 0.5) {
   return page.getByTestId("game-board").evaluate(
     (board, target) => {
-      const rect = board.getBoundingClientRect();
-      const style = getComputedStyle(board);
-      const padLeft = parseFloat(style.paddingLeft) || 0;
-      const padTop = parseFloat(style.paddingTop) || 0;
-      const innerWidth = rect.width - padLeft - (parseFloat(style.paddingRight) || 0);
-      const innerHeight = rect.height - padTop - (parseFloat(style.paddingBottom) || 0);
+      const rect = board.children[target.row * target.columns + target.column]
+        .getBoundingClientRect();
       return {
-        x: rect.left + padLeft + ((target.column + 0.5) * innerWidth) / target.columns,
-        y: rect.top + padTop + ((target.row + 0.5) * innerHeight) / target.rows,
+        x: rect.left + rect.width * target.across,
+        y: rect.top + rect.height / 2,
       };
     },
-    { row, column, columns: 9, rows: 6 },
+    { row, column, across, columns: COLOR_LINE_COLUMNS },
   );
 }
 
@@ -25,7 +23,7 @@ test("clicking a distant floor cell walks the whole route", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Color Line" })).toBeVisible();
 
   // Keeper starts at row 4, column 4; row 4, column 1 is three steps left.
-  const { x, y } = await cellCentre(page, 4, 1);
+  const { x, y } = await cellPoint(page, 4, 1);
   await page.mouse.click(x, y);
 
   await expect(page.getByTestId("moves-count")).toHaveText("3");
@@ -33,6 +31,61 @@ test("clicking a distant floor cell walks the whole route", async ({ page }) => 
     "aria-label",
     /Keeper at row 5, column 2\..*3 moves and 0 pushes/,
   );
+});
+
+test("a zoomed board maps clicks and slides pieces in its own pixels", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(() => {
+    const slides: string[] = [];
+    Object.defineProperty(window, "keeperSlides", { value: slides });
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element, ...args: Parameters<typeof animate>) {
+      const [keyframes] = args;
+      if (this instanceof HTMLElement && this.dataset.pieceId === "keeper" && Array.isArray(keyframes)) {
+        slides.push(String(keyframes[0]?.transform ?? ""));
+      }
+      return animate.apply(this, args);
+    };
+  });
+  await page.goto("./#/play/beginner-typed-line");
+  await expect(page.getByRole("heading", { name: "Color Line" })).toBeVisible();
+
+  // Zoom 3x about the centre of row 4, column 1, which keeps that cell in place.
+  await page.evaluate((columns) => {
+    const layer = document.querySelector("[data-testid='board-zoom-layer']") as HTMLElement;
+    const board = document.querySelector("[data-testid='game-board']") as HTMLElement;
+    const cell = board.children[4 * columns + 1].getBoundingClientRect();
+    const origin = layer.getBoundingClientRect();
+    layer.style.transformOrigin =
+      `${cell.left + cell.width / 2 - origin.left}px ${cell.top + cell.height / 2 - origin.top}px`;
+    layer.style.transform = "scale(3)";
+  }, COLOR_LINE_COLUMNS);
+
+  // Near the far edge of the cell, where unscaled padding used to tip the
+  // click into the next column. The keeper walks three steps left from
+  // row 4, column 4.
+  const { x, y } = await cellPoint(page, 4, 1, 0.95);
+  await page.mouse.click(x, y);
+  await expect(page.getByTestId("moves-count")).toHaveText("3");
+  await expect(page.getByTestId("game-board")).toHaveAttribute(
+    "aria-label",
+    /Keeper at row 5, column 2\./,
+  );
+
+  // Each step slides the keeper from one cell away in the layer's own pixels;
+  // the scaled rect would start it three cells away.
+  const pitch = await page.locator("[data-piece-id='keeper']").evaluate((slot) => {
+    const gap = Number.parseFloat(getComputedStyle(slot.parentElement as HTMLElement).columnGap);
+    return (slot as HTMLElement).offsetWidth + (Number.isFinite(gap) ? gap : 0);
+  });
+  const slides = await page.evaluate(() => Reflect.get(window, "keeperSlides") as string[]);
+  expect(slides).toHaveLength(3);
+  for (const slide of slides) {
+    const match = /^translate3d\((-?[\d.]+)px, (-?[\d.]+)px, 0\)$/.exec(slide);
+    expect(match, slide).not.toBeNull();
+    expect(Number(match?.[1])).toBeCloseTo(pitch, 0);
+    expect(Number(match?.[2])).toBe(0);
+  }
 });
 
 interface Point {
@@ -186,13 +239,13 @@ test("zoomed pans and double taps do not move the keeper", async ({ page }) => {
   // A single tap still walks once the double-tap window has passed. The
   // keeper starts at row 4, column 4.
   await page.clock.runFor(400);
-  await tapBoard(page, await cellCentre(page, 4, 3), 1);
+  await tapBoard(page, await cellPoint(page, 4, 3), 1);
   await page.clock.runFor(400);
   await expect(moves).toHaveText("1");
 
   // A double tap resets the zoom, and its first tap does not walk.
   await page.clock.runFor(400);
-  await tapBoard(page, await cellCentre(page, 4, 2), 2);
+  await tapBoard(page, await cellPoint(page, 4, 2), 2);
   await expect(layer).toHaveCSS("transform", "none");
   await page.clock.runFor(1_000);
   await expect(moves).toHaveText("1");

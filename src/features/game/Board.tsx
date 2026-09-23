@@ -205,7 +205,10 @@ const PieceSlot = memo(function PieceSlot({
     animation.current?.cancel();
     animation.current = null;
 
-    const nextRect = element.getBoundingClientRect();
+    // Translations apply inside the board's own coordinates, which a pinch
+    // zoom scales, so use layout sizes rather than the scaled bounding rect.
+    const cellWidth = element.offsetWidth;
+    const cellHeight = element.offsetHeight;
     const priorPosition = previousPosition.current;
     const adjacent = priorPosition !== null &&
       Math.abs(priorPosition.row - position.row) +
@@ -238,7 +241,7 @@ const PieceSlot = memo(function PieceSlot({
       !reduceMotion
     ) {
       const vector = DIRECTION_VECTOR[experienceEvent.direction];
-      const distance = Math.max(3, Math.min(nextRect.width, nextRect.height) * 0.11);
+      const distance = Math.max(3, Math.min(cellWidth, cellHeight) * 0.11);
       const x = vector.column * distance;
       const y = vector.row * distance;
       presentAnimation(
@@ -271,9 +274,9 @@ const PieceSlot = memo(function PieceSlot({
       const columnGap = Number.isFinite(parsedColumnGap) ? parsedColumnGap : 0;
       const rowGap = Number.isFinite(parsedRowGap) ? parsedRowGap : 0;
       const x =
-        (priorPosition.column - position.column) * (nextRect.width + columnGap);
+        (priorPosition.column - position.column) * (cellWidth + columnGap);
       const y =
-        (priorPosition.row - position.row) * (nextRect.height + rowGap);
+        (priorPosition.row - position.row) * (cellHeight + rowGap);
 
       if (Math.abs(x) > 0.5 || Math.abs(y) > 0.5) {
         const pushedBox = experienceEvent?.movedBox?.id === id;

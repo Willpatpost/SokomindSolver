@@ -65,31 +65,70 @@ export function findWalkPath(
   return null;
 }
 
+export interface BoardGrid {
+  /** Content-box size of the board in its own, untransformed pixels. */
+  readonly innerWidth: number;
+  readonly innerHeight: number;
+  readonly columnGap: number;
+  readonly rowGap: number;
+  readonly columns: number;
+  readonly rows: number;
+}
+
+/**
+ * Maps a point in the board's content box, in untransformed pixels, to a
+ * cell. Each cell owns the gap after it, so gap pixels map to the cell on
+ * their left or above.
+ */
+export function cellFromLocalPoint(
+  x: number,
+  y: number,
+  { innerWidth, innerHeight, columnGap, rowGap, columns, rows }: BoardGrid,
+): Position | null {
+  if (columns <= 0 || rows <= 0) return null;
+  if (!(x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)) return null;
+  const pitchX = (innerWidth + columnGap) / columns;
+  const pitchY = (innerHeight + rowGap) / rows;
+  const column = Math.min(columns - 1, Math.floor(x / pitchX));
+  const row = Math.min(rows - 1, Math.floor(y / pitchY));
+  return { row, column };
+}
+
+function pixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Maps a click to a board cell. The board may sit inside a scaled layer (pinch
+ * zoom), where its bounding rect is scaled but its padding, border and gaps
+ * are not, so the click is first converted back to the board's own pixels.
+ */
 export function cellFromBoardClick(
   event: { clientX: number; clientY: number },
   boardElement: HTMLElement,
   columns: number,
   rows: number,
 ): Position | null {
+  const { offsetWidth, offsetHeight } = boardElement;
+  if (offsetWidth <= 0 || offsetHeight <= 0) return null;
   const rect = boardElement.getBoundingClientRect();
+  const scaleX = rect.width / offsetWidth;
+  const scaleY = rect.height / offsetHeight;
+  if (!(scaleX > 0 && scaleY > 0)) return null;
+
   const style = getComputedStyle(boardElement);
-  const padLeft = parseFloat(style.paddingLeft) || 0;
-  const padTop = parseFloat(style.paddingTop) || 0;
-  const padRight = parseFloat(style.paddingRight) || 0;
-  const padBottom = parseFloat(style.paddingBottom) || 0;
+  const padLeft = pixels(style.paddingLeft);
+  const padTop = pixels(style.paddingTop);
+  const x = (event.clientX - rect.left) / scaleX - boardElement.clientLeft - padLeft;
+  const y = (event.clientY - rect.top) / scaleY - boardElement.clientTop - padTop;
 
-  const innerWidth = rect.width - padLeft - padRight;
-  const innerHeight = rect.height - padTop - padBottom;
-
-  const x = event.clientX - rect.left - padLeft;
-  const y = event.clientY - rect.top - padTop;
-
-  if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
-
-  const column = Math.floor((x / innerWidth) * columns);
-  const row = Math.floor((y / innerHeight) * rows);
-
-  if (column < 0 || column >= columns || row < 0 || row >= rows) return null;
-
-  return { row, column };
+  return cellFromLocalPoint(x, y, {
+    innerWidth: boardElement.clientWidth - padLeft - pixels(style.paddingRight),
+    innerHeight: boardElement.clientHeight - padTop - pixels(style.paddingBottom),
+    columnGap: pixels(style.columnGap),
+    rowGap: pixels(style.rowGap),
+    columns,
+    rows,
+  });
 }
