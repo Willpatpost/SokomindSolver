@@ -13,6 +13,7 @@ import {
   undo,
   validatePuzzle,
   validatePuzzleRows,
+  type Direction,
   type PuzzleDefinition,
 } from "../../src/core/index.ts";
 
@@ -197,6 +198,65 @@ test("pushes a box, counts the move and push, and detects completion", () => {
   assert.equal(solved.solved, true);
   assert.equal(isSolved(solved.snapshot), true);
   assert.equal(initial.solved, false);
+});
+
+test("boxes may be pushed across foreign goals", () => {
+  for (const rows of [
+    ["OOOOOOO", "ORXa SO", "OA OOOO", "OOOOOOO"],
+    ["OOOOOOO", "ORAS aO", "OX OOOO", "OOOOOOO"],
+    ["OOOOOOO", "ORAb aO", "OB OOOO", "OOOOOOO"],
+  ]) {
+    let session = createSession(puzzle(rows, 2));
+    for (const [pushes, column] of [[1, 3], [2, 4]]) {
+      const previous = session;
+      session = move(session, "right");
+      assert.notEqual(session, previous, rows[1]);
+      assert.equal(session.pushes, pushes, rows[1]);
+      const pushed = session.snapshot.boxes.find((box) => box.position.row === 1);
+      assert.equal(pushed?.position.column, column, rows[1]);
+      assert.equal(session.solved, false, rows[1]);
+    }
+  }
+});
+
+test("solves only when every box is on a goal with its own label", () => {
+  const play = (rows: readonly string[], directions: readonly Direction[]) =>
+    directions.reduce((session, direction) => move(session, direction), createSession(puzzle(rows, 2)));
+  const directions: Direction[] = ["down", "up", "right", "down"];
+
+  // X ends on a and A ends on S: every box is on a goal, none on its own.
+  const swapped = play(["OOOOO", "OR  O", "OXA O", "OaS O", "OOOOO"], directions);
+  assert.equal(swapped.moves, 4);
+  assert.deepEqual(
+    swapped.snapshot.boxes.map((box) => [box.label, box.position.row, box.position.column]),
+    [["X", 3, 1], ["A", 3, 2]],
+  );
+  assert.equal(swapped.solved, false);
+
+  // The same pushes with the goals matching their boxes.
+  const matched = createSession(puzzle(["OOOOO", "OR  O", "OXA O", "OSa O", "OOOOO"], 2));
+  const partial = move(matched, "down");
+  assert.equal(partial.pushes, 1);
+  assert.equal(partial.solved, false);
+  assert.equal(directions.slice(1).reduce(move, partial).solved, true);
+
+  // Two typed boxes on each other's goals.
+  const typed = play(["OOOOOO", "OR   O", "OAB  O", "Oba  O", "OOOOOO"], directions);
+  assert.equal(typed.solved, false);
+  const retyped = play(["OOOOOO", "OR   O", "OAB  O", "Oab  O", "OOOOOO"], directions);
+  assert.equal(retyped.solved, true);
+});
+
+test("solves repeated labels whichever goal each box reaches first", () => {
+  const rows = ["OOOOOOO", "OaARAaO", "OOOOOOO"];
+  for (const directions of [["left", "right", "right"], ["right", "left", "left"]] as Direction[][]) {
+    const session = directions.reduce(move, createSession(puzzle(rows, 2)));
+    assert.equal(session.pushes, 2, directions.join());
+    assert.equal(session.solved, true, directions.join());
+  }
+  const one = move(createSession(puzzle(rows, 2)), "left");
+  assert.equal(one.pushes, 1);
+  assert.equal(one.solved, false);
 });
 
 test("treats walls and impossible pushes as identity-preserving blocked moves", () => {

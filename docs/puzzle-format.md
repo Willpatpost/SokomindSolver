@@ -33,6 +33,8 @@ interface PuzzleDefinition {
 
 A dedicated box can finish only on the lowercase goal with the same letter.
 Generic boxes are interchangeable with one another and finish on `S` goals.
+Any box may be pushed across any goal on its way; labels matter only when
+checking whether the puzzle is solved.
 For every label, box and goal counts must match.
 
 Rows may be ragged in source data. `parsePuzzleRows()` normalizes missing

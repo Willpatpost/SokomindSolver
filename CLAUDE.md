@@ -8,9 +8,11 @@ executable tests remain authoritative when any prose disagrees.
 
 - O is wall.
 - R is robot.
-- X may only occupy S.
-- Only X may occupy S.
-- Typed uppercase boxes may only occupy their matching lowercase goals.
+- X counts as solved only on S.
+- Only X counts as solved on S.
+- Typed uppercase boxes count as solved only on their matching lowercase goals.
+- Any box, and the robot, may pass over any goal while moving; the goal rules
+  apply only to the win check.
 - Repeated typed labels are allowed.
 - The robot pushes but never pulls during forward play.
 
