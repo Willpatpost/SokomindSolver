@@ -53,6 +53,11 @@ published a stable release.
 - The browser and Node proof workers now share one runtime module, so the
   proof-result mapping is maintained in one place. The browser worker no longer
   passes the `persistTransposition` option, which exact IDA* ignores.
+- Removed the bundled Sokomind engine's one-way tunnel prune. It skipped
+  pushes out of a tunnel flagged as a dead end, but every tunnel cell has two
+  opposite floor neighbours, so the flag was never set and the prune never ran.
+  Solver results are unchanged. A dead-end test on its own would not be a safe
+  replacement, because it ignores push direction and goals inside the pocket.
 
 ### Fixed
 

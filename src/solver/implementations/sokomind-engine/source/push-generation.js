@@ -147,43 +147,8 @@ function collapseForcedPushes(first, board, limit = 32, options = {}) {
   return {...state, path, pushes, pushClass: first.pushClass};
 }
 
-function tunnelSegmentLookup(board) {
-  if (board._tunnelSegmentMap) return board._tunnelSegmentMap;
-  const map = new Map();
-  for (const segment of board.topology.tunnelSegments || []) {
-    for (const cell of segment.cells) {
-      map.set(cell, segment);
-    }
-  }
-  board._tunnelSegmentMap = map;
-  return map;
-}
-
 function expandPushMacro(next, board, enabled = true, options = {}) {
   if (!enabled || !board.topology.tunnels.has(next.pushedTo)) return {...next, pushes: 1};
-
-  // Check tunnel segment for one-way dead-end pruning
-  const segMap = tunnelSegmentLookup(board);
-  const segment = segMap.get(next.pushedTo);
-  if (segment && segment.oneWay) {
-    // One-way tunnel: check if pushing box into dead end with no matching goal
-    const label = next.boxes.find(([y, x]) =>
-      pkey(y, x) === next.pushedTo)?.[2];
-    if (label && segment.goals.length === 0) {
-      // No goals in this one-way tunnel, box will be stuck
-      board.metrics.tunnelOneWayPrunes = (board.metrics.tunnelOneWayPrunes || 0) + 1;
-      return null;
-    }
-    // Check if the goals in the tunnel match the box label
-    if (label && segment.goals.length > 0) {
-      const hasMatchingGoal = segment.goals.some(g => board.goals.get(g) === label);
-      if (!hasMatchingGoal) {
-        board.metrics.tunnelOneWayPrunes = (board.metrics.tunnelOneWayPrunes || 0) + 1;
-        return null;
-      }
-    }
-  }
-
   return collapseForcedPushes(next, board, 32, options);
 }
 
@@ -820,7 +785,6 @@ const SokomindPushGeneration = {
   pushBoxNeighbors,
   pushKey,
   collapseForcedPushes,
-  tunnelSegmentLookup,
   expandPushMacro,
   recordMacroDiscoveryRejection,
   macroPathRoot,

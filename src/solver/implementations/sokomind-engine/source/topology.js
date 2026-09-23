@@ -229,82 +229,7 @@ function analyzeTopology(floor, goals) {
     });
     return {goal, label, lanes};
   });
-  // Compile maximal tunnel segments from individual tunnel cells
-  const tunnelSegments = compileTunnelSegments(tunnels, floor, goals);
-
-  return {articulations, rooms, tunnels, tunnelSegments, goalAccess};
-}
-
-function compileTunnelSegments(tunnels, floor, goals) {
-  const visited = new Set();
-  const segments = [];
-  for (const cell of tunnels) {
-    if (visited.has(cell)) continue;
-    // Extend in both directions along the tunnel
-    const neighbors = floorNeighbors(cell, floor);
-    if (neighbors.length !== 2) continue;
-    const [n0, n1] = neighbors;
-    const [n0y, n0x] = n0.split(",").map(Number);
-    const [n1y, n1x] = n1.split(",").map(Number);
-    // Determine direction: horizontal or vertical
-    const [cy, cx] = cell.split(",").map(Number);
-    const dy = n1y - n0y === 0 ? 0 : (n1y > n0y ? 1 : -1);
-    const dx = n1x - n0x === 0 ? 0 : (n1x > n0x ? 1 : -1);
-    // Normalize direction: extend the segment in both directions
-    const cellsInSegment = [cell];
-    visited.add(cell);
-    // Extend forward (toward n1)
-    let current = cell;
-    while (true) {
-      const [y, x] = current.split(",").map(Number);
-      const next = pkey(y + dy, x + dx);
-      if (!tunnels.has(next) || visited.has(next)) {
-        break;
-      }
-      visited.add(next);
-      cellsInSegment.push(next);
-      current = next;
-    }
-    // Extend backward (toward n0)
-    current = cell;
-    while (true) {
-      const [y, x] = current.split(",").map(Number);
-      const next = pkey(y - dy, x - dx);
-      if (!tunnels.has(next) || visited.has(next)) {
-        break;
-      }
-      visited.add(next);
-      cellsInSegment.unshift(next);
-      current = next;
-    }
-    if (cellsInSegment.length < 1) continue;
-    // Determine entry and exit: the cells just beyond the segment ends
-    const first = cellsInSegment[0];
-    const last = cellsInSegment[cellsInSegment.length - 1];
-    const [fy, fx] = first.split(",").map(Number);
-    const [ly, lx] = last.split(",").map(Number);
-    const entryNeighbor = pkey(fy - dy, fx - dx);
-    const exitNeighbor = pkey(ly + dy, lx + dx);
-    // Check if ends are dead-ends (wall) or open
-    const entryIsDeadEnd = !floor.has(entryNeighbor);
-    const exitIsDeadEnd = !floor.has(exitNeighbor);
-    // One-way tunnel: one end is a dead-end
-    const oneWay = entryIsDeadEnd || exitIsDeadEnd;
-    // Goals within the tunnel
-    const segmentGoals = cellsInSegment.filter(c => goals.has(c));
-    segments.push({
-      cells: cellsInSegment,
-      entry: entryIsDeadEnd ? exitNeighbor : entryNeighbor,
-      exit: entryIsDeadEnd ? entryNeighbor : exitNeighbor,
-      entryEnd: entryIsDeadEnd ? first : last,
-      exitEnd: entryIsDeadEnd ? last : first,
-      goals: segmentGoals,
-      length: cellsInSegment.length,
-      oneWay,
-      deadEnd: entryIsDeadEnd ? entryNeighbor : (exitIsDeadEnd ? exitNeighbor : null),
-    });
-  }
-  return segments;
+  return {articulations, rooms, tunnels, goalAccess};
 }
 
 // --- Module registration ---
@@ -314,7 +239,6 @@ const SokomindTopology = {
   floorComponents,
   articulationPoints,
   analyzeTopology,
-  compileTunnelSegments,
 };
 if (typeof globalThis !== "undefined") globalThis.SokomindTopology = SokomindTopology;
 if (typeof module === "object" && module.exports) module.exports = SokomindTopology;

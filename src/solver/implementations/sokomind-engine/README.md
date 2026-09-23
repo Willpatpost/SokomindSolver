@@ -14,6 +14,9 @@ The following newer changes are intentionally excluded:
   an arbitrary adjacent cell rather than the exact post-push keeper position;
 - same-box tunnel collapsing, because it can skip a required stop or an
   interleaving push by another box;
+- the one-way tunnel prune, because its dead-end flags could never be set and
+  a dead-end test alone is unsound: it ignores push direction and goals in the
+  pocket;
 - default congestion scoring, because it changed Grand Hall's deterministic
   route and expanded-state count without a correctness or performance win;
 - enlarged per-worker caches and worker caps, because the website enforces one

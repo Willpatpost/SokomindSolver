@@ -434,6 +434,32 @@ describe("vendored Sokomind engine", () => {
     }
   });
 
+  it("does not prune pushes out of a dead-end corridor", () => {
+    // The box sits in a corridor that is walled at the keeper's end. It must be
+    // pushed back out towards the room, so a dead-end test alone cannot prune it.
+    const request = requestFor({
+      id: "dead-end-corridor-engine",
+      title: "Dead-end corridor engine",
+      difficulty: "tutorial",
+      boxes: 1,
+      rows: [
+        "OOOOOOOOOO",
+        "OS  OOOOOO",
+        "O    X  RO",
+        "O   OOOOOO",
+        "OOOOOOOOOO",
+      ],
+    });
+    for (const algorithm of ["push-astar", "ultimate"] as const) {
+      const result = search({ algorithm, state: toLegacyState(request), maxVisited: 5_000 });
+      assert.equal(result.status, "solved", algorithm);
+      assert.ok(Array.isArray(result.path), algorithm);
+      const solution = solutionFromLegacyPath(request, result.path);
+      assert.ok(solution, `${algorithm} replayable path`);
+      assert.equal(verifySolverSolution(request, solution).valid, true, algorithm);
+    }
+  });
+
   it("reserves rewrite states for move-specific windows", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const state = toLegacyState(request);
