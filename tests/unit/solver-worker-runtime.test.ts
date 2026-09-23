@@ -14,6 +14,8 @@ import type {
   SolverResult,
 } from "../../src/solver/contracts.ts";
 import type { SolverCompatibilityErrorCode } from "../../src/solver/compatibility.ts";
+import { SolverCancelledError } from "../../src/solver/cancellation.ts";
+import { SOLVER_WORKER_PROTOCOL_VERSION } from "../../src/solver/protocol.ts";
 import {
   RemoteSolverError,
   SolverClientDisposedError,
@@ -472,5 +474,123 @@ describe("solver worker host and client", () => {
       client.dispose();
       host.dispose();
     }
+  });
+});
+
+/** A worker stand-in that never answers unless the test emits an event. */
+class SilentTransport {
+  readonly sent: Array<{ readonly type: string }> = [];
+  readonly #listeners = new Set<MessageListener>();
+  terminated = 0;
+
+  get listenerCount(): number {
+    return this.#listeners.size;
+  }
+
+  postMessage(message: { readonly type: string }): void {
+    this.sent.push(message);
+  }
+
+  addEventListener(_type: "message", listener: MessageListener): void {
+    this.#listeners.add(listener);
+  }
+
+  removeEventListener(_type: "message", listener: MessageListener): void {
+    this.#listeners.delete(listener);
+  }
+
+  terminate(): void {
+    this.terminated += 1;
+  }
+
+  emit(message: unknown): void {
+    for (const listener of this.#listeners) listener({ data: message });
+  }
+}
+
+describe("solver worker client cancellation watchdog", () => {
+  it("terminates an unresponsive worker and retires the client", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const transport = new SilentTransport();
+    let terminatedEvents = 0;
+    const client = new SolverWorkerClient(transport, {
+      createJobId: () => "job-watchdog",
+      cancelWatchdogMs: 1_000,
+      onTerminated: () => { terminatedEvents += 1; },
+    });
+
+    const run = client.run("test-solver", request());
+    const discovery = client.discover();
+    const runRejected = assert.rejects(
+      run.result,
+      (error: unknown) =>
+        error instanceof SolverCancelledError && error.message === "User cancelled",
+    );
+    const discoveryRejected = assert.rejects(discovery, SolverClientDisposedError);
+    run.cancel("User cancelled");
+    assert.deepEqual(transport.sent.map(({ type }) => type), [
+      "solver/run", "solver/discover", "solver/cancel",
+    ]);
+
+    t.mock.timers.tick(999);
+    assert.equal(transport.terminated, 0);
+    assert.equal(terminatedEvents, 0);
+    t.mock.timers.tick(1);
+    assert.equal(transport.terminated, 1);
+    assert.equal(terminatedEvents, 1);
+    await runRejected;
+    await discoveryRejected;
+
+    // The retired client stops listening and refuses new work instead of
+    // posting into the terminated worker and waiting forever.
+    assert.equal(transport.listenerCount, 0);
+    assert.equal(client.activeJobId, undefined);
+    assert.throws(() => client.run("test-solver", request()), SolverClientDisposedError);
+    assert.throws(() => client.discover(), SolverClientDisposedError);
+    client.cancel("Again");
+    client.dispose();
+    assert.equal(transport.sent.length, 3);
+    assert.equal(transport.terminated, 1);
+    assert.equal(terminatedEvents, 1);
+  });
+
+  it("restarts the deadline on progress and stands down once the worker answers", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const transport = new SilentTransport();
+    let terminatedEvents = 0;
+    let nextId = 1;
+    const client = new SolverWorkerClient(transport, {
+      createJobId: () => `job-${nextId++}`,
+      cancelWatchdogMs: 1_000,
+      onTerminated: () => { terminatedEvents += 1; },
+    });
+    const event = (type: "solver/progress" | "solver/result", payload: object) => ({
+      protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION, type, jobId: "job-1", ...payload,
+    });
+
+    const run = client.run("test-solver", request());
+    run.cancel("User cancelled");
+    t.mock.timers.tick(900);
+    transport.emit(event("solver/progress", {
+      progress: { phase: "searching", elapsedMs: 1 },
+    }));
+    t.mock.timers.tick(900);
+    assert.equal(transport.terminated, 0);
+
+    transport.emit(event("solver/result", {
+      result: { status: "cancelled", metrics: { elapsedMs: 2 } },
+    }));
+    assert.equal((await run.result).status, "cancelled");
+    t.mock.timers.tick(10_000);
+    assert.equal(transport.terminated, 0);
+    assert.equal(terminatedEvents, 0);
+
+    // A worker that answered keeps its client.
+    const next = client.run("test-solver", request());
+    assert.equal(next.jobId, "job-2");
+    client.dispose();
+    await assert.rejects(next.result, SolverClientDisposedError);
+    assert.equal(transport.terminated, 1);
+    assert.equal(terminatedEvents, 0);
   });
 });

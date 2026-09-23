@@ -58,7 +58,16 @@ export function useSolverWorker({
       worker.addEventListener("error", onWorkerError);
       worker.addEventListener("messageerror", onMessageError);
 
-      client = createSolverWorkerClient(worker);
+      client = createSolverWorkerClient(worker, {
+        // The cancel watchdog terminated an unresponsive worker and retired
+        // its client. Start a fresh worker so the next search has one.
+        onTerminated: () => {
+          if (!active) return;
+          if (clientRef.current === client) clientRef.current = null;
+          appendLog("The solver worker stopped responding and is restarting.", "warning");
+          setWorkerGeneration((c) => c + 1);
+        },
+      });
       clientRef.current = client;
       startupTimer = window.setTimeout(
         () => fail("The solver worker did not respond within 5 seconds."),

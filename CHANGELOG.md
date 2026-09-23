@@ -80,3 +80,7 @@ published a stable release.
   proof already did, instead of the discovery incumbent. Exact A* cancelled
   after its bound already meets the incumbent returns that solution as proven
   with its optimal proof instead of an internally inconsistent result.
+- When the cancellation watchdog terminates an unresponsive solver worker, the
+  client is now retired and the solver dialog and Solver Lab start a fresh
+  worker. Previously the client stayed usable, so the next search posted to the
+  terminated worker and never finished.

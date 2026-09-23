@@ -360,6 +360,13 @@ integration, stale-job suppression, transport cleanup, and result
 revalidation. Both use small transport interfaces so their behavior can be
 tested without a real browser worker.
 
+If a cancelled job sends neither a terminal event nor progress within the
+client's cancellation watchdog (five seconds by default), the client terminates
+the worker, rejects the run as cancelled, and retires itself: later calls throw
+`SolverClientDisposedError` rather than posting to a dead worker. Its
+`onTerminated` option notifies the owner, and the solver dialog and Solver Lab
+use it to start a fresh worker.
+
 The classic engine yields with a macrotask rather than an already-resolved
 promise. That gives the worker event loop a chance to receive cancellation
 messages during CPU-heavy searches. Progress is emitted at a bounded cadence

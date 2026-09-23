@@ -56,6 +56,13 @@ export interface SolverWorkerClientOptions {
    * @default CANCEL_WATCHDOG_TIMEOUT_MS (5 000)
    */
   readonly cancelWatchdogMs?: number;
+  /**
+   * Called after the cancellation watchdog terminates an unresponsive worker.
+   * The client is retired by then (later calls throw
+   * `SolverClientDisposedError`), so the owner should create a new worker and
+   * client.
+   */
+  readonly onTerminated?: () => void;
 }
 
 export interface SolverRunOptions {
@@ -138,6 +145,7 @@ export class SolverWorkerClient {
   readonly #transport: SolverWorkerClientTransport;
   readonly #createJobId: () => string;
   readonly #cancelWatchdogMs: number;
+  readonly #onTerminated: (() => void) | undefined;
   readonly #onMessage: SolverClientMessageListener;
   readonly #discoveries = new Set<DiscoveryPromise>();
   #active?: ActiveClientRun;
@@ -151,6 +159,7 @@ export class SolverWorkerClient {
     this.#transport = transport;
     this.#createJobId = options.createJobId ?? defaultJobId;
     this.#cancelWatchdogMs = options.cancelWatchdogMs ?? CANCEL_WATCHDOG_TIMEOUT_MS;
+    this.#onTerminated = options.onTerminated;
     this.#onMessage = ({ data }) => {
       this.#handleMessage(data);
     };
@@ -417,8 +426,9 @@ export class SolverWorkerClient {
   /**
    * Arms or re-arms the watchdog timer. After `cancel()` sends the protocol
    * command, the timer starts. If the worker does not respond (result, failure,
-   * or even progress) within the deadline the worker is forcibly terminated and
-   * the run is rejected with a `SolverCancelledError`.
+   * or even progress) within the deadline the worker is forcibly terminated,
+   * the run is rejected with a `SolverCancelledError`, and the client is
+   * retired because it no longer has a worker to talk to.
    */
   #armCancelWatchdog(active: ActiveClientRun, reason?: string): void {
     if (!Number.isFinite(this.#cancelWatchdogMs)) return;
@@ -427,7 +437,11 @@ export class SolverWorkerClient {
       this.#watchdogTimer = undefined;
       // Only fire if this is still the active run.
       if (this.#active !== active || this.#disposed) return;
-      // Forcibly terminate the worker — the solver is unresponsive.
+      // Forcibly terminate the worker — the solver is unresponsive. Retire
+      // the client with it, so a later run throws instead of posting into a
+      // dead worker and waiting forever.
+      this.#disposed = true;
+      this.#transport.removeEventListener("message", this.#onMessage);
       this.#transport.terminate?.();
       this.#settleActive(
         active,
@@ -437,6 +451,8 @@ export class SolverWorkerClient {
               `after ${this.#cancelWatchdogMs}ms with no response`,
         ),
       );
+      this.#rejectDiscoveries(new SolverClientDisposedError());
+      this.#onTerminated?.();
     }, this.#cancelWatchdogMs);
   }
 
