@@ -105,6 +105,23 @@ export function parseHash(hash: string): ParseResult {
   return { kind: "route", route: { page: "home" } };
 }
 
+/**
+ * Parses a hash and follows a legacy redirect to the hash it names, so callers
+ * can write the final hash to history and commit its route once.
+ */
+export function resolveHash(hash: string): {
+  readonly route: Route;
+  readonly hash: string;
+} {
+  const result = parseHash(hash);
+  if (result.kind === "route") return { route: result.route, hash };
+  const target = parseHash(result.hash);
+  return {
+    route: target.kind === "route" ? target.route : { page: "home" },
+    hash: result.hash,
+  };
+}
+
 function detectLegacy(raw: string): string | null {
   if (raw.startsWith("puzzle=")) {
     const params = new URLSearchParams(raw);

@@ -72,6 +72,14 @@ published a stable release.
   instead of moving the keeper, and Escape closes the menu and returns focus
   to its button instead of leaving the page. Choosing an item also returns
   focus to the button, so closing "How to play" lands there.
+- Escape on a page opened from a link on another site no longer leaves the
+  app. The router now records how many app pages precede each history entry
+  and steps back only into one of those; otherwise Escape goes up one level
+  (a puzzle returns to its list, a list to the difficulties, other pages to
+  home).
+- Legacy `#puzzle=` and `#custom=` links now redirect in place without
+  committing the route a second time, so the page no longer loses track of
+  the previous route and treats a switch to another puzzle as a fresh attempt.
 - A first visit no longer shows "A new version of Sokomind is available".
   The first worker briefly waits before activating by itself, which was
   mistaken for an update; only a worker waiting behind an active one counts

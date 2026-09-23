@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseHash } from "../../src/router/parse-hash.ts";
+import { parseHash, resolveHash } from "../../src/router/parse-hash.ts";
 import {
   createShareUrl,
   playHash,
@@ -9,6 +9,7 @@ import {
   puzzleDifficultyPageHash,
   puzzlesHash,
   homeHash,
+  parentHash,
   solverLabHash,
 } from "../../src/router/navigation.ts";
 
@@ -145,6 +146,37 @@ test("redirects legacy custom hash", () => {
   assert.equal(result.kind, "redirect");
   if (result.kind === "redirect") {
     assert.equal(result.hash, "#/editor?custom=encodeddata");
+  }
+});
+
+test("resolves a legacy hash to its final hash and route in one step", () => {
+  assert.deepEqual(resolveHash("#puzzle=tiny&play=RR"), {
+    route: { page: "play", puzzleId: "tiny", actionLog: "RR" },
+    hash: "#/play/tiny?play=RR",
+  });
+  assert.deepEqual(resolveHash("#/stats"), {
+    route: { page: "stats" },
+    hash: "#/stats",
+  });
+});
+
+test("the parent of each route is one level up", () => {
+  const returnHash = "#/puzzles/intermediate?page=2";
+  const parents: ReadonlyArray<[Parameters<typeof parentHash>[0], string]> = [
+    [{ page: "play", puzzleId: "tiny" }, returnHash],
+    [
+      { page: "puzzles-collection", difficulty: "intermediate", collection: "Sokomind Generated", pageNumber: 3 },
+      "#/puzzles/intermediate",
+    ],
+    [{ page: "puzzles-difficulty", difficulty: "intermediate", pageNumber: 2 }, "#/puzzles"],
+    [{ page: "puzzles" }, "#/"],
+    [{ page: "stats" }, "#/"],
+    [{ page: "editor", customData: "abc" }, "#/"],
+    [{ page: "solver-lab", puzzleId: "tiny" }, "#/"],
+    [{ page: "home" }, "#/"],
+  ];
+  for (const [route, expected] of parents) {
+    assert.equal(parentHash(route, returnHash), expected, route.page);
   }
 });
 

@@ -1,4 +1,5 @@
 import type { PuzzleDifficulty } from "../catalog/puzzles";
+import type { Route } from "./routes";
 
 export function homeHash(): string {
   return "#/";
@@ -66,6 +67,23 @@ export function solverLabHash(
   return actionLog
     ? `${base}?play=${encodeURIComponent(actionLog)}`
     : base;
+}
+
+/**
+ * The page one level up from `route`, used by back() when there is no earlier
+ * app page in the tab's history to return to.
+ */
+export function parentHash(route: Route, puzzlesReturnHash: string): string {
+  switch (route.page) {
+    case "play":
+      return puzzlesReturnHash;
+    case "puzzles-collection":
+      return puzzleDifficultyHash(route.difficulty);
+    case "puzzles-difficulty":
+      return puzzlesHash();
+    default:
+      return homeHash();
+  }
 }
 
 export function createShareUrl(

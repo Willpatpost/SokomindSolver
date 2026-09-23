@@ -123,6 +123,48 @@ test("the more actions menu is keyboard operable and Escape only closes it", asy
   await expect(page).toHaveURL(/#\/play\/ultra-tiny$/);
 });
 
+test("Escape on a play link opened from another page stays in the app", async ({
+  page,
+  baseURL,
+}) => {
+  await page.goto("data:text/html,<h1>Referrer</h1>");
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByTestId("game-board")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Choose a difficulty" })).toBeVisible();
+  expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
+  await expect(page).toHaveURL(/#\/puzzles$/);
+});
+
+test("Escape after in-app navigation returns to the previous page", async ({ page }) => {
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to puzzles" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a difficulty" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/play\/ultra-tiny$/);
+});
+
+test("a legacy puzzle hash redirects in place and counts as one app page", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
+  const lengthBefore = await page.evaluate(() => history.length);
+
+  await page.evaluate(() => { window.location.hash = "#puzzle=tiny"; });
+  await expect(page).toHaveURL(/#\/play\/tiny$/);
+  await expect(page.getByTestId("game-board")).toBeVisible();
+  expect(await page.evaluate(() => history.length)).toBe(lengthBefore + 1);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/play\/ultra-tiny$/);
+});
+
 test("invalid play links return home without overwriting the saved attempt", async ({
   page,
 }) => {
