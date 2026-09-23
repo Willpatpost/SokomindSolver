@@ -86,7 +86,7 @@ export function EditorPlaytest({ puzzle, onExit }: EditorPlaytestProps) {
           ref={boardWrapRef}
           data-testid="editor-playtest-board"
         >
-          <Board session={session} reduceMotion={reducedMotion} />
+          <Board session={session} reduceMotion={reducedMotion} announceMoves />
         </div>
       </div>
 

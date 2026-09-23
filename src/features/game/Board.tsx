@@ -15,6 +15,7 @@ import type {
 } from "@/src/core/model";
 import { positionKey } from "@/src/core";
 import styles from "./Board.module.css";
+import { moveAnnouncement, positionLabel } from "./board-announcement";
 import type { PresentedGameExperienceEvent } from "./game-feedback";
 import { extractTrailPositions } from "./trail-positions";
 
@@ -27,6 +28,8 @@ interface BoardProps {
   experienceEvent?: PresentedGameExperienceEvent | null;
   /** Read-only comparison state. It is rendered only and never enters gameplay. */
   ghostSnapshot?: GameSnapshot | null;
+  /** Adds a polite live region beside the board that reads out each move. */
+  announceMoves?: boolean;
   testId?: string;
 }
 
@@ -69,10 +72,6 @@ const DIRECTION_VECTOR: Readonly<Record<Direction, Position>> = {
 function typedHue(label: string): number {
   if (label === "X") return 32;
   return 14 + ((label.charCodeAt(0) - 65) * 47) % 300;
-}
-
-function positionLabel(position: Position): string {
-  return `row ${position.row + 1}, column ${position.column + 1}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +359,7 @@ export const Board = memo(function Board({
   deadlockedBoxIds = EMPTY_SET,
   experienceEvent = null,
   ghostSnapshot = null,
+  announceMoves = false,
   testId = "game-board",
 }: BoardProps) {
   const { board, snapshot, puzzle } = session;
@@ -412,130 +412,145 @@ export const Board = memo(function Board({
   };
 
   return (
-    <div
-      className={styles.board}
-      style={style}
-      role="img"
-      aria-label={boardSummary}
-      data-solved={snapshot.solved || undefined}
-      data-feedback={experienceEvent?.kind}
-      data-feedback-sequence={experienceEvent?.sequence}
-      data-fit-viewport={constrainToViewport || undefined}
-      data-board-size={
-        board.width >= 14 || board.height >= 14 ? "large" : "standard"
-      }
-      data-immersive={immersive || undefined}
-      data-testid={testId}
-    >
-      {cellDescriptors.map((desc) => (
-        <StaticCell
-          key={desc.key}
-          cellKey={desc.key}
-          isWall={desc.isWall}
-          goal={desc.goal}
-        />
-      ))}
-
-      {!reduceMotion && trailPositions.length > 0 ? (
-        <div className={styles.trailLayer} aria-hidden="true">
-          {trailPositions.map((trail) => (
-            <TrailDot
-              key={`trail-${trail.age}`}
-              column={trail.position.column}
-              row={trail.position.row}
-              age={trail.age}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {!reduceMotion &&
-      (experienceEvent?.kind === "goal" ||
-        experienceEvent?.kind === "solved") &&
-      experienceEvent.movedBox ? (
-        <div className={styles.feedbackLayer} aria-hidden="true">
-          <span
-            className={styles.goalRipple}
-            data-feedback-effect="goal-ripple"
-            data-feedback-sequence={experienceEvent.sequence}
-            key={`goal-${experienceEvent.sequence}`}
-            style={{
-              gridColumn: experienceEvent.movedBox.to.column + 1,
-              gridRow: experienceEvent.movedBox.to.row + 1,
-            }}
+    <>
+      <div
+        className={styles.board}
+        style={style}
+        role="img"
+        aria-label={boardSummary}
+        data-solved={snapshot.solved || undefined}
+        data-feedback={experienceEvent?.kind}
+        data-feedback-sequence={experienceEvent?.sequence}
+        data-fit-viewport={constrainToViewport || undefined}
+        data-board-size={
+          board.width >= 14 || board.height >= 14 ? "large" : "standard"
+        }
+        data-immersive={immersive || undefined}
+        data-testid={testId}
+      >
+        {cellDescriptors.map((desc) => (
+          <StaticCell
+            key={desc.key}
+            cellKey={desc.key}
+            isWall={desc.isWall}
+            goal={desc.goal}
           />
-        </div>
-      ) : null}
+        ))}
 
-      <div className={styles.pieceLayer} aria-hidden="true">
-        {snapshot.boxes.map((box) => {
-          const goal = goals.get(positionKey(box.position));
-          const boxOnGoal = goal?.label === box.label;
-
-          return (
-            <PieceSlot
-              id={box.id}
-              key={box.id}
-              puzzleId={puzzle.id}
-              position={box.position}
-              reduceMotion={reduceMotion}
-              experienceEvent={
-                experienceEvent?.movedBox?.id === box.id
-                  ? experienceEvent
-                  : null
-              }
-            >
-              <BoxPiece
-                label={box.label}
-                onGoal={boxOnGoal}
-                deadlocked={deadlockedBoxIds.has(box.id)}
+        {!reduceMotion && trailPositions.length > 0 ? (
+          <div className={styles.trailLayer} aria-hidden="true">
+            {trailPositions.map((trail) => (
+              <TrailDot
+                key={`trail-${trail.age}`}
+                column={trail.position.column}
+                row={trail.position.row}
+                age={trail.age}
               />
-            </PieceSlot>
-          );
-        })}
+            ))}
+          </div>
+        ) : null}
 
-        <PieceSlot
-          id="keeper"
-          puzzleId={puzzle.id}
-          position={snapshot.robot}
-          reduceMotion={reduceMotion}
-          experienceEvent={
-            experienceEvent?.kind === "blocked" ? experienceEvent : null
-          }
-        >
-          <KeeperPiece />
-        </PieceSlot>
-      </div>
-      {ghostSnapshot ? (
-        <div className={styles.ghostLayer} aria-hidden="true" data-testid="replay-ghost">
-          {ghostSnapshot.boxes.map((box) => (
+        {!reduceMotion &&
+        (experienceEvent?.kind === "goal" ||
+          experienceEvent?.kind === "solved") &&
+        experienceEvent.movedBox ? (
+          <div className={styles.feedbackLayer} aria-hidden="true">
             <span
-              className={styles.ghostBox}
-              data-ghost-piece="box"
-              key={`ghost-${box.id}`}
+              className={styles.goalRipple}
+              data-feedback-effect="goal-ripple"
+              data-feedback-sequence={experienceEvent.sequence}
+              key={`goal-${experienceEvent.sequence}`}
               style={{
-                gridColumn: box.position.column + 1,
-                gridRow: box.position.row + 1,
+                gridColumn: experienceEvent.movedBox.to.column + 1,
+                gridRow: experienceEvent.movedBox.to.row + 1,
+              }}
+            />
+          </div>
+        ) : null}
+
+        <div className={styles.pieceLayer} aria-hidden="true">
+          {snapshot.boxes.map((box) => {
+            const goal = goals.get(positionKey(box.position));
+            const boxOnGoal = goal?.label === box.label;
+
+            return (
+              <PieceSlot
+                id={box.id}
+                key={box.id}
+                puzzleId={puzzle.id}
+                position={box.position}
+                reduceMotion={reduceMotion}
+                experienceEvent={
+                  experienceEvent?.movedBox?.id === box.id
+                    ? experienceEvent
+                    : null
+                }
+              >
+                <BoxPiece
+                  label={box.label}
+                  onGoal={boxOnGoal}
+                  deadlocked={deadlockedBoxIds.has(box.id)}
+                />
+              </PieceSlot>
+            );
+          })}
+
+          <PieceSlot
+            id="keeper"
+            puzzleId={puzzle.id}
+            position={snapshot.robot}
+            reduceMotion={reduceMotion}
+            experienceEvent={
+              experienceEvent?.kind === "blocked" ? experienceEvent : null
+            }
+          >
+            <KeeperPiece />
+          </PieceSlot>
+        </div>
+        {ghostSnapshot ? (
+          <div className={styles.ghostLayer} aria-hidden="true" data-testid="replay-ghost">
+            {ghostSnapshot.boxes.map((box) => (
+              <span
+                className={styles.ghostBox}
+                data-ghost-piece="box"
+                key={`ghost-${box.id}`}
+                style={{
+                  gridColumn: box.position.column + 1,
+                  gridRow: box.position.row + 1,
+                }}
+              >
+                {box.label === "X" ? "" : box.label}
+              </span>
+            ))}
+            <span
+              className={styles.ghostKeeper}
+              data-ghost-piece="keeper"
+              style={{
+                gridColumn: ghostSnapshot.robot.column + 1,
+                gridRow: ghostSnapshot.robot.row + 1,
               }}
             >
-              {box.label === "X" ? "" : box.label}
+              G
             </span>
-          ))}
-          <span
-            className={styles.ghostKeeper}
-            data-ghost-piece="keeper"
-            style={{
-              gridColumn: ghostSnapshot.robot.column + 1,
-              gridRow: ghostSnapshot.robot.row + 1,
-            }}
-          >
-            G
-          </span>
-        </div>
+          </div>
+        ) : null}
+      </div>
+      {/* Outside the board: an img's descendants are presentational, so a live
+          region inside it may never be announced. */}
+      {announceMoves ? (
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          {snapshot.moves > 0
+            ? moveAnnouncement({
+              robot: snapshot.robot,
+              matchedBoxes,
+              totalBoxes: snapshot.boxes.length,
+              moves: snapshot.moves,
+              pushes: snapshot.pushes,
+              solved: snapshot.solved,
+            })
+            : ""}
+        </span>
       ) : null}
-      <span className="sr-only" aria-live="polite" aria-atomic="true">
-        {snapshot.moves > 0 ? boardSummary : ""}
-      </span>
-    </div>
+    </>
   );
 });

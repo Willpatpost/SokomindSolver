@@ -72,6 +72,11 @@ published a stable release.
   instead of moving the keeper, and Escape closes the menu and returns focus
   to its button instead of leaving the page. Choosing an item also returns
   focus to the button, so closing "How to play" lands there.
+- Screen readers now hear each move on the play page and in editor playtest
+  from one live region placed beside the board. It used to sit inside the
+  board's image role, whose contents assistive technology may ignore, and the
+  header counters announced every move a second time through a changing
+  label; the counters are now plain text.
 - Escape on a page opened from a link on another site no longer leaves the
   app. The router now records how many app pages precede each history entry
   and steps back only into one of those; otherwise Escape goes up one level

@@ -407,18 +407,15 @@ function ValidatedPlayPage({
         </div>
 
         {zenMode ? (
-          <div
-            className={styles.zenStats}
-            role="status"
-            aria-label={`${session.moves} moves, ${session.pushes} pushes`}
-          >
+          <div className={styles.zenStats}>
             <span><strong data-testid="moves-count">{session.moves}</strong> moves</span>
             <span><strong data-testid="pushes-count">{session.pushes}</strong> pushes</span>
           </div>
         ) : (
-          <div className={styles.headerStats} role="status" aria-label={`${session.moves} moves, ${session.pushes} pushes`}>
+          <div className={styles.headerStats}>
             <span aria-hidden="true">{session.moves}m</span>
             <span aria-hidden="true">{session.pushes}p</span>
+            <span className="sr-only">{session.moves} moves, {session.pushes} pushes</span>
           </div>
         )}
 
@@ -640,6 +637,7 @@ function ValidatedPlayPage({
               constrainToViewport
               deadlockedBoxIds={game.deadlockedBoxIds}
               experienceEvent={game.experienceEvent}
+              announceMoves
             />
             </div>
           </div>

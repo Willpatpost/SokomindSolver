@@ -139,6 +139,20 @@ test("keyboard shortcuts contains focus and restores its trigger", async ({ page
   await expect(trigger).toBeFocused();
 });
 
+test("moves are announced by one live region outside the board image", async ({ page }) => {
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByTestId("game-board")).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("moves-count")).toHaveText("1");
+
+  const announcer = page.locator('#game-stage [aria-live="polite"]');
+  await expect(announcer).toHaveCount(1);
+  await expect(announcer).toContainText("1 move,");
+  await expect(page.locator('[role="img"] [aria-live]')).toHaveCount(0);
+  await expect(page.locator('header [role="status"]')).toHaveCount(0);
+  await expectAxeClean(page, "play page after a move");
+});
+
 test("audio previews and the mute shortcut expose accessible feedback", async ({
   page,
 }) => {
