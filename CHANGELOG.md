@@ -67,6 +67,11 @@ published a stable release.
 - The play page's "Skip to puzzle" link focuses the board again. It used to
   set the URL hash to `#game-stage`, which the hash router read as an unknown
   route and sent the player home.
+- The play page's "More actions" menu works from the keyboard. Opening it
+  focuses the first item, the arrow, Home and End keys move between items
+  instead of moving the keeper, and Escape closes the menu and returns focus
+  to its button instead of leaving the page. Choosing an item also returns
+  focus to the button, so closing "How to play" lands there.
 - A first visit no longer shows "A new version of Sokomind is available".
   The first worker briefly waits before activating by itself, which was
   mistaken for an update; only a worker waiting behind an active one counts

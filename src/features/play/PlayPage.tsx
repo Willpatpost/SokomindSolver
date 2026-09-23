@@ -226,6 +226,11 @@ function ValidatedPlayPage({
   const [replayComparisonOpen, setReplayComparisonOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef<HTMLDivElement>(null);
+  const overflowButtonRef = useRef<HTMLButtonElement>(null);
+  const closeOverflow = useCallback(() => {
+    setOverflowOpen(false);
+    overflowButtonRef.current?.focus();
+  }, []);
   useEffect(() => {
     document.title = `${session.puzzle.title} · Sokomind`;
   }, [session.puzzle.title]);
@@ -246,14 +251,50 @@ function ValidatedPlayPage({
 
   useEffect(() => {
     if (!overflowOpen) return;
+    const menuItems = () => Array.from(
+      overflowRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? [],
+    );
+    menuItems()[0]?.focus();
+
+    const outside = (target: EventTarget | null) =>
+      overflowRef.current !== null && !overflowRef.current.contains(target as Node);
     const handleClick = (e: MouseEvent) => {
-      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
-        setOverflowOpen(false);
+      if (outside(e.target)) setOverflowOpen(false);
+    };
+    // Tabbing or otherwise moving focus away closes the menu.
+    const handleFocusIn = (e: FocusEvent) => {
+      if (outside(e.target)) setOverflowOpen(false);
+    };
+    // Runs in the capture phase, so the shell's Escape-to-go-back and the game
+    // keyboard see these keys as handled and leave the page and keeper alone.
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeOverflow();
+        return;
       }
+      const items = menuItems();
+      if (items.length === 0) return;
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      const target =
+        e.key === "ArrowDown" ? items[(index + 1) % items.length]
+        : e.key === "ArrowUp" ? items[(index <= 0 ? items.length : index) - 1]
+        : e.key === "Home" ? items[0]
+        : e.key === "End" ? items[items.length - 1]
+        : undefined;
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
     };
     document.addEventListener("click", handleClick, true);
-    return () => document.removeEventListener("click", handleClick, true);
-  }, [overflowOpen]);
+    document.addEventListener("focusin", handleFocusIn);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+      document.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeOverflow, overflowOpen]);
 
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; });
@@ -461,6 +502,7 @@ function ValidatedPlayPage({
               </button>
               <div className={styles.overflowWrap} ref={overflowRef}>
                 <button
+                  ref={overflowButtonRef}
                   aria-label="More actions"
                   aria-expanded={overflowOpen}
                   aria-haspopup="menu"
@@ -475,15 +517,17 @@ function ValidatedPlayPage({
                   <div className={styles.overflowMenu} role="menu" aria-label="More actions">
                     <button
                       role="menuitem"
+                      tabIndex={-1}
                       type="button"
-                      onClick={() => { void game.handleShare(); setOverflowOpen(false); }}
+                      onClick={() => { void game.handleShare(); closeOverflow(); }}
                     >
                       <span aria-hidden="true">{"\u2197"}</span> Share
                     </button>
                     <button
                       role="menuitem"
+                      tabIndex={-1}
                       type="button"
-                      onClick={() => { game.openHelp(); setOverflowOpen(false); }}
+                      onClick={() => { closeOverflow(); game.openHelp(); }}
                     >
                       <span aria-hidden="true">?</span> How to play
                     </button>

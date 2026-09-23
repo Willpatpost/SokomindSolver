@@ -93,6 +93,36 @@ test("share control renders an outbound arrow instead of entity text", async ({
   await expect(share).not.toContainText("&nearr;");
 });
 
+test("the more actions menu is keyboard operable and Escape only closes it", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByTestId("game-board")).toBeVisible();
+
+  const more = page.getByRole("button", { name: "More actions" });
+  await more.focus();
+  await page.keyboard.press("Enter");
+
+  const share = page.getByRole("menuitem", { name: /Share/ });
+  const help = page.getByRole("menuitem", { name: "How to play" });
+  await expect(share).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(help).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(share).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(help).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(share).toBeFocused();
+  await expect(page.getByTestId("moves-count")).toHaveText("0");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await expect(more).toBeFocused();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/#\/play\/ultra-tiny$/);
+});
+
 test("invalid play links return home without overwriting the saved attempt", async ({
   page,
 }) => {
