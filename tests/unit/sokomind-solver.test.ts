@@ -726,6 +726,34 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(receivedWeight, 2.25);
   });
 
+  it("reports a limit, not exhaustion, when time runs out before the fallback search", async () => {
+    let now = 0;
+    const adapter = createSokomindSolverAdapter({
+      createWorker: () =>
+        new ScriptedWorker((self) => {
+          queueMicrotask(() => {
+            self.emit({ type: "done", status: "exhausted", visited: 0, generated: 0 });
+            // The deadline passes after discovery ends but before the solver
+            // can start its complete fallback search.
+            now = 1_000;
+          });
+        }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(ONE_TYPED_BOX, {
+        limits: { maxElapsedMs: 1_000 },
+        options: { "sokomind-solver": { deterministic: true } },
+      }),
+      { ...context(), now: () => now },
+    );
+
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "limit-reached");
+    assert.match(result.detail ?? "", /time limit/i);
+  });
+
   it("does not accept a candidate reported at the expanded-state ceiling", async () => {
     const adapter = createSokomindSolverAdapter({
       hardwareConcurrency: 2,

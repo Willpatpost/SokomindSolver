@@ -20,6 +20,9 @@ Discovery quality never substitutes for proof. Proven results require an optimal
 proof envelope; bounded proofs require unknown optimality, including at the worker
 client boundary. Classic DFS/Greedy reuse a keeper region only when the newly
 occupied cell was outside the parent region; otherwise they recompute full BFS.
+Sokomind reports `exhausted` only when a complete search finishes without a
+route. If the budget runs out before its complete fallback search can start,
+the result is `limit-reached`.
 
 Browser Sokomind controls offer Auto or a manual worker ceiling up to twelve.
 Hardware and memory can reduce that ceiling. Discovery reserves 256 MiB per

@@ -488,11 +488,8 @@ export function createSokomindSolverAdapter(
       const maxWorkers = sokomindOptions.deterministic
         ? 1
         : configuredWorkerCount(options, request);
-      let cutoff = false;
       let errors: string[] = [];
       let stopReason: PhaseStopReason | undefined;
-      let engineWorkersStarted = 0;
-      let engineWorkersFailed = 0;
       let analysisPlan: SokomindAnalysisPlan | undefined;
       let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
         Object.freeze([]);
@@ -512,7 +509,6 @@ export function createSokomindSolverAdapter(
         }
         analysisPlan = preparation.analysisPlan;
         errors = [...errors, ...preparation.errors];
-        cutoff ||= preparation.cutoff;
         if (preparation.stopReason) {
           stopReason = preparation.stopReason;
         }
@@ -542,10 +538,7 @@ export function createSokomindSolverAdapter(
               1,
               structuralHeadStartMs(run),
             );
-            engineWorkersStarted += outcome.startedWorkers;
-            engineWorkersFailed += outcome.failedWorkers;
             structuralCheckpoints = outcome.checkpoints ?? structuralCheckpoints;
-            cutoff ||= outcome.cutoff || Boolean(outcome.phaseTimedOut);
             errors = [...errors, ...outcome.errors];
             if (outcome.solution) {
               const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
@@ -617,9 +610,6 @@ export function createSokomindSolverAdapter(
             createWorker,
             discoveryWorkers,
           );
-          engineWorkersStarted += outcome.startedWorkers;
-          engineWorkersFailed += outcome.failedWorkers;
-          cutoff ||= outcome.cutoff;
           errors = [...errors, ...outcome.errors];
           if (outcome.solution) {
             const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
@@ -651,9 +641,6 @@ export function createSokomindSolverAdapter(
             createWorker,
             2,
           );
-          engineWorkersStarted += outcome.startedWorkers;
-          engineWorkersFailed += outcome.failedWorkers;
-          cutoff ||= outcome.cutoff;
           errors = [...errors, ...outcome.errors];
           if (outcome.solution) {
             const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
@@ -702,17 +689,17 @@ export function createSokomindSolverAdapter(
         return fallback;
       }
 
-      const allWorkersFailed =
-        engineWorkersStarted === 0 ||
-        (engineWorkersFailed > 0 &&
-          engineWorkersFailed >= engineWorkersStarted);
+      // The fallback declines to run only once a budget is spent, and the
+      // discovery portfolio is incomplete, so finishing it without a route
+      // proves nothing about solvability. This is a limit, never exhaustion.
+      const budgetDetail = stopDetail(reachedLimit(run) ?? "elapsed");
       return Object.freeze({
         status: "unsolved",
-        reason: allWorkersFailed || cutoff ? "limit-reached" : "exhausted",
+        reason: "limit-reached",
         detail:
           errors.length > 0
-            ? `Sokomind engine: ${errors.join(" ")}`
-            : "The first-found portfolio completed without a verified route.",
+            ? `Sokomind engine: ${errors.join(" ")} ${budgetDetail}`
+            : budgetDetail,
         metrics: metrics(run),
       });
     },

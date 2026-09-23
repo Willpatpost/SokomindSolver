@@ -84,3 +84,7 @@ published a stable release.
   client is now retired and the solver dialog and Solver Lab start a fresh
   worker. Previously the client stayed usable, so the next search posted to the
   terminated worker and never finished.
+- Sokomind no longer reports an unsolved board as exhausted when its budget ran
+  out before the complete fallback search could start. The discovery portfolio
+  is incomplete, so that case now reports `limit-reached` with the budget that
+  ran out.
