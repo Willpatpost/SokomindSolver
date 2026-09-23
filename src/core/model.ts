@@ -136,7 +136,8 @@ export type PuzzleValidationCode =
   | "unsupported-symbol"
   | "robot-count"
   | "box-goal-mismatch"
-  | "box-metadata-mismatch";
+  | "box-metadata-mismatch"
+  | "no-boxes";
 
 export interface PuzzleValidationIssue {
   readonly code: PuzzleValidationCode;

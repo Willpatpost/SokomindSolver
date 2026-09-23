@@ -115,6 +115,19 @@ test("reports unsupported symbols, robot errors, and per-label mismatches", () =
   });
 });
 
+test("rejects a puzzle without boxes but keeps row validation permissive", () => {
+  const rows = ["OOOO", "OR O", "OOOO"];
+  const empty = puzzle(rows, 0);
+  const result = validatePuzzle(empty);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.errors.map(({ code }) => code), ["no-boxes"]);
+  assert.throws(() => parsePuzzle(empty), { name: "PuzzleValidationError" });
+  assert.throws(() => createSession(empty), { name: "PuzzleValidationError" });
+  // Solver and deadlock tests parse boards without boxes through the row API.
+  assert.equal(validatePuzzleRows(rows).valid, true);
+  assert.equal(parsePuzzleRows(rows).initialBoxes.length, 0);
+});
+
 test("rejects lowercase x instead of treating it as a generic goal", () => {
   const result = validatePuzzleRows(["OOOOO", "ORXxO", "OOOOO"]);
 

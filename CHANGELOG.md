@@ -102,6 +102,10 @@ published a stable release.
   and steps back only into one of those; otherwise Escape goes up one level
   (a puzzle returns to its list, a list to the difficulties, other pages to
   home).
+- A custom-puzzle link whose board has no boxes is now rejected instead of
+  opening a puzzle that is already solved. Core puzzle validation requires at
+  least one box, as the editor already did; row-level parsing still accepts
+  boards without boxes.
 - Legacy `#puzzle=` and `#custom=` links now redirect in place without
   committing the route a second time, so the page no longer loses track of
   the previous route and treats a switch to another puzzle as a fresh attempt.

@@ -45,7 +45,8 @@ Coordinates are zero-based `{ row, column }` values.
 
 - `id` and `title` are non-empty.
 - `difficulty` is one of the six supported tiers.
-- `boxes` is a non-negative integer and equals the number encoded in `rows`.
+- `boxes` is a positive integer and equals the number encoded in `rows`; a
+  puzzle needs at least one box.
 - `hint`, when present, is a string.
 - Rows contain only supported symbols and exactly one robot.
 - Every box label has the same number of matching goals.

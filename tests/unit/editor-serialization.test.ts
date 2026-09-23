@@ -63,6 +63,12 @@ test("decode returns null for invalid difficulty", () => {
   assert.equal(decodeCustomPuzzle(`#custom=${encoded}`), null);
 });
 
+test("decode returns null for a board without boxes", () => {
+  const encode = (r: string[]) => btoa(JSON.stringify({ t: "Z", d: "beginner", r }));
+  assert.equal(decodeCustomPuzzle(`#custom=${encode(["OOOO", "OR O", "OOOO"])}`), null);
+  assert.notEqual(decodeCustomPuzzle(`#custom=${encode(["OOOOO", "ORXSO", "OOOOO"])}`), null);
+});
+
 test("decode returns null for too few rows", () => {
   const encoded = btoa(JSON.stringify({ t: "X", d: "beginner", r: ["OO"] }));
   assert.equal(decodeCustomPuzzle(`#custom=${encoded}`), null);

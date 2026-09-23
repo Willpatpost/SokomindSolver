@@ -194,6 +194,11 @@ function validateMetadata(
       ),
     );
   }
+  // A board without boxes would start solved. Row-level validation still
+  // accepts one, for solver and deadlock tests.
+  if (analysis.width > 0 && analysis.totalBoxes === 0) {
+    errors.push(issue("no-boxes", "Puzzle must contain at least one box."));
+  }
   if (puzzle.hint !== undefined && typeof puzzle.hint !== "string") {
     errors.push(issue("invalid-metadata", "Puzzle hint must be a string when provided."));
   }
