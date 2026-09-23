@@ -1,28 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { describe, it } from "node:test";
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import { createSession, decodeActionCode, move } from "../../src/core/index.ts";
+import { SOKOMIND_ENGINE_SOURCE_FILES } from "../../scripts/sokomind-engine-files.mjs";
 import reference from "../fixtures/solver-v2/grand-hall-reference.json" with { type: "json" };
-
-const SOURCE_FILES = [
-  "state.js",
-  "memo.js",
-  "metrics.js",
-  "topology.js",
-  "board.js",
-  "pdb.js",
-  "heuristic.js",
-  "deadlock.js",
-  "analysis.js",
-  "push-generation.js",
-  "strategic-contract.js",
-  "strategic-inference.js",
-  "strategic-planning.js",
-  "box-rescheduling.js",
-  "solver-search.js",
-] as const;
 
 interface DistanceTable {
   readonly size: number;
@@ -174,7 +157,7 @@ async function loadSourceEngine(): Promise<TestEngine> {
     import.meta.url,
   );
   const sources = [];
-  for (const filename of SOURCE_FILES) {
+  for (const filename of SOKOMIND_ENGINE_SOURCE_FILES) {
     sources.push(await readFile(new URL(filename, sourceDirectory), "utf8"));
   }
   const context = vm.createContext({
@@ -208,6 +191,20 @@ const ROWS = [
 ];
 
 describe("Sokomind engine dense hot paths", () => {
+  it("loads every engine source file in the bundle's order", async () => {
+    const engineDirectory = new URL(
+      "../../src/solver/implementations/sokomind-engine/",
+      import.meta.url,
+    );
+    const sources = (await readdir(new URL("source/", engineDirectory)))
+      .filter((filename) => filename.endsWith(".js"));
+    assert.deepEqual([...SOKOMIND_ENGINE_SOURCE_FILES].sort(), sources.sort());
+    const bundle = await readFile(new URL("engine.generated.js", engineDirectory), "utf8");
+    const bundled = [...bundle.matchAll(/^\/\* ===== (\S+) ===== \*\/$/gmu)]
+      .map((match) => match[1]);
+    assert.deepEqual(bundled, [...SOKOMIND_ENGINE_SOURCE_FILES]);
+  });
+
   it("preserves doorway reachability through occupied gates and prepared-board cloning", async () => {
     const engine = await loadSourceEngine();
     const puzzle = PUZZLE_BY_ID.huge;

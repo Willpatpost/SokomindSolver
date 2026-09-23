@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SOKOMIND_ENGINE_SOURCE_FILES } from "./sokomind-engine-files.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 const engineDirectory = path.join(
@@ -13,27 +15,6 @@ const engineDirectory = path.join(
 );
 const sourceDirectory = path.join(engineDirectory, "source");
 const outputPath = path.join(engineDirectory, "engine.generated.js");
-
-// These classic scripts deliberately share one lexical scope. Their original
-// browser worker loaded them in this dependency order with importScripts().
-const SOURCE_FILES = Object.freeze([
-  "state.js",
-  "memo.js",
-  "metrics.js",
-  "topology.js",
-  "board.js",
-  "pdb.js",
-  "heuristic.js",
-  "deadlock.js",
-  "analysis.js",
-  "push-generation.js",
-  "strategic-contract.js",
-  "strategic-inference.js",
-  "strategic-planning.js",
-  "box-rescheduling.js",
-  "schedule-trace.js",
-  "solver-search.js",
-]);
 
 const banner = `/*
  * GENERATED FILE - DO NOT EDIT DIRECTLY.
@@ -53,7 +34,7 @@ const banner = `/*
 
 async function generatedSource() {
   const modules = [];
-  for (const file of SOURCE_FILES) {
+  for (const file of SOKOMIND_ENGINE_SOURCE_FILES) {
     const source = (
       await fs.readFile(path.join(sourceDirectory, file), "utf8")
     )

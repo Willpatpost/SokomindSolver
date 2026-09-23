@@ -49,7 +49,9 @@ do not allocate trace records.
 The source files use the legacy classic-script layout: declarations span files
 and must share one lexical scope. `scripts/prepare-sokomind-engine.mjs`
 concatenates the required live modules into `engine.generated.js`, which Vite
-then packages as a same-origin module worker. The generated file is checked in
+then packages as a same-origin module worker. The module list and its order
+live in `scripts/sokomind-engine-files.mjs`, which the unit tests that evaluate
+the sources in a VM also load. The generated file is checked in
 so type checking and editor navigation do not depend on a sibling repository.
 Large-board analysis also produces the legacy prepared-board seed, which is
 structured-cloned to search workers and rehydrated with worker-local mutable

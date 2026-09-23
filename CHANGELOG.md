@@ -174,6 +174,10 @@ published a stable release.
   eligibility counted cells from the far side of the board, which could make a
   narrow corridor ineligible for pattern-deadlock checks. No catalog board's
   eligibility or pattern windows change.
+- The unit tests that evaluate the Sokomind engine sources in a VM now load
+  the same module list as the bundle. Their own copies had drifted and left out
+  `schedule-trace.js`, and one also left out `pdb.js`, so code reaching the
+  rescheduling trace or the pattern database would have thrown there.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

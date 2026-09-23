@@ -5,6 +5,8 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createContext, runInContext } from "node:vm";
 
+import { SOKOMIND_ENGINE_SOURCE_FILES } from "../../scripts/sokomind-engine-files.mjs";
+
 interface SearchCandidate {
   exactIdentity: string;
   cost: number;
@@ -93,29 +95,12 @@ interface MoveAwareApi {
   ): Array<{ targetDeadEnd?: boolean; path: string[] }>;
 }
 
-const SOURCE_FILES = [
-  "state.js",
-  "memo.js",
-  "metrics.js",
-  "topology.js",
-  "board.js",
-  "heuristic.js",
-  "deadlock.js",
-  "analysis.js",
-  "push-generation.js",
-  "strategic-contract.js",
-  "strategic-inference.js",
-  "strategic-planning.js",
-  "box-rescheduling.js",
-  "solver-search.js",
-];
-
 function loadMoveAwareApi(): MoveAwareApi {
   const directory = fileURLToPath(new URL(
     "../../src/solver/implementations/sokomind-engine/source/",
     import.meta.url,
   ));
-  const source = SOURCE_FILES.map(filename =>
+  const source = SOKOMIND_ENGINE_SOURCE_FILES.map(filename =>
     readFileSync(`${directory}/${filename}`, "utf8")).join("\n") + `
       globalThis.__moveAwareApi = {
         BoundedParetoMap,
