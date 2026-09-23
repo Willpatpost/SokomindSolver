@@ -183,6 +183,12 @@ published a stable release.
   the same module list as the bundle. Their own copies had drifted and left out
   `schedule-trace.js`, and one also left out `pdb.js`, so code reaching the
   rescheduling trace or the pattern database would have thrown there.
+- The Sokomind engine prepare script now fails when the strategic validator's
+  end marker is missing or a source registration line no longer matches its
+  strip patterns. Before, a missing marker wrote nearly the whole strategic
+  contract into `strategic-validation.generated.js`, and `--check` compared
+  against the same output and passed. `--check` also imports the validator
+  artifact to confirm it loads on its own.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

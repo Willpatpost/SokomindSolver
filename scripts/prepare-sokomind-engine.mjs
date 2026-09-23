@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { extractValidatorSource, stripRegistration } from "./sokomind-engine-artifacts.mjs";
 import { SOKOMIND_ENGINE_SOURCE_FILES } from "./sokomind-engine-files.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +16,7 @@ const engineDirectory = path.join(
 );
 const sourceDirectory = path.join(engineDirectory, "source");
 const outputPath = path.join(engineDirectory, "engine.generated.js");
+const validatorPath = path.join(engineDirectory, "strategic-validation.generated.js");
 
 const banner = `/*
  * GENERATED FILE - DO NOT EDIT DIRECTLY.
@@ -35,32 +37,20 @@ const banner = `/*
 async function generatedSource() {
   const modules = [];
   for (const file of SOKOMIND_ENGINE_SOURCE_FILES) {
-    const source = (
-      await fs.readFile(path.join(sourceDirectory, file), "utf8")
-    )
-      // The vendored sources retain their old classic-script test exports.
-      // The generated ESM has explicit exports below and should neither expose
-      // CommonJS globals nor publish debugging namespaces on the worker.
-      .replace(
-        /^if \(typeof module === "object" && module\.exports\).*$/gmu,
-        "",
-      )
-      .replace(
-        /^if \(typeof globalThis !== "undefined"\) globalThis\.Sokomind.*$/gmu,
-        "",
-      )
-      .replace(/^globalThis\.SokomindHardPruningRules.*$/gmu, "");
+    const source = stripRegistration(
+      await fs.readFile(path.join(sourceDirectory, file), "utf8"),
+      file,
+    );
     modules.push(`\n/* ===== ${file} ===== */\n${source.trimEnd()}\n`);
   }
   return `${banner}${modules.join("")}\nexport { bidirectionalSide, search, validateStrategicPlanContract, evaluateStrategicPlanState, rebaseStrategicPlan };\n`;
 }
 
 const contractSource = await fs.readFile(path.join(sourceDirectory, "strategic-contract.js"), "utf8");
-const validatorSource = contractSource.slice(0, contractSource.indexOf("\nfunction evaluateStrategicPlanState"));
+const validatorSource = extractValidatorSource(contractSource);
 const artifacts = [
   [outputPath, await generatedSource()],
-  [path.join(engineDirectory, "strategic-validation.generated.js"),
-    banner + validatorSource + "\nexport { validateStrategicPlanContract };\n"],
+  [validatorPath, banner + validatorSource + "\nexport { validateStrategicPlanContract };\n"],
 ];
 for (const [artifactPath, expected] of artifacts) {
   let existing = "";
@@ -75,4 +65,11 @@ for (const [artifactPath, expected] of artifacts) {
   } else if (existing !== expected) {
     await fs.writeFile(artifactPath, expected, "utf8");
   }
+}
+if (process.argv.includes("--check")) {
+  // The validator artifact is imported on its own, so it must load without
+  // the engine's shared scope.
+  const validator = await import(pathToFileURL(validatorPath).href);
+  if (typeof validator.validateStrategicPlanContract !== "function") throw new Error(
+    "strategic-validation.generated.js does not export validateStrategicPlanContract.");
 }

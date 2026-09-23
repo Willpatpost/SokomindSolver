@@ -64,8 +64,11 @@ Strategic preparation emits a validated V2 advisory contract. Its predicates and
 resource intervals are evaluated from each board state; completion is reversible
 and cannot authorize new hard pruning. The preparation script also generates
 `strategic-validation.generated.js` from the same validator source, so the typed
-adapter does not import the search engine into the UI bundle. Checkpoint lineage
-replay, canonical coordinate mapping, and box-role rebinding occur in the worker.
+adapter does not import the search engine into the UI bundle. The script fails
+if that slice's end marker is missing or a source registration line is left
+unstripped, and `--check` also imports the validator artifact on its own.
+Checkpoint lineage replay, canonical coordinate mapping, and box-role rebinding
+occur in the worker.
 
 Persistent execution requires the experimental request option
 `strategicPlanExecution: true` alongside strategic preparation. It defaults off
