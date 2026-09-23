@@ -119,6 +119,12 @@ published a stable release.
   afresh when handed a different board.
 - The bundled Sokomind engine's local pattern-deadlock memo has the same
   corrected key, so it no longer prunes live states and loses solution quality.
+- IDA* no longer keeps a cheap push+walk bound in its cross-contour h-cache
+  as if it were the full heuristic. A later contour now recomputes the full
+  bound for a state whose cached value no longer prunes, so the linear
+  conflict, interaction, pattern-database, perimeter and component bounds
+  apply there too. On the inter-rooms board this expands about 9% fewer
+  states. A new `hCacheUpgrades` counter reports the recomputations.
 - The opt-in move-cost pattern database no longer overestimates. Its reverse
   build credited a push to any keeper position reachable from the pushing
   side, skipping the walk from the cell the box vacated, so a straight run of

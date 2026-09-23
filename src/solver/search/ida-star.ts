@@ -947,9 +947,11 @@ export async function runIdaStarSearch(
     let heuristicCacheEntries = 0;
     let hCacheMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
     let hCacheHits = 0;
-    // `truncated` marks an h cut short by computeH's secondary cutoff. It is
-    // reused only while it still exceeds the contour bound; otherwise the full
-    // h is recomputed so later contours are not stuck with the weaker value.
+    let hCacheUpgrades = 0;
+    // `truncated` marks an h cut short by the cheap push+walk cutoff or by
+    // computeH's secondary cutoff. It is reused only while it still exceeds
+    // the contour bound; otherwise the full h is recomputed so later contours
+    // are not stuck with the weaker value.
     const hCache = new Map<number, { bigintKey: bigint; h: number; truncated: boolean }>();
     let peakEstimatedMemoryBytes = 0;
     estimateInteractionSearchBaseMemory = () =>
@@ -1040,6 +1042,7 @@ export async function runIdaStarSearch(
       moveCostPdbTotalImprovement: featureTelemetry.moveCostPdbTotalImprovement,
       moveCostPdbMaxImprovement: featureTelemetry.moveCostPdbMaxImprovement,
       hCacheHits,
+      hCacheUpgrades,
       hCacheSize: hCache.size,
     });
 
@@ -1454,10 +1457,12 @@ export async function runIdaStarSearch(
         // ----- First visit: f-bound, TT, solved check, mark expanded -----
         if (!frame.expanded) {
           const hCacheEntry = hCache.get(frame.zobristKey);
-          const cachedH = hCacheEntry !== undefined &&
-            hCacheEntry.bigintKey === frame.exactKey &&
-            (!hCacheEntry.truncated || frame.g + hCacheEntry.h > fLimit)
-            ? hCacheEntry.h
+          const cachedEntry = hCacheEntry?.bigintKey === frame.exactKey
+            ? hCacheEntry
+            : undefined;
+          const cachedH = cachedEntry !== undefined &&
+            (!cachedEntry.truncated || frame.g + cachedEntry.h > fLimit)
+            ? cachedEntry.h
             : -1;
 
           let h: number;
@@ -1466,6 +1471,7 @@ export async function runIdaStarSearch(
             h = cachedH;
             hCacheHits++;
           } else {
+            if (cachedEntry !== undefined) hCacheUpgrades++;
             let hPush: number;
             if (pathStack.length >= 2 && frame.push) {
               const parentFrame = pathStack[pathStack.length - 2];
@@ -1508,6 +1514,7 @@ export async function runIdaStarSearch(
             if (frame.g + hPush + hWalk > fLimit) {
               counters.cheapCutoffs += 1;
               h = hPush + hWalk;
+              hTruncated = true;
             } else {
             const labelCosts = heuristic.lastLabelCosts;
             const boxKey = packBoxKeyFromBoxes(frame.boxes);

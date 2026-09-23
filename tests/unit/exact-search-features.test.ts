@@ -181,6 +181,32 @@ describe("exact-search feature configuration", () => {
     });
   }
 
+  it("recomputes cached IDA* bounds that a later contour no longer prunes", async () => {
+    const features = { backwardPerimeter: true, componentPdb: true };
+    const [astar, ida] = await Promise.all([
+      runExactMoveAStar(request(), context(), { features }),
+      runIdaStarSearch(request(), context(), { features }),
+    ]);
+    for (const result of [astar, ida]) {
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") continue;
+      assert.equal(result.solution.moves, 28);
+      assert.equal(result.solution.optimality, "proven");
+      assert.equal(result.proof?.kind, "optimal");
+    }
+
+    const counters = ida.metrics.counters ?? {};
+    assert.ok((counters.cheapCutoffs ?? 0) > 0, "cheap cutoffs must fire");
+    assert.ok((counters.secondaryCutoffs ?? 0) > 0, "secondary cutoffs must fire");
+    assert.ok((counters.hCacheUpgrades ?? 0) > 0, "truncated h must be recomputed");
+    // The perimeter bound only runs past both cutoffs, so it stays unused if
+    // truncated h from an earlier contour is reused as a full bound.
+    assert.ok(
+      (counters.backwardPerimeterImprovements ?? 0) > 0,
+      "the perimeter bound must be reached in a later contour",
+    );
+  });
+
   it("rejects non-default IDA* features when checkpointing is requested", async () => {
     await assert.rejects(
       runIdaStarSearch(request(), context(), {
