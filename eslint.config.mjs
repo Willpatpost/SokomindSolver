@@ -7,9 +7,16 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   {
+    // Flat config does not read .gitignore, so scratch and report output is
+    // listed here too.
     ignores: [
       "dist/**",
       "coverage/**",
+      "tmp/**",
+      "test-results/**",
+      "playwright-report/**",
+      "review-catalog/**",
+      "results/**",
       "src/solver/implementations/sokomind-engine/engine.generated.js",
       "src/solver/implementations/sokomind-engine/source/**",
     ],
