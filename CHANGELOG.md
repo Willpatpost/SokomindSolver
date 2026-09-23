@@ -169,6 +169,11 @@ published a stable release.
   forced-macro and goal-cut checks, so the result is now a `cutoff` with reason
   `frontier-exhausted-unverified`. The worker accepted these algorithm names,
   but no production plan uses them, so solver results are unchanged.
+- The bundled Sokomind engine's cell lookup no longer wraps a column offset
+  past a side edge into the neighbouring row. Pattern windows and pattern
+  eligibility counted cells from the far side of the board, which could make a
+  narrow corridor ineligible for pattern-deadlock checks. No catalog board's
+  eligibility or pattern windows change.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

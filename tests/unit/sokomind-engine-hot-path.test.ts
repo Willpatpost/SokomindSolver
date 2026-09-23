@@ -35,6 +35,7 @@ interface PreparedSeed {
 }
 
 interface TestEngine {
+  cellId(y: number, x: number, dense: EngineBoard["dense"]): number;
   doorwayCrossingReachable(board: EngineBoard, geometry: RoomGeometry, occupied: Int32Array): Set<string>;
   parse(data: { rows: string[]; preparedBoard?: unknown }): EngineBoard;
   createPerformanceMetrics(): Record<string, unknown>;
@@ -116,7 +117,11 @@ interface RoomGeometry {
 }
 
 interface EngineBoard {
-  readonly dense: { readonly keys: string[]; readonly idByKey: Map<string, number> };
+  readonly dense: {
+    readonly keys: string[];
+    readonly idByKey: Map<string, number>;
+    readonly width: number;
+  };
   readonly topology: {
     readonly rooms: Array<{ gate: string; cells: Set<string> }>;
     readonly transportGeometry: RoomGeometry[];
@@ -180,7 +185,7 @@ async function loadSourceEngine(): Promise<TestEngine> {
   });
   vm.runInContext(`${sources.join("\n")}
     globalThis.__engineTest = {
-      parse, createPerformanceMetrics, createPreparedBoardSeed, hydratePreparedBoard,
+      cellId, parse, createPerformanceMetrics, createPreparedBoardSeed, hydratePreparedBoard,
       playerAwarePushDistances, playerAwarePushDistancesReference, staticDead,
       createsPatternDatabaseDeadlock,
       reachablePaths, pushNeighbors, materializePushNeighborPath,
@@ -540,6 +545,39 @@ describe("Sokomind engine dense hot paths", () => {
     assert.equal(verdict(openFirst, closed), freshClosed);
     assert.equal(openFirst.metrics.patternCanonicalizations, 2);
     assert.equal(openFirst.metrics.patternDeadlockCacheHits, 0);
+  });
+
+  it("returns no cell for column offsets past either side edge", async () => {
+    const engine = await loadSourceEngine();
+    const { dense } = engine.parse({ rows: ROWS });
+    const id = (y: number, x: number) => engine.cellId(y, x, dense);
+    // Floor spans columns 1-5, so the dense width is 6. A flat index alone
+    // would wrap (2, -1) to (1, 5) and (1, 7) to (2, 1).
+    assert.equal(dense.width, 6);
+    assert.equal(id(1, 5), dense.idByKey.get("1,5"));
+    assert.equal(id(2, 1), dense.idByKey.get("2,1"));
+    assert.equal(id(2, -1), -1);
+    assert.equal(id(1, 7), -1);
+    assert.equal(id(-1, 3), -1);
+    assert.equal(id(5, 3), -1);
+  });
+
+  it("builds pattern eligibility from cells inside each window", async () => {
+    const engine = await loadSourceEngine();
+    // The column 1 corridor is narrow and unbranched. The room at columns 7-10
+    // lies outside its windows but used to wrap in from the previous row.
+    const board = engine.parse({ rows: [
+      "OOOOOOOOOOOO",
+      "O OOOOO    O",
+      "O OOOOO    O",
+      "O OOOOO    O",
+      "O OOOOO RSXO",
+      "O OOOOOOOOOO",
+      "O   OOOOOOOO",
+      "OOOOOOOOOOOO",
+    ] });
+    const eligible = [...board.dense.keys].filter((_, cell) => board.patternEligibility[cell] === 1);
+    assert.deepEqual(eligible, ["1,1", "2,1", "3,1", "4,1", "5,1", "6,1", "6,2"]);
   });
 
   it("solves through the dense deadlock path under a bounded cache budget", async () => {

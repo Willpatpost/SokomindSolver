@@ -25,6 +25,8 @@ const OPPOSITE = {Up: "Down", Down: "Up", Left: "Right", Right: "Left"};
 const MOVE_CODE = {Up: "U", Down: "D", Left: "L", Right: "R"};
 const pkey = (y, x) => `${y},${x}`;
 function cellId(y, x, dense) {
+  // Offsets past a side edge would otherwise wrap into the neighbouring row.
+  if (x < 0 || x >= dense.width) return -1;
   const index = y * dense.width + x;
   return (index >= 0 && index < dense.idByYX.length) ? dense.idByYX[index] : -1;
 }
