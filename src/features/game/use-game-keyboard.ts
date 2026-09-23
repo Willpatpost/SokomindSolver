@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffectEvent, useLayoutEffect } from "react";
 import type { Direction } from "@/src/core";
 
 const KEY_DIRECTIONS: Readonly<Record<string, Direction>> = {
@@ -113,7 +113,9 @@ export function useGameKeyboard({
     }
   });
 
-  useEffect(() => {
+  // Attach before paint. A passive effect can run after the board is already
+  // visible, so a key pressed right after the page appears was dropped.
+  useLayoutEffect(() => {
     if (!enabled) return;
     const listener = (event: KeyboardEvent) => onKeyDown(event);
     window.addEventListener("keydown", listener);

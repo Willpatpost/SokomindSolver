@@ -71,6 +71,12 @@ published a stable release.
 
 ### Fixed
 
+- A key pressed as soon as the play page appears now moves the keeper. The
+  keyboard listener was attached in a passive effect that could run after the
+  board was painted; it now attaches before paint.
+- Opening a dialog focuses its primary action immediately instead of waiting
+  for an animation frame, which WebKit could hold long enough to leave focus
+  on the first button.
 - Tapping or clicking a distant floor cell walks the whole route again. The
   walk read a session ref that only updates after React re-renders, saw no
   move after the first step and stopped; it now continues on the mover's own

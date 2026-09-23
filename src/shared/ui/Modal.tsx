@@ -72,11 +72,20 @@ export function Modal({
     if (!dialog.open) dialog.showModal();
     document.documentElement.dataset.modalOpen = "";
 
-    const frame = window.requestAnimationFrame(() => {
+    const focusInitial = () => {
       const initialFocus =
         dialog.querySelector<HTMLElement>("[data-autofocus]") ??
         dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       initialFocus?.focus();
+    };
+    // Focus now: the dialog's content is already committed, and WebKit can
+    // hold animation frames long enough that showModal()'s own choice of the
+    // first focusable element sticks. The frame retries only if focus left.
+    focusInitial();
+    const frame = window.requestAnimationFrame(() => {
+      if (!dialog.contains(document.activeElement) || document.activeElement === dialog) {
+        focusInitial();
+      }
     });
 
     return () => {
