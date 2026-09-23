@@ -163,6 +163,12 @@ published a stable release.
   The DFS and greedy searches, including the generator's greedy checks, may
   therefore order states differently; the exact A* and IDA* kernels key their
   cache by box state and are unaffected.
+- The bundled Sokomind engine no longer reports `proven-unsolvable` when a
+  `push-ida-star`, `push-astar`, `astar`, `bfs` or `dfs` search empties its
+  frontier. Those searches prune with unverified deadlock, sealed-corral,
+  forced-macro and goal-cut checks, so the result is now a `cutoff` with reason
+  `frontier-exhausted-unverified`. The worker accepted these algorithm names,
+  but no production plan uses them, so solver results are unchanged.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

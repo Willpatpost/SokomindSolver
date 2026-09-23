@@ -23,6 +23,13 @@ The older PI-corral helper is also disabled as a hard prune. The engine retains
 the separate sealed-corral check that receives the exact reachable keeper
 region.
 
+The engine never reports an unsolvability proof. When `push-ida-star`,
+`push-astar`, `astar`, `bfs` or `dfs` empties its frontier, the result is
+`cutoff` with `cutoff: false` and reason `bound-exhausted` under a finite bound
+or `frontier-exhausted-unverified` otherwise, because the deadlock,
+sealed-corral, forced-macro and goal-cut prunes are unverified. Unsolvability
+proofs come from the exact kernels in `src/solver/search`.
+
 The vendored `solver-search.js` includes integration telemetry and bounded
 structural-search improvements. Bidirectional record batches include visited,
 generated, frontier, retained, and peak-frontier counters. The structural plan

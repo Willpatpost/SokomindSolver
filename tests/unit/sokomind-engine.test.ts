@@ -401,6 +401,39 @@ describe("vendored Sokomind engine", () => {
     );
   });
 
+  it("reports an exhausted frontier as an unverified cutoff, not a proof", () => {
+    // The box starts in a corner away from its goal. The engine's prunes are
+    // unverified, so emptying the frontier must not claim unsolvability.
+    const request = requestFor({
+      id: "corner-dead-engine",
+      title: "Corner dead engine",
+      difficulty: "tutorial",
+      boxes: 1,
+      rows: [
+        "OOOOOO",
+        "OX   O",
+        "O  RSO",
+        "OOOOOO",
+      ],
+    });
+    const cases = [
+      ...(["astar", "bfs", "dfs", "push-astar"] as const).map((algorithm) => ({
+        payload: { algorithm },
+        reason: "frontier-exhausted-unverified",
+      })),
+      { payload: { algorithm: "push-ida-star", upperBound: Infinity }, reason: "frontier-exhausted-unverified" },
+      { payload: { algorithm: "push-ida-star" }, reason: "bound-exhausted" },
+    ];
+    for (const { payload, reason } of cases) {
+      const result = search({ ...payload, state: toLegacyState(request), maxVisited: 10_000 });
+      const label = JSON.stringify(payload);
+      assert.equal(result.path, null, label);
+      assert.equal(result.status, "cutoff", label);
+      assert.equal(result.cutoff, false, label);
+      assert.equal(result.terminationReason, reason, label);
+    }
+  });
+
   it("reserves rewrite states for move-specific windows", () => {
     const request = requestFor(MIXED_TYPED_PUZZLE);
     const state = toLegacyState(request);

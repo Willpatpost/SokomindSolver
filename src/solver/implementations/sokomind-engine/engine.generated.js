@@ -13688,7 +13688,6 @@ function searchCore(payload) {
 
 const TERMINAL_STATUS = Object.freeze({
   SOLVED: "solved",
-  PROVEN_UNSOLVABLE: "proven-unsolvable",
   CUTOFF: "cutoff",
   CANCELLED: "cancelled",
   FAILED: "failed",
@@ -13752,20 +13751,17 @@ function terminalSearchResult(payload, result) {
     return {...result, status: TERMINAL_STATUS.FAILED,
       terminationReason: result.terminationReason || "search-failed"};
   }
-  const exactAlgorithms = new Set(["push-ida-star", "push-astar", "astar", "bfs", "dfs"]);
+  // These searches can empty their frontier, but their deadlock, sealed-corral,
+  // forced-macro and goal-cut prunes are unverified, so an empty frontier is
+  // not an unsolvability proof. Exact proofs live in src/solver/search.
+  const exhaustibleAlgorithms = new Set(["push-ida-star", "push-astar", "astar", "bfs", "dfs"]);
   const effectiveBound = payload.algorithm === "push-ida-star"
     ? (payload.upperBound ?? payload.pushBound ?? 300)
     : (payload.upperBound ?? payload.pushBound);
-  const finiteBound = Number.isFinite(effectiveBound);
-  if (exactAlgorithms.has(payload.algorithm) && finiteBound && !result.cutoff) {
+  if (exhaustibleAlgorithms.has(payload.algorithm) && !result.cutoff) {
     return {...result, status: TERMINAL_STATUS.CUTOFF, cutoff: false,
-      terminationReason: "bound-exhausted"};
-  }
-  const proofComplete = exactAlgorithms.has(payload.algorithm) && !result.cutoff &&
-    (!finiteBound || result.terminationReason === "infeasible-root");
-  if (proofComplete) {
-    return {...result, status: TERMINAL_STATUS.PROVEN_UNSOLVABLE,
-      terminationReason: result.terminationReason || "frontier-exhausted"};
+      terminationReason: Number.isFinite(effectiveBound)
+        ? "bound-exhausted" : "frontier-exhausted-unverified"};
   }
   return {...result, status: TERMINAL_STATUS.CUTOFF,
     cutoff: true, terminationReason: result.terminationReason || "search-incomplete"};
