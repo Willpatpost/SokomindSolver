@@ -6,7 +6,8 @@ interface UseTapToMoveOptions {
   readonly sessionRef: { readonly current: GameSession };
   readonly enabled: boolean;
   readonly reducedMotion: boolean;
-  readonly applyDirection: (direction: Direction) => void;
+  /** Returns whether the keeper moved. */
+  readonly applyDirection: (direction: Direction) => boolean;
 }
 
 export function useTapToMove({
@@ -27,6 +28,17 @@ export function useTapToMove({
   }, []);
 
   useEffect(() => () => cancelWalk(), [cancelWalk]);
+
+  // Each step uses the latest mover, so a walk sees input being disabled
+  // (a dialog opening, a solve) instead of the one captured at click time.
+  const applyDirectionRef = useRef(applyDirection);
+  useEffect(() => {
+    applyDirectionRef.current = applyDirection;
+  }, [applyDirection]);
+
+  useEffect(() => {
+    if (!enabled) cancelWalk();
+  }, [cancelWalk, enabled]);
 
   const handleBoardClick = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
@@ -64,15 +76,15 @@ export function useTapToMove({
           return;
         }
 
-        const movesBefore = sessionRef.current.moves;
-        applyDirection(path[index]);
-        if (sessionRef.current.moves === movesBefore) {
+        // The session ref only catches up after React re-renders, so the
+        // mover's own result decides whether the walk continues.
+        if (!applyDirectionRef.current(path[index])) {
           walkTimerRef.current = undefined;
           return;
         }
 
         const next = index + 1;
-        if (next >= path.length || sessionRef.current.solved) {
+        if (next >= path.length) {
           walkTimerRef.current = undefined;
           return;
         }
@@ -83,7 +95,7 @@ export function useTapToMove({
 
       advance(0);
     },
-    [applyDirection, cancelWalk, enabled, reducedMotion, sessionRef],
+    [cancelWalk, enabled, reducedMotion, sessionRef],
   );
 
   return { handleBoardClick, cancelWalk };

@@ -347,10 +347,10 @@ export function usePlayController(
     !deadlockModalOpen &&
     !shortcutsOpen;
 
-  const attemptMove = useCallback((direction: Direction) => {
-    if (!inputEnabled) return;
+  const attemptMove = useCallback((direction: Direction): boolean => {
+    if (!inputEnabled) return false;
     stopSolutionPlayback();
-    applyDirection(direction);
+    return applyDirection(direction);
   }, [applyDirection, inputEnabled, stopSolutionPlayback]);
 
   const handleUndo = useCallback(() => {

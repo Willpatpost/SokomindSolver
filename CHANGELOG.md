@@ -51,6 +51,10 @@ published a stable release.
 
 ### Fixed
 
+- Tapping or clicking a distant floor cell walks the whole route again. The
+  walk read a session ref that only updates after React re-renders, saw no
+  move after the first step and stopped; it now continues on the mover's own
+  result and cancels when input is disabled.
 - Exact pattern-database combination counts no longer wrap at 32 bits on large
   valid custom boards, and oversized optional tables safely fall back to the
   remaining admissible heuristics.
