@@ -460,10 +460,8 @@ describe("incomplete contour guard", () => {
     const dfsResult = await runClassicSearch(req, oracleContext(), {
       strategy: "dfs",
     });
-    if (dfsResult.status !== "solved") {
-      // If DFS cannot even solve with these limits, skip this test path
-      return;
-    }
+    assert.equal(dfsResult.status, "solved", "the incumbent must exist");
+    if (dfsResult.status !== "solved") return;
 
     const result = await runIdaStarSearch(
       { ...requestFromRows(BOARD_ROWS), limits: { maxExpandedStates: 2 } },
@@ -476,12 +474,14 @@ describe("incomplete contour guard", () => {
       },
     );
 
-    if (result.status === "solved" && result.proof?.kind === "bounded") {
-      assert.ok(
-        result.proof!.gap! > 0,
-        "Bounded proof from incomplete contour must have gap > 0",
-      );
-    }
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof?.kind, "bounded");
+    assert.ok(
+      result.proof.gap! > 0,
+      "Bounded proof from incomplete contour must have gap > 0",
+    );
   });
 });
 

@@ -1267,6 +1267,10 @@ describe("concurrent proof coordinator", () => {
       { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 5 },
     );
     assert.equal(timed.status, "solved");
+    if (timed.status === "solved") {
+      assert.notEqual(timed.solution.optimality, "proven");
+    }
+    assert.notEqual(timed.proof?.kind, "optimal");
     assert.ok(performance.now() - started < 2000);
     assert.equal(silent.terminated, true);
 
@@ -1301,6 +1305,10 @@ describe("concurrent proof coordinator", () => {
       { createProofWorker: () => silent, proofParallelism: 1, silenceTimeoutMs: 5_000 },
     );
     assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.notEqual(result.solution.optimality, "proven");
+    }
+    assert.notEqual(result.proof?.kind, "optimal");
     assert.ok(performance.now() - started < 4000);
     assert.equal(silent.terminated, true);
   });
