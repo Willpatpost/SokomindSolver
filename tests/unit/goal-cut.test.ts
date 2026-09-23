@@ -285,8 +285,7 @@ describe("goal-cut admissibility", () => {
   ] as const) {
     it(`stays within the exact remaining moves of every reachable state (${name})`, () => {
       const { board, boxes, robot } = compileRows(rows);
-      // Uncached: a fallback cache hit does not refresh lastAssignmentStates.
-      const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+      const heuristic = new AssignmentHeuristic(board);
       const evaluator = new GoalCutEvaluator(board, board.topology);
       let surplusStates = 0;
       for (const state of allReachableStates(board, robot, boxes).values()) {

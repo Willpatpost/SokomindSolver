@@ -250,7 +250,7 @@ export class AssignmentHeuristic {
   readonly #maxCacheEntries: number;
   readonly #packBoxKey: ((boxes: readonly DenseBox[]) => bigint) | null;
   readonly #cache = new Map<bigint, AssignmentCacheEntry>();
-  readonly #fallbackCache = new Map<string, number>();
+  readonly #fallbackCache = new Map<string, AssignmentCacheEntry>();
   #calls = 0;
   #cacheHits = 0;
   #incrementalRepairs = 0;
@@ -356,7 +356,8 @@ export class AssignmentHeuristic {
       this.#cacheHits += 1;
       this.#fallbackCache.delete(signature);
       this.#fallbackCache.set(signature, cached);
-      return cached;
+      this.#lastLabelStates = cached.labelStates;
+      return cached.totalCost;
     }
     const result = fullAssignmentWithState(this.#board, boxes);
     this.#lastLabelStates = result.labelStates;
@@ -366,7 +367,7 @@ export class AssignmentHeuristic {
         if (oldest === undefined) break;
         this.#fallbackCache.delete(oldest);
       }
-      this.#fallbackCache.set(signature, result.totalCost);
+      this.#fallbackCache.set(signature, result);
     }
     return result.totalCost;
   }

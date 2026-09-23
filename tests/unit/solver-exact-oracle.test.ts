@@ -216,8 +216,7 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
       "O SS O",
       "OOOOOO",
     ]);
-    // Uncached: a fallback cache hit does not refresh the assignment state.
-    const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+    const heuristic = new AssignmentHeuristic(board);
     let solvableChecked = 0;
     let violations = 0;
 

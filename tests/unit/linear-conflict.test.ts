@@ -161,6 +161,36 @@ describe("computeLinearConflict", () => {
     ];
     assert.equal(getLinearConflict(rows), 2);
   });
+
+  it("an unkeyed cache hit restores the hit state's assignment", () => {
+    // `crossed` is the row-conflict board; `uncrossed` swaps the A and B cells.
+    const { board, boxes: crossed } = setupBoard([
+      "OOOOOOO",
+      "O     O",
+      "ObABaRO",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    const cellOf = (label: string) => crossed.find((box) => box.label === label)!.cell;
+    const uncrossed = crossed.map((box) => ({
+      ...box,
+      cell: cellOf(box.label === "A" ? "B" : "A"),
+    }));
+
+    const heuristic = new AssignmentHeuristic(board);
+    heuristic.evaluate(uncrossed);
+    heuristic.evaluate(crossed);
+    heuristic.evaluate(uncrossed);
+    assert.equal(heuristic.stats.cacheHits, 1);
+    assert.equal(heuristic.lastLinearConflict(uncrossed), 0);
+
+    heuristic.evaluate(crossed);
+    assert.equal(heuristic.stats.cacheHits, 2);
+    assert.equal(heuristic.lastLinearConflict(crossed), 2);
+    const fresh = new AssignmentHeuristic(board);
+    fresh.evaluate(crossed);
+    assert.deepEqual(heuristic.lastLabelCosts, fresh.lastLabelCosts);
+  });
 });
 
 describe("linear conflict admissibility", () => {
@@ -230,8 +260,7 @@ describe("linear conflict admissibility", () => {
     it(`never exceeds the pushes or moves left in any reachable state (${name})`, () => {
       const { parsed, board, boxes } = setupBoard([...rows]);
       const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
-      // Uncached: a fallback cache hit does not refresh the assignment state.
-      const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+      const heuristic = new AssignmentHeuristic(board);
       let conflictStates = 0;
       let tightStates = 0;
       for (const state of allReachableStateCosts(board, robot, boxes).values()) {

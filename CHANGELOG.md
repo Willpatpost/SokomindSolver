@@ -157,6 +157,12 @@ published a stable release.
   one was still queued. Only tests use this strategy; the Classic A* solver
   and Optimal proofs run the exact A* kernel, so stored certificates are
   unaffected.
+- The classic search engine's assignment cache now restores the matched
+  state's assignment on a hit. It kept only the cost, so the linear conflict
+  that followed was computed from whichever state had been evaluated last.
+  The DFS and greedy searches, including the generator's greedy checks, may
+  therefore order states differently; the exact A* and IDA* kernels key their
+  cache by box state and are unaffected.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.
