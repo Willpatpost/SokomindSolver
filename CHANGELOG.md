@@ -45,6 +45,9 @@ published a stable release.
   already dispatch to their own schedulers, and an unknown mode now throws
   instead of falling through. The reschedule-value predictor is kept, but the
   docs now say it is not wired into production.
+- The browser and Node proof workers now share one runtime module, so the
+  proof-result mapping is maintained in one place. The browser worker no longer
+  passes the `persistTransposition` option, which exact IDA* ignores.
 
 ### Fixed
 
