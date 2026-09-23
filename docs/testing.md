@@ -127,7 +127,11 @@ TypeScript sources or the generated engine can be absorbed by headroom in the
 other; the `c8 --all` pass still guards TypeScript coverage on its own.
 
 `test:solver:known` runs production exact A* against every ordinary entry in
-the frozen optimum manifest; `test:solver:parallel` independently exercises
+the frozen optimum manifest, including a proven-unsolvable board, and also runs
+exact IDA* on the small entries that carry step-oracle provenance. It re-derives
+that provenance with the oracle, so a kernel bug that shifts a frozen outcome
+cannot be accepted by editing the manifest alone. `test:solver:parallel`
+independently exercises
 the production two-worker inter-rooms proof path. They form
 `test:solver:proof-regressions` in pull-request and default-branch CI. The much
 slower `test:solver:known:extended` fixture runs in the scheduled/manual

@@ -23,6 +23,8 @@ export interface PatternDeadlockStats {
 
 interface WindowInfo {
   readonly cells: readonly number[];
+  /** Floor cells outside the window that touch a window floor cell. */
+  readonly exits: readonly number[];
   readonly eligible: boolean;
 }
 
@@ -46,8 +48,14 @@ const TRANSFORMS: readonly Transform[] = [
   (r, c) => [-c, -r],
 ];
 
+/**
+ * The BFS also reads the floor just outside the window: a push may stand on
+ * it, or move a box onto it and so out of the local problem. The key therefore
+ * encodes those exit cells alongside the in-window floor, goals and boxes.
+ */
 function canonicalPatternKey(
   floorPositions: readonly { row: number; col: number }[],
+  exitPositions: readonly { row: number; col: number }[],
   boxes: readonly LocalBox[],
   goalsByCell: ReadonlyMap<number, string>,
   board: CompiledSearchBoard,
@@ -93,7 +101,16 @@ function canonicalPatternKey(
     }
     boxParts.sort();
 
-    const key = `${floorParts.join(";")}|${goalParts.join(";")}|${boxParts.join(";")}`;
+    const exitParts: string[] = [];
+    for (const pos of exitPositions) {
+      const [tr, tc] = transform(pos.row, pos.col);
+      exitParts.push(`${tr - minR},${tc - minC}`);
+    }
+    exitParts.sort();
+
+    const key =
+      `${floorParts.join(";")}|${goalParts.join(";")}|${boxParts.join(";")}` +
+      `|${exitParts.join(";")}`;
     if (best === "" || key < best) {
       best = key;
     }
@@ -130,6 +147,7 @@ export class PatternDeadlockCache {
   readonly #cacheLimit: number;
   readonly #windowCache = new Map<number, WindowInfo>();
   readonly #patternCache = new Map<string, boolean>();
+  #board: CompiledSearchBoard | null = null;
   #checks = 0;
   #cacheHits = 0;
   #deadlocks = 0;
@@ -154,12 +172,20 @@ export class PatternDeadlockCache {
     this.#patternCache.clear();
   }
 
+  /** Windows are cached by cell index, which only has meaning on one board. */
+  #useBoard(board: CompiledSearchBoard): void {
+    if (this.#board === board) return;
+    this.clear();
+    this.#board = board;
+  }
+
   /**
    * Reports whether this board has any destination for which the bounded
    * pattern search can run. This is a static geometry check: when it is false,
    * every call to {@link check} would return before inspecting the boxes.
    */
   hasEligibleWindow(board: CompiledSearchBoard): boolean {
+    this.#useBoard(board);
     for (let cell = 0; cell < board.cellCount; cell++) {
       if (this.#getWindowInfo(board, cell).eligible) return true;
     }
@@ -172,7 +198,7 @@ export class PatternDeadlockCache {
 
     const centerPos = board.positions[centerCell];
     if (!centerPos) {
-      const info: WindowInfo = { cells: [], eligible: false };
+      const info: WindowInfo = { cells: [], exits: [], eligible: false };
       this.#windowCache.set(centerCell, info);
       return info;
     }
@@ -201,7 +227,28 @@ export class PatternDeadlockCache {
       eligible = false;
     }
 
-    const info: WindowInfo = { cells, eligible };
+    const exits: number[] = [];
+    if (eligible) {
+      for (const cell of cells) {
+        const pos = board.positions[cell];
+        for (const [dr, dc] of DIRECTION_DELTAS) {
+          const r = pos.row + dr;
+          const c = pos.column + dc;
+          if (
+            Math.abs(r - centerPos.row) <= CHEBYSHEV_RADIUS &&
+            Math.abs(c - centerPos.column) <= CHEBYSHEV_RADIUS
+          ) {
+            continue;
+          }
+          const exit = board.cellAt(r, c);
+          if (exit >= 0 && !exits.includes(exit)) {
+            exits.push(exit);
+          }
+        }
+      }
+    }
+
+    const info: WindowInfo = { cells, exits, eligible };
     this.#windowCache.set(centerCell, info);
     return info;
   }
@@ -222,6 +269,7 @@ export class PatternDeadlockCache {
     movedCell: number,
   ): boolean {
     this.#checks += 1;
+    this.#useBoard(board);
 
     const windowInfo = this.#getWindowInfo(board, movedCell);
     if (!windowInfo.eligible) return false;
@@ -262,12 +310,20 @@ export class PatternDeadlockCache {
       }
     }
 
-    const floorPositions = windowInfo.cells.map((cell) => {
+    const toPosition = (cell: number): { row: number; col: number } => {
       const pos = board.positions[cell];
       return { row: pos.row, col: pos.column };
-    });
+    };
+    const floorPositions = windowInfo.cells.map(toPosition);
+    const exitPositions = windowInfo.exits.map(toPosition);
 
-    const patternKey = canonicalPatternKey(floorPositions, localBoxes, goalsByCell, board);
+    const patternKey = canonicalPatternKey(
+      floorPositions,
+      exitPositions,
+      localBoxes,
+      goalsByCell,
+      board,
+    );
 
     const cachedResult = this.#patternCache.get(patternKey);
     if (cachedResult !== undefined) {

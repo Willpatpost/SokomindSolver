@@ -128,6 +128,22 @@ test("invalidates schema-7 certificates from before the tunnel-macro soundness f
   }
 });
 
+test("invalidates certificates from before the pattern-deadlock key fix", () => {
+  const staleRevision = "exact-moves-tunnel-sound-v1";
+  assert.notEqual(CURRENT_OPTIMAL_PROOF_REVISION, staleRevision);
+  const stale = {
+    version: 7,
+    proofRevision: staleRevision,
+    records: { [recordKey("pattern-key", FIRST_FINGERPRINT)]: { moves: 73, pushes: 20 } },
+  };
+  assert.deepEqual(
+    normalizeOptimalCache({ ...stale, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION }).records,
+    stale.records,
+  );
+  assert.deepEqual(normalizeOptimalCache(stale), EMPTY_CACHE);
+  assert.equal(isOptimal(stale as unknown as OptimalCache, "pattern-key", FIRST_FINGERPRINT, 73), false);
+});
+
 test("old tabs cannot overwrite corrected proof storage or affect progress and routes", () => {
   const oldKey = "sokomind.optimal.v6";
   assert.equal(LEGACY_STORAGE_KEYS.optimalV6, oldKey);

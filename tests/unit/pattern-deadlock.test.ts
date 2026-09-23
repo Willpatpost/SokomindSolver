@@ -122,6 +122,14 @@ function exactRemainingPushes(
   return null;
 }
 
+const CLOSED_AND_OPEN_CORRIDORS = [
+  "OOOOOOOOOOOOOOOOOOOOOO",
+  "O       OOOOOOOOOOOOOO",
+  ...Array.from({ length: 8 }, () => "OOOOOOOOOOOOOOOOOOOOOO"),
+  "O          R  XX SS  O",
+  "OOOOOOOOOOOOOOOOOOOOOO",
+] as const;
+
 describe("pattern deadlock detection", () => {
   it("statically rejects boards whose local windows all exceed the floor cap", () => {
     const board = compileSearchBoard(parsePuzzleRows([
@@ -533,5 +541,89 @@ describe("pattern deadlock detection", () => {
     // After clear, cache should miss (no pattern cache entries)
     createsPatternDeadlock(board, boxes, boxes[0].cell, cache);
     assert.equal(cache.stats.cacheHits, 0, "Cache should be empty after clear");
+  });
+
+  it("pattern cache key distinguishes an open corridor from a closed one outside the window", () => {
+    // Row 1 is a corridor closed at column 8, just outside the 9x9 window
+    // around (1,3). Row 10 has the same in-window floor but stays open past
+    // column 8, so its boxes can leave the window. The two windows must not
+    // share a cached verdict.
+    const board = compileSearchBoard(parsePuzzleRows(CLOSED_AND_OPEN_CORRIDORS));
+    const bx = (r: number, c: number, i: number): DenseBox => ({
+      id: `X:${i}`,
+      label: "X",
+      cell: board.cellAt(r, c),
+    });
+    const closed = [bx(1, 3, 0), bx(1, 5, 1)];
+    const open = [bx(10, 3, 0), bx(10, 5, 1)];
+    const closedCenter = board.cellAt(1, 3);
+    const openCenter = board.cellAt(10, 3);
+
+    const freshClosed = createsPatternDeadlock(
+      board,
+      closed,
+      closedCenter,
+      new PatternDeadlockCache(),
+    );
+    const freshOpen = createsPatternDeadlock(
+      board,
+      open,
+      openCenter,
+      new PatternDeadlockCache(),
+    );
+    assert.equal(freshClosed, true, "closed corridor without goals is a deadlock");
+    assert.equal(freshOpen, false, "boxes can leave the open corridor");
+
+    const closedFirst = new PatternDeadlockCache();
+    createsPatternDeadlock(board, closed, closedCenter, closedFirst);
+    assert.equal(
+      createsPatternDeadlock(board, open, openCenter, closedFirst),
+      freshOpen,
+      "a cached closed-corridor verdict must not prune the open corridor",
+    );
+    assert.equal(closedFirst.stats.cacheHits, 0);
+
+    const openFirst = new PatternDeadlockCache();
+    createsPatternDeadlock(board, open, openCenter, openFirst);
+    assert.equal(
+      createsPatternDeadlock(board, closed, closedCenter, openFirst),
+      freshClosed,
+      "a cached open-corridor verdict must not hide the closed-corridor deadlock",
+    );
+    assert.equal(openFirst.stats.cacheHits, 0);
+  });
+
+  it("starts afresh when one cache instance is used on a different board", () => {
+    // Every window of the open room exceeds the floor cap. Cell indices are
+    // per board, so a window remembered from the room must not decide the
+    // eligibility or contents of a window on the corridor board.
+    const room = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O R   O",
+      "O X X O",
+      "O     O",
+      "O S S O",
+      "O     O",
+      "OOOOOOO",
+    ]));
+    const corridors = compileSearchBoard(parsePuzzleRows(CLOSED_AND_OPEN_CORRIDORS));
+    const closed: DenseBox[] = [
+      { id: "X:0", label: "X", cell: corridors.cellAt(1, 3) },
+      { id: "X:1", label: "X", cell: corridors.cellAt(1, 5) },
+    ];
+    const center = corridors.cellAt(1, 3);
+    const fresh = createsPatternDeadlock(
+      corridors,
+      closed,
+      center,
+      new PatternDeadlockCache(),
+    );
+    assert.equal(fresh, true);
+
+    const reused = new PatternDeadlockCache();
+    assert.equal(reused.hasEligibleWindow(room), false);
+    assert.equal(reused.hasEligibleWindow(corridors), true);
+    assert.equal(createsPatternDeadlock(corridors, closed, center, reused), fresh);
+    assert.equal(reused.hasEligibleWindow(room), false);
   });
 });

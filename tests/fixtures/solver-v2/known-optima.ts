@@ -1,13 +1,21 @@
 /**
- * Frozen move-optimal records established by an independent step oracle and
- * replayed by the exact classic gate. `moves` is the independent correctness
- * constraint. `pushes` freezes the deterministic oracle route as a separate
- * regression signal; exact benchmark acceptance does not optimize pushes.
+ * Frozen move-optimal records replayed by the exact classic gate.
+ *
+ * Only entries that carry `oracleStates` are oracle-verified: the independent
+ * step oracle (`exactRemainingMoves` in `tests/support/exact-solver-oracle.ts`)
+ * established their outcome, and `pushes` is the push count of its first
+ * move-optimal route. Solved entries without `oracleStates` are frozen
+ * exact-solver outputs with no independent provenance. `moves` is the
+ * correctness constraint. `pushes` is a separate deterministic regression
+ * signal; exact benchmark acceptance does not optimize pushes.
  */
+
+import { TUNNEL_SOUNDNESS_BY_ID } from "./tunnel-soundness.ts";
+
 export interface KnownOptimum {
   readonly moves: number;
   readonly pushes: number;
-  /** Independent exhaustive step-BFS state count, when retained as provenance. */
+  /** Independent step-BFS state count when it reached a goal; present only when oracle-verified. */
   readonly oracleStates?: number;
 }
 
@@ -17,6 +25,8 @@ export interface KnownSolvedOutcome extends KnownOptimum {
 
 export interface KnownUnsolvableOutcome {
   readonly kind: "unsolvable";
+  /** Independent step-BFS state count at exhaustion. */
+  readonly oracleStates?: number;
 }
 
 export type KnownFixtureOutcome =
@@ -91,15 +101,51 @@ export const KNOWN_OPTIMA_BY_FIXTURE_ID: Readonly<
     pushes: 14,
     oracleStates: 66_400,
   }),
+  es01c: Object.freeze({
+    moves: 19,
+    pushes: 5,
+    oracleStates: 311,
+  }),
+  es01d: Object.freeze({
+    moves: 22,
+    pushes: 6,
+    oracleStates: 2_344,
+  }),
 });
 
-/** Fixture IDs independently proven to exhaust without a solution. */
-export const KNOWN_UNSOLVABLE_FIXTURE_IDS: readonly string[] = Object.freeze([]);
+/** Fixtures the independent step oracle exhausts without a solution. */
+export const KNOWN_UNSOLVABLE_BY_FIXTURE_ID: Readonly<
+  Record<string, Omit<KnownUnsolvableOutcome, "kind">>
+> = Object.freeze({
+  "blocked-typed-corridor": Object.freeze({ oracleStates: 814 }),
+});
 
 /**
- * Canonical independent truth used by exact benchmark acceptance. The
- * discriminant deliberately supports future proven-unsolvable fixtures;
- * already-solved fixtures are represented as solved with a 0/0 optimum.
+ * Rows for gated fixtures outside the benchmark corpus. Benchmarks read
+ * outcomes only for corpus fixtures, so only the known-optimum gate runs
+ * these boards.
+ */
+export const KNOWN_FIXTURE_ROWS_OUTSIDE_CORPUS: Readonly<
+  Record<string, readonly string[]>
+> = Object.freeze({
+  es01c: TUNNEL_SOUNDNESS_BY_ID.es01c.rows,
+  es01d: TUNNEL_SOUNDNESS_BY_ID.es01d.rows,
+  // B can only be pushed deeper into the one-wide corridor and the robot can
+  // never get behind it, so A can never pass B to reach its goal. No box
+  // starts on a dead square, so only an exhaustive search proves it.
+  "blocked-typed-corridor": Object.freeze([
+    "OOOOOOOOO",
+    "OabB    O",
+    "OOOO    O",
+    "OOOO A  O",
+    "OOOO  R O",
+    "OOOOOOOOO",
+  ]),
+});
+
+/**
+ * Canonical independent truth used by exact benchmark acceptance.
+ * Already-solved fixtures are represented as solved with a 0/0 optimum.
  */
 export const KNOWN_FIXTURE_OUTCOMES_BY_ID: Readonly<
   Record<string, KnownFixtureOutcome>
@@ -112,10 +158,10 @@ export const KNOWN_FIXTURE_OUTCOMES_BY_ID: Readonly<
           Object.freeze({ kind: "solved" as const, ...optimum }),
         ] as const,
       ),
-      ...KNOWN_UNSOLVABLE_FIXTURE_IDS.map(
-        (fixtureId) => [
+      ...Object.entries(KNOWN_UNSOLVABLE_BY_FIXTURE_ID).map(
+        ([fixtureId, outcome]) => [
           fixtureId,
-          Object.freeze({ kind: "unsolvable" as const }),
+          Object.freeze({ kind: "unsolvable" as const, ...outcome }),
         ] as const,
       ),
     ],
@@ -133,3 +179,14 @@ export const KNOWN_OPTIMA_STANDARD_GATE_FIXTURE_IDS = Object.freeze(
 export const KNOWN_OPTIMA_EXTENDED_GATE_FIXTURE_IDS = Object.freeze([
   "expert-tetris",
 ]);
+
+const IDA_STAR_GATE_MAX_ORACLE_STATES = 100_000;
+
+/** Small oracle-backed standard entries that exact IDA* must also reproduce. */
+export const KNOWN_OPTIMA_IDA_STAR_GATE_FIXTURE_IDS = Object.freeze(
+  KNOWN_OPTIMA_STANDARD_GATE_FIXTURE_IDS.filter((fixtureId) => {
+    const { oracleStates } = KNOWN_FIXTURE_OUTCOMES_BY_ID[fixtureId];
+    return oracleStates !== undefined &&
+      oracleStates < IDA_STAR_GATE_MAX_ORACLE_STATES;
+  }),
+);

@@ -47,6 +47,11 @@ interface TestEngine {
   playerAwarePushDistances(board: EngineBoard, start: string): DistanceTable;
   playerAwarePushDistancesReference(floor: Set<string>, start: string): Map<string, number>;
   staticDead(y: number, x: number, board: EngineBoard, label: string): boolean;
+  createsPatternDatabaseDeadlock(
+    boxes: EngineState["boxes"],
+    board: EngineBoard,
+    movedBox: readonly [number, number],
+  ): boolean;
   reachablePaths(state: EngineState, board: EngineBoard): Reachability;
   pushNeighbors(
     state: EngineState,
@@ -130,6 +135,10 @@ interface EngineBoard {
   };
   readonly deadlockMemo: { readonly capacity: number };
   readonly patternDeadlockMemo: { readonly capacity: number };
+  readonly metrics: {
+    readonly patternCanonicalizations: number;
+    readonly patternDeadlockCacheHits: number;
+  };
   readonly pushTransitionMemo: { readonly capacity: number };
   reachabilityMemoLimit: number;
 }
@@ -173,6 +182,7 @@ async function loadSourceEngine(): Promise<TestEngine> {
     globalThis.__engineTest = {
       parse, createPerformanceMetrics, createPreparedBoardSeed, hydratePreparedBoard,
       playerAwarePushDistances, playerAwarePushDistancesReference, staticDead,
+      createsPatternDatabaseDeadlock,
       reachablePaths, pushNeighbors, materializePushNeighborPath,
       goalAccessAnalysis, ensureGoalAccessPackingRisk,
       evaluateGoalAccess, evaluateGoalAccessSummary,
@@ -495,6 +505,41 @@ describe("Sokomind engine dense hot paths", () => {
     const singleP = singlePartitions.find(p => p.label === "X");
     assert.ok(singleP);
     assert.equal(singleP.k, 1);
+  });
+
+  it("distinguishes an open corridor from a closed one outside the pattern window", async () => {
+    const engine = await loadSourceEngine();
+    // Row 1 is a corridor closed one cell past the window edge. Row 10 has the
+    // same in-window shape but continues past it, so its boxes can escape.
+    // Windows centered on column 6 stay inside the board's columns.
+    const rows = [
+      "OOOOOOOOOOOOOOOOOOOOOO",
+      "OOOO       OOOOOOOOOOO",
+      ...Array.from({ length: 8 }, () => "OOOOOOOOOOOOOOOOOOOOOO"),
+      "OOOO       R  XX SS  O",
+      "OOOOOOOOOOOOOOOOOOOOOO",
+    ];
+    const closed: EngineState["boxes"] = [[1, 6, "X"], [1, 8, "X"]];
+    const open: EngineState["boxes"] = [[10, 6, "X"], [10, 8, "X"]];
+    const verdict = (board: EngineBoard, boxes: EngineState["boxes"]) =>
+      engine.createsPatternDatabaseDeadlock(boxes, board, [boxes[0][0], boxes[0][1]]);
+
+    const freshClosed = verdict(engine.parse({ rows }), closed);
+    const freshOpen = verdict(engine.parse({ rows }), open);
+    assert.equal(freshClosed, true);
+    assert.equal(freshOpen, false);
+
+    const closedFirst = engine.parse({ rows });
+    assert.equal(verdict(closedFirst, closed), freshClosed);
+    assert.equal(verdict(closedFirst, open), freshOpen);
+    assert.equal(closedFirst.metrics.patternCanonicalizations, 2);
+    assert.equal(closedFirst.metrics.patternDeadlockCacheHits, 0);
+
+    const openFirst = engine.parse({ rows });
+    assert.equal(verdict(openFirst, open), freshOpen);
+    assert.equal(verdict(openFirst, closed), freshClosed);
+    assert.equal(openFirst.metrics.patternCanonicalizations, 2);
+    assert.equal(openFirst.metrics.patternDeadlockCacheHits, 0);
   });
 
   it("solves through the dense deadlock path under a bounded cache budget", async () => {

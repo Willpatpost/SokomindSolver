@@ -46,9 +46,10 @@ pending broader performance qualification. Quality strategic defaults preserve
 explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
-`exact-moves-tunnel-sound-v1`, and storage key `sokomind.optimal.v7`.
+`exact-moves-pattern-key-v1`, and storage key `sokomind.optimal.v7`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records
-that can predate the A* frontier correction or the tunnel-macro soundness fix.
+that can predate the A* frontier correction, the tunnel-macro soundness fix or
+the pattern-deadlock key fix.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.
@@ -68,10 +69,22 @@ the blocked end). Routes that park a box part-way into a tunnel were lost, so
 both exact kernels could certify non-optimal move counts and prove solvable
 boards unsolvable. IDA* also keyed macro children by the box's origin cell
 instead of the post-macro robot cell. Macro stops are now extra successors
-beside the single push, and tunnel macros default off. Proof revision
-`exact-moves-tunnel-sound-v1` rejects earlier optimal records, and IDA*
-checkpoint schema 4 rejects earlier checkpoints. Earlier certificates and
-unsolvability proofs must not be treated as proof evidence.
+beside the single push, and tunnel macros default off.
+
+The same releases correct the pattern-deadlock cache key. The local search
+reads the floor just outside its 9x9 window (push supports and escapes), but
+the canonical key encoded only the window's floor, goals and boxes. A window
+whose exits were walled could prove a deadlock, and that verdict was then
+reused for a translated or rotated copy of the window whose exits were open,
+pruning live states with default features. The oracle-backed
+`pattern-deadlock-soundness` fixtures, one board proven at 73 instead of 63
+moves and one proven unsolvable instead of solvable in 63, run through both
+exact kernels. Proof revision `exact-moves-pattern-key-v1` rejects earlier
+optimal records, and IDA* checkpoint schema 4 rejects earlier checkpoints.
+Earlier certificates and unsolvability proofs must not be treated as proof
+evidence. The bundled engine's local pattern memo carried the same key defect;
+its results are replayed and labelled unknown optimality, so there it cost
+solution quality rather than proof soundness.
 
 Sokomind 1.3.0 also versions the earlier Quality changes: Quality no longer
 dispatches proof and always reports unknown optimality, `SolverRequest` accepts
@@ -179,6 +192,9 @@ selecting Quality and still requires the documented promotion evidence.
   feature identities cannot establish current optimality.
 - Macro successors are additive. Tunnel macros never remove the single-push
   child, and every macro child's state key uses its exact post-macro robot cell.
+- Pattern-deadlock memo keys encode every cell the local search reads,
+  including the floor just outside the window, and a memo only serves the
+  board it was built on.
 
 `inter-rooms` is the regression for the former unsound goal prune. It must solve
 in 28 moves with a replay-valid seven-push route and equal 28-move lower and
@@ -190,6 +206,12 @@ former tunnel single-push replacement. Both exact engines must prove the oracle
 optimum (9, 16, 19, 22, 15 and 10 moves) with default features, with
 `tunnelMacros` enabled and with `forcedPushMacros` disabled, and `es01d` and
 `fz-unsolvable` must never be reported unsolvable.
+
+`pd-false-optimum` and `pd-false-unsolvable` in
+`tests/fixtures/solver-v2/pattern-deadlock-soundness.ts` are the regressions
+for the former pattern-deadlock key. Both exact engines must prove the 63-move
+oracle optimum with default features and with `tunnelMacros` enabled while
+pattern-deadlock pruning is active.
 
 ## Exact feature controls
 
@@ -219,14 +241,17 @@ timing shows no material regression.
 Tunnel macros add look-ahead successors when a push moves a box into a
 same-axis tunnel cell: one child per stopping point (a matching goal, the
 tunnel exit, or the last free cell before a wall or box), costed as the keeper
-walk plus one move per push. They never replace the single push. The former
-rule dropped the single-push child whenever the destination's far neighbor was
-also a tunnel cell; that pruned move-optimal plans that stop a box part-way
-into a tunnel and produced false proven optima and false `unsolvable` proofs on
-solvable boards. IDA* keys each macro child by its post-macro robot cell, as A*
-already did. Once sound, the macro adds no pruning and measured slower, so
-`tunnelMacros` defaults off; re-enable it only after the tunnel regressions
-pass with it on and a benchmark shows a gain.
+walk plus one move per push. They never replace the single push. Every stop is
+2 to 64 pushes away: a one-push stop would repeat the single push, and the A*
+node arena records at most 64 pushes per step. A stop beyond that is offered
+once single pushes bring the box close enough. The former rule dropped the
+single-push child whenever the destination's far neighbor was also a tunnel
+cell; that pruned move-optimal plans that stop a box part-way into a tunnel and
+produced false proven optima and false `unsolvable` proofs on solvable boards.
+IDA* keys each macro child by its post-macro robot cell, as A* already did.
+Once sound, the macro adds no pruning and measured slower, so `tunnelMacros`
+defaults off; re-enable it only after the tunnel regressions pass with it on
+and a benchmark shows a gain.
 
 Goal-commitment pruning skips successor generation for boxes proven to be on
 their final goals. Static commitments detect boxes on matching goals in corner
@@ -276,7 +301,10 @@ defaults off pending benchmark validation.
 
 Known optima and oracle cases live in `tests/fixtures/solver-v2/`; the source and
 tests own their current counts. New optima require an independent exact result,
-replay validation, and review before entering the frozen map.
+replay validation, and review before entering the frozen map. Only entries with
+`oracleStates` have step-oracle provenance; the others are frozen exact-solver
+outputs. The known-optimum gate replays every entry through exact A* and the
+small oracle-backed entries, solved and unsolvable, through exact IDA* too.
 
 ```text
 npm.cmd run test:solver:oracle

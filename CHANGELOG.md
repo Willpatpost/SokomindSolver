@@ -24,12 +24,15 @@ published a stable release.
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
-- The optimal-record proof revision is now `exact-moves-tunnel-sound-v1` and
+- The optimal-record proof revision is now `exact-moves-pattern-key-v1` and
   the storage key is `sokomind.optimal.v7`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
 - The IDA* checkpoint schema is now 4, so checkpoints written by the earlier
   kernels restart instead of resuming.
+- The frozen known-optimum gate now also replays small oracle-backed entries
+  through exact IDA*, covers a proven-unsolvable board, and records which
+  entries have independent step-oracle provenance.
 
 ### Fixed
 
@@ -44,3 +47,14 @@ published a stable release.
 - IDA* tunnel-macro children are keyed by the keeper's actual cell instead of
   the box's origin cell, so heuristic-cache and contour transposition entries
   no longer alias a different state.
+- Exact pattern-deadlock caching now keys each window by the floor just
+  outside it as well as its contents. A verdict cached for a window whose exits
+  were walled could otherwise prune the same window elsewhere on the board
+  where a box could still escape, producing false proven optima and false
+  `unsolvable` proofs with default features. A cache instance also starts
+  afresh when handed a different board.
+- The bundled Sokomind engine's local pattern-deadlock memo has the same
+  corrected key, so it no longer prunes live states and loses solution quality.
+- Tunnel macros no longer return a one-push stop that duplicates the single
+  push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
+  long custom-board tunnels.

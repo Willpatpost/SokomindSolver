@@ -12,7 +12,7 @@ import { isRecord } from "../core/type-guards.ts";
 import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 // Bump when a proof-producing algorithm or admissibility rule is corrected.
-export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-tunnel-sound-v1" as const;
+export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-pattern-key-v1" as const;
 
 export interface OptimalRecord {
   readonly moves: number;
@@ -86,7 +86,10 @@ function isValidOptimalRecordKey(value: string): boolean {
  * revisions could certify a forced A* branch before cheaper frontier nodes.
  * Revision exact-moves-astar-frontier-v2 could certify wrong optima because
  * tunnel macros replaced the single push into a tunnel with macro stops,
- * pruning routes that park a box part-way inside it.
+ * pruning routes that park a box part-way inside it. It could also reuse a
+ * pattern-deadlock verdict across windows whose floor just outside the window
+ * differed, pruning live states. The unreleased revision
+ * exact-moves-tunnel-sound-v1 fixed only the tunnel defect.
  * The record format has no algorithm identity, so all earlier proof revisions
  * are rejected rather than attempting to retain only unaffected certificates.
  */

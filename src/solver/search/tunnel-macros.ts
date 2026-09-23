@@ -16,6 +16,13 @@ export interface TunnelMacroStats {
   readonly applications: number;
 }
 
+/**
+ * Longest stop a tunnel macro may return. The A* node arena stores a push as
+ * one byte: the direction in the low two bits and pushCount - 1 in the other
+ * six (see encodeTunnelPushDirection).
+ */
+export const MAX_TUNNEL_MACRO_PUSHES = 64;
+
 const AXIS_DIRS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [2, 3],
@@ -52,9 +59,11 @@ export class TunnelMacroDetector {
   /**
    * If destination is a tunnel cell aligned with pushDirection, return
    * interesting stopping points (matching goals, tunnel exit, blocked
-   * position). Returns null when no multi-push chaining can happen. Stops are
-   * additive successors: callers must still generate the single push, which
-   * reaches states (a box part-way into the tunnel) that no stop covers.
+   * position) from 2 to MAX_TUNNEL_MACRO_PUSHES pushes away. Returns null when
+   * no multi-push chaining can happen. Stops are additive successors: callers
+   * must still generate the single push, which reaches states (a box part-way
+   * into the tunnel) that no stop covers. A one-push stop would repeat that
+   * single push, so none is returned.
    */
   resolve(
     destination: number,
@@ -73,10 +82,10 @@ export class TunnelMacroDetector {
     const stops: TunnelMacroStop[] = [];
     let current = destination;
     let pushCount = 1;
-    let exitedToNonTunnel = false;
+    let blocked = false;
 
     for (;;) {
-      if (goalLabelByCell[current] === boxLabel) {
+      if (pushCount > 1 && goalLabelByCell[current] === boxLabel) {
         const robotCell = board.neighbors[current][opposite];
         if (robotCell >= 0) {
           stops.push({ finalCell: current, pushCount, robotCell });
@@ -84,7 +93,13 @@ export class TunnelMacroDetector {
       }
 
       const next = board.neighbors[current][pushDirection];
-      if (next < 0 || occupancy[next] !== 0) break;
+      if (next < 0 || occupancy[next] !== 0) {
+        blocked = true;
+        break;
+      }
+      // Farther stops stay reachable through single pushes, and resolve
+      // offers them once the box is deeper in the tunnel.
+      if (pushCount === MAX_TUNNEL_MACRO_PUSHES) break;
 
       if (this.#tunnelAxis[next] !== pushAxis) {
         stops.push({
@@ -92,7 +107,6 @@ export class TunnelMacroDetector {
           pushCount: pushCount + 1,
           robotCell: current,
         });
-        exitedToNonTunnel = true;
         break;
       }
 
@@ -100,7 +114,7 @@ export class TunnelMacroDetector {
       current = next;
     }
 
-    if (!exitedToNonTunnel) {
+    if (blocked && pushCount > 1) {
       const alreadyAdded =
         stops.length > 0 && stops[stops.length - 1]!.finalCell === current;
       if (!alreadyAdded) {
@@ -112,7 +126,6 @@ export class TunnelMacroDetector {
     }
 
     if (stops.length === 0) return null;
-    if (stops.length === 1 && stops[0]!.pushCount === 1) return null;
 
     this.#applications += 1;
     return { stops };
@@ -123,6 +136,11 @@ export function encodeTunnelPushDirection(
   directionIndex: number,
   pushCount: number,
 ): number {
+  if (pushCount < 1 || pushCount > MAX_TUNNEL_MACRO_PUSHES) {
+    throw new RangeError(
+      `Tunnel push count ${pushCount} does not fit the node arena encoding.`,
+    );
+  }
   return directionIndex | ((pushCount - 1) << 2);
 }
 

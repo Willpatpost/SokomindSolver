@@ -276,7 +276,7 @@ fails when the generated facts below differ from source.
 
 - Immutable benchmark fixtures: **43**
 - Classic-eligible fixtures: **37**
-- Frozen exact optima: **33**
+- Frozen exact optima: **35**
 - Grand Hall discovery (base, mirrored, rotated): **893 moves / 278 pushes**, **1,329 visited / 8,425 generated**
 - Grand Hall quality rewrite: **789 moves / 270 pushes**, **29,000 visited**
 - Current performance artifact schema: **3**; schema-2 `baseline-v0.json` is historical only.

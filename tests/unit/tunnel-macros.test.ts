@@ -7,6 +7,7 @@ import {
   type CompiledSearchBoard,
 } from "../../src/solver/search/compiled-board.ts";
 import {
+  MAX_TUNNEL_MACRO_PUSHES,
   TunnelMacroDetector,
   encodeTunnelPushDirection,
   decodeTunnelPushDirection,
@@ -83,6 +84,21 @@ const TUNNEL_BOARD = [
 
 // tunnelMacros defaults to false, so integration tests opt in explicitly.
 const TUNNEL_ON = { features: { tunnelMacros: true } } as const;
+
+// A 3x3 room opening east into a straight tunnel of `tunnelCells` cells
+// (columns 4 onward on row 2) that dead-ends on the goal. The push from the
+// room into the tunnel is not forced, so forced-push macros leave it alone.
+function longTunnelRows(tunnelCells: number): string[] {
+  const wall = "O".repeat(tunnelCells + 6);
+  const tunnelWall = "O".repeat(tunnelCells + 2);
+  return [
+    wall,
+    `O   ${tunnelWall}`,
+    `O X ${" ".repeat(tunnelCells)}SO`,
+    `O R ${tunnelWall}`,
+    wall,
+  ];
+}
 
 describe("TunnelMacroDetector", () => {
   describe("resolve", () => {
@@ -184,8 +200,31 @@ describe("TunnelMacroDetector", () => {
     });
 
     it("includes matching goal cell as intermediate stop", () => {
-      // Tunnel with goal in the middle: R X S  O
-      // Goal S at (1,4), exit at (1,5)
+      // Tunnel with goal in the middle: R X _ S _ _ O
+      // Goal S at (1,4), exit at (1,6)
+      const { board } = boardFromRows([
+        "OOOOOOOO",
+        "ORX S  O",
+        "OOOOOOOO",
+      ]);
+      const detector = new TunnelMacroDetector(board);
+      const occupancy = new Uint8Array(board.cellCount);
+      occupancy[board.cellAt(1, 2)] = 1;
+
+      const dest = board.cellAt(1, 3);
+      assert.ok(board.topology.tunnels.has(dest), "cell (1,3) should be a tunnel cell");
+      const result = detector.resolve(
+        dest, 3, occupancy, board.goalLabelByCell, "X",
+      );
+      assert.deepEqual(result?.stops, [
+        { finalCell: board.cellAt(1, 4), pushCount: 2, robotCell: board.cellAt(1, 3) },
+        { finalCell: board.cellAt(1, 6), pushCount: 4, robotCell: board.cellAt(1, 5) },
+      ]);
+    });
+
+    it("leaves a matching goal one push away to the ordinary single push", () => {
+      // R X S _ _ O: pushing the box onto the goal is the single push the
+      // kernels always generate, so the only stop is the exit three pushes on.
       const { board } = boardFromRows([
         "OOOOOOO",
         "ORXS  O",
@@ -196,17 +235,38 @@ describe("TunnelMacroDetector", () => {
       occupancy[board.cellAt(1, 2)] = 1;
 
       const dest = board.cellAt(1, 3);
-      if (board.topology.tunnels.has(dest)) {
-        const result = detector.resolve(
-          dest, 3, occupancy, board.goalLabelByCell, "X",
-        );
-        if (result !== null) {
-          const hasGoalStop = result.stops.some(
-            (s) => board.goalLabelByCell[s.finalCell] === "X",
-          );
-          assert.ok(hasGoalStop, "should include goal cell as a stop");
-        }
-      }
+      assert.ok(board.topology.tunnels.has(dest), "cell (1,3) should be a tunnel cell");
+      const result = detector.resolve(
+        dest, 3, occupancy, board.goalLabelByCell, "X",
+      );
+      assert.deepEqual(result?.stops, [
+        { finalCell: board.cellAt(1, 5), pushCount: 3, robotCell: board.cellAt(1, 4) },
+      ]);
+    });
+
+    it("omits stops farther than the encodable push count", () => {
+      const tunnelCells = MAX_TUNNEL_MACRO_PUSHES;
+      const { board } = boardFromRows(longTunnelRows(tunnelCells));
+      const goal = board.cellAt(2, tunnelCells + 4);
+      const detector = new TunnelMacroDetector(board);
+
+      // From the room edge the goal is one push beyond the limit.
+      const fromRoom = new Uint8Array(board.cellCount);
+      fromRoom[board.cellAt(2, 3)] = 1;
+      assert.equal(
+        detector.resolve(board.cellAt(2, 4), 3, fromRoom, board.goalLabelByCell, "X"),
+        null,
+      );
+
+      // One cell deeper it is exactly at the limit and is offered again.
+      const fromTunnel = new Uint8Array(board.cellCount);
+      fromTunnel[board.cellAt(2, 4)] = 1;
+      const result = detector.resolve(
+        board.cellAt(2, 5), 3, fromTunnel, board.goalLabelByCell, "X",
+      );
+      assert.deepEqual(result?.stops, [
+        { finalCell: goal, pushCount: MAX_TUNNEL_MACRO_PUSHES, robotCell: goal - 1 },
+      ]);
     });
 
     it("skips goal cell with wrong label", () => {
@@ -291,7 +351,7 @@ describe("TunnelMacroDetector", () => {
   describe("encode/decode tunnel push direction", () => {
     it("round-trips direction and pushCount", () => {
       for (let dir = 0; dir < 4; dir++) {
-        for (const count of [1, 2, 5, 10, 63]) {
+        for (const count of [1, 2, 5, 10, 63, MAX_TUNNEL_MACRO_PUSHES]) {
           const encoded = encodeTunnelPushDirection(dir, count);
           const decoded = decodeTunnelPushDirection(encoded);
           assert.equal(decoded.directionIndex, dir);
@@ -303,6 +363,16 @@ describe("TunnelMacroDetector", () => {
     it("is backward compatible (pushCount=1 encodes as plain direction)", () => {
       for (let dir = 0; dir < 4; dir++) {
         assert.equal(encodeTunnelPushDirection(dir, 1), dir);
+      }
+    });
+
+    it("fits the longest stop in the A* arena byte and rejects longer ones", () => {
+      assert.equal(encodeTunnelPushDirection(3, MAX_TUNNEL_MACRO_PUSHES), 0xff);
+      for (let dir = 0; dir < 4; dir++) {
+        assert.throws(
+          () => encodeTunnelPushDirection(dir, MAX_TUNNEL_MACRO_PUSHES + 1),
+          RangeError,
+        );
       }
     });
   });
@@ -399,6 +469,27 @@ describe("tunnel macro solver integration", () => {
       resultOff.solution?.moves,
       "Same optimal moves with tunnel macros on vs off",
     );
+  });
+
+  it("A* and IDA* match the oracle through a tunnel longer than the encodable push count", async () => {
+    // The only stop from the room is one push beyond the A* arena encoding.
+    // Deadlock tables add no pruning on this board and take about a second to
+    // build at this width.
+    const rows = longTunnelRows(MAX_TUNNEL_MACRO_PUSHES);
+    const { board, boxes, robotCell } = boardFromRows(rows);
+    const oracle = exactRemainingMoves(board, robotCell, boxes);
+    assert.equal(oracle.exactMoves, MAX_TUNNEL_MACRO_PUSHES + 4);
+
+    const features = { tunnelMacros: true, deadlockTablePruning: false };
+    const results = [
+      ["A*", await runExactMoveAStar(makeRequest(rows), makeContext(), { features })],
+      ["IDA*", await runIdaStarSearch(makeRequest(rows), makeContext(), { features })],
+    ] as const;
+    for (const [engine, result] of results) {
+      assert.equal(result.status, "solved", engine);
+      assert.equal(result.solution?.moves, oracle.exactMoves, `${engine} moves`);
+      assert.equal(result.proof?.kind, "optimal", `${engine} proof kind`);
+    }
   });
 
   it("typed box through tunnel reaches correct goal", async () => {

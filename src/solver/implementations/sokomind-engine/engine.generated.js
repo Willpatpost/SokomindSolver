@@ -4093,7 +4093,7 @@ function createsClosedDiagonalDeadlock(boxes, board, movedBox, context = null) {
   return false;
 }
 
-function canonicalLocalPattern(floor, boxes, goals) {
+function canonicalLocalPattern(floor, boxes, goals, exits = new Set()) {
   const points = [...floor].map(position => position.split(",").map(Number));
   const transforms = [
     ([y, x]) => [y, x], ([y, x]) => [y, -x],
@@ -4115,7 +4115,8 @@ function canonicalLocalPattern(floor, boxes, goals) {
       .map(([position, label]) => `${keyFor(position)},${label}`).sort().join(".");
     const boxKey = boxes
       .map(([position, label]) => `${keyFor(position)},${label}`).sort().join(".");
-    return `${floorKey}|${goalKey}|${boxKey}`;
+    const exitKey = [...exits].map(keyFor).sort().join(".");
+    return `${floorKey}|${goalKey}|${boxKey}|${exitKey}`;
   });
   return variants.sort()[0];
 }
@@ -4152,11 +4153,21 @@ function createsPatternDatabaseDeadlock(
         if (cell >= 0) floor.add(board.dense.keys[cell]);
       }
     }
+    // The local search reads floor just past the window edge (escapes and
+    // push supports), so those cells belong in the memo key.
+    const exits = new Set();
+    for (const position of floor) {
+      const [y, x] = position.split(",").map(Number);
+      for (const [dy, dx] of Object.values(DIRS)) {
+        const neighbor = pkey(y + dy, x + dx);
+        if (board.floor.has(neighbor) && !inside(neighbor)) exits.add(neighbor);
+      }
+    }
     const eligible = board.patternEligibility
       ? Boolean(board.patternEligibility[center])
       : floor.size <= PATTERN_FLOOR_LIMIT &&
         ![...floor].some(position => floorNeighbors(position, board.floor).length > 2);
-    window = {floor, eligible};
+    window = {floor, exits, eligible};
     board.patternWindowMemo.set(windowKey, window);
   }
   if (!window.eligible) return false;
@@ -4167,7 +4178,7 @@ function createsPatternDatabaseDeadlock(
   if (localBoxes.length < 2 || localBoxes.length > PATTERN_BOX_LIMIT) return false;
   const stateUpperBound = localExactStateUpperBound(localFloor.size, localBoxes);
   if (stateUpperBound > PATTERN_EXACT_STATE_LIMIT) return false;
-  const cacheKey = canonicalLocalPattern(localFloor, localBoxes, board.goals);
+  const cacheKey = canonicalLocalPattern(localFloor, localBoxes, board.goals, window.exits);
   metrics.patternCanonicalizations++;
   const cachedPatternDeadlock = memoLookup(board.patternDeadlockMemo, cacheKey);
   if (cachedPatternDeadlock !== undefined) {
