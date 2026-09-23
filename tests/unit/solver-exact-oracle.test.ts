@@ -23,6 +23,7 @@ import {
   runIdaStarSearch,
 } from "../../src/solver/search/ida-star.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { verifySolverSolution } from "../../src/solver/verification.ts";
 import {
   AssignmentHeuristic,
   assignmentLowerBound,
@@ -407,7 +408,7 @@ describe("exact search matches oracle on all reachable states", () => {
     "OOOOOO",
   ];
 
-  it("exact A* matches oracle on all reachable solvable states", async () => {
+  it("classic engine A* (runClassicSearch) matches oracle on all reachable solvable states", async () => {
     const parsed = parsePuzzleRows(BOARD_ROWS);
     const board = compileSearchBoard(parsed);
     const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
@@ -499,6 +500,62 @@ describe("exact search matches oracle on all reachable states", () => {
       solvableChecked > 30,
       `Expected >30 solvable states; got ${solvableChecked}`,
     );
+  });
+
+  describe("production exact search with the optional PDB and perimeter features matches oracle", () => {
+    const features = {
+      backwardPerimeter: true,
+      componentPdb: true,
+      moveCostPatternPdb: true,
+    } as const;
+
+    it("exact A* and IDA* match oracle on all reachable unsolved solvable states", async () => {
+      const parsed = parsePuzzleRows(BOARD_ROWS);
+      const board = compileSearchBoard(parsed);
+      const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+      const initialRobot = board.cellAt(
+        parsed.initialRobot.row,
+        parsed.initialRobot.column,
+      );
+
+      const oracleStates = allReachableStates(board, initialRobot, initialBoxes);
+      let solvableChecked = 0;
+      let moveCostPdbRuns = 0;
+
+      for (const [, state] of oracleStates) {
+        if (state.exactMoves === null || state.exactMoves === 0) continue;
+
+        const request = requestForOracleState(
+          parsed,
+          board,
+          state.robot,
+          state.boxes,
+        );
+        const astar = await runExactMoveAStar(request, oracleExecutionContext(), { features });
+        const ida = await runIdaStarSearch(request, oracleExecutionContext(), { features });
+        const where =
+          `robot=${state.robot} boxes=[${state.boxes.map((b) => `${b.label}@${b.cell}`).join(",")}]`;
+
+        for (const [name, result] of [["A*", astar], ["IDA*", ida]] as const) {
+          const solved = assertSolved(result);
+          assert.equal(solved.solution.moves, state.exactMoves, `${name} moves at ${where}`);
+          assert.equal(solved.solution.optimality, "proven", `${name} proof status at ${where}`);
+          assert.equal(
+            verifySolverSolution(request, solved.solution).valid,
+            true,
+            `${name} solution replays at ${where}`,
+          );
+        }
+        if ((astar.metrics.counters?.moveCostPdbPatterns ?? 0) > 0) moveCostPdbRuns++;
+        solvableChecked++;
+      }
+
+      assert.ok(
+        solvableChecked > 30,
+        `Expected >30 solvable states; got ${solvableChecked}`,
+      );
+      assert.ok(moveCostPdbRuns > 0, "at least one A* run must build a move-cost pattern");
+    });
   });
 });
 
@@ -687,7 +744,7 @@ describe("repeated typed labels (M22)", () => {
     );
   });
 
-  it("exact A* matches oracle with repeated typed labels", async () => {
+  it("classic engine A* (runClassicSearch) matches oracle with repeated typed labels", async () => {
     const parsed = parsePuzzleRows([
       "OOOOOOO",
       "O     O",
@@ -735,7 +792,7 @@ describe("partial state testing (M23)", () => {
     assert.ok(result.exactMoves! >= 1);
   });
 
-  it("exact A* solves from a mid-solve position", async () => {
+  it("classic engine A* (runClassicSearch) solves from a mid-solve position", async () => {
     const parsed = parsePuzzleRows([
       "OOOOO",
       "OR  O",
@@ -761,7 +818,7 @@ describe("partial state testing (M23)", () => {
 });
 
 describe("unsolvable state exhaustion assertion (M24)", () => {
-  it("A* reports unsolvable with reason 'exhausted' for corner-deadlocked state", async () => {
+  it("classic engine A* (runClassicSearch) reports unsolvable with reason 'exhausted' for corner-deadlocked state", async () => {
     const parsed = parsePuzzleRows([
       "OOOOO",
       "OX SO",
@@ -831,7 +888,7 @@ describe("unsolvable state exhaustion assertion (M24)", () => {
 });
 
 describe("solved-box-must-move regression verification (M25)", () => {
-  it("verifies the optimal route requires moving a box that starts on its goal", async () => {
+  it("classic engine A* (runClassicSearch) route moves a box that starts on its goal", async () => {
     const parsed = parsePuzzleRows([
       "OOOOO",
       "OSXSO",
