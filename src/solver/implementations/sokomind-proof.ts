@@ -542,7 +542,8 @@ export async function runConcurrentProof(
       if (!force && now - lastProgressAt < 100) return;
       lastProgressAt = now;
       const metrics = combinedMetrics();
-      const lowerBound = Math.min(bestCost, ...trackers.map(partitionLowerBound));
+      const lowerBound = Math.min(bestCost, ...trackers.map(committedLowerBound));
+      const provisionalBound = Math.min(bestCost, ...trackers.map(partitionLowerBound));
       context.reportProgress({
         phase: "proving",
         elapsedMs: metrics.elapsedMs,
@@ -557,7 +558,8 @@ export async function runConcurrentProof(
         lowerBound,
         upperBound: bestCost,
         gap: bestCost - lowerBound,
-        detail: `Proving optimality: ${activeByWorker.size} active workers, ${pendingPartitions.length} pending partitions`,
+        detail: `Proving optimality: ${activeByWorker.size} active workers, ${pendingPartitions.length} pending partitions` +
+          (provisionalBound > lowerBound ? `, provisional lower bound ${provisionalBound}` : ""),
       });
     }
 
@@ -603,6 +605,13 @@ export async function runConcurrentProof(
       if (t.failed) return Math.min(t.prefixCost, bestCost);
       if (t.exhausted && t.completed) return bestCost;
       return t.lowerBound;
+    }
+
+    // Published progress bounds may never fall. A running lane's own bound is
+    // withdrawn if the lane later fails, so it counts only once the partition
+    // completes; until then the detail text shows it as provisional.
+    function committedLowerBound(t: PartitionTracker): number {
+      return t.completed ? partitionLowerBound(t) : t.prefixCost;
     }
 
     function solvedResult(provedOptimal: boolean, lowerBound: number): SolverResult {

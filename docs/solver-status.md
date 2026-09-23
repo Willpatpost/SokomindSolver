@@ -33,8 +33,12 @@ Parallel proof uses a shared pending first-push queue with one active task per
 lane. Automatic algorithm selection uses the lane's divided memory. Active or
 failed task grants stay reserved until safe completion; remaining elapsed time
 is recomputed at dispatch. Late candidates and certificates exceeding their
-work grants cannot establish proof. Aggregate progress publishes bounds and
-active/pending worker counts. Failed partitions retain only their independently
+work grants cannot establish proof. Aggregate progress publishes
+active/pending worker counts and only bounds a lane failure cannot withdraw:
+completed partitions' bounds and the prefix bound of each open partition. A
+running lane's own bound appears in the progress detail as provisional until
+its partition completes, so the worker host's monotonic-bound check never
+rejects the run. Failed partitions retain only their independently
 known prefix bound and prevent an optimal certificate; deadline cutoff remains
 bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
 

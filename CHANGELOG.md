@@ -61,3 +61,8 @@ published a stable release.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.
+- Parallel proof progress no longer lowers its published lower bound when a
+  proof lane crashes, goes silent, or sends an invalid report. The worker host
+  rejected that as a monotonicity violation and discarded the verified
+  incumbent. A running lane's bound now appears in the progress detail as
+  provisional until its partition completes.

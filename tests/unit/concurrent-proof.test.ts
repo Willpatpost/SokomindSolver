@@ -23,12 +23,16 @@ import { DEFAULT_SOKOMIND_REQUEST_OPTIONS } from "../../src/solver/implementatio
 import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "../../src/solver/implementations/sokomind-worker-limits.ts";
 import type {
   SolutionStep,
+  SolverAdapter,
   SolverRequest,
   SolverProgress,
   SolverResult,
   SolverSolution,
 } from "../../src/solver/contracts.ts";
 import { assertValidSolverResult } from "../../src/solver/validation.ts";
+import { SOLVER_WORKER_PROTOCOL_VERSION, type SolverWorkerEvent } from "../../src/solver/protocol.ts";
+import { SolverRegistry } from "../../src/solver/registry.ts";
+import { SolverWorkerHost } from "../../src/solver/worker-host.ts";
 
 function makeRequest(rows: string[]): SolverRequest {
   const parsed = parsePuzzleRows(rows);
@@ -1666,4 +1670,117 @@ describe("concurrent proof coordinator", () => {
       (p.lowerBound ?? 20) < 20 && (p.gap ?? 0) > 0));
     assert.equal(result.status, "cancelled");
   });
+});
+
+describe("concurrent proof inside the solver worker host", () => {
+  const request = makeRequest(["OOOOOOO", "O     O", "OR X SO", "O     O", "OOOOOOO"]);
+  const walk = (direction: SolutionStep["direction"]): SolutionStep => ({ direction, kind: "walk" });
+  // A replayable nine-move route; the optimum is three moves.
+  const discovery: SolverResult = {
+    status: "solved",
+    solution: {
+      steps: [
+        walk("up"), walk("down"), walk("up"), walk("down"), walk("up"), walk("down"), walk("right"),
+        { direction: "right", kind: "push" }, { direction: "right", kind: "push" },
+      ],
+      moves: 9,
+      pushes: 2,
+      objective: { kind: "moves" },
+      objectiveScore: 9,
+      optimality: "unknown",
+    },
+    metrics: { elapsedMs: 1 },
+  };
+
+  for (const failure of ["crash", "invalid report", "silence"] as const) {
+    it(`keeps published bounds monotonic and the incumbent when a lane fails by ${failure}`, async (t) => {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const laneCount = enumerateFirstPushPartitions(request).length;
+      assert.ok(laneCount > 1);
+      const lanes: MockProofWorker[] = [];
+      const adapter: SolverAdapter = {
+        metadata: {
+          id: "proof-host-test",
+          displayName: "Proof host test",
+          description: "Test",
+          version: "1.0.0",
+          capabilities: {
+            executionTargets: ["web-worker"],
+            runtime: "javascript",
+            objectives: ["moves"],
+            quality: "optimal",
+            labeledBoxes: true,
+            genericBoxes: true,
+            partialState: true,
+            reportsProgress: true,
+            cooperativeCancellation: true,
+            deterministic: true,
+          },
+        },
+        solve: (solverRequest, context) => runConcurrentProof(solverRequest, context,
+          DEFAULT_SOKOMIND_REQUEST_OPTIONS, discovery, {
+            proofParallelism: laneCount,
+            silenceTimeoutMs: 1_000,
+            createProofWorker() {
+              const lane = new MockProofWorker();
+              lanes.push(lane);
+              return lane;
+            },
+          }),
+      };
+      const posted: SolverWorkerEvent[] = [];
+      let clock = 0;
+      const host = new SolverWorkerHost(new SolverRegistry([adapter]), {
+        postMessage: (event) => posted.push(event),
+        addEventListener() {},
+        removeEventListener() {},
+      }, { now: () => (clock += 1_000) });
+      const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+      host.handleMessage({
+        protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
+        type: "solver/run",
+        jobId: "job",
+        solverId: "proof-host-test",
+        request,
+      });
+      await flush();
+      assert.equal(lanes.length, laneCount);
+      const start = (lane: MockProofWorker) => lane.receivedCommands[0] as ProofStartPartition;
+      const [victim, ...healthy] = lanes;
+
+      victim.emit({ type: "proof/progress", partitionId: start(victim).partitionId,
+        lowerBound: 8, expandedStates: 1 });
+      t.mock.timers.tick(500);
+      for (const lane of healthy) {
+        lane.emit({ type: "proof/progress", partitionId: start(lane).partitionId,
+          lowerBound: 8, expandedStates: 1 });
+      }
+      if (failure === "crash") victim.emitError();
+      else if (failure === "invalid report") {
+        victim.emit({ type: "proof/progress", partitionId: start(victim).partitionId,
+          lowerBound: 7, expandedStates: 2 });
+      } else t.mock.timers.tick(500);
+      assert.equal(victim.terminated, true);
+      for (const lane of healthy) {
+        lane.emit({ type: "proof/partition-complete", partitionId: start(lane).partitionId,
+          lowerBound: 9, exhausted: true, metrics: { elapsedMs: 0, expandedStates: 1 } });
+      }
+      await flush();
+
+      assert.deepEqual(posted.filter((event) => event.type === "solver/failure"), []);
+      const progress = posted.flatMap((event) => event.type === "solver/progress" ? [event.progress] : []);
+      assert.ok(progress.some((p) => p.detail?.includes("provisional lower bound 8")));
+      progress.slice(1).forEach((p, index) => {
+        assert.ok(p.lowerBound! >= progress[index].lowerBound!);
+        assert.ok(p.gap! <= progress[index].gap!);
+      });
+      const final = posted.find((event) => event.type === "solver/result");
+      assert.ok(final?.type === "solver/result" && final.result.status === "solved");
+      assert.equal(final.result.solution.moves, 9);
+      assert.equal(final.result.proof?.kind, "bounded");
+      assert.equal(final.result.proof?.lowerBound, start(victim).prefixCost);
+      host.dispose();
+    });
+  }
 });
