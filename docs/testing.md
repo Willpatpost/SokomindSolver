@@ -109,12 +109,22 @@ major-version automated fixes.
 
 ### Coverage and performance gates
 
-`npm run test:coverage` enforces three independent non-regression gates. The
-`c8 --all` pass includes every TypeScript and TSX source file, including files
-that no test imports, with 60% line/statement, 80% function, and 78% branch
-floors. A focused typed-source pass keeps a higher floor for code
-exercised by the unit suite, while the generated-engine pass prevents aggregate
-gains from hiding a drop at the vendored boundary.
+`npm run test:coverage` enforces two independent non-regression gates, which
+CI runs as parallel jobs. The `c8 --all` pass (`npm run test:coverage:typed`)
+includes every TypeScript and TSX source file, including files that no test
+imports, with 60% line/statement, 80% function, and 78% branch floors. The
+focused pass (`npm run test:coverage:focused`) uses Node's built-in coverage
+over the code the unit suite loads, TypeScript/TSX sources and
+`src/solver/implementations/sokomind-engine/engine.generated.js` together, with
+75% line, 80% function, and 75% branch floors.
+
+The focused pass intentionally replaced two separate passes in 2026-09 (commit
+5342f05): a TypeScript-only focused pass (92% line, 93% function, 84% branch)
+and a generated-engine pass (41% line, 56% function, 63% branch). Merging them
+removes one full unit-suite run and one CI job. The trade-off is that the
+combined floors are aggregate, so a coverage drop confined to either the
+TypeScript sources or the generated engine can be absorbed by headroom in the
+other; the `c8 --all` pass still guards TypeScript coverage on its own.
 
 `test:solver:known` runs production exact A* against every ordinary entry in
 the frozen optimum manifest; `test:solver:parallel` independently exercises
