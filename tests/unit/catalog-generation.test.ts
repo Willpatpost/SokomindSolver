@@ -12,7 +12,16 @@ import {
 } from "../../src/features/generator/v2/index.ts";
 
 import { classifyFromMetrics } from "../../src/features/generator/difficulty-classifier.ts";
-import { DIFFICULTIES, type Difficulty } from "../../src/core/model.ts";
+import {
+  isGenericBoxChar,
+  isTypedBoxChar,
+} from "../../src/features/generator/v2/tile-semantics.ts";
+import {
+  DIFFICULTIES,
+  type Difficulty,
+  type PuzzleDefinition,
+} from "../../src/core/model.ts";
+import { catalogContentHash } from "../../scripts/lib/catalog-promotion.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -340,6 +349,61 @@ test("current generated manifest records the V4.2 catalog", () => {
     const firstPuzzle = manifest.puzzles[0];
     assert.equal(typeof firstPuzzle.id, "string");
     assert.equal(typeof firstPuzzle.typingMode, "string");
+  }
+});
+
+// Promotion verifies the manifest once; this keeps a later hand edit to the
+// shipped catalog or manifest from leaving the two out of step.
+test("generated manifest matches the shipped catalog", () => {
+  const catalog = JSON.parse(
+    readFileSync(join(__dirname, "../../src/catalog/generated-puzzles.json"), "utf-8"),
+  ) as PuzzleDefinition[];
+  const manifest = JSON.parse(
+    readFileSync(join(__dirname, "../../src/catalog/generated-puzzles.manifest.json"), "utf-8"),
+  ) as {
+    schemaVersion: number;
+    catalogHash: string;
+    tierQuotas: Record<Difficulty, { target: number; actual: number }>;
+    puzzles: Array<{
+      id: string;
+      title: string;
+      difficulty: Difficulty;
+      boxCount: number;
+      genericBoxCount: number;
+      typedBoxCount: number;
+      boardHash: string;
+      symmetryHash: string;
+      solutionMoves: number;
+      solutionPushes: number;
+    }>;
+  };
+
+  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.catalogHash, catalogContentHash(catalog));
+  assert.deepEqual(
+    manifest.puzzles.map((entry) => entry.id),
+    catalog.map((puzzle) => puzzle.id),
+  );
+  manifest.puzzles.forEach((entry, index) => {
+    const puzzle = catalog[index];
+    const tiles = [...puzzle.rows.join("")];
+    assert.equal(entry.title, puzzle.title, entry.id);
+    assert.equal(entry.difficulty, puzzle.difficulty, entry.id);
+    assert.equal(entry.boxCount, puzzle.boxes, entry.id);
+    assert.equal(entry.genericBoxCount, tiles.filter(isGenericBoxChar).length, entry.id);
+    assert.equal(entry.typedBoxCount, tiles.filter(isTypedBoxChar).length, entry.id);
+    assert.equal(entry.boxCount, entry.genericBoxCount + entry.typedBoxCount, entry.id);
+    assert.equal(entry.boardHash, boardHash(puzzle.rows), entry.id);
+    assert.equal(entry.symmetryHash, symmetryHash(puzzle.rows), entry.id);
+    assert.ok(Number.isInteger(entry.solutionPushes) && entry.solutionPushes > 0, entry.id);
+    assert.ok(Number.isInteger(entry.solutionMoves) && entry.solutionMoves >= entry.solutionPushes, entry.id);
+  });
+  for (const tier of DIFFICULTIES) {
+    assert.equal(
+      manifest.tierQuotas[tier].actual,
+      catalog.filter((puzzle) => puzzle.difficulty === tier).length,
+      tier,
+    );
   }
 });
 

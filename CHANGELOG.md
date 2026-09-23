@@ -33,6 +33,9 @@ published a stable release.
 - The frozen known-optimum gate now also replays small oracle-backed entries
   through exact IDA*, covers a proven-unsolvable board, and records which
   entries have independent step-oracle provenance.
+- CI now fails when the committed generated engine or catalog metadata is
+  stale, and the unit suite checks the generated catalog manifest against the
+  shipped catalog.
 
 ### Fixed
 

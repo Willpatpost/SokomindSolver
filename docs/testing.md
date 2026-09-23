@@ -107,6 +107,18 @@ after the clean lockfile install, while Dependabot checks npm and workflow
 dependencies each week. Review advisories before using forceful or
 major-version automated fixes.
 
+### Generated-file drift
+
+`npm run check:sokomind-solver` and `npm run check:catalog` fail when the
+committed generated engine or catalog metadata differs from what its sources
+regenerate. `pretest:unit` runs both locally. CI runs them as explicit steps in
+the pull-request lint job and the Pages build job: the coverage jobs call
+`node --test` directly, and `prebuild` regenerates both files, so drift would
+otherwise ship without failing anything. The unit suite also checks that
+`src/catalog/generated-puzzles.manifest.json` still matches the shipped catalog:
+content hash, ids and order, titles, difficulties, box counts, board hashes,
+and tier counts.
+
 ### Coverage and performance gates
 
 `npm run test:coverage` enforces two independent non-regression gates, which

@@ -42,6 +42,19 @@ describe("npm script references", () => {
     assert.deepEqual(missing, [], "workflows call npm scripts missing from package.json");
   });
 
+  it("CI checks generated-file drift before anything regenerates it", () => {
+    for (const name of ["pr-validation.yml", "deploy-pages.yml"]) {
+      const targets = npmRunTargets(readFileSync(resolve(WORKFLOW_DIR, name), "utf8"));
+      for (const check of ["check:sokomind-solver", "check:catalog"]) {
+        const index = targets.indexOf(check);
+        assert.ok(index >= 0, `${name} must run npm run ${check}`);
+        // prebuild regenerates the checked files.
+        const build = targets.indexOf("build");
+        assert.ok(build < 0 || index < build, `${name} must run ${check} before build`);
+      }
+    }
+  });
+
   it("every npm run inside package.json scripts names an existing script", () => {
     const missing = Object.entries(packageScripts).flatMap(([name, command]) =>
       npmRunTargets(command)

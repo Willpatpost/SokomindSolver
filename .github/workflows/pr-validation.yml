@@ -39,6 +39,12 @@ jobs:
       - name: Doc path validation
         run: npm run lint:docs
 
+      - name: Generated engine is current
+        run: npm run check:sokomind-solver
+
+      - name: Catalog metadata is current
+        run: npm run check:catalog
+
   coverage:
     name: Coverage (${{ matrix.suite }})
     runs-on: ubuntu-latest

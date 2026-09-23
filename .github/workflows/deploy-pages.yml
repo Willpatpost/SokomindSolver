@@ -40,6 +40,13 @@ jobs:
       - name: Audit dependencies
         run: npm run audit
 
+      # prebuild regenerates both, so drift must be caught before the build.
+      - name: Generated engine is current
+        run: npm run check:sokomind-solver
+
+      - name: Catalog metadata is current
+        run: npm run check:catalog
+
       - name: Build and verify static artifact
         run: npm run build && npm run test:static
 
