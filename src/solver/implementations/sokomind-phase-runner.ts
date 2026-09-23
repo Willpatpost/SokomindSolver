@@ -101,6 +101,35 @@ function phaseTimerDelay(run: SearchRunState): number | undefined {
   return Math.max(0, run.deadline - run.context.now());
 }
 
+/**
+ * Engines stop at their expanded and generated grants, so work that reaches a
+ * state limit stayed within it. Only work past a limit overran the request.
+ */
+function workExceedsLimits(run: SearchRunState): boolean {
+  const { expandedStates, generatedStates } = aggregate(run);
+  const limits = run.request.limits;
+  return expandedStates > (limits?.maxExpandedStates ?? Infinity) ||
+    generatedStates > (limits?.maxGeneratedStates ?? Infinity);
+}
+
+/** The route a worker message proposes, with the plan's prefix applied. */
+function messageCandidate(
+  plan: EnginePlan,
+  message: EngineResult,
+): { readonly path: readonly unknown[]; readonly retainOnly: boolean } | undefined {
+  if (message.type === "progress") {
+    // Repair workers publish complete improvements while they keep running.
+    if (plan.payload.algorithm !== "solution-box-reschedule" &&
+        plan.payload.algorithm !== "solution-window-rewrite") return undefined;
+    const path = asLegacyPath(message.path);
+    return path ? { path, retainOnly: true } : undefined;
+  }
+  if (message.type !== "done" || plan.capturesPreparedBoard) return undefined;
+  const path = asLegacyPath(message.path);
+  if (!path) return undefined;
+  return { path: plan.pathPrefix ? [...plan.pathPrefix, ...path] : path, retainOnly: false };
+}
+
 function nonNegativeFinite(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
@@ -395,7 +424,7 @@ class PhaseRunner {
   private acceptPath(path: readonly unknown[], label: string, retainOnly = false): boolean {
     try {
       const limitBeforeReplay = reachedLimit(this.run);
-      if (limitBeforeReplay) {
+      if (limitBeforeReplay === "cancelled") {
         this.stopForLimit(limitBeforeReplay);
         return true;
       }
@@ -409,33 +438,30 @@ class PhaseRunner {
         this.run.rejectedCandidates += 1;
         invalidateAggregate(this.run);
         report(this.run, `${label} returned a candidate that failed replay.`, true);
+        if (limitBeforeReplay) {
+          this.stopForLimit(limitBeforeReplay);
+          return true;
+        }
         return false;
       }
+      const limit = reachedLimit(this.run) ?? limitBeforeReplay;
+      if (limit && (limit === "cancelled" || workExceedsLimits(this.run))) {
+        this.stopForLimit(limit);
+        return true;
+      }
       this.options.onSolutionPublished?.(solution);
-      const limitAfterReplay = reachedLimit(this.run);
-      if (limitAfterReplay) {
-        this.stopForLimit(limitAfterReplay);
+      if (limit) {
+        // A limit stops new work, not a route already found within it.
+        this.retainSolution(solution, label, retainOnly);
+        this.stopForLimit(limit);
         return true;
       }
       if (retainOnly) {
-        if (!this.publishedSolution || isSolutionBetter(solution, this.publishedSolution)) {
-          this.publishedSolution = solution;
-        }
+        this.retainSolution(solution, label, true);
         return false;
       }
       if (this.options.collectSolutions) {
-        const key = solution.steps
-          .map((step) => `${step.kind[0]}${step.direction[0]}`)
-          .join("");
-        if (!this.collectedSolutionKeys.has(key)) {
-          this.collectedSolutionKeys.add(key);
-          this.collectedSolutions.push(solution);
-          report(
-            this.run,
-            `${label} published verified route ${this.collectedSolutions.length}.`,
-            true,
-          );
-        }
+        this.retainSolution(solution, label, false);
         const maximum = Math.max(1, this.options.maxSolutions ?? Infinity);
         if (this.collectedSolutions.length >= maximum) {
           this.finish();
@@ -449,6 +475,27 @@ class PhaseRunner {
       this.fail(error);
       return true;
     }
+  }
+
+  /** Keeps a verified route in the slot this phase reports routes through. */
+  private retainSolution(solution: SolverSolution, label: string, retainOnly: boolean): void {
+    if (retainOnly || !this.options.collectSolutions) {
+      if (!this.publishedSolution || isSolutionBetter(solution, this.publishedSolution)) {
+        this.publishedSolution = solution;
+      }
+      return;
+    }
+    const key = solution.steps
+      .map((step) => `${step.kind[0]}${step.direction[0]}`)
+      .join("");
+    if (this.collectedSolutionKeys.has(key)) return;
+    this.collectedSolutionKeys.add(key);
+    this.collectedSolutions.push(solution);
+    report(
+      this.run,
+      `${label} published verified route ${this.collectedSolutions.length}.`,
+      true,
+    );
   }
 
   private inspectMeetings(
@@ -585,17 +632,19 @@ class PhaseRunner {
           if (message.type === "done") {
             this.localStopReason = this.localStopReason ?? localStopReason(plan, message);
           }
+          const candidate = messageCandidate(plan, message);
           const limit = reachedLimit(this.run);
           if (limit) {
-            this.stopForLimit(limit);
+            // The route this message carries was found before the stop;
+            // acceptPath keeps it if it replays, and stops either way.
+            if (candidate && limit !== "cancelled") {
+              this.acceptPath(candidate.path, plan.label, candidate.retainOnly);
+            } else {
+              this.stopForLimit(limit);
+            }
             return;
           }
-          if (message.type === "progress" &&
-              (plan.payload.algorithm === "solution-box-reschedule" ||
-               plan.payload.algorithm === "solution-window-rewrite")) {
-            const path = asLegacyPath(message.path);
-            if (path && this.acceptPath(path, plan.label, true)) return;
-          }
+          if (candidate?.retainOnly && this.acceptPath(candidate.path, plan.label, true)) return;
           if (
             message.type === "records" &&
             recordMap &&
@@ -625,12 +674,8 @@ class PhaseRunner {
               this.workerFinished(executionId, message);
               return;
             }
-            const path = asLegacyPath(message.path);
-            const candidatePath = path && plan.pathPrefix
-              ? [...plan.pathPrefix, ...path]
-              : path;
             const solutionsBefore = this.collectedSolutions.length;
-            if (candidatePath && this.acceptPath(candidatePath, plan.label)) return;
+            if (candidate && this.acceptPath(candidate.path, plan.label)) return;
             this.workerFinished(
               executionId,
               message,

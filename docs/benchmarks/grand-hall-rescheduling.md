@@ -16,8 +16,10 @@ moves even though repair had reached 520 moves within its allocation.
 Repair now publishes each complete improvement. The coordinator independently
 replays it while the request remains within limits, retains only its best
 publication, and keeps searching. A later cutoff preserves that verified route.
-No extra states or time are granted, and candidates arriving at the limit remain
-ineligible. This changes result delivery, not search order, pruning, or proof.
+No extra states or time are granted. Candidates arriving at the limit were then
+ineligible; a verified route whose work reaches but does not pass the limit is
+now kept (see [solver status](../solver-status.md)). This changes result
+delivery, not search order, pruning, or proof.
 
 | Controlled Node run | Moves | Pushes | Expanded | Generated | Peak estimated bytes | Elapsed ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

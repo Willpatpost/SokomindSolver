@@ -543,7 +543,7 @@ describe("Sokomind Solver adapter", () => {
     if (result.status === "solved") assert.ok(verifySolverSolution(request, result.solution).valid);
   });
 
-  for (const publication of ["valid", "invalid", "at-limit"] as const) {
+  for (const publication of ["valid", "invalid", "at-limit", "over-limit"] as const) {
     it(`handles a ${publication} repair publication before shared-budget termination`, async () => {
       const workers: ScriptedWorker[] = [];
       const adapter = createSokomindSolverAdapter({
@@ -552,10 +552,12 @@ describe("Sokomind Solver adapter", () => {
         createWorker: () => {
           const worker = new ScriptedWorker((self, command) => queueMicrotask(() => {
             if (command.payload.algorithm === "solution-box-reschedule") {
-              self.emit({type: "progress", visited: publication === "at-limit" ? 59 : 10,
+              self.emit({type: "progress",
+                visited: publication === "at-limit" ? 59 : publication === "over-limit" ? 60 : 10,
                 generated: 10, path: publication === "invalid" ? ["Up"] : ["Down"]});
               // No terminal route is delivered: the coordinator must stop at the
-              // aggregate limit and retain only candidates replayed before it.
+              // aggregate limit and retain only replayed candidates whose work
+              // stayed within it.
               self.emit({type: "progress", visited: 59, generated: 20});
             } else {
               self.emit({type: "done", status: "solved", path: ["Left", "Right", "Down"],
@@ -573,9 +575,10 @@ describe("Sokomind Solver adapter", () => {
       const result = await adapter.solve(request, context());
       assert.equal(result.status, "solved");
       if (result.status !== "solved") return;
-      assert.equal(result.solution.moves, publication === "valid" ? 1 : 3);
-      assert.equal(result.metrics.counters?.bestSolutionMoves, publication === "valid" ? 1 : 3);
-      assert.equal(result.metrics.expandedStates, 100);
+      const kept = publication === "valid" || publication === "at-limit";
+      assert.equal(result.solution.moves, kept ? 1 : 3);
+      assert.equal(result.metrics.counters?.bestSolutionMoves, kept ? 1 : 3);
+      assert.equal(result.metrics.expandedStates, publication === "over-limit" ? 101 : 100);
       assert.equal(verifySolverSolution(request, result.solution).valid, true);
       assert.ok(workers.every(worker => worker.terminated));
     });
@@ -754,34 +757,50 @@ describe("Sokomind Solver adapter", () => {
     assert.match(result.detail ?? "", /time limit/i);
   });
 
-  it("does not accept a candidate reported at the expanded-state ceiling", async () => {
-    const adapter = createSokomindSolverAdapter({
-      hardwareConcurrency: 2,
-      createWorker: () =>
-        new ScriptedWorker((self) => {
-          queueMicrotask(() => {
-            self.emit({
-              type: "done",
-              status: "solved",
-              path: ["Down"],
-              visited: 1,
-              generated: 1,
-              peakFrontier: 1,
+  for (const route of ["at-limit", "over-limit", "invalid"] as const) {
+    const title = route === "at-limit"
+      ? "keeps a verified route whose final message reaches the expanded-state limit"
+      : route === "over-limit"
+        ? "rejects a route whose final message exceeds the expanded-state limit"
+        : "rejects an invalid route whose final message reaches the expanded-state limit";
+    it(title, async () => {
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        createWorker: () =>
+          new ScriptedWorker((self) => {
+            queueMicrotask(() => {
+              self.emit({
+                type: "done",
+                status: "solved",
+                path: route === "invalid" ? ["Up"] : ["Down"],
+                visited: route === "over-limit" ? 2 : 1,
+                generated: 1,
+                peakFrontier: 1,
+              });
             });
-          });
-        }),
-    });
-    const request = requestFor(ONE_TYPED_BOX, {
-      limits: { maxExpandedStates: 1 },
-    });
+          }),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        limits: { maxExpandedStates: 1 },
+      });
 
-    const result = await adapter.solve(request, context());
+      const result = await adapter.solve(request, context());
 
-    assert.equal(result.status, "unsolved");
-    if (result.status !== "unsolved") return;
-    assert.equal(result.reason, "limit-reached");
-    assert.match(result.detail ?? "", /expanded/i);
-  });
+      if (route === "at-limit") {
+        assert.equal(result.status, "solved");
+        if (result.status !== "solved") return;
+        assert.equal(result.solution.moves, 1);
+        assert.equal(result.solution.optimality, "unknown");
+        assert.equal(result.metrics.expandedStates, 1);
+        assert.equal(verifySolverSolution(request, result.solution).valid, true);
+        return;
+      }
+      assert.equal(result.status, "unsolved");
+      if (result.status !== "unsolved") return;
+      assert.equal(result.reason, "limit-reached");
+      assert.match(result.detail ?? "", /expanded/i);
+    });
+  }
 
   it("reserves time for discovery after a structural worker goes silent", async () => {
     const algorithms: unknown[] = [];

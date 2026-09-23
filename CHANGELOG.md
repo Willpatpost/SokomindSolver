@@ -88,3 +88,9 @@ published a stable release.
   out before the complete fallback search could start. The discovery portfolio
   is incomplete, so that case now reports `limit-reached` with the budget that
   ran out.
+- Sokomind keeps a replay-verified route that arrives in the same worker
+  message that reaches a work, time or memory limit, in discovery as in repair.
+  It previously discarded that route and reported `limit-reached`, although
+  engines stop at their grants and so found it within the limit. A route whose
+  reported work passes a state limit, or that arrives after cancellation, is
+  still not accepted, and repair candidates are archived only once kept.

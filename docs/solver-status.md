@@ -128,12 +128,15 @@ affected versions; IDA* schema 3 rejects older checkpoints, including direct API
 resume. Previously emitted claims must not be treated as current proof evidence.
 
 Rescheduling publishes complete improvements during repair. The coordinator
-independently replays these under the same pre/post-verification budget checks,
-retains only the best published route, and continues bounded repair. If a later
-work/time cutoff or worker failure prevents the terminal message, the already
-verified improvement survives. Cancellation still returns cancelled, and a
-candidate first received at the limit is not accepted. This preserves useful
-work without extending the shared limits or changing proof semantics.
+independently replays these, retains only the best published route, and
+continues bounded repair. If a later work/time cutoff or worker failure prevents
+the terminal message, the already verified improvement survives. A route that
+arrives in the same message that reaches a work, time or memory limit is also
+replayed and kept, in discovery as in repair: engines stop at their grants, so
+the limit stops new work, not work already done. Cancellation still returns
+cancelled, and a route whose reported expanded or generated work passes the
+request limit is not accepted. This preserves useful work without extending the
+shared limits or changing proof semantics.
 
 The adapter is split by responsibility: `sokomind-legacy.ts` converts legacy
 data and validates replay, `sokomind-plans.ts` builds worker payloads and divides
