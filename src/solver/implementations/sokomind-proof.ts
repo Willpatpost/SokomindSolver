@@ -646,23 +646,17 @@ export async function runConcurrentProof(
     function checkTermination(): void {
       if (settled) return;
 
-      const allComplete = trackers.every((t) => t.completed || t.failed);
-      const globalLower = Math.min(
-        ...trackers.map((t) => partitionLowerBound(t)),
-      );
-
-      if (allComplete) {
-        const allProved = trackers.every(
-          (t) => !t.failed && (t.exhausted || t.lowerBound >= bestCost),
-        );
-        const anyFailed = trackers.some((t) => t.failed);
-        const provedOptimal = allProved && !anyFailed;
-        finish(solvedResult(provedOptimal, globalLower));
-        return;
-      }
-
+      // partitionLowerBound is the only closure rule, so the verdict does not
+      // depend on event order. A failed partition closes once its prefix cost
+      // alone reaches the incumbent: every route in it starts with that
+      // prefix, which is how dispatchPartition skips dominated partitions.
+      const globalLower = Math.min(...trackers.map(partitionLowerBound));
       if (globalLower >= bestCost) {
         finish(solvedResult(true, bestCost));
+        return;
+      }
+      if (trackers.every((t) => t.completed || t.failed)) {
+        finish(solvedResult(false, globalLower));
       }
     }
 

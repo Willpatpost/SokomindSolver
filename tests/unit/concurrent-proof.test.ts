@@ -1023,6 +1023,87 @@ describe("concurrent proof coordinator", () => {
     assertValidSolverResult(result);
   });
 
+  for (const lastLaneReportsBound of [true, false]) {
+    it(`failed partition dominated by a later incumbent proves optimality ${
+      lastLaneReportsBound ? "after a closing progress report" : "on the final completion"
+    }`, async () => {
+      const request = makeRequest(["OOOOOOO", "O     O", "OR X SO", "O     O", "OOOOOOO"]);
+      const walk = (direction: SolutionStep["direction"]): SolutionStep => ({ direction, kind: "walk" });
+      const discovery: SolverResult = {
+        status: "solved",
+        solution: {
+          steps: [
+            walk("up"), walk("down"), walk("up"), walk("down"), walk("up"), walk("down"), walk("right"),
+            { direction: "right", kind: "push" }, { direction: "right", kind: "push" },
+          ],
+          moves: 9,
+          pushes: 2,
+          objective: { kind: "moves" },
+          objectiveScore: 9,
+          optimality: "unknown",
+        },
+        metrics: { elapsedMs: 1 },
+      };
+      const lanes: MockProofWorker[] = [];
+      const run = runConcurrentProof(
+        request,
+        makeContext(),
+        { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, proofAlgorithm: "astar", proofParallelism: 4 },
+        discovery,
+        {
+          proofParallelism: 4,
+          createProofWorker() {
+            const lane = new MockProofWorker();
+            lanes.push(lane);
+            return lane;
+          },
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const start = (lane: MockProofWorker) => lane.receivedCommands[0] as ProofStartPartition;
+      assert.deepEqual(lanes.map((lane) => start(lane).prefixCost).sort(), [2, 4, 4, 6]);
+      const byPrefix = (cost: number) => lanes.filter((lane) => start(lane).prefixCost === cost);
+      const [failing] = byPrefix(6);
+      const [optimal] = byPrefix(2);
+
+      // The failed lane's prefix of 6 is still below the incumbent of 9 here.
+      failing.emit({ type: "proof/error", partitionId: start(failing).partitionId, message: "out of memory" });
+      for (const lane of byPrefix(4)) {
+        lane.emit({ type: "proof/partition-complete", partitionId: start(lane).partitionId,
+          lowerBound: 9, exhausted: true });
+      }
+      optimal.emit({
+        type: "proof/solution",
+        partitionId: start(optimal).partitionId,
+        totalCost: 3,
+        solution: {
+          steps: [walk("right"), { direction: "right", kind: "push" }, { direction: "right", kind: "push" }],
+          moves: 3,
+          pushes: 2,
+          objective: { kind: "moves" },
+          objectiveScore: 3,
+          optimality: "unknown",
+        },
+      });
+      if (lastLaneReportsBound) {
+        optimal.emit({ type: "proof/progress", partitionId: start(optimal).partitionId,
+          lowerBound: 3, expandedStates: 1 });
+      }
+      optimal.emit({ type: "proof/partition-complete", partitionId: start(optimal).partitionId,
+        lowerBound: 3, exhausted: true, metrics: { elapsedMs: 0, expandedStates: 1 } });
+
+      const result = await run;
+      assert.equal(result.status, "solved");
+      if (result.status === "solved") {
+        assert.equal(result.solution.moves, 3);
+        assert.equal(result.solution.optimality, "proven");
+        assert.equal(result.proof?.kind, "optimal");
+        assert.equal(result.proof?.lowerBound, 3);
+      }
+      assertValidSolverResult(result);
+    });
+  }
+
   it("progress updates raise partition lower bounds", async () => {
     const request = makeRequest([
       "OOOOOO",

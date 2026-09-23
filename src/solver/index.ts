@@ -3,6 +3,7 @@ export type {
   SolverMetadata,
   SolverPhase,
   SolverProgress,
+  SolverProofKind,
   SolverResult,
 } from "./contracts.ts";
 

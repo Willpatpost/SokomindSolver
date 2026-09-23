@@ -425,6 +425,7 @@ export function SolverDialog({
                           <dd>
                             {formatGap(
                               solver.proof?.gap ?? solver.liveProof?.gap,
+                              solver.proof?.kind,
                             )}
                           </dd>
                         </div>
@@ -483,7 +484,7 @@ export function SolverDialog({
                           {solver.proof?.kind === "optimal"
                             ? "Proven optimal"
                             : solver.proof?.kind === "bounded"
-                              ? `Best found (gap: ${formatGap(solver.proof.gap)})`
+                              ? `Best found (gap: ${formatGap(solver.proof.gap, solver.proof.kind)})`
                               : solver.proof?.kind === "unsolvable"
                                 ? "Proven unsolvable"
                                 : solver.resultSolver?.capabilities.quality ===

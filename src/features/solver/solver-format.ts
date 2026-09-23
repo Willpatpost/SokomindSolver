@@ -1,5 +1,6 @@
 import type {
   SolverPhase,
+  SolverProofKind,
   SolverResult,
 } from "@/src/solver";
 
@@ -69,9 +70,11 @@ export function phaseLabel(phase: SolverPhase | undefined): string {
   }
 }
 
-export function formatGap(gap: number | undefined): string {
+// Only a completed optimal proof may call a zero gap optimal. Live progress
+// and bounded results can meet their bounds without finishing the proof.
+export function formatGap(gap: number | undefined, kind?: SolverProofKind): string {
   if (gap === undefined) return "—";
-  if (gap === 0) return "0 (optimal)";
+  if (gap === 0) return kind === "optimal" ? "0 (optimal)" : "0 (bounds met, proof incomplete)";
   return String(gap);
 }
 

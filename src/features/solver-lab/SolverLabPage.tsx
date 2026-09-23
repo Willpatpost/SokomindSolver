@@ -487,7 +487,7 @@ function LoadedSolverLab({
                 <div><dt>Peak frontier</dt><dd>{formatCount(solver.peakFrontierSize)}</dd></div>
                 <div><dt>Estimated memory</dt><dd>{formatBytes(estimatedMemory)}</dd></div>
                 <div><dt>Lower bound</dt><dd>{formatCount(solver.proof?.lowerBound ?? solver.liveProof?.lowerBound)}</dd></div>
-                <div><dt>Proof gap</dt><dd>{formatGap(solver.proof?.gap ?? solver.liveProof?.gap)}</dd></div>
+                <div><dt>Proof gap</dt><dd>{formatGap(solver.proof?.gap ?? solver.liveProof?.gap, solver.proof?.kind)}</dd></div>
               </dl>
             </section>
           </div>

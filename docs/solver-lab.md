@@ -52,7 +52,7 @@ spatial rendering of every board state.
 | Estimated memory | The solver's estimate for retained search structures, not total browser-process memory. |
 | Moves and pushes | Counts obtained from the replay-verified returned route. |
 | Lower bound | A proven minimum remaining or solution cost reported by a proof-capable solver. |
-| Proof gap | The difference between a known upper bound and lower bound; zero establishes the stated optimum. |
+| Proof gap | The difference between a known upper bound and lower bound. Zero establishes the stated optimum only with a completed optimal proof; live progress and bounded results show a zero gap as bounds met, proof incomplete. |
 
 Algorithms differ in guarantees. DFS and Greedy return a first-found route;
 A* and IDA* minimize moves when they complete within their limits. Sokomind's

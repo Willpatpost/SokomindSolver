@@ -66,3 +66,10 @@ published a stable release.
   rejected that as a monotonicity violation and discarded the verified
   incumbent. A running lane's bound now appears in the progress detail as
   provisional until its partition completes.
+- Parallel proof reaches the same verdict whatever order lane events arrive
+  in. A failed partition whose prefix alone already costs at least the
+  incumbent no longer downgrades an optimal result to a bounded one with a
+  zero gap when it is the last partition to close.
+- A zero proof gap is labelled optimal only for a completed optimal proof.
+  Live progress and bounded results now show it as bounds met, proof
+  incomplete.

@@ -39,8 +39,9 @@ completed partitions' bounds and the prefix bound of each open partition. A
 running lane's own bound appears in the progress detail as provisional until
 its partition completes, so the worker host's monotonic-bound check never
 rejects the run. Failed partitions retain only their independently
-known prefix bound and prevent an optimal certificate; deadline cutoff remains
-bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
+known prefix bound; they block an optimal certificate unless that prefix bound
+alone reaches the incumbent cost, whatever order lane events arrive in.
+Deadline cutoff remains bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
 
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional

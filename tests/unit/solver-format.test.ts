@@ -4,6 +4,7 @@ import {
   formatCount,
   formatDuration,
   formatBytes,
+  formatGap,
   formatRate,
   phaseLabel,
   resultSummary,
@@ -151,6 +152,22 @@ describe("formatBytes", () => {
 
   it("rounds byte values", () => {
     assert.equal(formatBytes(0.7), "1 B");
+  });
+});
+
+describe("formatGap", () => {
+  it("returns em-dash for undefined", () => {
+    assert.equal(formatGap(undefined), "—");
+  });
+
+  it("calls a zero gap optimal only for a completed optimal proof", () => {
+    assert.equal(formatGap(0, "optimal"), "0 (optimal)");
+    assert.doesNotMatch(formatGap(0, "bounded"), /optimal/);
+    assert.doesNotMatch(formatGap(0), /optimal/);
+  });
+
+  it("formats a positive gap as a plain number", () => {
+    assert.equal(formatGap(4, "bounded"), "4");
   });
 });
 
