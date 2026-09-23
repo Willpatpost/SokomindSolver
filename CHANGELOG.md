@@ -59,6 +59,11 @@ published a stable release.
   keyboard listener is no longer removed and re-added on every render. Both
   hooks now read their latest callbacks through effect events, so inline
   callbacks from the play page no longer rebind their listeners.
+- Pinch zoom no longer re-renders the play page and rebinds its touch
+  listeners on every gesture frame; the transform is applied to the board
+  directly. While zoomed, one-finger drags only pan the board instead of also
+  swiping the keeper, and a tap waits out the double-tap window so the first
+  tap of a zoom-reset double tap no longer starts a walk.
 - Exact pattern-database combination counts no longer wrap at 32 bits on large
   valid custom boards, and oversized optional tables safely fall back to the
   remaining admissible heuristics.

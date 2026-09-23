@@ -8,6 +8,8 @@ interface UseTapToMoveOptions {
   readonly reducedMotion: boolean;
   /** Returns whether the keeper moved. */
   readonly applyDirection: (direction: Direction) => boolean;
+  /** Wait this long before the first step, so a double tap can cancel it. */
+  readonly startDelayMs?: number;
 }
 
 export function useTapToMove({
@@ -15,6 +17,7 @@ export function useTapToMove({
   enabled,
   reducedMotion,
   applyDirection,
+  startDelayMs = 0,
 }: UseTapToMoveOptions) {
   const walkTokenRef = useRef(0);
   const walkTimerRef = useRef<number | undefined>(undefined);
@@ -93,9 +96,21 @@ export function useTapToMove({
         walkTimerRef.current = window.setTimeout(() => advance(next), delay);
       };
 
-      advance(0);
+      if (startDelayMs <= 0) {
+        advance(0);
+        return;
+      }
+      walkTimerRef.current = window.setTimeout(() => {
+        // The route was planned from the click-time board, so an undo or
+        // reset while waiting makes it stale.
+        if (sessionRef.current !== session) {
+          walkTimerRef.current = undefined;
+          return;
+        }
+        advance(0);
+      }, startDelayMs);
     },
-    [cancelWalk, enabled, reducedMotion, sessionRef],
+    [cancelWalk, enabled, reducedMotion, sessionRef, startDelayMs],
   );
 
   return { handleBoardClick, cancelWalk };

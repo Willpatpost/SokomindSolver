@@ -31,7 +31,7 @@ import { MoveNotation } from "@/src/features/game/MoveNotation";
 import { MoveTimeline } from "@/src/features/game/MoveTimeline";
 import { useSwipeControls } from "@/src/features/game/use-swipe-controls";
 import { useTapToMove } from "@/src/features/game/use-tap-to-move";
-import { usePinchZoom } from "@/src/features/game/use-pinch-zoom";
+import { DOUBLE_TAP_WINDOW_MS, usePinchZoom } from "@/src/features/game/use-pinch-zoom";
 import {
   homeHash,
   Link,
@@ -211,6 +211,7 @@ function ValidatedPlayPage({
   });
   const { session, progress } = game;
   const boardWrapRef = useRef<HTMLDivElement>(null);
+  const zoomLayerRef = useRef<HTMLDivElement>(null);
   const stopButtonRef = useRef<HTMLButtonElement>(null);
   const pauseResumeRef = useRef<HTMLButtonElement>(null);
   const [replayComparisonOpen, setReplayComparisonOpen] = useState(false);
@@ -248,20 +249,25 @@ function ValidatedPlayPage({
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; });
 
+  const zoomed = usePinchZoom(boardWrapRef, zoomLayerRef, {
+    onDoubleTapReset: cancelWalk,
+  });
+
   const tapToMove = useTapToMove({
     sessionRef,
     enabled: game.inputEnabled,
     reducedMotion: game.reducedMotion,
     applyDirection: game.attemptMove,
+    // While zoomed, a tap may be the first half of a reset double tap.
+    startDelayMs: zoomed ? DOUBLE_TAP_WINDOW_MS : 0,
   });
   useEffect(() => {
     cancelWalkRef.current = tapToMove.cancelWalk;
   }, [tapToMove.cancelWalk]);
 
-  const zoom = usePinchZoom(boardWrapRef);
-
   useSwipeControls(boardWrapRef, {
-    enabled: game.inputEnabled,
+    // While zoomed, a one-finger drag pans the board instead.
+    enabled: game.inputEnabled && !zoomed,
     onSwipe: (dir) => { tapToMove.cancelWalk(); game.attemptMove(dir); },
   });
 
@@ -302,7 +308,7 @@ function ValidatedPlayPage({
     puzzle.difficulty,
   ]);
 
-  const puzzleFingerprint = puzzleRevisionFingerprint(puzzle);
+  const puzzleFingerprint = useMemo(() => puzzleRevisionFingerprint(puzzle), [puzzle]);
   const currentIsOptimal = best
     ? isOptimal(game.optimalCache, puzzle.id, puzzleFingerprint, best.moves)
     : false;
@@ -550,17 +556,15 @@ function ValidatedPlayPage({
             className={styles.boardWrap}
             ref={boardWrapRef}
             onClick={tapToMove.handleBoardClick}
-            style={zoom.zoomed ? {
+            style={zoomed ? {
               overflow: "hidden",
               touchAction: "none",
             } : undefined}
           >
             <div
               className={styles.boardZoomLayer}
-              style={zoom.zoomed ? {
-                transform: `translate(${zoom.translateX}px, ${zoom.translateY}px) scale(${zoom.scale})`,
-                transformOrigin: "center center",
-              } : undefined}
+              ref={zoomLayerRef}
+              data-testid="board-zoom-layer"
             >
             {game.manualPaused && (
               <div className={styles.pauseOverlay} role="alert" aria-label="Game paused">
