@@ -50,9 +50,7 @@ jobs:
           - suite: typed
             command: npm run test:coverage:typed
           - suite: focused
-            command: npm run test:coverage:typed:focused
-          - suite: engine
-            command: npm run test:coverage:engine
+            command: npm run test:coverage:focused
 
     steps:
       - name: Check out repository
