@@ -819,10 +819,15 @@ export async function runIdaStarSearch(
       featureTelemetry.linearConflictTotal += value;
       return value;
     };
-    const pdbSurplus = (boxes: readonly DenseBox[], labelCosts: ReadonlyMap<string, number> | null, boxKey?: bigint): number => {
+    const pdbSurplus = (
+      boxes: readonly DenseBox[],
+      labelCosts: ReadonlyMap<string, number> | null,
+      boxKey?: bigint,
+      labelCostsBoxKey?: bigint,
+    ): number => {
       if (!pdbEvaluator || !labelCosts) return 0;
       featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey);
+      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey, labelCostsBoxKey);
     };
     const goalCut = (): number => {
       if (!goalCutEvaluator) return 0;
@@ -1262,6 +1267,7 @@ export async function runIdaStarSearch(
       };
     }
     const initialLabelCosts = heuristic.lastLabelCosts;
+    const initialLabelCostsBoxKey = heuristic.lastBoxKey;
     const initialBoost = initialLabelCosts && boostEvaluator
       ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
       : 0;
@@ -1271,7 +1277,12 @@ export async function runIdaStarSearch(
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts, packBoxKeyFromBoxes(initialBoxes));
+    const initialPdbSurplus = pdbSurplus(
+      initialBoxes,
+      initialLabelCosts,
+      packBoxKeyFromBoxes(initialBoxes),
+      initialLabelCostsBoxKey,
+    );
     const initialGoalCut = goalCut();
     const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot, 0, Infinity);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
@@ -1517,19 +1528,21 @@ export async function runIdaStarSearch(
               hTruncated = true;
             } else {
             const labelCosts = heuristic.lastLabelCosts;
+            const labelCostsBoxKey = heuristic.lastBoxKey;
             const boxKey = packBoxKeyFromBoxes(frame.boxes);
             const interactionBoost = labelCosts && boostEvaluator
               ? boostEvaluator.evaluate(
                   frame.boxes,
                   labelCosts,
                   boxKey,
+                  labelCostsBoxKey,
                 )
               : 0;
             if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
 
             const linearConflictBoost = linearConflict(frame.boxes);
 
-            const pdbBoost = pdbSurplus(frame.boxes, labelCosts, boxKey);
+            const pdbBoost = pdbSurplus(frame.boxes, labelCosts, boxKey, labelCostsBoxKey);
             const goalCutBoost = goalCut();
             h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot, frame.g, fLimit);
             hTruncated = lastHTruncated;

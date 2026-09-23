@@ -52,6 +52,9 @@ export class PdbHeuristicEvaluator {
   readonly #cellsByLabel: number[][] = [];
   readonly #subsetIndices: number[] = [];
   readonly #subsetCells: number[] = [];
+  // Keyed by box key alone, but the surplus also depends on the assignment
+  // label costs, so evaluateWithSurplus() reads and writes it only when the
+  // caller vouches that the label costs belong to that box key.
   readonly #surplusCache = new Map<bigint, number>();
   #cacheHits = 0;
   #cacheMisses = 0;
@@ -140,15 +143,26 @@ export class PdbHeuristicEvaluator {
     return total;
   }
 
+  /**
+   * PDB surplus over the assignment label costs for `boxes`. `boxKey`
+   * identifies the box layout and `labelCostsBoxKey` the layout the label
+   * costs were computed for (the assignment heuristic's `lastBoxKey`). The
+   * cache is used only when both are given and equal; otherwise the surplus
+   * is computed and not stored.
+   */
   evaluateWithSurplus(
     boxes: readonly DenseBox[],
     assignmentLabelCosts: ReadonlyMap<string, number>,
     boxKey?: bigint,
+    labelCostsBoxKey?: bigint,
   ): number {
     if (this.#pdbs.length === 0) return 0;
 
-    if (boxKey !== undefined) {
-      const cached = this.#surplusCache.get(boxKey);
+    const cacheKey = boxKey !== undefined && boxKey === labelCostsBoxKey
+      ? boxKey
+      : undefined;
+    if (cacheKey !== undefined) {
+      const cached = this.#surplusCache.get(cacheKey);
       if (cached !== undefined) {
         this.#cacheHits++;
         return cached;
@@ -186,7 +200,7 @@ export class PdbHeuristicEvaluator {
       if (diff > 0) surplus += diff;
     }
 
-    if (boxKey !== undefined) {
+    if (cacheKey !== undefined) {
       if (this.#surplusCache.size >= SURPLUS_CACHE_CAP) {
         const firstKey = this.#surplusCache.keys().next().value;
         if (firstKey !== undefined) {
@@ -194,9 +208,9 @@ export class PdbHeuristicEvaluator {
           this.#surplusCacheBytes -= this.#cacheEntryBytes(firstKey);
         }
       }
-      const additionalBytes = this.#cacheEntryBytes(boxKey);
+      const additionalBytes = this.#cacheEntryBytes(cacheKey);
       if (this.#cacheMemoryBudget?.(additionalBytes) !== false) {
-        this.#surplusCache.set(boxKey, surplus);
+        this.#surplusCache.set(cacheKey, surplus);
         this.#surplusCacheBytes += additionalBytes;
       }
     }

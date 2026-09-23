@@ -242,9 +242,46 @@ describe("interaction boost heuristic", () => {
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
     const labelCosts = fullAssignmentLabelCosts(board, boxes);
     const key = 42n;
-    evaluator.evaluate(boxes, labelCosts, key);
-    evaluator.evaluate(boxes, labelCosts, key);
+    evaluator.evaluate(boxes, labelCosts, key, key);
+    evaluator.evaluate(boxes, labelCosts, key, key);
     assert.equal(evaluator.stats.cacheHits, 1, "Second call should hit cache");
+  });
+
+  it("uses the cache only for label costs of the same box key", () => {
+    // A and B must pass each other in the corridor, which costs 2 extra pushes.
+    const parsed = parsePuzzleRows([
+      "OOOOOOOOOOO",
+      "O   OOO   O",
+      "Ob A   B aO",
+      "O   OOO   O",
+      "OR  OOO   O",
+      "OOOOOOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxesA = toDenseBoxes(board, parsed.initialBoxes);
+    const boxesB = boxesA.map((box) =>
+      box.label === "A" ? { ...box, cell: board.cellAt(2, 2) } : box,
+    );
+    const costsA = fullAssignmentLabelCosts(board, boxesA);
+    const costsB = fullAssignmentLabelCosts(board, boxesB);
+    const boostA = new InteractionBoostEvaluator(board, board.topology).evaluate(boxesA, costsA);
+    const mixed = new InteractionBoostEvaluator(board, board.topology).evaluate(boxesA, costsB);
+    assert.equal(boostA, 2);
+    assert.notEqual(mixed, boostA);
+
+    const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const keyA = 1n;
+    const keyB = 2n;
+    assert.equal(evaluator.evaluate(boxesA, costsA, keyA, keyA), boostA);
+    assert.equal(evaluator.evaluate(boxesA, costsB, keyA, keyB), mixed);
+    assert.equal(evaluator.stats.cacheHits, 0);
+    assert.equal(evaluator.evaluate(boxesA, costsA, keyA, keyA), boostA);
+    assert.equal(evaluator.stats.cacheHits, 1);
+
+    // Without the label-cost key the value is neither read nor stored.
+    evaluator.evaluate(boxesA, costsA, keyB);
+    evaluator.evaluate(boxesA, costsA, keyB, keyB);
+    assert.equal(evaluator.stats.cacheHits, 1);
   });
 
   it("never exceeds exact optimal pushes (oracle exhaustive on tiny board)", () => {

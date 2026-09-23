@@ -145,6 +145,11 @@ published a stable release.
   single goal on that line and both boxes' push distances are straight. No
   move-level overestimate was found, so discarding earlier certificates is a
   precaution.
+- The exact interaction-boost and PDB-surplus caches no longer rely on callers
+  passing label costs from the same state. Both values subtract the assignment
+  label costs but were cached by box key alone; the evaluators now use their
+  caches only when the assignment heuristic's last box key matches. Both exact
+  kernels already passed matching costs, so results are unchanged.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

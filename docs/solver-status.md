@@ -318,6 +318,13 @@ the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`, with
 the goal-cut surplus joining that maximum when enabled. The PDB surplus is
 admissible because each label's boxes and goals are disjoint.
 
+The interaction boost and the PDB surplus both subtract the assignment label
+costs, but cache their results by box key alone. The assignment heuristic
+reports the box key its last label costs belong to (`lastBoxKey`), and both
+evaluators read or write their caches only when that key matches the state
+being scored. Otherwise they recompute and store nothing, so a value computed
+from another state's label costs is never reused.
+
 Goal-cut (`goalCutHeuristic`, default off) detects bottleneck conflicts when
 multiple boxes' shortest push-paths share articulation points or tunnel cells.
 For each bottleneck with demand N > 1, the surplus is (N-1)*2 pushes; the

@@ -6,6 +6,7 @@ import { SolverCancelledError } from "../../src/solver/cancellation.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
 import { buildPatternDatabaseAsync, UNSOLVED } from "../../src/solver/search/pattern-database.ts";
+import { AssignmentHeuristic } from "../../src/solver/search/heuristic.ts";
 import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 import { ExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
 import { configureSearchScheduler } from "../../src/solver/search/scheduling.ts";
@@ -108,11 +109,11 @@ describe("PDB surplus cache memory", () => {
     const { evaluator, boxes } = fixture();
     const before = evaluator.estimatedRetainedBytes;
     const costs = new Map([["X", 0]]);
-    const value = evaluator.evaluateWithSurplus(boxes, costs, 1n);
+    const value = evaluator.evaluateWithSurplus(boxes, costs, 1n, 1n);
     assert.ok(evaluator.searchCacheRetainedBytes > 0);
     assert.equal(evaluator.estimatedRetainedBytes, before + evaluator.searchCacheRetainedBytes);
     const after = evaluator.estimatedRetainedBytes;
-    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 1n), value);
+    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 1n, 1n), value);
     assert.equal(evaluator.estimatedRetainedBytes, after);
     assert.equal(evaluator.surplusCacheStats.hits, 1);
   });
@@ -123,9 +124,36 @@ describe("PDB surplus cache memory", () => {
     const uncached = evaluator.evaluateWithSurplus(boxes, costs);
     const before = evaluator.estimatedRetainedBytes;
     evaluator.setSearchCacheMemoryBudget(() => false);
-    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 2n), uncached);
+    assert.equal(evaluator.evaluateWithSurplus(boxes, costs, 2n, 2n), uncached);
     assert.equal(evaluator.surplusCacheStats.size, 0);
     assert.equal(evaluator.estimatedRetainedBytes, before);
+  });
+
+  it("uses the cache only for label costs of the same box key", () => {
+    const parsed = parsePuzzleRows(["OOOOOOO", "O     O", "O XX  O", "O SS  O", "O   R O", "OOOOOOO"]);
+    const board = compileSearchBoard(parsed);
+    const boxesA = toDenseBoxes(board, parsed.initialBoxes);
+    const boxesB = boxesA.map((box, index) => index === 0 ? { ...box, cell: board.cellAt(3, 2) } : box);
+    const heuristic = new AssignmentHeuristic(board);
+    heuristic.evaluate(boxesA);
+    const costsA = heuristic.lastLabelCosts!;
+    heuristic.evaluate(boxesB);
+    const costsB = heuristic.lastLabelCosts!;
+    const evaluator = new PdbHeuristicEvaluator(board);
+    const keyA = 1n;
+    const keyB = 2n;
+    assert.equal(evaluator.evaluateWithSurplus(boxesA, costsA, keyA, keyA), 0);
+    // B's assignment costs one push less than A's PDB value.
+    assert.equal(evaluator.evaluateWithSurplus(boxesA, costsB, keyA, keyB), 1);
+    assert.equal(evaluator.surplusCacheStats.hits, 0);
+    assert.equal(evaluator.evaluateWithSurplus(boxesA, costsA, keyA, keyA), 0);
+    assert.equal(evaluator.surplusCacheStats.hits, 1);
+
+    // Without the label-cost key the value is neither read nor stored.
+    evaluator.evaluateWithSurplus(boxesA, costsA, keyB);
+    evaluator.evaluateWithSurplus(boxesA, costsA, keyB, keyB);
+    assert.equal(evaluator.surplusCacheStats.hits, 1);
+    assert.equal(evaluator.surplusCacheStats.size, 2);
   });
 
   for (const [name, run] of [["A*", runExactMoveAStar], ["IDA*", runIdaStarSearch]] as const) {

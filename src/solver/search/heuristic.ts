@@ -255,6 +255,7 @@ export class AssignmentHeuristic {
   #cacheHits = 0;
   #incrementalRepairs = 0;
   #lastLabelStates: ReadonlyMap<string, LabelAssignmentState> | null = null;
+  #lastBoxKey: bigint | undefined;
 
   constructor(
     board: CompiledSearchBoard,
@@ -280,6 +281,16 @@ export class AssignmentHeuristic {
 
   get lastAssignmentStates(): ReadonlyMap<string, LabelAssignmentState> | null {
     return this.#lastLabelStates;
+  }
+
+  /**
+   * Box key of the state that `lastAssignmentStates` and `lastLabelCosts`
+   * describe, or undefined when the last evaluation had no box key.
+   * Evaluators that cache values derived from those label costs by box key
+   * compare against it before using their cache.
+   */
+  get lastBoxKey(): bigint | undefined {
+    return this.#lastBoxKey;
   }
 
   get lastLabelCosts(): ReadonlyMap<string, number> | null {
@@ -315,6 +326,7 @@ export class AssignmentHeuristic {
     const result = fullAssignmentWithState(this.#board, boxes);
     this.#storeEntry(key, result);
     this.#lastLabelStates = result.labelStates;
+    this.#lastBoxKey = key;
     return result.totalCost;
   }
 
@@ -330,12 +342,14 @@ export class AssignmentHeuristic {
       this.#cache.delete(key);
       this.#cache.set(key, cached);
       this.#lastLabelStates = cached.labelStates;
+      this.#lastBoxKey = key;
       return cached.totalCost;
     }
     return this.#fullEvaluateAndStore(boxes, key);
   }
 
   #evaluateFallback(boxes: readonly DenseBox[]): number {
+    this.#lastBoxKey = undefined;
     const signature = canonicalBoxSignature(boxes);
     const cached = this.#fallbackCache.get(signature);
     if (cached !== undefined) {
@@ -371,6 +385,7 @@ export class AssignmentHeuristic {
       this.#cache.delete(childBoxKey);
       this.#cache.set(childBoxKey, childCached);
       this.#lastLabelStates = childCached.labelStates;
+      this.#lastBoxKey = childBoxKey;
       return childCached.totalCost;
     }
 
@@ -515,6 +530,7 @@ export class AssignmentHeuristic {
 
     this.#storeEntry(childBoxKey, { totalCost: total, labelStates });
     this.#lastLabelStates = labelStates;
+    this.#lastBoxKey = childBoxKey;
     return total;
   }
 

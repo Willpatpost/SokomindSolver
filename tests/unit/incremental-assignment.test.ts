@@ -599,6 +599,36 @@ describe("BigInt cache key correctness", () => {
     assert.notEqual(moveKey1, moveKey2, "move keys should differ with different robots");
     assert.equal(boxKey, boxKey, "box-only key is robot-independent");
   });
+
+  it("reports the box key of the last evaluated label costs", () => {
+    const parsed = parsePuzzleRows(TWO_LABEL_ROWS);
+    const board = compileSearchBoard(parsed);
+    const labels = [...board.goalCellsByLabel.keys()].sort();
+    const codec = createExactStateCodec(board.cellCount, labels);
+    const packBoxKey = (boxes: readonly DenseBox[]) =>
+      codec.packBoxTokens(codec.tokensFromBoxes(boxes));
+    const heuristic = new AssignmentHeuristic(board, { packBoxKey });
+    const parent = sortedBoxes(toDenseBoxes(board, parsed.initialBoxes));
+    const child = sortedBoxes(parent.map((b) =>
+      b.label === "A" ? { ...b, cell: b.cell + 1 } : b,
+    ));
+    const parentKey = packBoxKey(parent);
+    const childKey = packBoxKey(child);
+    assert.equal(heuristic.lastBoxKey, undefined);
+
+    heuristic.evaluate(parent);
+    assert.equal(heuristic.lastBoxKey, parentKey);
+    heuristic.evaluateIncremental(child, childKey, parentKey, "A");
+    assert.equal(heuristic.lastBoxKey, childKey);
+    heuristic.evaluate(parent);
+    assert.equal(heuristic.lastBoxKey, parentKey, "cache hit");
+    heuristic.evaluateIncremental(child, childKey, parentKey, "A");
+    assert.equal(heuristic.lastBoxKey, childKey, "cache hit");
+
+    const unkeyed = new AssignmentHeuristic(board);
+    unkeyed.evaluate(parent);
+    assert.equal(unkeyed.lastBoxKey, undefined);
+  });
 });
 
 // ---------------------------------------------------------------------------

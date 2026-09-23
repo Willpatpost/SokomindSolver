@@ -66,6 +66,9 @@ export class InteractionBoostEvaluator {
   };
   readonly #roomHeuristic: RoomPatternHeuristic;
   readonly #pairHeuristic: PairConflictHeuristic;
+  // Keyed by box key alone, but the boost also depends on the label costs,
+  // so evaluate() reads and writes it only when the caller vouches that the
+  // label costs belong to that box key.
   readonly #cache = new Map<bigint, number>();
   readonly #roomCoveredLabels: ReadonlySet<string>;
   readonly #searchBudget?: InteractionSearchBudget;
@@ -135,19 +138,29 @@ export class InteractionBoostEvaluator {
     return this.#pairHeuristic.stats;
   }
 
+  /**
+   * Boost over the assignment cost for `boxes`. `boxKey` identifies the box
+   * layout and `labelCostsBoxKey` the layout `labelCosts` were computed for
+   * (the assignment heuristic's `lastBoxKey`). The cache is used only when
+   * both are given and equal; otherwise the boost is computed and not stored.
+   */
   evaluate(
     boxes: readonly DenseBox[],
     labelCosts: ReadonlyMap<string, number>,
     boxKey?: bigint,
+    labelCostsBoxKey?: bigint,
   ): number {
     this.stats.evaluations++;
 
-    if (boxKey !== undefined) {
-      const cached = this.#cache.get(boxKey);
+    const cacheKey = boxKey !== undefined && boxKey === labelCostsBoxKey
+      ? boxKey
+      : undefined;
+    if (cacheKey !== undefined) {
+      const cached = this.#cache.get(cacheKey);
       if (cached !== undefined) {
         this.stats.cacheHits++;
-        this.#cache.delete(boxKey);
-        this.#cache.set(boxKey, cached);
+        this.#cache.delete(cacheKey);
+        this.#cache.set(cacheKey, cached);
         return cached;
       }
     }
@@ -174,12 +187,12 @@ export class InteractionBoostEvaluator {
       }
     }
 
-    if (boxKey !== undefined) {
+    if (cacheKey !== undefined) {
       this.#checkSearchBudget(
         this.#pairHeuristic.estimatedRetainedBytes +
           (this.#cache.size + 1) * 96,
       );
-      this.#cache.set(boxKey, total);
+      this.#cache.set(cacheKey, total);
       if (this.#cache.size > BOOST_CACHE_LIMIT) {
         const first = this.#cache.keys().next().value;
         if (first !== undefined) this.#cache.delete(first);
