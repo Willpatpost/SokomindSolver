@@ -29,7 +29,7 @@ published a stable release.
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
-- The optimal-record proof revision is now `exact-moves-goal-cut-off-v1` and
+- The optimal-record proof revision is now `exact-moves-linear-conflict-v1` and
   the storage key is `sokomind.optimal.v8`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
@@ -137,6 +137,14 @@ published a stable release.
   now stops instead of dropping states that its radius fallback assumed were
   settled. The table is off by default and no production caller enables it,
   so stored certificates are unaffected.
+- The exact linear-conflict bound no longer overestimates the remaining
+  pushes. It counted every crossing pair in one minimum assignment, but a
+  label with several goals can have another assignment of the same cost that
+  crosses nothing, and a box whose shortest route already leaves the line can
+  pass the other box for free. A pair now counts only when both labels have a
+  single goal on that line and both boxes' push distances are straight. No
+  move-level overestimate was found, so discarding earlier certificates is a
+  precaution.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

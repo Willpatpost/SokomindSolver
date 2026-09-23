@@ -160,6 +160,22 @@ test("invalidates certificates proven with the goal-cut heuristic on by default"
   assert.equal(isOptimal(stale as unknown as OptimalCache, "goal-cut", FIRST_FINGERPRINT, 20), false);
 });
 
+test("invalidates certificates proven with the earlier linear conflict", () => {
+  const staleRevision = "exact-moves-goal-cut-off-v1";
+  assert.notEqual(CURRENT_OPTIMAL_PROOF_REVISION, staleRevision);
+  const stale = {
+    version: 7,
+    proofRevision: staleRevision,
+    records: { [recordKey("linear-conflict", FIRST_FINGERPRINT)]: { moves: 36, pushes: 12 } },
+  };
+  assert.deepEqual(
+    normalizeOptimalCache({ ...stale, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION }).records,
+    stale.records,
+  );
+  assert.deepEqual(normalizeOptimalCache(stale), EMPTY_CACHE);
+  assert.equal(isOptimal(stale as unknown as OptimalCache, "linear-conflict", FIRST_FINGERPRINT, 36), false);
+});
+
 test("old tabs cannot overwrite corrected proof storage or affect progress and routes", () => {
   const oldKey = "sokomind.optimal.v7";
   assert.equal(LEGACY_STORAGE_KEYS.optimalV7, oldKey);

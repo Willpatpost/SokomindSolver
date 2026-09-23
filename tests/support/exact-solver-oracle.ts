@@ -271,3 +271,106 @@ export function allReachableStates(
 
   return results;
 }
+
+export interface ReachableStateCosts {
+  readonly robot: number;
+  readonly boxes: readonly DenseBox[];
+  /** Fewest moves to a solved state, or null if none is reachable. */
+  readonly exactMoves: number | null;
+  /** Fewest pushes to a solved state, or null if none is reachable. */
+  readonly exactPushes: number | null;
+}
+
+/**
+ * Exact remaining moves and pushes for every reachable state.
+ *
+ * Builds the step graph once with stepSnapshot and searches backwards from
+ * the solved states, so it is much faster than allReachableStates on larger
+ * boards. The push count is the push optimum, which can be lower than the
+ * push count of any move-optimal solution.
+ */
+export function allReachableStateCosts(
+  board: CompiledSearchBoard,
+  robot: number,
+  initialBoxes: readonly DenseBox[],
+): Map<string, ReachableStateCosts> {
+  const states: OracleState[] = [{ robot, boxes: initialBoxes }];
+  const indexByKey = new Map<string, number>([[oracleStateKey(robot, initialBoxes), 0]]);
+  // Incoming edges per state: the predecessor index, tagged with whether
+  // the step pushed a box.
+  const incoming: { readonly from: number; readonly pushed: boolean }[][] = [[]];
+
+  for (let index = 0; index < states.length; index++) {
+    const current = states[index];
+    const snapshot = buildSnapshot(board, current.robot, current.boxes, 0, 0);
+    for (const direction of DIRECTIONS) {
+      const transition = stepSnapshot(board.source, snapshot, direction);
+      if (!transition.moved) continue;
+      const nextRobot = positionToCell(board, transition.snapshot.robot);
+      const nextBoxes = snapshotBoxesToDense(board, transition.snapshot.boxes);
+      const nextKey = oracleStateKey(nextRobot, nextBoxes);
+      let next = indexByKey.get(nextKey);
+      if (next === undefined) {
+        next = states.length;
+        indexByKey.set(nextKey, next);
+        states.push({ robot: nextRobot, boxes: nextBoxes });
+        incoming.push([]);
+      }
+      incoming[next].push({ from: index, pushed: transition.pushed });
+    }
+  }
+
+  const solved: number[] = [];
+  for (let index = 0; index < states.length; index++) {
+    if (isSolved(board, states[index].boxes)) solved.push(index);
+  }
+
+  const moves = new Int32Array(states.length).fill(-1);
+  const moveQueue = [...solved];
+  for (const index of solved) moves[index] = 0;
+  for (let head = 0; head < moveQueue.length; head++) {
+    const index = moveQueue[head];
+    for (const { from } of incoming[index]) {
+      if (moves[from] !== -1) continue;
+      moves[from] = moves[index] + 1;
+      moveQueue.push(from);
+    }
+  }
+
+  // Walks cost nothing, so each push count is settled as one layer before
+  // the next layer starts.
+  const pushes = new Int32Array(states.length).fill(-1);
+  let layer = solved;
+  for (let cost = 0; layer.length > 0; cost++) {
+    const queue: number[] = [];
+    for (const index of layer) {
+      if (pushes[index] !== -1) continue;
+      pushes[index] = cost;
+      queue.push(index);
+    }
+    const nextLayer: number[] = [];
+    for (let head = 0; head < queue.length; head++) {
+      for (const { from, pushed } of incoming[queue[head]]) {
+        if (pushes[from] !== -1) continue;
+        if (pushed) {
+          nextLayer.push(from);
+        } else {
+          pushes[from] = cost;
+          queue.push(from);
+        }
+      }
+    }
+    layer = nextLayer;
+  }
+
+  const results = new Map<string, ReachableStateCosts>();
+  for (const [key, index] of indexByKey) {
+    results.set(key, {
+      robot: states[index].robot,
+      boxes: states[index].boxes,
+      exactMoves: moves[index] === -1 ? null : moves[index],
+      exactPushes: pushes[index] === -1 ? null : pushes[index],
+    });
+  }
+  return results;
+}

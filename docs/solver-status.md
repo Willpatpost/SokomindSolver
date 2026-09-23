@@ -58,11 +58,11 @@ disabled pending broader performance qualification. Quality strategic defaults
 preserve explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
-`exact-moves-goal-cut-off-v1`, and storage key `sokomind.optimal.v8`.
+`exact-moves-linear-conflict-v1`, and storage key `sokomind.optimal.v8`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records
 that can predate the A* frontier correction, the tunnel-macro soundness fix or
-the pattern-deadlock key fix, or that were proven with the goal-cut heuristic
-on by default.
+the pattern-deadlock key fix, that were proven with the goal-cut heuristic on
+by default, or that used the earlier linear conflict.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.
@@ -102,8 +102,13 @@ solution quality rather than proof soundness.
 The goal-cut heuristic no longer runs by default. It was documented as an
 admissible push bound but is not one, and no move-level bound has been proven
 (see the goal-cut paragraph below). No false certificate has been found, so
-this is a precaution: proof revision `exact-moves-goal-cut-off-v1` and storage
-key `sokomind.optimal.v8` reject records proven while it was on.
+this is a precaution: the proof revision and storage key `sokomind.optimal.v8`
+reject records proven while it was on.
+
+The linear conflict no longer overestimates the remaining pushes (see the
+linear-conflict paragraph below). It ran by default in both exact kernels and
+in classic A*, but no move-level overestimate has been found, so proof revision
+`exact-moves-linear-conflict-v1` rejecting earlier records is a precaution.
 
 Sokomind 1.3.0 also versions the earlier Quality changes: Quality no longer
 dispatches proof and always reports unknown optimality, `SolverRequest` accepts
@@ -292,6 +297,20 @@ unreachable regions containing off-goal boxes and reorders IDA* child generation
 to try those pushes first. It never prunes branches, so proof correctness is
 unaffected. PI-corral pruning uses a sound I-corral detector that checks all
 potential boundary pushes and restricts deadlock tests to corral-internal boxes.
+
+Linear conflict adds two pushes for each pair of boxes that must pass each
+other on a row or column. A pair counts only when both boxes' labels have a
+single goal, each box's goal is on that line, and each box's relaxed push
+distance equals its straight distance. Two boxes that both stay on the line
+keep their order, so one box of a crossing pair must leave it, which costs a
+push off the line and one back. Each box joins at most one counted pair per
+axis, and the row and column terms count pushes along different axes, so they
+add. The former rule counted every crossing in one minimum assignment. A label
+with several goals can have another assignment of the same cost that crosses
+nothing, and a box whose shortest route already leaves the line passes the
+other box at no extra cost, so the old term could exceed the push optimum. The
+oracle tests in `tests/unit/linear-conflict.test.ts` check the push and move
+bounds over every reachable state of boards for both cases.
 
 Pattern-database partitions contribute to the heuristic via per-label surplus:
 for each label, any excess of the PDB value over the assignment cost is added to

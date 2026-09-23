@@ -11,7 +11,12 @@ import {
 } from "../../src/solver/search/model.ts";
 import {
   AssignmentHeuristic,
+  minimumManhattanWalkToPotentialPush,
 } from "../../src/solver/search/heuristic.ts";
+import {
+  allReachableStateCosts,
+  exactRemainingMoves,
+} from "../support/exact-solver-oracle.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,6 +34,28 @@ function getLinearConflict(rows: string[]): number {
   const heuristic = new AssignmentHeuristic(board);
   heuristic.evaluate(boxes);
   return heuristic.lastLinearConflict(boxes);
+}
+
+function transpose(rows: readonly string[]): string[] {
+  return [...rows[0]].map((_, column) => rows.map((row) => row[column]).join(""));
+}
+
+function boundsAt(
+  rows: string[],
+  robotAt: readonly [number, number],
+  placed: readonly (readonly [string, number, number])[],
+) {
+  const { board } = setupBoard(rows);
+  const robot = board.cellAt(robotAt[0], robotAt[1]);
+  const boxes = placed.map(([label, row, column], index) => ({
+    id: `${label}:${index}`,
+    label,
+    cell: board.cellAt(row, column),
+  }));
+  const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+  const pushBound = heuristic.evaluate(boxes);
+  const conflict = heuristic.lastLinearConflict(boxes);
+  return { pushBound, conflict, oracle: exactRemainingMoves(board, robot, boxes) };
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +99,7 @@ describe("computeLinearConflict", () => {
   });
 
   it("detects row conflict for two typed boxes with swapped goals", () => {
-    // Typed boxes: A at col 4 must go to goal 'a' at col 2,
-    //              B at col 2 must go to goal 'b' at col 4.
-    // A is right of B but A's goal is left of B's goal => row conflict.
+    // A (col 2) -> a (col 4) and B (col 3) -> b (col 1) cross on row 2.
     const rows = [
       "OOOOOOO",
       "O     O",
@@ -82,8 +107,18 @@ describe("computeLinearConflict", () => {
       "O     O",
       "OOOOOOO",
     ];
-    const lc = getLinearConflict(rows);
-    assert.ok(lc >= 2, `Expected at least 2 from row conflict, got ${lc}`);
+    assert.equal(getLinearConflict(rows), 2);
+  });
+
+  it("detects column conflict for two typed boxes with swapped goals", () => {
+    const rows = transpose([
+      "OOOOOOO",
+      "O     O",
+      "ObABaRO",
+      "O     O",
+      "OOOOOOO",
+    ]);
+    assert.equal(getLinearConflict(rows), 2);
   });
 
   it("returns 0 for a single box", () => {
@@ -115,49 +150,111 @@ describe("computeLinearConflict", () => {
   });
 
   it("each box participates in at most one conflict per axis (greedy pairing)", () => {
-    // Three boxes in a row with circular conflict:
-    // positions: A at 1, B at 2, C at 3
-    // goals: A->3, B->1, C->2
-    // A<B but goalA>goalB => conflict(A,B)
-    // A<C but goalA>goalC => conflict(A,C)
-    // B<C but goalB>goalC => conflict(B,C)
-    // greedy matching should produce at most 2 conflicts
-    // but each box in at most 1 conflict => at most 1 conflict pair from 3 boxes
-    // Actually greedy: pick highest-dist conflict, mark both used, then remaining
-    // With 3 boxes, 3 potential conflicts, greedy picks 1 (uses 2 boxes), 3rd box unused => 1 conflict
-    // Wait: the directions say "Test with three boxes in a row with circular conflict: expect at most 2 conflicts (greedy pairing)."
-    // But with 3 boxes and each in at most 1 conflict, max is floor(3/2) = 1. Let me verify.
-    // The greedy algorithm pairs boxes. 3 boxes => at most 1 pair. So at most 1 conflict * 2 = 2.
+    // A (col 3) -> a (col 8), B (col 4) -> b (col 7), C (col 5) -> c (col 1).
+    // Every pair crosses, but three boxes form only one disjoint pair.
     const rows = [
-      "OOOOOOOOO",
-      "O       O",
-      "O SXSXSXO",
-      "O   R   O",
-      "OOOOOOOOO",
+      "OOOOOOOOOOO",
+      "O         O",
+      "Oc ABC ba O",
+      "O    R    O",
+      "OOOOOOOOOOO",
     ];
-    const lc = getLinearConflict(rows);
-    // At most 2 (1 conflict pair * 2 pushes per conflict)
-    assert.ok(lc <= 4, `Expected at most 4 (2 conflict pairs), got ${lc}`);
-    assert.ok(lc % 2 === 0, `Linear conflict must be even, got ${lc}`);
+    assert.equal(getLinearConflict(rows), 2);
+  });
+});
+
+describe("linear conflict admissibility", () => {
+  const TIED_X_BOARD = [
+    "OOOOOOOO",
+    "O      O",
+    "O XX   O",
+    "O SS R O",
+    "OO     O",
+    "OOOOOOOO",
+  ];
+  const DETOUR_BOARD = [
+    "OOOOOOOO",
+    "O      O",
+    "O   R OO",
+    "O    O O",
+    "ObAOaB O",
+    "O  O   O",
+    "OOOOOOOO",
+  ];
+  const CROSSING_ROW_BOARD = [
+    "OOOOOOOO",
+    "O     OO",
+    "O   OR O",
+    "ObABa  O",
+    "OOO   OO",
+    "OOOOOOOO",
+  ];
+
+  it("ignores boxes whose label has several goals", () => {
+    // Either matching of the boxes to the goals costs 3 pushes. The one that
+    // crosses them costs no more than the one that does not, so nothing
+    // forces a detour.
+    const { pushBound, conflict, oracle } = boundsAt(
+      TIED_X_BOARD,
+      [2, 5],
+      [["X", 3, 5], ["X", 3, 3]],
+    );
+    assert.equal(pushBound, 3);
+    assert.equal(conflict, 0);
+    assert.equal(oracle.exactPushes, 3);
+    assert.equal(oracle.exactMoves, 10);
   });
 
-  it("is admissible: never exceeds the actual optimal push distance", () => {
-    // Simple 2-box puzzle where we know the optimal
-    const rows = [
-      "OOOOOOO",
-      "OSXXS O",
-      "O  R  O",
-      "O     O",
-      "OOOOOOO",
-    ];
-    const { board, boxes } = setupBoard(rows);
-    const heuristic = new AssignmentHeuristic(board);
-    const hPush = heuristic.evaluate(boxes);
-    const lc = heuristic.lastLinearConflict(boxes);
-    // The combined heuristic h_push + lc must be admissible
-    // For this simple puzzle, we just verify lc >= 0 and lc is even
-    assert.ok(lc >= 0, `Linear conflict must be non-negative, got ${lc}`);
-    assert.ok(lc % 2 === 0, `Linear conflict must be even, got ${lc}`);
-    assert.ok(Number.isFinite(hPush + lc), "Combined heuristic must be finite for solvable puzzle");
+  it("ignores pairs whose shortest route already leaves the line", () => {
+    // A and B cross on row 4, but the wall between A and its goal means A's
+    // shortest route already leaves the row, so it can pass B on the way.
+    const { pushBound, conflict, oracle } = boundsAt(
+      DETOUR_BOARD,
+      [2, 4],
+      [["A", 4, 2], ["B", 4, 5]],
+    );
+    assert.equal(pushBound, 12);
+    assert.equal(conflict, 0);
+    assert.equal(oracle.exactPushes, 12);
+    assert.equal(oracle.exactMoves, 36);
   });
+
+  // The first two boards need crossing detours. On the others the previous
+  // rule overestimated the push optimum in some states.
+  for (const [name, rows, crossing] of [
+    ["crossing row", CROSSING_ROW_BOARD, true],
+    ["crossing column", transpose(CROSSING_ROW_BOARD), true],
+    ["tied X", TIED_X_BOARD, false],
+    ["detour", DETOUR_BOARD, false],
+  ] as const) {
+    it(`never exceeds the pushes or moves left in any reachable state (${name})`, () => {
+      const { parsed, board, boxes } = setupBoard([...rows]);
+      const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+      // Uncached: a fallback cache hit does not refresh the assignment state.
+      const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+      let conflictStates = 0;
+      let tightStates = 0;
+      for (const state of allReachableStateCosts(board, robot, boxes).values()) {
+        if (state.exactMoves === null || state.exactPushes === null) continue;
+        const pushBound = heuristic.evaluate(state.boxes);
+        const conflict = heuristic.lastLinearConflict(state.boxes);
+        const walk = minimumManhattanWalkToPotentialPush(board, state.robot, state.boxes);
+        assert.ok(
+          pushBound + conflict <= state.exactPushes,
+          `h ${pushBound}+${conflict} exceeds ${state.exactPushes} pushes`,
+        );
+        assert.ok(
+          pushBound + conflict + walk <= state.exactMoves,
+          `h ${pushBound}+${conflict}+${walk} exceeds ${state.exactMoves} moves`,
+        );
+        if (conflict > 0) {
+          conflictStates += 1;
+          if (pushBound + conflict === state.exactPushes) tightStates += 1;
+        }
+      }
+      if (!crossing) return;
+      assert.ok(conflictStates > 0, "some solvable state must have a conflict");
+      assert.ok(tightStates > 0, "the conflict must be the whole push gap somewhere");
+    });
+  }
 });

@@ -24,6 +24,7 @@ import {
 } from "../../src/solver/search/ida-star.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import {
+  AssignmentHeuristic,
   assignmentLowerBound,
   minimumManhattanWalkToPotentialPush,
 } from "../../src/solver/search/heuristic.ts";
@@ -35,6 +36,7 @@ import { createExactStateCodec } from "../../src/solver/search/exact-state.ts";
 import { INTER_ROOMS } from "../fixtures/solver-v2/benchmark-corpus.ts";
 import {
   exactRemainingMoves,
+  allReachableStateCosts,
   allReachableStates,
 } from "../support/exact-solver-oracle.ts";
 
@@ -97,6 +99,40 @@ describe("exact move-cost oracle", () => {
     const result = exactRemainingMoves(board, robot, boxes);
     assert.equal(result.exactMoves, 0);
     assert.equal(result.exactPushes, 0);
+  });
+
+  it("all-state costs agree with the per-state search", () => {
+    const rows = [
+      "OOOOOOOO",
+      "O   O  O",
+      "O A R AO",
+      "OOO OOaO",
+      "O     aO",
+      "OOOOOOOO",
+    ];
+    const parsed = parsePuzzleRows(rows);
+    const board = compileSearchBoard(parsed);
+    const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const costs = allReachableStateCosts(board, robot, boxes);
+    const states = allReachableStates(board, robot, boxes);
+    assert.equal(costs.size, states.size);
+    let solvable = 0;
+    for (const [key, state] of states) {
+      const cost = costs.get(key);
+      assert.ok(cost, `missing state ${key}`);
+      assert.equal(cost.exactMoves, state.exactMoves);
+      if (state.exactMoves === null) {
+        assert.equal(cost.exactPushes, null);
+        continue;
+      }
+      solvable += 1;
+      // The push optimum can undercut the pushes of a move-optimal path.
+      assert.ok(cost.exactPushes !== null);
+      assert.ok(cost.exactPushes <= exactRemainingMoves(board, state.robot, state.boxes).exactPushes!);
+      assert.ok(cost.exactPushes >= assignmentLowerBound(board, state.boxes));
+    }
+    assert.ok(solvable > 30, `Expected solvable coverage; got ${solvable}`);
   });
 });
 
@@ -172,7 +208,7 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
     assert.ok(solvableChecked > 30);
   });
 
-  it("combined proof heuristic (push + walk) never exceeds exact moves", () => {
+  it("combined proof heuristic (push + linear conflict + walk) never exceeds exact moves", () => {
     const board = makeBoard([
       "OOOOOO",
       "ORXX O",
@@ -180,6 +216,8 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
       "O SS O",
       "OOOOOO",
     ]);
+    // Uncached: a fallback cache hit does not refresh the assignment state.
+    const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
     let solvableChecked = 0;
     let violations = 0;
 
@@ -195,9 +233,10 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
           if (oracleResult.exactMoves === null) continue;
           solvableChecked++;
 
-          const pushBound = assignmentLowerBound(board, boxes);
+          const pushBound = heuristic.evaluate(boxes);
+          const conflict = heuristic.lastLinearConflict(boxes);
           const walkBound = minimumManhattanWalkToPotentialPush(board, r, boxes);
-          const combined = pushBound + walkBound;
+          const combined = pushBound + conflict + walkBound;
 
           if (combined > oracleResult.exactMoves) {
             violations++;

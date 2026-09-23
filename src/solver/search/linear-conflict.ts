@@ -19,6 +19,9 @@ function collectAxisPairs(
 
   for (const [, state] of assignment) {
     const { boxCells, goalCells, columns } = state;
+    // A label with several goals can be matched differently by another
+    // assignment of the same cost, which may cross no pairs at all.
+    if (goalCells.length !== 1) continue;
     for (let i = 0; i < boxCells.length; i++) {
       const boxCell = boxCells[i];
       const goalCell = goalCells[columns[i]];
@@ -26,13 +29,14 @@ function collectAxisPairs(
       const goalLine = getLineCoord(goalCell);
       if (boxLine !== goalLine) continue;
 
-      const pair: BoxGoalPair = {
-        boxCell,
-        goalCell,
-        boxPos: getAxisCoord(boxCell),
-        goalPos: getAxisCoord(goalCell),
-        pushDist: board.reversePushDistancesByGoal.get(goalCell)?.[boxCell] ?? 0,
-      };
+      const boxPos = getAxisCoord(boxCell);
+      const goalPos = getAxisCoord(goalCell);
+      const pushDist = board.reversePushDistancesByGoal.get(goalCell)?.[boxCell] ?? -1;
+      // A box whose shortest route already leaves the line can step aside
+      // at no extra cost.
+      if (pushDist !== Math.abs(boxPos - goalPos)) continue;
+
+      const pair: BoxGoalPair = { boxCell, goalCell, boxPos, goalPos, pushDist };
       const list = lineMap.get(boxLine) ?? [];
       list.push(pair);
       lineMap.set(boxLine, list);
@@ -73,6 +77,19 @@ function collectAxisPairs(
   return totalConflicts;
 }
 
+/**
+ * Extra pushes forced by boxes that must pass each other on a row or column.
+ *
+ * Only pairs whose boxes both have a single goal of their label, on the same
+ * line, with a relaxed push distance equal to the straight distance, count.
+ * Such boxes are matched to that goal by every assignment. Two boxes that
+ * both stay on the line keep their order, so one box of each crossing pair
+ * must leave it; that takes a push off the line and one back, at least two
+ * pushes beyond its straight distance. Pairs are matched greedily so that
+ * each box pays for one pair per axis, and pushes across the line and along
+ * it are counted separately, so the row and column terms add. The result is
+ * therefore a lower bound on the pushes beyond the assignment cost.
+ */
 export function computeLinearConflict(
   board: CompiledSearchBoard,
   // The assignment contains box cells; retain this public argument for callers.
