@@ -36,7 +36,10 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     navigator.serviceWorker
       .register(workerUrl, { scope })
       .then((registration) => {
-        if (registration.waiting) {
+        // A first install also passes through "installed" with a waiting
+        // worker before it activates by itself. Only a worker waiting
+        // behind an active one is an update.
+        if (registration.waiting && registration.active) {
           notifyUpdateAvailable(registration.waiting);
         }
 
@@ -44,7 +47,11 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
           const newWorker = registration.installing;
           if (!newWorker) return;
           newWorker.addEventListener("statechange", () => {
-            if (newWorker.state === "installed" && registration.waiting) {
+            if (
+              newWorker.state === "installed" &&
+              registration.waiting &&
+              registration.active
+            ) {
               notifyUpdateAvailable(registration.waiting);
             }
           });

@@ -22,6 +22,12 @@ export function notifyUpdateAvailable(waitingWorker: ServiceWorker): void {
 }
 
 export function activateWaitingUpdate(waitingWorker: ServiceWorker): void {
+  // A worker that has already taken over ignores SKIP_WAITING, so no
+  // controller change would reload the page; load it directly.
+  if (waitingWorker.state === "activating" || waitingWorker.state === "activated") {
+    window.location.reload();
+    return;
+  }
   waitingWorker.postMessage({ type: "SKIP_WAITING" });
 }
 

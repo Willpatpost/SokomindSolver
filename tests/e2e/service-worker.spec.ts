@@ -26,6 +26,21 @@ async function waitForServiceWorkerControl(page: Page): Promise<void> {
     .not.toBeNull();
 }
 
+test("a first install does not offer an update", async ({ page }) => {
+  await page.goto("./");
+  await expect(page.getByRole("heading", { name: "Sokomind" })).toBeVisible();
+  await waitForServiceWorkerControl(page);
+  await expect
+    .poll(() =>
+      page.evaluate(async () =>
+        (await navigator.serviceWorker.getRegistration())?.active?.state ?? null),
+    )
+    .toBe("activated");
+
+  await expect(page.getByText("A new version of Sokomind is available.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reload" })).toHaveCount(0);
+});
+
 test("an online navigation 404 cannot poison the offline app shell", async ({
   context,
   page,
