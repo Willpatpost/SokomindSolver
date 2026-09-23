@@ -26,7 +26,8 @@ Hardware and memory can reduce that ceiling. Discovery reserves 256 MiB per
 lane; browser Quality/Optimal proof reserves 512 MiB per lane plus 128 MiB for
 the coordinator. Available partitions can further reduce occupied workers.
 Non-browser proof parallelism defaults to one; deterministic adapter runs are
-serial. The [performance roadmap](SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md)
+serial. Cancelling Optimal proof returns cancelled with one proof lane or many,
+never the discovery incumbent. The [performance roadmap](SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md)
 tracks qualification and the remaining scheduler work.
 
 Parallel proof uses a shared pending first-push queue with one active task per

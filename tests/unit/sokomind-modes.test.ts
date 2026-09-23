@@ -19,6 +19,7 @@ import type {
 } from "../../src/solver/contracts.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 import { runClassicSearch } from "../../src/solver/search/engine.ts";
+import { isSolverResult } from "../../src/solver/validation.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -275,6 +276,32 @@ describe("runSequentialProof", () => {
         "bounded proof gap must be non-negative",
       );
     }
+  });
+
+  it("sequential proof returns cancelled when aborted mid-proof", async () => {
+    const req = requestFromRows(ONE_BOX);
+    const greedyResult = await runClassicSearch(req, oracleContext(), { strategy: "greedy" });
+    assert.equal(greedyResult.status, "solved");
+    if (greedyResult.status !== "solved") return;
+
+    const ac = new AbortController();
+    const ctx: SolverExecutionContext = {
+      signal: ac.signal,
+      reportProgress: (progress) => {
+        if (progress.detail === "Preparing exact A* search") ac.abort();
+      },
+      now: () => performance.now(),
+    };
+    const result = await runSequentialProof(
+      req,
+      ctx,
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal", proofAlgorithm: "astar" },
+      greedyResult,
+    );
+
+    assert.equal(ac.signal.aborted, true);
+    assert.equal(result.status, "cancelled");
+    assert.ok(isSolverResult(result));
   });
 
   it("non-solved discovery passes through unchanged", async () => {

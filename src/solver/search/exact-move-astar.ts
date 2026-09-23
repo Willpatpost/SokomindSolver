@@ -1818,8 +1818,11 @@ export async function runExactMoveAStar(
         },
       };
       if (incumbentSolution && U < Infinity) {
+        // An optimal proof must travel with a proven solution, as in the
+        // limit branch above.
+        const proven = lastLowerBound >= U;
         const boundedProof: SolverProof =
-          lastLowerBound >= U
+          proven
             ? {
                 objective: request.objective,
                 kind: "optimal",
@@ -1838,7 +1841,9 @@ export async function runExactMoveAStar(
               };
         return {
           status: "solved",
-          solution: incumbentSolution,
+          solution: proven
+            ? { ...incumbentSolution, optimality: "proven" }
+            : incumbentSolution,
           metrics: cancelMetrics,
           proof: boundedProof,
         };

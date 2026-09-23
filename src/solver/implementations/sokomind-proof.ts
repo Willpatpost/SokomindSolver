@@ -237,6 +237,11 @@ export async function runSequentialProof(
       elapsedMs: proofPlanningElapsedMs + proofResult.metrics.elapsedMs,
     },
   );
+  // Match the concurrent coordinator: cancellation reports cancelled rather
+  // than the discovery incumbent the kernel hands back.
+  if (context.signal.aborted) {
+    return Object.freeze({ status: "cancelled" as const, metrics: combinedMetrics });
+  }
   if (proofResult.status === "solved") {
     return withMetrics(proofResult, combinedMetrics);
   }

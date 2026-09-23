@@ -326,6 +326,40 @@ describe("AC6: cutoff with incumbent returns bounded proof", () => {
     assert.deepStrictEqual(issues, [], `Proof validation issues: ${issues.join("; ")}`);
   });
 
+  it("cancel after a tight root bound returns a valid result", async () => {
+    const req = requestFromRows(["OOOOOOO", "OR X SO", "OOOOOOO"]);
+    const incumbent: SolverSolution = {
+      steps: [
+        { direction: "right", kind: "walk" },
+        { direction: "right", kind: "push" },
+        { direction: "right", kind: "push" },
+      ],
+      moves: 3,
+      pushes: 2,
+      objective: { kind: "moves" },
+      objectiveScore: 3,
+      optimality: "unknown",
+    };
+    const ac = new AbortController();
+    const context: SolverExecutionContext = {
+      signal: ac.signal,
+      reportProgress: (progress) => {
+        if (progress.detail === "Preparing exact A* search") ac.abort();
+      },
+      now: () => performance.now(),
+    };
+
+    const result = await runExactMoveAStar(req, context, {
+      incumbent: { solution: incumbent, cost: 3 },
+    });
+
+    assert.equal(ac.signal.aborted, true);
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") throw new Error("unreachable");
+    const issues = collectProofIssues(result.proof, result.solution);
+    assert.deepStrictEqual(issues, [], `Proof validation issues: ${issues.join("; ")}`);
+  });
+
   it("never lets a cutoff heap peek overstate the active-node oracle bound", async () => {
     const req = requestFromRows(BOARD_ROWS);
     const optimum = assertSolved(await runExactMoveAStar(req, oracleContext()));

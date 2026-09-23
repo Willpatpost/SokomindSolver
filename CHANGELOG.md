@@ -76,3 +76,7 @@ published a stable release.
 - A zero proof gap is labelled optimal only for a completed optimal proof.
   Live progress and bounded results now show it as bounds met, proof
   incomplete.
+- Cancelling a single-lane Optimal proof now returns cancelled, as parallel
+  proof already did, instead of the discovery incumbent. Exact A* cancelled
+  after its bound already meets the incumbent returns that solution as proven
+  with its optimal proof instead of an internally inconsistent result.
