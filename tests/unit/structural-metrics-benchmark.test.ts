@@ -204,6 +204,10 @@ test("benchmark: per-family V2 structural profiles", () => {
       const grid = rasterizeBlueprint(bp);
       familyMetrics.push(analyzeGrid(grid));
     }
+    assert.ok(familyMetrics.length > 0, `${family}: no blueprints generated`);
+    for (const m of familyMetrics) {
+      assert.equal(m.connectedComponents, 1, `${family}: V2 boards should be connected`);
+    }
     printSummary(`V2 ${family}`, summarize(familyMetrics));
   }
 });
@@ -240,6 +244,12 @@ test("benchmark: V2 blueprint fidelity", () => {
       const grid = rasterizeBlueprint(bp);
       const m = analyzeGrid(grid);
       const f = analyzeBlueprintFidelity(bp, m);
+      assert.equal(f.intendedRoomCount, bp.rooms.length);
+      assert.equal(f.passageLengths.length, f.intendedPassageCount);
+      assert.ok(
+        f.intendedPassageCount >= f.intendedRoomCount - 1,
+        `${family} seed ${seed}: ${f.intendedPassageCount} passages cannot connect ${f.intendedRoomCount} rooms`,
+      );
 
       totalIntended += f.intendedRoomCount;
       totalDetected += f.detectedRegionCount;
@@ -249,6 +259,8 @@ test("benchmark: V2 blueprint fidelity", () => {
       count++;
     }
   }
+
+  assert.ok(count > 0, "no V2 blueprints generated");
 
   const avgPassageLength =
     passageLengths.length > 0

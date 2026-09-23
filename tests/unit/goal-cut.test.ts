@@ -116,46 +116,48 @@ describe("GoalCutEvaluator", () => {
     );
   });
 
-  it("detects bottleneck demand on articulation-point board", () => {
-    const parsed = parsePuzzleRows(BOTTLENECK_BOARD);
-    const board = compileSearchBoard(parsed);
+  it("detects bottleneck demand when two boxes must cross one tunnel", () => {
+    const { board, boxes } = compileRows(SHARED_TUNNEL_BOARD);
     const topology = board.topology;
-    if (!hasPotentialGoalCut(board, topology)) return;
+    assert.ok(hasPotentialGoalCut(board, topology));
 
     const evaluator = new GoalCutEvaluator(board, topology);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
     const heuristic = new AssignmentHeuristic(board);
     heuristic.evaluate(boxes);
     const states = heuristic.lastAssignmentStates;
     assert.notEqual(states, null);
 
-    const value = evaluator.evaluate(states!);
-    assert.ok(value >= 0, "goal-cut must be non-negative");
+    assert.equal(evaluator.evaluate(states!), 2);
     assert.equal(evaluator.stats.evaluations, 1);
   });
 
-  it("returns zero for solved state", () => {
-    const rows = [
-      "OOOOO",
-      "O   O",
-      "OR  O",
-      "O   O",
-      "OOOOO",
-    ];
-    const parsed = parsePuzzleRows(rows);
-    const board = compileSearchBoard(parsed);
+  it("adds nothing when each box stays on its side of the bottleneck", () => {
+    const { board, boxes } = compileRows(BOTTLENECK_BOARD);
     const topology = board.topology;
-    if (!hasPotentialGoalCut(board, topology)) return;
+    assert.ok(hasPotentialGoalCut(board, topology));
 
     const evaluator = new GoalCutEvaluator(board, topology);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
     const heuristic = new AssignmentHeuristic(board);
     heuristic.evaluate(boxes);
-    const states = heuristic.lastAssignmentStates;
-    if (!states || states.size === 0) return;
+    assert.equal(evaluator.evaluate(heuristic.lastAssignmentStates!), 0);
+  });
 
-    const value = evaluator.evaluate(states);
-    assert.equal(value, 0, "solved state should have zero goal-cut");
+  it("returns zero for solved state", () => {
+    const { board, boxes } = compileRows(SHARED_TUNNEL_BOARD);
+    const topology = board.topology;
+    assert.ok(hasPotentialGoalCut(board, topology));
+
+    const goalCells = board.goalCellsByLabel.get("A")!;
+    assert.equal(goalCells.length, boxes.length);
+    const solvedBoxes = boxes.map((box, index) => ({ ...box, cell: goalCells[index] }));
+
+    const evaluator = new GoalCutEvaluator(board, topology);
+    const heuristic = new AssignmentHeuristic(board);
+    assert.equal(heuristic.evaluate(solvedBoxes), 0);
+    const states = heuristic.lastAssignmentStates;
+    assert.ok(states && states.size > 0);
+
+    assert.equal(evaluator.evaluate(states), 0, "solved state should have zero goal-cut");
   });
 
   it("is admissible — does not over-count on simple tunnel board", async () => {
@@ -182,13 +184,11 @@ describe("GoalCutEvaluator", () => {
   });
 
   it("stats accumulate across evaluations", () => {
-    const parsed = parsePuzzleRows(BOTTLENECK_BOARD);
-    const board = compileSearchBoard(parsed);
+    const { board, boxes } = compileRows(BOTTLENECK_BOARD);
     const topology = board.topology;
-    if (!hasPotentialGoalCut(board, topology)) return;
+    assert.ok(hasPotentialGoalCut(board, topology));
 
     const evaluator = new GoalCutEvaluator(board, topology);
-    const boxes = toDenseBoxes(board, parsed.initialBoxes);
     const heuristic = new AssignmentHeuristic(board);
     heuristic.evaluate(boxes);
     const states = heuristic.lastAssignmentStates!;

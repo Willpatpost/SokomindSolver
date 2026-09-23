@@ -63,15 +63,16 @@ test("roles: same seed produces identical roles", () => {
   );
 });
 
-test("roles: different seeds may produce different roles", () => {
-  const params1 = makeParams({ seed: 100, family: "hub", boardWidth: 20, boardHeight: 20, minRooms: 4, maxRooms: 5 });
-  const params2 = makeParams({ seed: 200, family: "hub", boardWidth: 20, boardHeight: 20, minRooms: 4, maxRooms: 5 });
-  const a = requireFunctional(params1);
-  const b = requireFunctional(params2);
-  if (!a || !b) return;
-  const rolesA = a.rooms.map((r) => r.role).join(",");
-  const rolesB = b.rooms.map((r) => r.role).join(",");
-  assert.ok(true, `roles A: ${rolesA}, roles B: ${rolesB}`);
+test("roles: different seeds produce different role mixes", () => {
+  const signatures = new Set<string>();
+  for (let seed = 100; seed <= 600; seed += 100) {
+    const fb = requireFunctional(
+      makeParams({ seed, family: "hub", boardWidth: 20, boardHeight: 20, minRooms: 4, maxRooms: 5 }),
+    );
+    assert.ok(fb, `seed ${seed} should produce a functional blueprint`);
+    signatures.add(fb.rooms.map((r) => r.role).sort().join(","));
+  }
+  assert.ok(signatures.size >= 2, `expected at least 2 role mixes, got ${[...signatures].join(" | ")}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -500,12 +501,12 @@ test("solved: different styles produce goals in different positions", () => {
     maxRoomSize: 4,
   });
   const fb = requireFunctional(params, 4);
-  if (!fb) return;
+  assert.ok(fb);
 
   const concentrated = placeGoals(fb, makeGoalParams({ seed: 2000, boxCount: 4, goalStyle: "concentrated" }));
   const multiRoom = placeGoals(fb, makeGoalParams({ seed: 2000, boxCount: 4, goalStyle: "multi-room" }));
 
-  if (!concentrated || !multiRoom) return;
+  assert.ok(concentrated && multiRoom);
 
   const concKeys = new Set(concentrated.goals.map((g) => `${g.row},${g.column}`));
   const multiKeys = new Set(multiRoom.goals.map((g) => `${g.row},${g.column}`));
@@ -514,7 +515,12 @@ test("solved: different styles produce goals in different positions", () => {
   for (const k of concKeys) {
     if (multiKeys.has(k)) same++;
   }
-  assert.ok(true, `concentrated vs multi-room overlap: ${same}/${concentrated.goals.length}`);
+  const roomCount = (goals: readonly { roomId: number }[]) => new Set(goals.map((g) => g.roomId)).size;
+  assert.ok(
+    roomCount(concentrated.goals) < roomCount(multiRoom.goals),
+    `concentrated goals span ${roomCount(concentrated.goals)} rooms, multi-room ${roomCount(multiRoom.goals)}`,
+  );
+  assert.ok(same < multiRoom.goals.length, `concentrated vs multi-room overlap: ${same}/${multiRoom.goals.length}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -585,10 +591,8 @@ test("benchmark: solved blueprint samples across families", () => {
     });
     const gp = makeGoalParams({ seed: 3000, boxCount: 3 });
     const solved = requireSolved(params, gp);
-    if (!solved) {
-      console.log(`\n  ${family}: failed to generate`);
-      continue;
-    }
+    assert.ok(solved, `${family}: failed to generate`);
+    assert.equal(solved.goals.length, gp.boxCount);
 
     const ascii = solvedBlueprintToAscii(solved);
     const roles = solved.blueprint.rooms
@@ -635,6 +639,9 @@ test("benchmark: role distribution across families and seeds", () => {
       }
     }
 
+    assert.ok(total > 0, `${family}: no functional blueprints`);
+    assert.ok((roleCounts["goal-room"] ?? 0) > 0, `${family}: no goal rooms`);
+
     const parts = Object.entries(roleCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([role, count]) => `${role}=${count}`)
@@ -667,9 +674,12 @@ test("benchmark: goal style distribution across families", () => {
       const solved = requireSolved(params, gp);
       if (!solved) continue;
 
+      assert.equal(solved.goals.length, gp.boxCount);
       styleCounts[solved.goalStyle] = (styleCounts[solved.goalStyle] ?? 0) + 1;
       total++;
     }
+
+    assert.ok(total > 0, `${family}: no solved blueprints`);
 
     const parts = Object.entries(styleCounts)
       .sort((a, b) => b[1] - a[1])
