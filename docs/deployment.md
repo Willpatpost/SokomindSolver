@@ -100,9 +100,11 @@ encoded service-worker registration
 scope, so two GitHub Pages projects on the same origin cannot prune each
 other's data. Installation bypasses the HTTP cache while staging the shell,
 route code, and shared dependencies; activation validates and prunes only the
-current scope's older generation. Progress/Solver dialog chunks, both solver
-workers, and the generated 50-board puzzle shards remain runtime-loaded and are
-cached only after use. Static tests derive each cold route's eager JavaScript
+current scope's older generation. The Generator, Progress, Replay comparison
+and Solver dialog chunks, the solver workers, and the generated 50-board puzzle
+shards remain runtime-loaded and are cached only after use, so each dialog
+opens offline only after it has opened once online. The install-time precache
+is capped at 250 KB gzip. Static tests derive each cold route's eager JavaScript
 dependency closure and associated styles, include the largest board shard in
 Play's budget, reject board data in the Home closure, and enforce per-shard gzip
 budgets. The complete optional script/style inventory is capped at 418 KB gzip;

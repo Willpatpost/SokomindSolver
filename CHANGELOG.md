@@ -90,6 +90,11 @@ published a stable release.
   so a click near a cell's edge could pick its neighbour. Pieces on a zoomed
   board also slide in from the adjacent cell instead of from as many cells
   away as the zoom factor.
+- A first visit no longer downloads the puzzle generator and replay comparison
+  dialogs for offline use, about 54 KB gzip that play-only visitors never
+  needed. As the architecture notes already described, optional dialogs are
+  now cached the first time they open, so each needs one online open before it
+  works offline. A static test caps the install-time precache.
 - A first visit no longer shows "A new version of Sokomind is available".
   The first worker briefly waits before activating by itself, which was
   mistaken for an update; only a worker waiting behind an active one counts

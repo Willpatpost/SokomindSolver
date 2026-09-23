@@ -82,8 +82,12 @@ function assetManifestPlugin(): Plugin {
     ["./icon-512.png", "icon-512.png"],
     ["./manifest.webmanifest", "manifest.webmanifest"],
   ];
+  // Installation precaches the shell, route code and shared dependencies.
+  // Optional dialogs, workers and board shards are cached on first use.
   const runtimeOnlyAssetPrefixes = [
+    "GeneratorDialog-",
     "ProgressDialog-",
+    "ReplayComparisonDialog-",
     "SolverDialog-",
     "solver.worker-",
     "sokomind-engine.worker-",

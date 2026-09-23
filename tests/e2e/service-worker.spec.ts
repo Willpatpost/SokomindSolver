@@ -107,7 +107,9 @@ test("a runtime dialog chunk fills on demand and reopens offline", async ({
 
   expect(state).not.toBeNull();
   for (const lazyPattern of [
+    /GeneratorDialog-/,
     /ProgressDialog-/,
+    /ReplayComparisonDialog-/,
     /SolverDialog-/,
     /solver\.worker-/,
     /sokomind-engine\.worker-/,

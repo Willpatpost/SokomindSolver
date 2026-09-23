@@ -85,6 +85,9 @@ const DELIVERY_BUDGETS = Object.freeze({
   // schedule trace, macro intermediate retention, and two-box rescheduling.
   engineWorkerGzipBytes: 95_000,
   puzzleShardGzipBytes: 10_000,
+  // Everything a first visit downloads at install. Measured about 224 KB once
+  // the generator and replay comparison dialogs became runtime-loaded.
+  installPrecacheGzipBytes: 250_000,
 });
 
 function assertWithinBudget(label, actual, maximum) {
@@ -282,7 +285,9 @@ test("asset manifest lists all hashed build assets", async () => {
     .sort();
   assert.deepEqual([...entries].sort(), emittedAssets);
   for (const lazyPattern of [
+    /GeneratorDialog-/,
     /ProgressDialog-/,
+    /ReplayComparisonDialog-/,
     /SolverDialog-/,
     /solver\.worker-/,
     /sokomind-engine\.worker-/,
@@ -457,6 +462,16 @@ test("production delivery stays within reviewed gzip budgets", async () => {
     "cold Play route without closed dialogs",
     namedAssetsGzipBytes(playRouteAssets) + largestPuzzleShard.gzipBytes,
     DELIVERY_BUDGETS.playRouteGzipBytes,
+  );
+
+  const assetManifest = JSON.parse(await readBuildFile("asset-manifest.json"));
+  const precacheNames = new Set(
+    assetManifest.precache.map((entry) => entry.replace(/^\.\/assets\//u, "")),
+  );
+  assertWithinBudget(
+    "install-time precache scripts and styles",
+    namedAssetsGzipBytes(precacheNames),
+    DELIVERY_BUDGETS.installPrecacheGzipBytes,
   );
 
   const solverWorker = assets.find((asset) => /^solver\.worker-/u.test(asset.name));
