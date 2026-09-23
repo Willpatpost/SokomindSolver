@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import type { Direction } from "@/src/core";
 
 const KEY_DIRECTIONS: Readonly<Record<string, Direction>> = {
@@ -50,71 +50,73 @@ export function useGameKeyboard({
   onToggleFavorite,
   onToggleZen,
 }: GameKeyboardOptions) {
-  useEffect(() => {
-    if (!enabled) return;
+  // Reads the latest options on each key press, so callers may pass inline
+  // callbacks without rebinding the window listener on every render.
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (event.defaultPrevented) return;
+    if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+    if (document.querySelector("dialog[open], [role='dialog']")) return;
 
-    function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      if (event.defaultPrevented) return;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (document.querySelector("dialog[open], [role='dialog']")) return;
+    if (event.key === "?") {
+      event.preventDefault();
+      onShowShortcuts?.();
+      return;
+    }
+    if ((event.key === "p" || event.key === "P") && onPause) {
+      event.preventDefault();
+      onPause();
+      return;
+    }
+    if (!gameplayEnabled) return;
 
-      if (event.key === "?") {
-        event.preventDefault();
-        onShowShortcuts?.();
-        return;
-      }
-      if ((event.key === "p" || event.key === "P") && onPause) {
-        event.preventDefault();
-        onPause();
-        return;
-      }
-      if (!gameplayEnabled) return;
-
-      if ((event.ctrlKey || event.metaKey) && event.key === "z") {
-        event.preventDefault();
-        onUndo();
-        return;
-      }
-
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
-
-      const direction = KEY_DIRECTIONS[event.key];
-      if (direction) {
-        event.preventDefault();
-        onBeforeMove?.();
-        onMove(direction);
-        return;
-      }
-
-      if (event.key === "u" || event.key === "U") {
-        event.preventDefault();
-        onUndo();
-      } else if (event.key === "r" || event.key === "R") {
-        event.preventDefault();
-        onReset();
-      } else if ((event.key === "h" || event.key === "H") && onHint) {
-        event.preventDefault();
-        onHint();
-      } else if (event.key === "[" || event.key === "PageUp") {
-        event.preventDefault();
-        onPreviousPuzzle?.();
-      } else if (event.key === "]" || event.key === "PageDown") {
-        event.preventDefault();
-        onNextPuzzle?.();
-      } else if ((event.key === "n" || event.key === "N") && onNextUnsolved) {
-        event.preventDefault();
-        onNextUnsolved();
-      } else if ((event.key === "f" || event.key === "F") && !event.shiftKey && onToggleFavorite) {
-        event.preventDefault();
-        onToggleFavorite();
-      } else if ((event.key === "z" || event.key === "Z") && !event.shiftKey && onToggleZen) {
-        event.preventDefault();
-        onToggleZen();
-      }
+    if ((event.ctrlKey || event.metaKey) && event.key === "z") {
+      event.preventDefault();
+      onUndo();
+      return;
     }
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, gameplayEnabled, onBeforeMove, onHint, onMove, onNextPuzzle, onNextUnsolved, onPause, onPreviousPuzzle, onReset, onShowShortcuts, onToggleFavorite, onToggleZen, onUndo]);
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const direction = KEY_DIRECTIONS[event.key];
+    if (direction) {
+      event.preventDefault();
+      onBeforeMove?.();
+      onMove(direction);
+      return;
+    }
+
+    if (event.key === "u" || event.key === "U") {
+      event.preventDefault();
+      onUndo();
+    } else if (event.key === "r" || event.key === "R") {
+      event.preventDefault();
+      onReset();
+    } else if ((event.key === "h" || event.key === "H") && onHint) {
+      event.preventDefault();
+      onHint();
+    } else if (event.key === "[" || event.key === "PageUp") {
+      event.preventDefault();
+      onPreviousPuzzle?.();
+    } else if (event.key === "]" || event.key === "PageDown") {
+      event.preventDefault();
+      onNextPuzzle?.();
+    } else if ((event.key === "n" || event.key === "N") && onNextUnsolved) {
+      event.preventDefault();
+      onNextUnsolved();
+    } else if ((event.key === "f" || event.key === "F") && !event.shiftKey && onToggleFavorite) {
+      event.preventDefault();
+      onToggleFavorite();
+    } else if ((event.key === "z" || event.key === "Z") && !event.shiftKey && onToggleZen) {
+      event.preventDefault();
+      onToggleZen();
+    }
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+    const listener = (event: KeyboardEvent) => onKeyDown(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [enabled]);
 }

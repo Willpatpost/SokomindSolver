@@ -55,6 +55,10 @@ published a stable release.
   walk read a session ref that only updates after React re-renders, saw no
   move after the first step and stopped; it now continues on the mover's own
   result and cancels when input is disabled.
+- Swipes no longer vanish when the play timer ticks mid-gesture, and the game
+  keyboard listener is no longer removed and re-added on every render. Both
+  hooks now read their latest callbacks through effect events, so inline
+  callbacks from the play page no longer rebind their listeners.
 - Exact pattern-database combination counts no longer wrap at 32 bits on large
   valid custom boards, and oversized optional tables safely fall back to the
   remaining admissible heuristics.

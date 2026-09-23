@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useEffectEvent, type RefObject } from "react";
 import type { Direction } from "@/src/core";
 import { resolveSwipeDirection } from "./swipe-direction";
 
@@ -13,6 +13,10 @@ export function useSwipeControls(
   options: UseSwipeControlsOptions,
 ): void {
   const { enabled, onSwipe, threshold = 36 } = options;
+  // Callers pass fresh callbacks on every render. Keeping them out of the
+  // effect's dependencies stops a re-render (such as a timer tick) from
+  // rebinding the listeners and dropping a gesture in progress.
+  const emitSwipe = useEffectEvent((direction: Direction) => onSwipe(direction));
 
   useEffect(() => {
     const element = ref.current;
@@ -62,7 +66,7 @@ export function useSwipeControls(
         touch.clientY - startY,
         threshold,
       );
-      if (direction) onSwipe(direction);
+      if (direction) emitSwipe(direction);
     };
 
     const onTouchCancel = () => {
@@ -80,5 +84,5 @@ export function useSwipeControls(
       element.removeEventListener("touchend", onTouchEnd);
       element.removeEventListener("touchcancel", onTouchCancel);
     };
-  }, [ref, enabled, onSwipe, threshold]);
+  }, [ref, enabled, threshold]);
 }
