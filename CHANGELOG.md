@@ -58,6 +58,11 @@ published a stable release.
   opposite floor neighbours, so the flag was never set and the prune never ran.
   Solver results are unchanged. A dead-end test on its own would not be a safe
   replacement, because it ignores push direction and goals inside the pocket.
+- The Sokomind engine worker now rejects search commands for algorithms other
+  than the five with typed payloads, and treats a result whose status is not
+  `solved`, `cutoff`, `cancelled` or `failed` as a malformed message. Both
+  checks accepted any string before. Production plans send only those
+  algorithms, and the engine emits only those statuses.
 
 ### Fixed
 

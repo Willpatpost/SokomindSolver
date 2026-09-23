@@ -198,7 +198,6 @@ describe("Sokomind Solver adapter", () => {
           queueMicrotask(() => {
             self.emit({
               type: "done",
-              status: "exhausted",
               visited: 0,
               generated: 0,
             });
@@ -231,7 +230,7 @@ describe("Sokomind Solver adapter", () => {
           peak = Math.max(peak, active);
           queueMicrotask(() => {
             active -= 1;
-            self.emit({ type: "done", status: "exhausted", visited: 0, generated: 0 });
+            self.emit({ type: "done", visited: 0, generated: 0 });
           });
         }),
       });
@@ -735,7 +734,7 @@ describe("Sokomind Solver adapter", () => {
       createWorker: () =>
         new ScriptedWorker((self) => {
           queueMicrotask(() => {
-            self.emit({ type: "done", status: "exhausted", visited: 0, generated: 0 });
+            self.emit({ type: "done", visited: 0, generated: 0 });
             // The deadline passes after discovery ends but before the solver
             // can start its complete fallback search.
             now = 1_000;
@@ -814,7 +813,7 @@ describe("Sokomind Solver adapter", () => {
           algorithms.push(algorithm);
           if (algorithm === "analyze-puzzle") {
             queueMicrotask(() => {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
             });
           } else if (algorithm !== "plan-macro-beam") {
             queueMicrotask(() => {
@@ -872,7 +871,6 @@ describe("Sokomind Solver adapter", () => {
             if (algorithm === "analyze-puzzle") {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 analysis: {
                   preparedBoard,
                   difficulty: "complex",
@@ -891,7 +889,6 @@ describe("Sokomind Solver adapter", () => {
             if (algorithm === "plan-macro-beam") {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 visited: 1,
                 generated: 1,
                 checkpoint: {
@@ -916,7 +913,7 @@ describe("Sokomind Solver adapter", () => {
                 status:
                   typeof command.payload.seed === "number"
                     ? "solved"
-                    : "exhausted",
+                    : undefined,
                 path:
                   typeof command.payload.seed === "number" ? ["Down"] : null,
                 visited: 1,
@@ -972,13 +969,12 @@ describe("Sokomind Solver adapter", () => {
           const algorithm = command.payload.algorithm;
           queueMicrotask(() => {
             if (command.mode !== "search") {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
               return;
             }
             if (algorithm === "analyze-puzzle") {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 analysis: {
                   preparedBoard,
                   recommendations: { reverseWorkerLimit: 0 },
@@ -989,7 +985,6 @@ describe("Sokomind Solver adapter", () => {
             if (algorithm === "plan-macro-beam") {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 checkpoint: {
                   state: {
                     rows: LARGE_ONE_TYPED_BOX.rows,
@@ -1039,7 +1034,7 @@ describe("Sokomind Solver adapter", () => {
           algorithms.push(algorithm);
           queueMicrotask(() => {
             if (algorithm === "analyze-puzzle") {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
             } else {
               self.emit({
                 type: "done",
@@ -1074,7 +1069,7 @@ describe("Sokomind Solver adapter", () => {
           algorithms.push(algorithm);
           queueMicrotask(() => {
             if (algorithm === "analyze-puzzle") {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
             } else {
               self.emit({
                 type: "done",
@@ -1110,7 +1105,7 @@ describe("Sokomind Solver adapter", () => {
           const algorithm = command.payload.algorithm;
           queueMicrotask(() => {
             if (algorithm === "analyze-puzzle") {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
             } else if (algorithm === "plan-macro-beam") {
               structuralGeneratedBudgets.push(
                 command.payload.maxGenerated,
@@ -1165,7 +1160,7 @@ describe("Sokomind Solver adapter", () => {
           const algorithm = command.payload.algorithm;
           queueMicrotask(() => {
             if (algorithm === "analyze-puzzle") {
-              self.emit({ type: "done", status: "exhausted" });
+              self.emit({ type: "done" });
               return;
             }
             if (algorithm === "plan-macro-beam") {
@@ -1217,7 +1212,6 @@ describe("Sokomind Solver adapter", () => {
             if (command.mode === "search") {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 visited: 1,
                 generated: 1,
               });
@@ -1321,7 +1315,6 @@ describe("Sokomind Solver adapter", () => {
           queueMicrotask(() => {
             self.emit({
               type: "progress",
-              status: "searching",
               visited: 1,
               generated,
               retained: 1,
@@ -1418,7 +1411,6 @@ describe("Sokomind Solver adapter", () => {
           queueMicrotask(() => {
             self.emit({
               type: "progress",
-              status: "searching",
               visited: 1,
               generated: 1,
               retained: 1,
@@ -1531,7 +1523,6 @@ describe("Sokomind Solver adapter", () => {
           queueMicrotask(() => {
             self.emit({
               type: "progress",
-              status: "searching",
               visited: 0,
               generated: 0,
               frontier: 1,
@@ -1540,7 +1531,6 @@ describe("Sokomind Solver adapter", () => {
             queueMicrotask(() => {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 visited: 0,
                 generated: 0,
                 frontier: 0,
@@ -1588,7 +1578,6 @@ describe("Sokomind Solver adapter", () => {
             queueMicrotask(() => {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 visited: 0,
                 generated: 0,
                 frontier: 0,
@@ -1665,7 +1654,6 @@ describe("Sokomind Solver adapter", () => {
           queueMicrotask(() => {
             self.emit({
               type: "progress",
-              status: "searching",
               visited: 7,
               generated: 9,
               frontier: 2,
@@ -1673,7 +1661,6 @@ describe("Sokomind Solver adapter", () => {
             queueMicrotask(() => {
               self.emit({
                 type: "done",
-                status: "exhausted",
                 visited: 7,
                 generated: 9,
                 frontier: 0,

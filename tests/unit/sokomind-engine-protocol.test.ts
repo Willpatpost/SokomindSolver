@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 
 import {
   dispatchEngineCommand,
+  ENGINE_SEARCH_ALGORITHMS,
+  ENGINE_TERMINAL_STATUSES,
   isEngineCommand,
   isEngineResult,
   type EnginePayload,
@@ -92,6 +95,37 @@ describe("Sokomind engine worker protocol", () => {
     );
   });
 
+  it("accepts only the search algorithms with typed payloads", () => {
+    assert.deepEqual([...ENGINE_SEARCH_ALGORITHMS].sort(), [
+      "analyze-puzzle",
+      "plan-macro-beam",
+      "solution-box-reschedule",
+      "solution-window-rewrite",
+      "ultimate",
+    ]);
+    for (const algorithm of ENGINE_SEARCH_ALGORITHMS) {
+      assert.equal(
+        isEngineCommand({
+          mode: "search",
+          payload: { algorithm, state: VALID_LEGACY_STATE },
+        }),
+        true,
+        algorithm,
+      );
+    }
+    // The engine implements these, but only direct callers of search() may use them.
+    for (const algorithm of ["push-ida-star", "fess", "bfs", "bridge-astar", "ULTIMATE"]) {
+      assert.equal(
+        isEngineCommand({
+          mode: "search",
+          payload: { algorithm, state: VALID_LEGACY_STATE },
+        }),
+        false,
+        algorithm,
+      );
+    }
+  });
+
   it("validates only the stable prepared-board envelope", () => {
     const preparedBoard = {
       schemaVersion: 3,
@@ -152,6 +186,30 @@ describe("Sokomind engine worker protocol", () => {
       true,
     );
     assert.equal(isEngineResult({ type: "done", checkpoints: {} }), false);
+  });
+
+  it("accepts only the engine's terminal statuses", () => {
+    for (const status of ENGINE_TERMINAL_STATUSES) {
+      assert.equal(isEngineResult({ type: "done", status }), true, status);
+    }
+    for (const status of ["solvd", "exhausted", "proven-unsolvable", "searching", 4]) {
+      assert.equal(isEngineResult({ type: "done", status }), false, String(status));
+    }
+    assert.equal(isEngineResult({ type: "progress", status: "searching" }), false);
+  });
+
+  it("lists the same terminal statuses as the engine", async () => {
+    const source = await readFile(
+      new URL(
+        "../../src/solver/implementations/sokomind-engine/source/solver-search.js",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const body = /const TERMINAL_STATUS = Object\.freeze\(\{([^}]*)\}\);/u.exec(source)?.[1];
+    assert.ok(body, "TERMINAL_STATUS declaration");
+    const statuses = [...body.matchAll(/:\s*"([^"]+)"/gu)].map((match) => match[1]);
+    assert.deepEqual(statuses, [...ENGINE_TERMINAL_STATUSES]);
   });
 
   it("rejects negative or fractional engine counters", () => {
@@ -370,6 +428,7 @@ describe("Sokomind engine worker protocol", () => {
       { path: null, visited: -1 },
       { path: null, generated: 1.5 },
       { path: null, records: [{ id: "broken" }] },
+      { path: null, status: "bogus" },
     ]) {
       const runtime: EngineRuntime = {
         search: () => searchResult as EngineSearchResult,

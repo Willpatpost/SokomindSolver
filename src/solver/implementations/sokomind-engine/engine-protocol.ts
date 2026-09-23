@@ -123,6 +123,33 @@ export type SearchPayload =
 
 export type EnginePayload = SearchPayload | BidirectionalSidePayload;
 
+// The keys must be exactly the typed search payloads' algorithms. The engine's
+// search() implements more (push-ida-star, bfs, bridge-astar and others), but
+// those are internal or test-only and reachable only by importing it directly.
+const ACCEPTED_SEARCH_ALGORITHMS = {
+  "analyze-puzzle": true,
+  "plan-macro-beam": true,
+  ultimate: true,
+  "solution-window-rewrite": true,
+  "solution-box-reschedule": true,
+} as const satisfies Record<SearchPayload["algorithm"], true>;
+
+export type EngineSearchAlgorithm = keyof typeof ACCEPTED_SEARCH_ALGORITHMS;
+
+export const ENGINE_SEARCH_ALGORITHMS: readonly EngineSearchAlgorithm[] = Object.freeze(
+  Object.keys(ACCEPTED_SEARCH_ALGORITHMS) as EngineSearchAlgorithm[],
+);
+
+/** Must match TERMINAL_STATUS in the engine's source/solver-search.js. */
+export const ENGINE_TERMINAL_STATUSES = Object.freeze([
+  "solved",
+  "cutoff",
+  "cancelled",
+  "failed",
+] as const);
+
+export type EngineTerminalStatus = (typeof ENGINE_TERMINAL_STATUSES)[number];
+
 export interface EngineCommand {
   readonly mode: EngineMode;
   readonly payload: Readonly<Record<string, unknown>>;
@@ -184,7 +211,7 @@ interface EngineResultPayload {
   readonly permutationVisited?: number;
   readonly pushWindowImprovements?: number;
   readonly retained?: number;
-  readonly status?: string;
+  readonly status?: EngineTerminalStatus;
   readonly terminationReason?: string;
   readonly visited?: number;
   readonly windows?: number;
@@ -267,7 +294,9 @@ export function isEngineCommand(value: unknown): value is EngineCommand {
   if (!isRecord(value.payload) || !isLegacyState(value.payload.state)) {
     return false;
   }
-  return value.mode !== "search" || isNonEmptyString(value.payload.algorithm);
+  const requested = value.payload.algorithm;
+  return value.mode !== "search" ||
+    ENGINE_SEARCH_ALGORITHMS.some((algorithm) => algorithm === requested);
 }
 
 const NON_NEGATIVE_INTEGER_FIELDS = Object.freeze([
@@ -393,7 +422,12 @@ export function isEngineResult(value: unknown): value is EngineResult {
     return false;
   }
   if (value.type === "records" && !Array.isArray(value.records)) return false;
-  if (!hasOptionalString(value, "status")) return false;
+  if (
+    value.status !== undefined &&
+    !ENGINE_TERMINAL_STATUSES.some((status) => status === value.status)
+  ) {
+    return false;
+  }
   if (!hasOptionalString(value, "terminationReason")) return false;
   if (!hasOptionalString(value, "error")) return false;
   if (value.cutoff !== undefined && typeof value.cutoff !== "boolean") return false;

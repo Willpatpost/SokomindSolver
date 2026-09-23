@@ -33,6 +33,13 @@ or `frontier-exhausted-unverified` otherwise, because the deadlock,
 sealed-corral, forced-macro and goal-cut prunes are unverified. Unsolvability
 proofs come from the exact kernels in `src/solver/search`.
 
+The worker protocol in `engine-protocol.ts` accepts only the five search
+algorithms with typed payloads: `analyze-puzzle`, `plan-macro-beam`,
+`ultimate`, `solution-window-rewrite` and `solution-box-reschedule`. The other
+algorithms are reachable only by calling `search()` directly, as the unit tests
+do. A result status must be one of the engine's terminal statuses (`solved`,
+`cutoff`, `cancelled` or `failed`); any other status fails the worker.
+
 The vendored `solver-search.js` includes integration telemetry and bounded
 structural-search improvements. Bidirectional record batches include visited,
 generated, frontier, retained, and peak-frontier counters. The structural plan

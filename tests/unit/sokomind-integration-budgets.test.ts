@@ -236,7 +236,7 @@ describe("Sokomind integration resource contracts", () => {
       const listeners = new Set<(event: { data: unknown }) => void>();
       return {
         ...silentWorker(() => queueMicrotask(() => {
-          for (const listener of listeners) listener({ data: { type: "done", status: "exhausted", visited: 0, generated: 0 } });
+          for (const listener of listeners) listener({ data: { type: "done", visited: 0, generated: 0 } });
         })),
         addEventListener(type: string, listener: (event: { data: unknown }) => void) { if (type === "message") listeners.add(listener); },
         removeEventListener(type: string, listener: (event: { data: unknown }) => void) { if (type === "message") listeners.delete(listener); },
