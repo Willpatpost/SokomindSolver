@@ -202,7 +202,7 @@ fails when the generated facts below differ from source.
 | progress | `sokomind.progress.v1` |
 | experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
-| optimal | `sokomind.optimal.v7` |
+| optimal | `sokomind.optimal.v8` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |
@@ -266,7 +266,7 @@ fails when the generated facts below differ from source.
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default
 - `tunnelMacros`: disabled by default
-- `goalCutHeuristic`: enabled by default
+- `goalCutHeuristic`: disabled by default
 - `backwardPerimeter`: disabled by default
 - `componentPdb`: disabled by default
 - `moveCostPatternPdb`: disabled by default

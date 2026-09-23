@@ -50,7 +50,10 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   // Off by default: once sound, macro stops only add successors that
   // single-push chains already reach, and the extra work measured slower.
   tunnelMacros: false,
-  goalCutHeuristic: true,
+  // Off by default: its bottleneck surplus is not a push lower bound (boxes
+  // can cross a shared tunnel one after another without extra pushes), and
+  // no move-level bound has been proven.
+  goalCutHeuristic: false,
   backwardPerimeter: false,
   componentPdb: false,
   moveCostPatternPdb: false,

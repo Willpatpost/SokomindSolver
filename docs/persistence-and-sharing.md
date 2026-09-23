@@ -16,7 +16,7 @@ share a Web Storage origin:
   participation ledger and a bounded local-date completion-activity ledger;
 - `sokomind.experience.v2` — audio, volume, motion, theme-family, appearance,
   and Zen-layout preferences (`v1` remains readable for migration);
-- `sokomind.optimal.v7` — locally proven move records from the corrected
+- `sokomind.optimal.v8` — locally proven move records from the corrected
   minimum-move proof pipeline, keyed by puzzle ID and deterministic board
   revision so a changed room cannot inherit a stale certificate;
 - `sokomind.ratings.v1`, `sokomind.favorites.v1`, and

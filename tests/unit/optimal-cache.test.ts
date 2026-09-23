@@ -144,12 +144,29 @@ test("invalidates certificates from before the pattern-deadlock key fix", () => 
   assert.equal(isOptimal(stale as unknown as OptimalCache, "pattern-key", FIRST_FINGERPRINT, 73), false);
 });
 
+test("invalidates certificates proven with the goal-cut heuristic on by default", () => {
+  const staleRevision = "exact-moves-pattern-key-v1";
+  assert.notEqual(CURRENT_OPTIMAL_PROOF_REVISION, staleRevision);
+  const stale = {
+    version: 7,
+    proofRevision: staleRevision,
+    records: { [recordKey("goal-cut", FIRST_FINGERPRINT)]: { moves: 20, pushes: 7 } },
+  };
+  assert.deepEqual(
+    normalizeOptimalCache({ ...stale, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION }).records,
+    stale.records,
+  );
+  assert.deepEqual(normalizeOptimalCache(stale), EMPTY_CACHE);
+  assert.equal(isOptimal(stale as unknown as OptimalCache, "goal-cut", FIRST_FINGERPRINT, 20), false);
+});
+
 test("old tabs cannot overwrite corrected proof storage or affect progress and routes", () => {
-  const oldKey = "sokomind.optimal.v6";
-  assert.equal(LEGACY_STORAGE_KEYS.optimalV6, oldKey);
+  const oldKey = "sokomind.optimal.v7";
+  assert.equal(LEGACY_STORAGE_KEYS.optimalV7, oldKey);
   assert.ok(APP_STORAGE_KEYS.includes(oldKey), "reset still clears the obsolete key");
+  assert.ok(APP_STORAGE_KEYS.includes(LEGACY_STORAGE_KEYS.optimalV6));
   assert.notEqual(STORAGE_KEYS.optimal, oldKey);
-  const stale = JSON.stringify({ version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+  const stale = JSON.stringify({ version: 7, proofRevision: "exact-moves-pattern-key-v1",
     records: { [recordKey("forced-frontier", FIRST_FINGERPRINT)]: { moves: 9, pushes: 2 } } });
   const values = new Map<string, string>([
     [oldKey, stale],

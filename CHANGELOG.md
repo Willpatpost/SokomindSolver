@@ -19,13 +19,18 @@ published a stable release.
   reference instead of duplicating facts that can drift.
 - Exact-search tunnel macros are now disabled by default. When enabled they
   only add look-ahead successors and no longer remove the single push.
+- The exact-search goal-cut heuristic is now disabled by default. Its
+  bottleneck surplus was documented as an admissible push bound, but boxes can
+  cross a shared tunnel one after another at no extra cost, and no move-level
+  bound has been proven. Oracle tests found no move-level overestimate, so
+  discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.2, `classic-ida-star` 2.2.1 and
   `sokomind-solver` 1.3.0. Sokomind 1.3.0 also marks the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
-- The optimal-record proof revision is now `exact-moves-pattern-key-v1` and
-  the storage key is `sokomind.optimal.v7`, so certificates stored under
+- The optimal-record proof revision is now `exact-moves-goal-cut-off-v1` and
+  the storage key is `sokomind.optimal.v8`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
 - The IDA* checkpoint schema is now 4, so checkpoints written by the earlier

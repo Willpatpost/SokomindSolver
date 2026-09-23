@@ -74,9 +74,10 @@ const SWEEP_BOARDS: readonly {
   TUNNEL_SOUNDNESS_BY_ID.es01d,
 ];
 
-// Every single-feature-off variant, plus explicit tunnelMacros:true variants.
-// tunnelMacros defaults to false, so { tunnelMacros: false } equals the
-// defaults and the macro needs to be switched on explicitly to be covered.
+// Every single-feature-off variant, plus explicit tunnelMacros:true and
+// goalCutHeuristic:true variants. Both default to false, so their off
+// variants equal the defaults and they need to be switched on explicitly to
+// be covered.
 const SWEEP_CONFIGS: readonly {
   readonly label: string;
   readonly features: Partial<Record<string, boolean>>;
@@ -86,6 +87,7 @@ const SWEEP_CONFIGS: readonly {
     features: { [feature]: false },
   })),
   { label: "tunnelMacros on", features: { tunnelMacros: true } },
+  { label: "goalCutHeuristic on", features: { goalCutHeuristic: true } },
   {
     label: "forcedPushMacros off, tunnelMacros on",
     features: { forcedPushMacros: false, tunnelMacros: true },
@@ -103,7 +105,8 @@ describe("exact-search feature configuration", () => {
       exactSearchFeatureFingerprint(resolveExactSearchFeatures({})),
     );
     assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.tunnelMacros, false);
-    assert.equal(exactSearchFeatureMask(resolved), 0b1011_1111_1111);
+    assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.goalCutHeuristic, false);
+    assert.equal(exactSearchFeatureMask(resolved), 0b0011_1111_1111);
     assert.equal(resolveExactSearchFeatures({piCorralPruning: false}).piCorralPruning, false);
   });
 

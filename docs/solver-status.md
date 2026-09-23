@@ -58,10 +58,11 @@ disabled pending broader performance qualification. Quality strategic defaults
 preserve explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
-`exact-moves-pattern-key-v1`, and storage key `sokomind.optimal.v7`.
+`exact-moves-goal-cut-off-v1`, and storage key `sokomind.optimal.v8`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records
 that can predate the A* frontier correction, the tunnel-macro soundness fix or
-the pattern-deadlock key fix.
+the pattern-deadlock key fix, or that were proven with the goal-cut heuristic
+on by default.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.
@@ -97,6 +98,12 @@ Earlier certificates and unsolvability proofs must not be treated as proof
 evidence. The bundled engine's local pattern memo carried the same key defect;
 its results are replayed and labelled unknown optimality, so there it cost
 solution quality rather than proof soundness.
+
+The goal-cut heuristic no longer runs by default. It was documented as an
+admissible push bound but is not one, and no move-level bound has been proven
+(see the goal-cut paragraph below). No false certificate has been found, so
+this is a precaution: proof revision `exact-moves-goal-cut-off-v1` and storage
+key `sokomind.optimal.v8` reject records proven while it was on.
 
 Sokomind 1.3.0 also versions the earlier Quality changes: Quality no longer
 dispatches proof and always reports unknown optimality, `SolverRequest` accepts
@@ -248,7 +255,7 @@ internally for controlled comparisons. All default on except where noted:
 - deadlock-table pruning;
 - goal-commitment pruning;
 - tunnel macros (default off);
-- goal-cut heuristic; and
+- goal-cut heuristic (default off); and
 - backward perimeter (default off).
 
 Telemetry reports the feature vector and mechanism-specific construction,
@@ -288,14 +295,21 @@ potential boundary pushes and restricts deadlock tests to corral-internal boxes.
 
 Pattern-database partitions contribute to the heuristic via per-label surplus:
 for each label, any excess of the PDB value over the assignment cost is added to
-the heuristic as `h = assignment + max(LC, boost, pdb_surplus, goal_cut) + walk`.
-This is admissible because each label's boxes and goals are disjoint.
+the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`, with
+the goal-cut surplus joining that maximum when enabled. The PDB surplus is
+admissible because each label's boxes and goals are disjoint.
 
-Goal-cut detects bottleneck conflicts when multiple boxes' shortest push-paths
-share articulation points or tunnel cells. For each bottleneck with demand N > 1,
-the surplus is (N-1)*2 additional pushes; the heuristic takes the maximum across
-all bottlenecks. This is admissible: N boxes sharing a single-capacity bottleneck
-require at least N-1 yield manoeuvres of 2 pushes each.
+Goal-cut (`goalCutHeuristic`, default off) detects bottleneck conflicts when
+multiple boxes' shortest push-paths share articulation points or tunnel cells.
+For each bottleneck with demand N > 1, the surplus is (N-1)*2 pushes; the
+heuristic takes the maximum across all bottlenecks. This is not a push lower
+bound: boxes can cross a shared bottleneck one after another without yielding.
+On the shared-tunnel board in `tests/unit/goal-cut.test.ts` the assignment
+bound and the push optimum are both 7, yet the surplus adds 2. Added to the
+move bound it has not been shown to overestimate: the same tests check
+assignment + surplus + walk against the exact remaining moves of every
+reachable state on two small boards. That is evidence, not a proof, so the
+feature stays off until a move-level bound is proven.
 
 Mixed-label deadlock tables enumerate the complete label assignment product
 within the existing construction budget. Deeper PI-corral boundary-table checks

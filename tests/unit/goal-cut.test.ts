@@ -11,16 +11,22 @@ import {
 } from "../../src/solver/search/goal-cut.ts";
 import {
   AssignmentHeuristic,
+  minimumManhattanWalkToPotentialPush,
 } from "../../src/solver/search/heuristic.ts";
 import {
   toDenseBoxes,
 } from "../../src/solver/search/model.ts";
+import { DEFAULT_EXACT_SEARCH_FEATURES } from "../../src/solver/search/exact-search-features.ts";
 import type {
   SolverExecutionContext,
   SolverRequest,
 } from "../../src/solver/contracts.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
+import {
+  allReachableStates,
+  exactRemainingMoves,
+} from "../support/exact-solver-oracle.ts";
 
 function makeContext(): SolverExecutionContext {
   return {
@@ -67,6 +73,37 @@ const OPEN_BOARD = [
   "O  SO",
   "OOOOO",
 ];
+
+// The right box's only route to a goal crosses the tunnel cell (3,6), which
+// is also the left box's goal. The boxes cross it one after the other, so the
+// bottleneck surplus buys no extra pushes.
+const SHARED_TUNNEL_BOARD = [
+  "OOOOOOOO",
+  "O   O  O",
+  "O A R AO",
+  "OOO OOaO",
+  "O     aO",
+  "OOOOOOOO",
+];
+
+const SHARED_TUNNEL_X_BOARD = [
+  "OOOOOOOOO",
+  "O   O   O",
+  "O X R X O",
+  "OOO OOO O",
+  "O  S   SO",
+  "OOOOOOOOO",
+];
+
+function compileRows(rows: readonly string[]) {
+  const parsed = parsePuzzleRows(rows);
+  const board = compileSearchBoard(parsed);
+  return {
+    board,
+    boxes: toDenseBoxes(board, parsed.initialBoxes),
+    robot: board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column),
+  };
+}
 
 describe("GoalCutEvaluator", () => {
   it("returns zero for board without bottlenecks", () => {
@@ -128,7 +165,9 @@ describe("GoalCutEvaluator", () => {
       "OOOOOOO",
     ];
     const request = makeRequest(rows);
-    const resultOn = await runExactMoveAStar(request, makeContext());
+    const resultOn = await runExactMoveAStar(request, makeContext(), {
+      features: { goalCutHeuristic: true },
+    });
     const resultOff = await runExactMoveAStar(request, makeContext(), {
       features: { goalCutHeuristic: false },
     });
@@ -172,7 +211,9 @@ describe("goal-cut solver integration", () => {
       "OOOOOOOOOOO",
     ];
     const request = makeRequest(rows);
-    const resultOn = await runExactMoveAStar(request, makeContext());
+    const resultOn = await runExactMoveAStar(request, makeContext(), {
+      features: { goalCutHeuristic: true },
+    });
     const resultOff = await runExactMoveAStar(request, makeContext(), {
       features: { goalCutHeuristic: false },
     });
@@ -198,7 +239,9 @@ describe("goal-cut solver integration", () => {
       "OOOOOOOOOOO",
     ];
     const request = makeRequest(rows);
-    const resultOn = await runIdaStarSearch(request, makeContext());
+    const resultOn = await runIdaStarSearch(request, makeContext(), {
+      features: { goalCutHeuristic: true },
+    });
     const resultOff = await runIdaStarSearch(request, makeContext(), {
       features: { goalCutHeuristic: false },
     });
@@ -212,5 +255,69 @@ describe("goal-cut solver integration", () => {
     );
     assert.equal(resultOn.proof?.kind, "optimal");
     assert.equal(resultOff.proof?.kind, "optimal");
+  });
+});
+
+describe("goal-cut admissibility", () => {
+  it("is off by default", () => {
+    assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.goalCutHeuristic, false);
+  });
+
+  it("is not a push lower bound", () => {
+    const { board, boxes, robot } = compileRows(SHARED_TUNNEL_BOARD);
+    const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+    const pushBound = heuristic.evaluate(boxes);
+    const surplus = new GoalCutEvaluator(board, board.topology)
+      .evaluate(heuristic.lastAssignmentStates!);
+    const oracle = exactRemainingMoves(board, robot, boxes);
+    // The move optimum uses as many pushes as the assignment bound, so that
+    // count is also the push optimum.
+    assert.equal(pushBound, 7);
+    assert.equal(oracle.exactPushes, 7);
+    assert.equal(oracle.exactMoves, 20);
+    assert.equal(surplus, 2);
+    assert.ok(pushBound + surplus > oracle.exactPushes!);
+  });
+
+  for (const [name, rows] of [
+    ["typed", SHARED_TUNNEL_BOARD],
+    ["X", SHARED_TUNNEL_X_BOARD],
+  ] as const) {
+    it(`stays within the exact remaining moves of every reachable state (${name})`, () => {
+      const { board, boxes, robot } = compileRows(rows);
+      // Uncached: a fallback cache hit does not refresh lastAssignmentStates.
+      const heuristic = new AssignmentHeuristic(board, { maxCacheEntries: 0 });
+      const evaluator = new GoalCutEvaluator(board, board.topology);
+      let surplusStates = 0;
+      for (const state of allReachableStates(board, robot, boxes).values()) {
+        if (state.exactMoves === null) continue;
+        const pushBound = heuristic.evaluate(state.boxes);
+        assert.ok(Number.isFinite(pushBound));
+        const surplus = evaluator.evaluate(heuristic.lastAssignmentStates!);
+        if (surplus > 0) surplusStates += 1;
+        const walk = minimumManhattanWalkToPotentialPush(board, state.robot, state.boxes);
+        assert.ok(
+          pushBound + surplus + walk <= state.exactMoves,
+          `h ${pushBound}+${surplus}+${walk} exceeds ${state.exactMoves} moves`,
+        );
+      }
+      assert.ok(surplusStates > 0, "some state must carry a bottleneck surplus");
+    });
+  }
+
+  it("keeps the shared-tunnel optimum when enabled in A* and IDA*", async () => {
+    const request = makeRequest([...SHARED_TUNNEL_BOARD]);
+    const features = { goalCutHeuristic: true };
+    const results = await Promise.all([
+      runExactMoveAStar(request, makeContext(), { features }),
+      runIdaStarSearch(request, makeContext(), { features }),
+    ]);
+    for (const result of results) {
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") continue;
+      assert.equal(result.solution.moves, 20);
+      assert.equal(result.proof?.kind, "optimal");
+      assert.ok((result.metrics.counters?.goalCutEvaluations ?? 0) > 0);
+    }
   });
 });
