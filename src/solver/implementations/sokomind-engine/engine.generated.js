@@ -555,7 +555,7 @@ let activePerformance = null;
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 function currentHeapSample() {
-  let injected = null;
+  let injected;
   try {
     injected = globalThis.__sokomindMemoryUsage?.();
   } catch (_error) {
@@ -772,7 +772,7 @@ function createPerformanceMetrics() {
 
 function sampleEngineMemory(metrics) {
   if (typeof metrics._engineMemorySampler !== "function") return null;
-  let sample = null;
+  let sample;
   try {
     sample = metrics._engineMemorySampler();
   } catch (_error) {
@@ -4819,8 +4819,7 @@ function neighbors(state, board, pruneDeadlocks = true) {
   const occupied = denseOccupancy(state, board), result = [];
   const robotId = cellId(state.robot[0], state.robot[1], board.dense);
   for (let direction = 0; direction < DIRECTION_ENTRIES.length; direction++) {
-    const [move, [dy, dx]] = DIRECTION_ENTRIES[direction];
-    const [y, x] = state.robot;
+    const [move] = DIRECTION_ENTRIES[direction];
     const nextId = board.dense.neighbors[robotId * DIRECTION_ENTRIES.length + direction];
     if (nextId < 0) continue;
     const ny = board.dense.y[nextId], nx = board.dense.x[nextId];
@@ -10169,7 +10168,7 @@ function planMacroBeamSearch(payload, observe = null) {
   const seenExact = moveAwareTranspositions
     ? new BoundedParetoMap(transpositionLimit, exactParetoLimit)
     : new BoundedDepthMap(transpositionLimit);
-  let beam = [initial], visited = 0, generated = 0, peakFrontier = 1;
+  let beam, visited = 0, generated = 0, peakFrontier = 1;
   let reported = 0, lastProgressAt = now();
   const progressInterval = payload.progressInterval || 500;
   const progressIntervalMs = payload.progressIntervalMs || 5000;
@@ -11064,7 +11063,7 @@ function beamSearch(payload) {
   const progressInterval = payload.progressInterval || 5000;
   const progressIntervalMs = payload.progressIntervalMs || 5000;
   const handoffCheckpoints = new Map();
-  let visited = 0, reported = 0, bestEstimate = Infinity, bestPushes = 0;
+  let visited = 0, reported = 0, bestEstimate, bestPushes = 0;
   let bestMoves = 0;
   let generated = 0, peakFrontier = 1;
   let lastProgressAt = now();

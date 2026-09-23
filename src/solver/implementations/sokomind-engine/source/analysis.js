@@ -598,8 +598,7 @@ function neighbors(state, board, pruneDeadlocks = true) {
   const occupied = denseOccupancy(state, board), result = [];
   const robotId = cellId(state.robot[0], state.robot[1], board.dense);
   for (let direction = 0; direction < DIRECTION_ENTRIES.length; direction++) {
-    const [move, [dy, dx]] = DIRECTION_ENTRIES[direction];
-    const [y, x] = state.robot;
+    const [move] = DIRECTION_ENTRIES[direction];
     const nextId = board.dense.neighbors[robotId * DIRECTION_ENTRIES.length + direction];
     if (nextId < 0) continue;
     const ny = board.dense.y[nextId], nx = board.dense.x[nextId];

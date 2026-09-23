@@ -63,6 +63,10 @@ then packages as a same-origin module worker. The module list and its order
 live in `scripts/sokomind-engine-files.mjs`, which the unit tests that evaluate
 the sources in a VM also load. The generated file is checked in
 so type checking and editor navigation do not depend on a sibling repository.
+ESLint checks each source file on its own, but a name declared in one source
+file and used in another is only checked on `engine.generated.js`, which runs
+`no-undef` and `no-unused-vars` over the shared scope. The sources are not
+type-checked.
 Large-board analysis also produces the legacy prepared-board seed, which is
 structured-cloned to search workers and rehydrated with worker-local mutable
 caches.

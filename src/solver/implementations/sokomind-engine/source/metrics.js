@@ -7,7 +7,7 @@ let activePerformance = null;
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 function currentHeapSample() {
-  let injected = null;
+  let injected;
   try {
     injected = globalThis.__sokomindMemoryUsage?.();
   } catch (_error) {
@@ -224,7 +224,7 @@ function createPerformanceMetrics() {
 
 function sampleEngineMemory(metrics) {
   if (typeof metrics._engineMemorySampler !== "function") return null;
-  let sample = null;
+  let sample;
   try {
     sample = metrics._engineMemorySampler();
   } catch (_error) {

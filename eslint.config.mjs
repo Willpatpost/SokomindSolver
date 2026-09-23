@@ -5,6 +5,9 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
+const engineDirectory = "src/solver/implementations/sokomind-engine";
+const engineBundle = `${engineDirectory}/engine.generated.js`;
+
 export default defineConfig(
   {
     // Flat config does not read .gitignore, so scratch and report output is
@@ -17,8 +20,6 @@ export default defineConfig(
       "playwright-report/**",
       "review-catalog/**",
       "results/**",
-      "src/solver/implementations/sokomind-engine/engine.generated.js",
-      "src/solver/implementations/sokomind-engine/source/**",
     ],
   },
   {
@@ -42,9 +43,46 @@ export default defineConfig(
   },
   {
     files: ["**/*.{js,mjs}"],
+    ignores: [engineBundle],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 2022,
+    },
+  },
+  {
+    // The engine sources are classic scripts that share one lexical scope, so
+    // a name declared in one file and used in another is only checked on the
+    // bundle that concatenates them.
+    files: [`${engineDirectory}/source/**/*.js`],
+    languageOptions: {
+      sourceType: "script",
+      globals: { ...globals.worker, module: "readonly" },
+    },
+    rules: {
+      eqeqeq: ["error", "always", { null: "ignore" }],
+      "no-undef": "off",
+      "no-unused-vars": "off",
+    },
+  },
+  {
+    // The bundle is generated from the sources above, so only the rules that
+    // need the shared scope run on it. It is a module, so a name declared in
+    // two source files is already a parse error.
+    files: [engineBundle],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.worker,
+    },
+    rules: {
+      "no-undef": "error",
+      "no-unused-vars": ["error", {
+        // Each source module builds a namespace object that the prepare
+        // script's registration strip leaves unused.
+        varsIgnorePattern: "^(?:Sokomind[A-Z]|_)",
+        argsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      }],
     },
   },
   {

@@ -1514,7 +1514,7 @@ function planMacroBeamSearch(payload, observe = null) {
   const seenExact = moveAwareTranspositions
     ? new BoundedParetoMap(transpositionLimit, exactParetoLimit)
     : new BoundedDepthMap(transpositionLimit);
-  let beam = [initial], visited = 0, generated = 0, peakFrontier = 1;
+  let beam, visited = 0, generated = 0, peakFrontier = 1;
   let reported = 0, lastProgressAt = now();
   const progressInterval = payload.progressInterval || 500;
   const progressIntervalMs = payload.progressIntervalMs || 5000;
@@ -2409,7 +2409,7 @@ function beamSearch(payload) {
   const progressInterval = payload.progressInterval || 5000;
   const progressIntervalMs = payload.progressIntervalMs || 5000;
   const handoffCheckpoints = new Map();
-  let visited = 0, reported = 0, bestEstimate = Infinity, bestPushes = 0;
+  let visited = 0, reported = 0, bestEstimate, bestPushes = 0;
   let bestMoves = 0;
   let generated = 0, peakFrontier = 1;
   let lastProgressAt = now();

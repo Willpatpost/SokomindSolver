@@ -63,6 +63,11 @@ published a stable release.
   `solved`, `cutoff`, `cancelled` or `failed` as a malformed message. Both
   checks accepted any string before. Production plans send only those
   algorithms, and the engine emits only those statuses.
+- ESLint now checks the bundled Sokomind engine's source files, which it
+  ignored before, and runs `no-undef` and `no-unused-vars` on the generated
+  bundle, where the files share one scope. Unused variables and initial values
+  that were always overwritten are removed from the sources; solver results are
+  unchanged.
 
 ### Fixed
 
