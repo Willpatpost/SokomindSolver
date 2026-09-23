@@ -36,6 +36,9 @@ published a stable release.
 - CI now fails when the committed generated engine or catalog metadata is
   stale, and the unit suite checks the generated catalog manifest against the
   shipped catalog.
+- CI browser runs now fail when a test only passes on retry. The Grand Hall
+  cancel test accepts only the cancelled outcome, and browser specs wait on
+  `page.clock` or web-first assertions instead of fixed sleeps.
 
 ### Fixed
 

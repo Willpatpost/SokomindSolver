@@ -100,6 +100,12 @@ The cross-platform runner owns the preview server directly so Windows and CI
 both shut down cleanly. Prefer roles and visible labels over implementation
 selectors.
 
+CI retries a failing browser test twice to capture a trace, but
+`failOnFlakyTests` still fails the run when a test only passes on retry. Wait
+on page timers with `page.clock` and on state with web-first assertions rather
+than fixed sleeps; `tests/unit/browser-test-hygiene.test.ts` rejects any
+non-zero `waitForTimeout` that is not on its short real-time allowlist.
+
 ### Dependency security
 
 `npm run audit` fails on high or critical advisories. GitHub Actions runs it

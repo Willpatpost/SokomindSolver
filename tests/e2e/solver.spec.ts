@@ -283,23 +283,21 @@ test("cancels a running Grand Hall A* search", async ({ page }) => {
 
   const dialog = await openSolver(page);
   await dialog.getByLabel("Algorithm").selectOption("classic-astar");
+  // Grand Hall A* is still preprocessing long after the expect timeout, and
+  // neither limit can be reached first, so only the cancel click ends the run.
   await dialog.getByLabel("Time limit").selectOption("120000");
+  await dialog.getByLabel("Memory limit").selectOption("4096");
 
   const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
   await dialog.getByRole("button", { name: "Start search" }).click();
   await expect(cancel).toBeEnabled();
   await cancel.click();
 
-  // On CI runners with constrained memory the A* solver may exhaust its
-  // estimated-memory budget and finish as "unsolved" before the cancel click
-  // is processed.  Accept either terminal state.
-  const stopped = dialog.getByRole("heading", { name: "Search stopped" });
-  const noRoute = dialog.getByRole("heading", { name: "No route returned" });
-  await expect(stopped.or(noRoute)).toBeVisible();
-
-  if (await stopped.isVisible()) {
-    await expect(dialog).toContainText("Search cancelled.");
-  }
+  const result = dialog.locator('[data-status="cancelled"]');
+  await expect(
+    result.getByRole("heading", { name: "Search stopped" }),
+  ).toBeVisible();
+  await expect(result).toContainText("Search cancelled.");
   await expect(dialog.getByRole("button", { name: "Start search" })).toBeEnabled();
 
   // The full-Lab link and <summary> are both natively keyboard-focusable and

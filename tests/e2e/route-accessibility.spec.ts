@@ -45,7 +45,6 @@ test("history cannot attach an old timer to a fresh puzzle attempt", async ({
   await page.goto("./#/play/tutorial-push");
   await page.getByRole("button", { name: "Move left" }).click();
   await expect(page.getByTestId("moves-count")).toHaveText("1");
-  await page.waitForTimeout(1_100);
   await expect(page.getByTestId("elapsed-time")).toHaveText("0:01");
 
   await page.evaluate(() => {

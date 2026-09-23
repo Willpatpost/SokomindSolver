@@ -6,6 +6,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
+  // CI retries capture a trace (trace: "on-first-retry"); a test that only
+  // passes on retry still fails the run.
+  failOnFlakyTests: Boolean(process.env.CI),
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: PREVIEW_URL,

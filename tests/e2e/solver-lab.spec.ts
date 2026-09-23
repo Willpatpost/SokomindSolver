@@ -48,6 +48,7 @@ test("reviews worker ceilings and preserves worker settings in run comparisons",
 });
 
 test("runs a worker search and steps through its replay-verified route", async ({ page }) => {
+  await page.clock.install();
   await page.goto("./#/solver-lab/tutorial-push");
   await expect(page.getByRole("heading", { name: "One Push Wonder" })).toBeVisible();
   await page.getByLabel("Algorithm").selectOption("classic-astar");
@@ -70,7 +71,8 @@ test("runs a worker search and steps through its replay-verified route", async (
   await expect(position).toHaveValue("1", { timeout: 3_000 });
   await pause.click();
   const pausedAt = await position.inputValue();
-  await page.waitForTimeout(1_200);
+  // Fire any playback step timer (1,040 ms at half speed) a pause failed to clear.
+  await page.clock.runFor(1_200);
   await expect(position).toHaveValue(pausedAt);
   await page.getByRole("button", { name: "First" }).click();
   await expect(position).toHaveValue("0");
@@ -114,6 +116,8 @@ test("cancels a running search without replacing it with a late result", async (
     .getByRole("status");
   await expect(setupStatus).toHaveText("Search cancelled.");
   await expect(page.getByText("1 of 6 runs")).toBeVisible();
+  // A late result would arrive as a worker message, not on a page timer, so
+  // this window has to be real time.
   await page.waitForTimeout(250);
   await expect(setupStatus).toHaveText("Search cancelled.");
 });
