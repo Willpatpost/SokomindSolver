@@ -10,7 +10,7 @@ import { recordCompletion, type ProgressData } from "../../src/shared/progress.t
 import { getPuzzleById } from "../../src/catalog/puzzles.ts";
 import { createSession } from "../../src/core/index.ts";
 import { puzzleRevisionFingerprint } from "../../src/core/puzzle-revision.ts";
-import { saveOptimalCache } from "../../src/shared/optimal-cache.ts";
+import { CURRENT_OPTIMAL_PROOF_REVISION, saveOptimalCache } from "../../src/shared/optimal-cache.ts";
 import { saveSession } from "../../src/shared/session-persistence.ts";
 import {
   loadProgressSyncSnapshot,
@@ -211,7 +211,7 @@ test("the completed reset marker suppresses stale document mutations", async () 
   assert.ok(puzzle);
   saveSession(createSession(puzzle));
   saveOptimalCache({
-    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+    version: 7, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
     records: {
       [JSON.stringify([puzzle.id, puzzleRevisionFingerprint(puzzle)])]: {
         moves: 1,

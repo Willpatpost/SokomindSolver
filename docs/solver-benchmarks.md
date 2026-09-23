@@ -138,7 +138,9 @@ on the original four-fixture sample:
 | `expert-maze` | 381 | 381 | 1,715 | 1,715 |
 
 The result justified preserving the additive implementation for corridor-heavy
-coverage, but it did not establish a performance win.
+coverage, but it did not establish a performance win. A later single-push
+replacement was unsound and has been removed; the macros are additive again and
+`tunnelMacros` defaults off.
 
 ## Historical Grand Hall discovery experiments
 

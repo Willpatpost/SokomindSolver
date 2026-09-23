@@ -1470,7 +1470,8 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          // Tunnel macro: skip intermediate non-goal tunnel positions
+          // Tunnel macro: add stop successors (matching goal, tunnel exit, blocked
+          // end). Additive only: the single-push child below is always generated.
           const tunnelResult = tunnelDetector?.resolve(
             destination, directionIndex, occupied, board.goalLabelByCell, box.label,
           );
@@ -1481,8 +1482,8 @@ export async function runExactMoveAStar(
             if (tDistance < 0) {
               throw new Error("Reachable support cell has no keeper distance.");
             }
-            counters.generated += tunnelStops.length - 1;
-            workSinceYield += tunnelStops.length - 1;
+            counters.generated += tunnelStops.length;
+            workSinceYield += tunnelStops.length;
 
             for (const stop of tunnelStops) {
               if (isStaticDeadCell(board, stop.finalCell, box.label)) {
@@ -1589,7 +1590,6 @@ export async function runExactMoveAStar(
                 break searchLoop;
               }
             }
-            if (tunnelResult.replacesSinglePush) continue;
           }
 
           const savedCell = expansionBoxes[boxIndex].cell;

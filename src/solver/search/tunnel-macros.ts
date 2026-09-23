@@ -9,7 +9,6 @@ export interface TunnelMacroStop {
 
 export interface TunnelMacroResult {
   readonly stops: readonly TunnelMacroStop[];
-  readonly replacesSinglePush: boolean;
 }
 
 export interface TunnelMacroStats {
@@ -53,7 +52,9 @@ export class TunnelMacroDetector {
   /**
    * If destination is a tunnel cell aligned with pushDirection, return
    * interesting stopping points (matching goals, tunnel exit, blocked
-   * position). Returns null when no multi-push chaining can happen.
+   * position). Returns null when no multi-push chaining can happen. Stops are
+   * additive successors: callers must still generate the single push, which
+   * reaches states (a box part-way into the tunnel) that no stop covers.
    */
   resolve(
     destination: number,
@@ -113,11 +114,8 @@ export class TunnelMacroDetector {
     if (stops.length === 0) return null;
     if (stops.length === 1 && stops[0]!.pushCount === 1) return null;
 
-    const farNeighbor = board.neighbors[destination][pushDirection];
-    const replacesSinglePush = farNeighbor >= 0 && this.#tunnelAxis[farNeighbor] === pushAxis;
-
     this.#applications += 1;
-    return { stops, replacesSinglePush };
+    return { stops };
   }
 }
 

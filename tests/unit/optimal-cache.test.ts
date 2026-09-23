@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CURRENT_OPTIMAL_PROOF_REVISION,
   getOptimalRecord,
   hydrateOptimalCacheFromIDB,
   isOptimal,
@@ -19,7 +20,7 @@ import {
   installIndexedDB,
 } from "../support/memory-indexeddb.ts";
 
-const EMPTY_CACHE: OptimalCache = { version: 7, proofRevision: "exact-moves-astar-frontier-v2", records: {} };
+const EMPTY_CACHE: OptimalCache = { version: 7, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION, records: {} };
 const FIRST_FINGERPRINT = "puzzle-v1:11111111";
 const SECOND_FINGERPRINT = "puzzle-v1:22222222";
 const recordKey = (puzzleId: string, fingerprint: string) =>
@@ -91,12 +92,48 @@ test("invalidates schema-7 certificates from before the A* frontier correction",
   }
 });
 
+test("invalidates schema-7 certificates from before the tunnel-macro soundness fix", async () => {
+  const staleRevision = "exact-moves-astar-frontier-v2";
+  assert.notEqual(CURRENT_OPTIMAL_PROOF_REVISION, staleRevision);
+  const stale = {
+    version: 7,
+    proofRevision: staleRevision,
+    records: { [recordKey("tunnel-prune", FIRST_FINGERPRINT)]: { moves: 22, pushes: 5 } },
+  };
+  const staleCache = stale as unknown as OptimalCache;
+  const current = setOptimalRecord(EMPTY_CACHE, "other", SECOND_FINGERPRINT, { moves: 2, pushes: 1 });
+  // The same record is valid under the current revision, so only the revision rejects it.
+  assert.deepEqual(
+    normalizeOptimalCache({ ...stale, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION }).records,
+    stale.records,
+  );
+  assert.deepEqual(normalizeOptimalCache(stale), EMPTY_CACHE);
+  assert.deepEqual(mergeOptimalCaches(current, staleCache), current);
+  assert.deepEqual(mergeOptimalCaches(staleCache, current), current);
+  assert.equal(getOptimalRecord(staleCache, "tunnel-prune", FIRST_FINGERPRINT), undefined);
+  assert.equal(isOptimal(staleCache, "tunnel-prune", FIRST_FINGERPRINT, 22), false);
+  const corrected = setOptimalRecord(staleCache, "other", SECOND_FINGERPRINT, { moves: 2, pushes: 1 });
+  assert.deepEqual(corrected, current);
+
+  const memory = createMemoryIndexedDB();
+  memory.values.set(STORAGE_KEYS.optimal, stale);
+  const restore = installIndexedDB(memory.factory);
+  try {
+    assert.deepEqual(await hydrateOptimalCacheFromIDB(current), current);
+    const saved = saveOptimalCache(current);
+    assert.equal(await saved.durable, true);
+    assert.deepEqual(normalizeOptimalCache(memory.values.get(STORAGE_KEYS.optimal)), current);
+  } finally {
+    restore();
+  }
+});
+
 test("old tabs cannot overwrite corrected proof storage or affect progress and routes", () => {
-  const oldKey = "sokomind.optimal.v5";
-  assert.equal(LEGACY_STORAGE_KEYS.optimalV5, oldKey);
+  const oldKey = "sokomind.optimal.v6";
+  assert.equal(LEGACY_STORAGE_KEYS.optimalV6, oldKey);
   assert.ok(APP_STORAGE_KEYS.includes(oldKey), "reset still clears the obsolete key");
   assert.notEqual(STORAGE_KEYS.optimal, oldKey);
-  const stale = JSON.stringify({ version: 7, proofRevision: "exact-moves-post-pi-corral-v1",
+  const stale = JSON.stringify({ version: 7, proofRevision: "exact-moves-astar-frontier-v2",
     records: { [recordKey("forced-frontier", FIRST_FINGERPRINT)]: { moves: 9, pushes: 2 } } });
   const values = new Map<string, string>([
     [oldKey, stale],
@@ -125,7 +162,7 @@ test("old tabs cannot overwrite corrected proof storage or affect progress and r
 
 test("current cache parsing drops malformed records safely", () => {
   const normalized = normalizeOptimalCache({
-    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+    version: 7, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
       malformedKey: { moves: 9, pushes: 3 },
@@ -136,7 +173,7 @@ test("current cache parsing drops malformed records safely", () => {
   });
 
   assert.deepEqual(normalized, {
-    version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+    version: 7, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
     records: {
       [recordKey("valid", FIRST_FINGERPRINT)]: { moves: 11, pushes: 4 },
     },
@@ -165,7 +202,7 @@ test("merges stale tab snapshots without losing either proof", () => {
   });
   assert.deepEqual(
     mergeOptimalCaches(merged, {
-      version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+      version: 7, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION,
       records: {
         [recordKey("p1", FIRST_FINGERPRINT)]: { moves: 18, pushes: 9 },
       },

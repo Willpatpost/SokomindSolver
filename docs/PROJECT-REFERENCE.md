@@ -202,7 +202,7 @@ fails when the generated facts below differ from source.
 | progress | `sokomind.progress.v1` |
 | experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
-| optimal | `sokomind.optimal.v6` |
+| optimal | `sokomind.optimal.v7` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |
@@ -240,14 +240,14 @@ fails when the generated facts below differ from source.
 |---|---:|---|
 | `classic-dfs` | `1.0.0` | first-found |
 | `classic-greedy` | `1.0.0` | first-found |
-| `classic-astar` | `2.2.1` | move-optimal proof |
-| `classic-ida-star` | `2.2.0` | move-optimal proof |
-| `sokomind-solver` | `1.2.1` | bounded discovery/rewrite/proof portfolio |
+| `classic-astar` | `2.2.2` | move-optimal proof |
+| `classic-ida-star` | `2.2.1` | move-optimal proof |
+| `sokomind-solver` | `1.3.0` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
 - Outer worker protocol: `1`
-- IDA* checkpoint schema: `3`
+- IDA* checkpoint schema: `4`
 - Sokomind mode: `fast`
 - Proof algorithm: `auto`; proof parallelism: **1**
 - Maximum harvested incumbents: **4**; harvest window: **5,000 ms**
@@ -265,7 +265,7 @@ fails when the generated facts below differ from source.
 - `patternDeadlockPruning`: enabled by default
 - `deadlockTablePruning`: enabled by default
 - `goalCommitmentPruning`: enabled by default
-- `tunnelMacros`: enabled by default
+- `tunnelMacros`: disabled by default
 - `goalCutHeuristic`: enabled by default
 - `backwardPerimeter`: disabled by default
 - `componentPdb`: disabled by default

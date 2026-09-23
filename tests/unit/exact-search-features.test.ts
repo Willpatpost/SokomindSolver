@@ -16,6 +16,7 @@ import {
   exactSearchFeatureMask,
   resolveExactSearchFeatures,
 } from "../../src/solver/search/exact-search-features.ts";
+import { TUNNEL_SOUNDNESS_BY_ID } from "../fixtures/solver-v2/tunnel-soundness.ts";
 
 const ROWS = [
   "OOOOOOOOOOO",
@@ -26,12 +27,15 @@ const ROWS = [
   "OOOOOOOOOOO",
 ] as const;
 
-function request(): SolverRequest {
-  const board = parsePuzzleRows(ROWS);
+function request(
+  rows: readonly string[] = ROWS,
+  puzzleId = "feature-inter-rooms",
+): SolverRequest {
+  const board = parsePuzzleRows(rows);
   return {
     board,
     snapshot: {
-      puzzleId: "feature-inter-rooms",
+      puzzleId,
       robot: board.initialRobot,
       boxes: board.initialBoxes,
       moves: 0,
@@ -55,6 +59,39 @@ function context(): SolverExecutionContext {
   };
 }
 
+// Inter-rooms plus the es01 tunnel boards (move optima from the step
+// oracle, frozen in tests/fixtures/solver-v2/tunnel-soundness.ts). Only
+// inter-rooms pins a push count; es01 pushes are tie-break dependent.
+const SWEEP_BOARDS: readonly {
+  readonly id: string;
+  readonly rows: readonly string[];
+  readonly moves: number;
+  readonly pushes?: number;
+}[] = [
+  { id: "inter-rooms", rows: ROWS, moves: 28, pushes: 7 },
+  TUNNEL_SOUNDNESS_BY_ID.es01a,
+  TUNNEL_SOUNDNESS_BY_ID.es01c,
+  TUNNEL_SOUNDNESS_BY_ID.es01d,
+];
+
+// Every single-feature-off variant, plus explicit tunnelMacros:true variants.
+// tunnelMacros defaults to false, so { tunnelMacros: false } equals the
+// defaults and the macro needs to be switched on explicitly to be covered.
+const SWEEP_CONFIGS: readonly {
+  readonly label: string;
+  readonly features: Partial<Record<string, boolean>>;
+}[] = [
+  ...EXACT_SEARCH_FEATURE_KEYS.map((feature) => ({
+    label: `${feature} off`,
+    features: { [feature]: false },
+  })),
+  { label: "tunnelMacros on", features: { tunnelMacros: true } },
+  {
+    label: "forcedPushMacros off, tunnelMacros on",
+    features: { forcedPushMacros: false, tunnelMacros: true },
+  },
+];
+
 describe("exact-search feature configuration", () => {
   it("resolves frozen defaults and a stable ordered fingerprint", () => {
     const resolved = resolveExactSearchFeatures();
@@ -65,7 +102,8 @@ describe("exact-search feature configuration", () => {
       exactSearchFeatureFingerprint(resolveExactSearchFeatures()),
       exactSearchFeatureFingerprint(resolveExactSearchFeatures({})),
     );
-    assert.equal(exactSearchFeatureMask(resolved), 0b1111_1111_1111);
+    assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.tunnelMacros, false);
+    assert.equal(exactSearchFeatureMask(resolved), 0b1011_1111_1111);
     assert.equal(resolveExactSearchFeatures({piCorralPruning: false}).piCorralPruning, false);
   });
 
@@ -116,25 +154,32 @@ describe("exact-search feature configuration", () => {
     }
   });
 
-  it("keeps every individual A/B-off variant at the inter-rooms optimum", async () => {
-    for (const feature of EXACT_SEARCH_FEATURE_KEYS) {
-      const features = { [feature]: false };
-      const [astar, ida] = await Promise.all([
-        runExactMoveAStar(request(), context(), { features }),
-        runIdaStarSearch(request(), context(), {
-          features,
-          reachabilityPolicy: "none",
-        }),
-      ]);
-      for (const result of [astar, ida]) {
-        assert.equal(result.status, "solved", `${feature} off must solve`);
-        if (result.status !== "solved") continue;
-        assert.equal(result.solution.moves, 28, `${feature} off move optimum`);
-        assert.equal(result.solution.pushes, 7, `${feature} off push count`);
-        assert.equal(result.solution.optimality, "proven", `${feature} off proof`);
+  for (const board of SWEEP_BOARDS) {
+    it(`keeps every individual A/B-off variant at the ${board.id} optimum`, async () => {
+      for (const { label, features } of SWEEP_CONFIGS) {
+        const [astar, ida] = await Promise.all([
+          runExactMoveAStar(request(board.rows, `feature-${board.id}`), context(), {
+            features,
+          }),
+          runIdaStarSearch(request(board.rows, `feature-${board.id}`), context(), {
+            features,
+            reachabilityPolicy: "none",
+          }),
+        ]);
+        for (const [engine, result] of [["A*", astar], ["IDA*", ida]] as const) {
+          const tag = `${board.id} ${engine} ${label}`;
+          assert.equal(result.status, "solved", `${tag} must solve`);
+          if (result.status !== "solved") continue;
+          assert.equal(result.solution.moves, board.moves, `${tag} move optimum`);
+          if (board.pushes !== undefined) {
+            assert.equal(result.solution.pushes, board.pushes, `${tag} push count`);
+          }
+          assert.equal(result.solution.optimality, "proven", `${tag} proof`);
+          assert.equal(result.proof?.kind, "optimal", `${tag} proof kind`);
+        }
       }
-    }
-  });
+    });
+  }
 
   it("rejects non-default IDA* features when checkpointing is requested", async () => {
     await assert.rejects(

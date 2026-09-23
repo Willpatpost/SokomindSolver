@@ -185,6 +185,14 @@ describe("checkpoint deserialization validation", () => {
     assert.throws(() => deserializeCheckpoint(json), /schema version/i);
   });
 
+  it("rejects schema-3 checkpoints from before the tunnel-macro soundness fix", () => {
+    const json = serializeCheckpoint(makeCheckpoint()).replace(
+      `"schemaVersion":${IDA_STAR_CHECKPOINT_SCHEMA_VERSION}`,
+      '"schemaVersion":3',
+    );
+    assert.throws(() => deserializeCheckpoint(json), /Unsupported checkpoint schema version: 3/);
+  });
+
   it("rejects missing boardContentKey", () => {
     const obj = { ...makeCheckpoint() } as Record<string, unknown>;
     delete obj.boardContentKey;
@@ -395,5 +403,26 @@ describe("validateCheckpointCompatibility", () => {
     if (!result.compatible) {
       assert.match(result.reason, /[Ss]chema version/);
     }
+  });
+
+  it("rejects schema-3 checkpoints from before the tunnel-macro soundness fix", () => {
+    const board = makeBoard();
+    const cp = {
+      ...makeCheckpoint(),
+      schemaVersion: 3 as typeof IDA_STAR_CHECKPOINT_SCHEMA_VERSION,
+    };
+    const result = validateCheckpointCompatibility(
+      cp,
+      board,
+      "1.1.0",
+      { kind: "moves" },
+      9,
+      1,
+      { robot: board.initialRobot, boxes: board.initialBoxes },
+    );
+    assert.deepEqual(result, {
+      compatible: false,
+      reason: "Schema version mismatch: checkpoint=3, expected=4",
+    });
   });
 });

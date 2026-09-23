@@ -47,7 +47,9 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   patternDeadlockPruning: true,
   deadlockTablePruning: true,
   goalCommitmentPruning: true,
-  tunnelMacros: true,
+  // Off by default: once sound, macro stops only add successors that
+  // single-push chains already reach, and the extra work measured slower.
+  tunnelMacros: false,
   goalCutHeuristic: true,
   backwardPerimeter: false,
   componentPdb: false,

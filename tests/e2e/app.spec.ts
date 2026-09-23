@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { PUZZLE_METADATA } from "../../src/catalog/puzzle-metadata";
+import { CURRENT_OPTIMAL_PROOF_REVISION } from "../../src/shared/optimal-cache.ts";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("./#/play/ultra-tiny");
@@ -52,14 +53,14 @@ test("verified optimal clears receive the highest milestone treatment", async ({
   const fingerprint = PUZZLE_METADATA.find(({ id }) => id === "ultra-tiny")
     ?.puzzleFingerprint;
   if (!fingerprint) throw new Error("First Steps metadata is unavailable.");
-  await page.evaluate((puzzleFingerprint) => {
-    localStorage.setItem("sokomind.optimal.v6", JSON.stringify({
-      version: 7, proofRevision: "exact-moves-astar-frontier-v2",
+  await page.evaluate(({ puzzleFingerprint, proofRevision }) => {
+    localStorage.setItem("sokomind.optimal.v7", JSON.stringify({
+      version: 7, proofRevision,
       records: {
         [JSON.stringify(["ultra-tiny", puzzleFingerprint])]: { moves: 1, pushes: 1 },
       },
     }));
-  }, fingerprint);
+  }, { puzzleFingerprint: fingerprint, proofRevision: CURRENT_OPTIMAL_PROOF_REVISION });
   await page.reload();
   await page.locator("#game-stage").focus();
   await page.keyboard.press("ArrowDown");

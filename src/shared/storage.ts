@@ -9,7 +9,7 @@ export const STORAGE_KEYS = Object.freeze({
   progress: "sokomind.progress.v1",
   experience: "sokomind.experience.v2",
   session: "sokomind.session.v1",
-  optimal: "sokomind.optimal.v6",
+  optimal: "sokomind.optimal.v7",
   personalBestRoutes: "sokomind.personal-best-routes.v1",
   personalBestRoutesReset: "sokomind.personal-best-routes-reset.v1",
   reset: "sokomind.reset.v1",
@@ -30,6 +30,7 @@ export const LEGACY_STORAGE_KEYS = Object.freeze({
   optimalV3: "sokomind.optimal.v3",
   optimalV4: "sokomind.optimal.v4",
   optimalV5: "sokomind.optimal.v5",
+  optimalV6: "sokomind.optimal.v6",
 });
 
 export const APP_STORAGE_KEYS: readonly string[] = Object.freeze([

@@ -2,8 +2,11 @@ import type { GameSnapshot, ParsedBoard } from "../../core/model.ts";
 import type { SolverObjective, SolverSolution } from "../contracts.ts";
 import { isSolverSolution } from "../validation.ts";
 
-// Earlier contours may have exhausted branches using the unsound PI-corral prune.
-export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 3 as const;
+// Earlier contours may have exhausted branches using the unsound PI-corral prune
+// (schema 2 and earlier) or the unsound tunnel-macro single-push replacement
+// (schema 3). Checkpoints do not record the exact-search feature vector, so the
+// tunnelMacros default change also requires this bump.
+export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 4 as const;
 
 export interface IdaStarCheckpointCounters {
   readonly expanded: number;

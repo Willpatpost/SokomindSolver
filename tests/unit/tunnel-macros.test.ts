@@ -24,6 +24,7 @@ import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
 import {
   exactRemainingMoves,
 } from "../support/exact-solver-oracle.ts";
+import { TUNNEL_SOUNDNESS_BY_ID } from "../fixtures/solver-v2/tunnel-soundness.ts";
 
 function boardFromRows(rows: string[]) {
   const parsed = parsePuzzleRows(rows);
@@ -79,6 +80,9 @@ const TUNNEL_BOARD = [
   "ORX  SO",
   "OOOOOOO",
 ];
+
+// tunnelMacros defaults to false, so integration tests opt in explicitly.
+const TUNNEL_ON = { features: { tunnelMacros: true } } as const;
 
 describe("TunnelMacroDetector", () => {
   describe("resolve", () => {
@@ -232,8 +236,9 @@ describe("TunnelMacroDetector", () => {
       }
     });
 
-    it("sets replacesSinglePush when far neighbor is also a tunnel cell", () => {
-      // Long tunnel: destination's far neighbor is also a tunnel cell
+    it("returns the tunnel exit as an extra multi-push stop, never a replacement", () => {
+      // Long tunnel: the detector proposes the 5-push stop as an additional
+      // successor. The kernels always keep the ordinary single push.
       const { board } = boardFromRows([
         "OOOOOOOOO",
         "ORX    SO",
@@ -244,41 +249,15 @@ describe("TunnelMacroDetector", () => {
       occupancy[board.cellAt(1, 2)] = 1;
 
       const dest = board.cellAt(1, 3);
-      if (board.topology.tunnels.has(dest)) {
-        const result = detector.resolve(
-          dest, 3, occupancy, board.goalLabelByCell, "X",
-        );
-        assert.notEqual(result, null);
-        assert.equal(result!.replacesSinglePush, true,
-          "far neighbor is tunnel cell, single push is redundant");
-      }
-    });
-
-    it("does not replace single push at tunnel entrance", () => {
-      // Box pushed from open area into tunnel entrance
-      const { board } = boardFromRows([
-        "OOOOOOO",
-        "O R   O",
-        "OOX OOO",
-        "  O O",
-        "  OSO",
-        "  OOO",
+      assert.ok(board.topology.tunnels.has(dest), "cell (1,3) should be a tunnel cell");
+      const result = detector.resolve(
+        dest, 3, occupancy, board.goalLabelByCell, "X",
+      );
+      assert.notEqual(result, null);
+      assert.deepEqual(result!.stops, [
+        { finalCell: board.cellAt(1, 7), pushCount: 5, robotCell: board.cellAt(1, 6) },
       ]);
-      const detector = new TunnelMacroDetector(board);
-      const occupancy = new Uint8Array(board.cellCount);
-      const boxCell = board.cellAt(2, 2);
-      occupancy[boxCell] = 1;
-
-      const dest = board.cellAt(3, 2);
-      if (board.topology.tunnels.has(dest)) {
-        const result = detector.resolve(
-          dest, 1, occupancy, board.goalLabelByCell, "X",
-        );
-        if (result !== null) {
-          assert.equal(result.replacesSinglePush, false,
-            "keeper could reach far side via open area");
-        }
-      }
+      assert.equal("replacesSinglePush" in result!, false);
     });
   });
 
@@ -333,7 +312,7 @@ describe("tunnel macro solver integration", () => {
   it("A* solves tight corridor optimally", async () => {
     const request = makeRequest(TUNNEL_BOARD);
     const context = makeContext();
-    const result = await runExactMoveAStar(request, context);
+    const result = await runExactMoveAStar(request, context, TUNNEL_ON);
     assert.equal(result.status, "solved");
     assert.equal(result.proof?.kind, "optimal");
   });
@@ -341,7 +320,7 @@ describe("tunnel macro solver integration", () => {
   it("IDA* solves tight corridor optimally", async () => {
     const request = makeRequest(TUNNEL_BOARD);
     const context = makeContext();
-    const result = await runIdaStarSearch(request, context);
+    const result = await runIdaStarSearch(request, context, TUNNEL_ON);
     assert.equal(result.status, "solved");
     assert.equal(result.proof?.kind, "optimal");
   });
@@ -359,7 +338,7 @@ describe("tunnel macro solver integration", () => {
 
     const request = makeRequest(TUNNEL_BOARD);
     const context = makeContext();
-    const result = await runExactMoveAStar(request, context);
+    const result = await runExactMoveAStar(request, context, TUNNEL_ON);
     assert.equal(result.status, "solved");
     assert.equal(
       result.solution?.moves,
@@ -371,12 +350,20 @@ describe("tunnel macro solver integration", () => {
   it("A* with tunnel macros disabled matches A* with tunnel macros enabled", async () => {
     const request = makeRequest(TUNNEL_BOARD);
     const context1 = makeContext();
-    const resultOn = await runExactMoveAStar(request, context1);
+    // tunnelMacros is off by default, and forced-push macros hide the tunnel
+    // path on this corridor, so both sides set the features explicitly.
+    const resultOn = await runExactMoveAStar(request, context1, {
+      features: { tunnelMacros: true, forcedPushMacros: false },
+    });
 
     const context2 = makeContext();
     const resultOff = await runExactMoveAStar(request, context2, {
-      features: { tunnelMacros: false },
+      features: { tunnelMacros: false, forcedPushMacros: false },
     });
+    assert.ok(
+      (resultOn.metrics.counters?.tunnelMacroApplications ?? 0) > 0,
+      "the enabled run must exercise the tunnel macro",
+    );
 
     assert.equal(resultOn.status, "solved");
     assert.equal(resultOff.status, "solved");
@@ -390,12 +377,20 @@ describe("tunnel macro solver integration", () => {
   it("IDA* with tunnel macros disabled matches IDA* with tunnel macros enabled", async () => {
     const request = makeRequest(TUNNEL_BOARD);
     const context1 = makeContext();
-    const resultOn = await runIdaStarSearch(request, context1);
+    // tunnelMacros is off by default, and forced-push macros hide the tunnel
+    // path on this corridor, so both sides set the features explicitly.
+    const resultOn = await runIdaStarSearch(request, context1, {
+      features: { tunnelMacros: true, forcedPushMacros: false },
+    });
 
     const context2 = makeContext();
     const resultOff = await runIdaStarSearch(request, context2, {
-      features: { tunnelMacros: false },
+      features: { tunnelMacros: false, forcedPushMacros: false },
     });
+    assert.ok(
+      (resultOn.metrics.counters?.tunnelMacroApplications ?? 0) > 0,
+      "the enabled run must exercise the tunnel macro",
+    );
 
     assert.equal(resultOn.status, "solved");
     assert.equal(resultOff.status, "solved");
@@ -414,7 +409,7 @@ describe("tunnel macro solver integration", () => {
     ];
     const request = makeRequest(rows);
     const context = makeContext();
-    const result = await runExactMoveAStar(request, context);
+    const result = await runExactMoveAStar(request, context, TUNNEL_ON);
     assert.equal(result.status, "solved");
     assert.equal(result.proof?.kind, "optimal");
   });
@@ -432,7 +427,7 @@ describe("tunnel macro solver integration", () => {
 
     const request = makeRequest(TUNNEL_BOARD);
     const context = makeContext();
-    const result = await runIdaStarSearch(request, context);
+    const result = await runIdaStarSearch(request, context, TUNNEL_ON);
     assert.equal(result.status, "solved");
     assert.equal(
       result.solution?.moves,
@@ -440,4 +435,39 @@ describe("tunnel macro solver integration", () => {
       `IDA* moves (${result.solution?.moves}) should match oracle (${oracle.exactMoves})`,
     );
   });
+
+  // Forced-push macros run before the tunnel resolve and hid the unsound
+  // single-push replacement. With them off, es01a (oracle 16) returned
+  // exhausted on both kernels while the macro replaced the single push.
+  const FORCED_PUSH_OFF_CONFIGS = [
+    { label: "forcedPushMacros:false", features: { forcedPushMacros: false } },
+    {
+      label: "forcedPushMacros:false + tunnelMacros:true",
+      features: { forcedPushMacros: false, tunnelMacros: true },
+    },
+  ] as const;
+  const FORCED_PUSH_OFF_BOARDS: readonly (readonly [string, string[]])[] = [
+    ["TUNNEL_BOARD", TUNNEL_BOARD],
+    ["es01a", [...TUNNEL_SOUNDNESS_BY_ID.es01a.rows]],
+  ];
+  for (const [boardName, rows] of FORCED_PUSH_OFF_BOARDS) {
+    for (const { label, features } of FORCED_PUSH_OFF_CONFIGS) {
+      it(`A* and IDA* match the oracle on ${boardName} with ${label}`, async () => {
+        const { board, boxes, robotCell } = boardFromRows(rows);
+        const oracle = exactRemainingMoves(board, robotCell, boxes);
+        assert.notEqual(oracle.exactMoves, null, "oracle should find a solution");
+
+        const results = [
+          ["A*", await runExactMoveAStar(makeRequest(rows), makeContext(), { features })],
+          ["IDA*", await runIdaStarSearch(makeRequest(rows), makeContext(), { features })],
+        ] as const;
+        for (const [engine, result] of results) {
+          const tag = `${engine} ${label} on ${boardName}`;
+          assert.equal(result.status, "solved", tag);
+          assert.equal(result.solution?.moves, oracle.exactMoves, `${tag} moves`);
+          assert.equal(result.proof?.kind, "optimal", `${tag} proof kind`);
+        }
+      });
+    }
+  }
 });

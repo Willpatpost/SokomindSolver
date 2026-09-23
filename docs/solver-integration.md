@@ -279,7 +279,7 @@ inside that contour. Root-relative backed `f` values are not reused because
 they are path-cost dependent. The compatibility option formerly called
 `persistTransposition` no longer carries proof-pruning entries across contours.
 
-Checkpoint schema v2 binds a resume record to the board, objective, algorithm
+Checkpoints bind a resume record to the board, objective, algorithm
 version, tuning context, exact robot cell, and label-aware box positions. It
 uses a deterministic browser-neutral digest. A restored incumbent must pass
 full structural validation, agree with its declared move cost, and replay to a

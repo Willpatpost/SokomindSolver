@@ -4,15 +4,29 @@ import { beforeEach, describe, it } from "node:test";
 import { PUZZLE_BY_ID } from "../../src/catalog/puzzles.ts";
 import {
   createSession,
+  parsePuzzleRows,
   type PuzzleDefinition,
 } from "../../src/core/index.ts";
-import type { SolverRequest } from "../../src/solver/contracts.ts";
+import type {
+  SolverExecutionContext,
+  SolverRequest,
+} from "../../src/solver/contracts.ts";
 import { search } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import {
   solutionFromLegacyPath,
   toLegacyState,
 } from "../../src/solver/implementations/sokomind-solver.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
+import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
+import { runClassicSearch } from "../../src/solver/search/engine.ts";
+import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
+import { toDenseBoxes } from "../../src/solver/search/model.ts";
+import { exactRemainingMoves } from "../support/exact-solver-oracle.ts";
+import {
+  TUNNEL_SOUNDNESS_BY_ID,
+  type TunnelSoundnessFixture,
+} from "../fixtures/solver-v2/tunnel-soundness.ts";
 
 const MIXED_TYPED_PUZZLE: PuzzleDefinition = {
   id: "mixed-typed-engine",
@@ -28,6 +42,47 @@ const MIXED_TYPED_PUZZLE: PuzzleDefinition = {
     "OOOOOOO",
   ],
 };
+
+// es01 tunnel boards: move optima 16, 19, 22.
+const ES01_TUNNEL_FIXTURES: readonly TunnelSoundnessFixture[] = [
+  TUNNEL_SOUNDNESS_BY_ID.es01a,
+  TUNNEL_SOUNDNESS_BY_ID.es01c,
+  TUNNEL_SOUNDNESS_BY_ID.es01d,
+];
+
+function requestFromFixture(fixture: TunnelSoundnessFixture): SolverRequest {
+  const board = parsePuzzleRows(fixture.rows);
+  return {
+    board,
+    snapshot: {
+      puzzleId: `engine-${fixture.id}`,
+      robot: board.initialRobot,
+      boxes: board.initialBoxes,
+      moves: 0,
+      pushes: 0,
+      solved: false,
+    },
+    objective: { kind: "moves" },
+  };
+}
+
+function oracleMoves(fixture: TunnelSoundnessFixture): number | null {
+  const parsed = parsePuzzleRows(fixture.rows);
+  const board = compileSearchBoard(parsed);
+  return exactRemainingMoves(
+    board,
+    board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column),
+    toDenseBoxes(board, parsed.initialBoxes),
+  ).exactMoves;
+}
+
+function exactContext(): SolverExecutionContext {
+  return {
+    signal: new AbortController().signal,
+    reportProgress() {},
+    now: performance.now.bind(performance),
+  };
+}
 
 function requestFor(puzzle: PuzzleDefinition): SolverRequest {
   const session = createSession(puzzle);
@@ -454,4 +509,92 @@ describe("vendored Sokomind engine", () => {
       ((engineMemory?.currentBytes as number | undefined) ?? 0) > 0,
     );
   });
+
+  it("pins the es01 tunnel boards: step astar/bfs give the move optimum, push-astar the push optimum", () => {
+    // collapseForcedPushes (source/push-generation.js) runs only
+    // inside the push-* algorithms, so push-astar is what exercises the
+    // engine's own tunnel collapse. Its answer is a push optimum, which is not
+    // a move optimum.
+    for (const fixture of ES01_TUNNEL_FIXTURES) {
+      const request = requestFromFixture(fixture);
+      for (const algorithm of ["astar", "bfs"] as const) {
+        const result = search({
+          algorithm,
+          state: toLegacyState(request),
+          maxVisited: 200_000,
+        });
+        assert.equal(result.status, "solved", `${algorithm} ${fixture.id}`);
+        assert.ok(Array.isArray(result.path));
+        const solution = solutionFromLegacyPath(request, result.path);
+        assert.ok(solution, `${algorithm} ${fixture.id} replayable path`);
+        assert.equal(verifySolverSolution(request, solution).valid, true);
+        assert.equal(solution.moves, fixture.moves, `${algorithm} ${fixture.id} moves`);
+      }
+
+      const push = search({
+        algorithm: "push-astar",
+        state: toLegacyState(request),
+        maxVisited: 200_000,
+      });
+      assert.equal(push.status, "solved", `push-astar ${fixture.id}`);
+      assert.ok(Array.isArray(push.path));
+      const pushSolution = solutionFromLegacyPath(request, push.path);
+      assert.ok(pushSolution, `push-astar ${fixture.id} replayable path`);
+      assert.equal(verifySolverSolution(request, pushSolution).valid, true);
+      assert.equal(pushSolution.pushes, fixture.pushOptimum, `push-astar ${fixture.id} pushes`);
+      assert.ok(pushSolution.moves >= fixture.moves, `push-astar ${fixture.id} moves`);
+    }
+  });
+});
+
+describe("classic search on the es01 tunnel boards", () => {
+  it("pins the es01a, es01c and es01d move optima at 16, 19 and 22", () => {
+    assert.deepEqual(
+      ES01_TUNNEL_FIXTURES.map((fixture) => fixture.moves),
+      [16, 19, 22],
+    );
+    for (const fixture of ES01_TUNNEL_FIXTURES) {
+      assert.equal(oracleMoves(fixture), fixture.moves, `${fixture.id} oracle`);
+    }
+  });
+
+  for (const fixture of ES01_TUNNEL_FIXTURES) {
+    it(`engine classic A* proves ${fixture.moves} on ${fixture.id} and the exact kernels agree`, async () => {
+      const request = requestFromFixture(fixture);
+      const classic = await runClassicSearch(request, exactContext(), {
+        strategy: "astar",
+      });
+      assert.equal(classic.status, "solved", `${fixture.id} engine classic`);
+      if (classic.status !== "solved") return;
+      assert.equal(classic.solution.moves, fixture.moves, `${fixture.id} engine classic moves`);
+      assert.equal(classic.solution.optimality, "proven", `${fixture.id} engine classic proof`);
+      assert.equal(verifySolverSolution(request, classic.solution).valid, true);
+
+      // Cross-check against the TS exact kernels. The tunnelMacros:true run is
+      // the one that fails if the macro prunes the single push again, since
+      // the default is now off.
+      const kernels = [
+        ["runExactMoveAStar", () => runExactMoveAStar(request, exactContext())],
+        [
+          "runExactMoveAStar tunnelMacros:true",
+          () =>
+            runExactMoveAStar(request, exactContext(), {
+              features: { tunnelMacros: true },
+            }),
+        ],
+        ["runIdaStarSearch", () => runIdaStarSearch(request, exactContext())],
+      ] as const;
+      for (const [label, run] of kernels) {
+        const result = await run();
+        assert.equal(result.status, "solved", `${fixture.id} ${label}`);
+        if (result.status !== "solved") continue;
+        assert.equal(
+          result.solution.moves,
+          classic.solution.moves,
+          `${fixture.id} ${label} agrees with engine classic`,
+        );
+        assert.equal(result.solution.optimality, "proven", `${fixture.id} ${label} proof`);
+      }
+    });
+  }
 });

@@ -1868,7 +1868,9 @@ export async function runIdaStarSearch(
 
         let foundChild = false;
 
-        while (frame.childCursor < totalChildren) {
+        // Stops queued by the frame's last child must still drain after its
+        // cursor is exhausted.
+        while (frame.tunnelMacro !== null || frame.childCursor < totalChildren) {
           // Active tunnel macro: process remaining stops
           if (frame.tunnelMacro !== null) {
             const tm = frame.tunnelMacro;
@@ -1909,8 +1911,8 @@ export async function runIdaStarSearch(
 
               const tmNewMoves = frame.moves + tm.walkDistance + stop.pushCount;
               const tmNewPushes = frame.pushes + stop.pushCount;
-              const tmNewExactKey = exactKey(tmBox.cell, tmNewBoxes);
-              const tmNewZobristKey = zobristKey(tmBox.cell, tmNewBoxes);
+              const tmNewExactKey = exactKey(stop.robotCell, tmNewBoxes);
+              const tmNewZobristKey = zobristKey(stop.robotCell, tmNewBoxes);
 
               pushFrame({
                 robot: stop.robotCell,
@@ -2000,7 +2002,8 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          // Tunnel macro: chain pushes through tunnel
+          // Tunnel macro: queue stop successors, processed after the single-push
+          // child below. Additive only: the single push is always generated.
           const tResult = tunnelDetector?.resolve(
             destination, directionIndex, occupancyBuffer, board.goalLabelByCell, box.label,
           );
@@ -2009,8 +2012,8 @@ export async function runIdaStarSearch(
             if (tDistance < 0) {
               throw new Error("Reachable support cell has no keeper distance.");
             }
-            counters.generated += tResult.stops.length - 1;
-            workSinceYield += tResult.stops.length - 1;
+            counters.generated += tResult.stops.length;
+            workSinceYield += tResult.stops.length;
             frame.tunnelMacro = {
               stops: tResult.stops,
               boxIndex,
@@ -2018,7 +2021,6 @@ export async function runIdaStarSearch(
               walkDistance: tDistance,
               cursor: 0,
             };
-            if (tResult.replacesSinglePush) continue;
           }
 
           // Move box
