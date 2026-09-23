@@ -194,6 +194,10 @@ published a stable release.
   contract into `strategic-validation.generated.js`, and `--check` compared
   against the same output and passed. `--check` also imports the validator
   artifact to confirm it loads on its own.
+- The bundled Sokomind engine finds articulation points with an explicit stack
+  instead of recursion, so parsing a board with a corridor of several thousand
+  cells no longer overflows the worker's call stack. It visits cells in the
+  same order, so room tie-breaking and search results are unchanged.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

@@ -76,27 +76,43 @@ function floorComponents(floor, blocked = null) {
   return components;
 }
 
+// Tarjan's DFS with an explicit stack, so a long corridor cannot overflow the
+// worker's call stack. It visits cells in the recursive order, which keeps the
+// result's insertion order that room tie-breaking reads.
 function articulationPoints(floor) {
   const discovered = new Map(), low = new Map(), parent = new Map(), result = new Set();
   let time = 0;
-  const visit = position => {
+  const enter = position => {
     discovered.set(position, ++time);
     low.set(position, time);
-    let children = 0;
-    for (const next of floorNeighbors(position, floor)) {
-      if (!discovered.has(next)) {
-        parent.set(next, position);
-        children++;
-        visit(next);
-        low.set(position, Math.min(low.get(position), low.get(next)));
-        if (!parent.has(position) && children > 1) result.add(position);
-        if (parent.has(position) && low.get(next) >= discovered.get(position)) result.add(position);
-      } else if (next !== parent.get(position)) {
-        low.set(position, Math.min(low.get(position), discovered.get(next)));
-      }
-    }
+    return {position, neighbors: floorNeighbors(position, floor), index: 0, children: 0};
   };
-  for (const position of floor) if (!discovered.has(position)) visit(position);
+  for (const root of floor) {
+    if (discovered.has(root)) continue;
+    const stack = [enter(root)];
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const position = frame.position;
+      if (frame.index < frame.neighbors.length) {
+        const next = frame.neighbors[frame.index++];
+        if (!discovered.has(next)) {
+          parent.set(next, position);
+          frame.children++;
+          stack.push(enter(next));
+        } else if (next !== parent.get(position)) {
+          low.set(position, Math.min(low.get(position), discovered.get(next)));
+        }
+        continue;
+      }
+      stack.pop();
+      const caller = stack[stack.length - 1];
+      if (!caller) continue;
+      const up = caller.position;
+      low.set(up, Math.min(low.get(up), low.get(position)));
+      if (!parent.has(up) && caller.children > 1) result.add(up);
+      if (parent.has(up) && low.get(position) >= discovered.get(up)) result.add(up);
+    }
+  }
   return result;
 }
 
