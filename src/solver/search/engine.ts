@@ -770,7 +770,18 @@ export async function runClassicSearch(
                     discovered.add(fpChildKey);
                     uniqueStates += 1;
                   }
-                  forcedNextIndex = fpChildIndex;
+                  if (configuration.strategy === "astar") {
+                    // A* pops by f-cost, so the forced child must wait its turn:
+                    // expanding it next could reach a goal while a cheaper node
+                    // is still queued.
+                    frontier.push(fpChildIndex);
+                    counters.peakFrontier = Math.max(
+                      counters.peakFrontier,
+                      frontier.size,
+                    );
+                  } else {
+                    forcedNextIndex = fpChildIndex;
+                  }
                   continue;
                 }
               } else {

@@ -150,6 +150,13 @@ published a stable release.
   label costs but were cached by box key alone; the evaluators now use their
   caches only when the assignment heuristic's last box key matches. Both exact
   kernels already passed matching costs, so results are unchanged.
+- The classic search engine's `astar` strategy no longer expands a forced push
+  ahead of its queue order. When a state had a single legal push, its child
+  was expanded next instead of waiting in the priority queue, so the search
+  could reach a goal and report a non-optimal route as proven while a cheaper
+  one was still queued. Only tests use this strategy; the Classic A* solver
+  and Optimal proofs run the exact A* kernel, so stored certificates are
+  unaffected.
 - Tunnel macros no longer return a one-push stop that duplicates the single
   push, and they cap stops at 64 pushes so the A* node encoding cannot wrap on
   long custom-board tunnels.

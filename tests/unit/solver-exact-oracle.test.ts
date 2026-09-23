@@ -542,6 +542,40 @@ describe("inter-rooms goal-ordering regression", () => {
   });
 });
 
+describe("classic engine A* forced-push regression", () => {
+  // Each board has a state with a single legal push whose child reaches the
+  // goal at 14 moves while a 13-move route is still queued.
+  const BOARDS = [
+    ["OOOOOOOO", "OaA    O", "O OOOORO", "O aA   O", "OOOOOOOO"],
+    ["OOOOOOOO", "O A  a O", "OROOOO O", "O B   bO", "OOOOOOOO"],
+  ];
+
+  for (const [index, rows] of BOARDS.entries()) {
+    it(`keeps the 13-move optimum on board ${index + 1}`, async () => {
+      const parsed = parsePuzzleRows(rows);
+      const board = compileSearchBoard(parsed);
+      const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+      const initialRobot = board.cellAt(
+        parsed.initialRobot.row,
+        parsed.initialRobot.column,
+      );
+      const oracle = exactRemainingMoves(board, initialRobot, initialBoxes);
+      assert.equal(oracle.exactMoves, 13, "step-level oracle optimum");
+
+      const result = assertSolved(
+        await runClassicSearch(
+          requestForOracleState(parsed, board, initialRobot, initialBoxes),
+          oracleExecutionContext(),
+          { strategy: "astar" },
+        ),
+      );
+      assert.equal(result.solution.moves, 13, "classic A* move count");
+      assert.equal(result.solution.optimality, "proven");
+      assert.equal(result.proof?.lowerBound, 13);
+    });
+  }
+});
+
 describe("solved-box-must-move-first regression", () => {
   it("finds a state where the optimal solution begins by moving a box off its goal", () => {
     // Board where box X:0 starts on its goal but must move to let X:1 pass.
