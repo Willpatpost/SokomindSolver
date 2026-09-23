@@ -185,6 +185,7 @@ function buildMultiBoxPdb(
   let peakBytes = 0;
 
   const childCells = new Uint16Array(boxCount);
+  const occupancy = new Uint8Array(cellCount);
 
   while (queueHead < queue.length) {
     if (table.size >= maxStates) break;
@@ -205,7 +206,7 @@ function buildMultiBoxPdb(
     const state = queue[queueHead++];
     const dist = table.get(state.key)!;
 
-    const occupancy = new Uint8Array(cellCount);
+    occupancy.fill(0);
     for (let b = 0; b < boxCount; b++) occupancy[state.cells[b]] = 1;
 
     for (let b = 0; b < boxCount; b++) {
@@ -525,14 +526,14 @@ export function buildComponentPdbCollection(
 
         collectionStats.partitionQueries++;
 
-        const cacheKey = `${label}:${[...currentCells].sort((a, b) => a - b).join(",")}`;
+        const sorted = [...currentCells].sort((a, b) => a - b);
+        const cacheKey = `${label}:${sorted.join(",")}`;
         const cached = partitionCache.get(cacheKey);
         if (cached !== undefined) {
           collectionStats.partitionCacheHits++;
           return cached;
         }
 
-        const sorted = [...currentCells].sort((a, b) => a - b);
         const result = labelPartitionLowerBound(sorted, comps);
 
         if (partitionCache.size < MAX_PARTITION_CACHE) {

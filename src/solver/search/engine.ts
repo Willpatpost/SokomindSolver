@@ -302,6 +302,7 @@ export async function runClassicSearch(
     avoidedReachabilityFloods: 0,
     incrementalCanonicalCells: 0,
     cheapCutoffs: 0,
+    secondaryCutoffs: 0,
     retainedBytes: 0,
     peakFrontier: 0,
     maxDepth: 0,

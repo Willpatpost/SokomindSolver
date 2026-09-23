@@ -206,6 +206,7 @@ interface SearchCounters {
   interactionBoostTotal: number;
   infeasiblePrunes: number;
   cheapCutoffs: number;
+  secondaryCutoffs: number;
   reachabilityFloods: number;
   peakStackDepth: number;
   maxDepth: number;
@@ -424,6 +425,7 @@ function createMetrics(
       interactionBoostTotal: counters.interactionBoostTotal,
       infeasiblePrunes: counters.infeasiblePrunes,
       cheapCutoffs: counters.cheapCutoffs,
+      secondaryCutoffs: counters.secondaryCutoffs,
       reopens: 0,
       reachabilityFloods: counters.reachabilityFloods,
       identityFloods: 0,
@@ -537,6 +539,7 @@ export async function runIdaStarSearch(
     interactionBoostTotal: 0,
     infeasiblePrunes: 0,
     cheapCutoffs: 0,
+    secondaryCutoffs: 0,
     reachabilityFloods: 0,
     peakStackDepth: 0,
     maxDepth: 0,
@@ -853,6 +856,7 @@ export async function runIdaStarSearch(
       }
       return componentPdbCollection.evaluate(componentPdbBoxesByLabel);
     };
+    let lastHTruncated = false;
     const computeH = (
       pushBound: number,
       lc: number,
@@ -862,8 +866,16 @@ export async function runIdaStarSearch(
       walkBound: number,
       boxes: readonly DenseBox[],
       robotCell: number,
+      g: number,
+      fLimit: number,
     ): number => {
+      lastHTruncated = false;
       let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
+      if (g + totalPushBound + walkBound > fLimit) {
+        counters.secondaryCutoffs++;
+        lastHTruncated = true;
+        return totalPushBound + walkBound;
+      }
       const perimeterDist = perimeterLookup(boxes);
       if (perimeterDist > totalPushBound) {
         const improvement = perimeterDist - totalPushBound;
@@ -935,7 +947,10 @@ export async function runIdaStarSearch(
     let heuristicCacheEntries = 0;
     let hCacheMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
     let hCacheHits = 0;
-    const hCache = new Map<number, { bigintKey: bigint; h: number }>();
+    // `truncated` marks an h cut short by computeH's secondary cutoff. It is
+    // reused only while it still exceeds the contour bound; otherwise the full
+    // h is recomputed so later contours are not stuck with the weaker value.
+    const hCache = new Map<number, { bigintKey: bigint; h: number; truncated: boolean }>();
     let peakEstimatedMemoryBytes = 0;
     estimateInteractionSearchBaseMemory = () =>
       estimateIdaCurrentBytes(
@@ -1255,7 +1270,7 @@ export async function runIdaStarSearch(
     );
     const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts, packBoxKeyFromBoxes(initialBoxes));
     const initialGoalCut = goalCut();
-    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot);
+    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot, 0, Infinity);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1439,11 +1454,14 @@ export async function runIdaStarSearch(
         // ----- First visit: f-bound, TT, solved check, mark expanded -----
         if (!frame.expanded) {
           const hCacheEntry = hCache.get(frame.zobristKey);
-          const cachedH = hCacheEntry !== undefined && hCacheEntry.bigintKey === frame.exactKey
+          const cachedH = hCacheEntry !== undefined &&
+            hCacheEntry.bigintKey === frame.exactKey &&
+            (!hCacheEntry.truncated || frame.g + hCacheEntry.h > fLimit)
             ? hCacheEntry.h
             : -1;
 
           let h: number;
+          let hTruncated = false;
           if (cachedH >= 0) {
             h = cachedH;
             hCacheHits++;
@@ -1506,11 +1524,12 @@ export async function runIdaStarSearch(
 
             const pdbBoost = pdbSurplus(frame.boxes, labelCosts, boxKey);
             const goalCutBoost = goalCut();
-            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot);
+            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot, frame.g, fLimit);
+            hTruncated = lastHTruncated;
             }
 
             const oldHCacheSize = hCache.size;
-            hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h });
+            hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h, truncated: hTruncated });
             if (hCache.size > oldHCacheSize) {
               hCacheMemoryBytes += estimateTranspositionEntryBytes();
             }
