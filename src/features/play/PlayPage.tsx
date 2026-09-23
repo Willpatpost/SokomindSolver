@@ -64,6 +64,15 @@ function difficultyLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+// The hash router would read "#game-stage" as an unknown route and go home,
+// so the skip link moves focus itself.
+function skipToStage(event: React.MouseEvent<HTMLAnchorElement>) {
+  event.preventDefault();
+  const stage = document.getElementById("game-stage");
+  stage?.focus();
+  stage?.scrollIntoView({ block: "start" });
+}
+
 interface PlayPageProps {
   readonly puzzleId: string;
   readonly actionLog?: string;
@@ -333,7 +342,9 @@ function ValidatedPlayPage({
 
   return (
     <main className={styles.page} data-zen={zenMode || undefined}>
-      <a href="#game-stage" className={styles.skipLink}>Skip to puzzle</a>
+      <a href="#game-stage" className={styles.skipLink} onClick={skipToStage}>
+        Skip to puzzle
+      </a>
       <header className={`${styles.header} ${zenMode ? styles.zenHeader : ""}`}>
         <div className={styles.headerLeft}>
           <Link href={puzzlesReturnHash} className={styles.backButton} aria-label="Back to puzzles">

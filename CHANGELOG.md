@@ -64,6 +64,9 @@ published a stable release.
   directly. While zoomed, one-finger drags only pan the board instead of also
   swiping the keeper, and a tap waits out the double-tap window so the first
   tap of a zoom-reset double tap no longer starts a walk.
+- The play page's "Skip to puzzle" link focuses the board again. It used to
+  set the URL hash to `#game-stage`, which the hash router read as an unknown
+  route and sent the player home.
 - Exact pattern-database combination counts no longer wrap at 32 bits on large
   valid custom boards, and oversized optional tables safely fall back to the
   remaining admissible heuristics.

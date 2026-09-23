@@ -24,6 +24,20 @@ test("puzzle route changes announce and focus the new heading", async ({ page })
   );
 });
 
+test("the skip link focuses the puzzle without leaving the route", async ({
+  page,
+}) => {
+  await page.goto("./#/play/ultra-tiny");
+  await expect(page.getByRole("heading", { name: "First Steps" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Skip to puzzle" }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page.locator("#game-stage")).toBeFocused();
+  await expect(page.getByTestId("game-board")).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("#/play/ultra-tiny");
+});
+
 test("a cold lazy route change waits for the new visible heading", async ({
   page,
 }) => {
