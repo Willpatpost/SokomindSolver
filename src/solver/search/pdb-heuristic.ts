@@ -6,6 +6,7 @@ import {
   buildPatternDatabaseAsync,
   UNSOLVED as PDB_UNSOLVED,
   type PatternDatabase,
+  type PdbLookupStats,
 } from "./pattern-database.ts";
 import { isExactPreprocessingLimitError, type ExactPreprocessingBudget } from "./preprocessing-budget.ts";
 
@@ -117,6 +118,17 @@ export class PdbHeuristicEvaluator {
   }
   get surplusCacheStats(): { hits: number; misses: number; size: number } {
     return { hits: this.#cacheHits, misses: this.#cacheMisses, size: this.#surplusCache.size };
+  }
+  /** Lookup counters summed over the partition databases. */
+  get lookupStats(): PdbLookupStats {
+    const total: PdbLookupStats = { lookups: 0, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 0 };
+    for (const { lookupStats } of this.#pdbs) {
+      total.lookups += lookupStats.lookups;
+      total.exitCapTrims += lookupStats.exitCapTrims;
+      total.exitCapTrimTotal += lookupStats.exitCapTrimTotal;
+      total.outsideRegionLookups += lookupStats.outsideRegionLookups;
+    }
+    return total;
   }
 
   evaluate(boxes: readonly DenseBox[]): number {

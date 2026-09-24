@@ -13,12 +13,42 @@ export interface PatternDatabaseConfig {
   readonly regionCells: readonly number[];
 }
 
+/** Lookup counters of one pattern database, for measurement only. */
+export interface PdbLookupStats {
+  lookups: number;
+  /** Finite table values lowered to the exit bound. */
+  exitCapTrims: number;
+  /** Sum of the reductions counted by `exitCapTrims`. */
+  exitCapTrimTotal: number;
+  /** Lookups with a box outside the region, answered by the exit bound. */
+  outsideRegionLookups: number;
+}
+
+/**
+ * Relaxed push lower bound for boxes to reach the partition goals: the robot
+ * teleports and a push needs only a floor support cell.
+ *
+ * The reverse BFS moves boxes only onto region cells, so a table value bounds
+ * only plans that keep every box inside the region. When the region does not
+ * cover the board, `lookup` returns min(table value, exit bound). A plan in
+ * which some box leaves the region costs at least
+ * sum of d(b) + min over boxes of (out(b) - d(b)), where d is the full-board
+ * single-box push distance to the nearest partition goal and out(b) the same
+ * distance for routes through an outside cell. A box outside the region is
+ * answered by the exit bound alone. Entries a build deadline left missing are
+ * bounded by the BFS frontier depth.
+ *
+ * UNSOLVED means no bound. It is returned when the boxes cannot all reach
+ * partition goals, or for every lookup when the table was too large to build,
+ * so a minimum over box subsets may skip it.
+ */
 export interface PatternDatabase {
   readonly k: number;
   readonly tableSize: number;
   readonly goalCells: readonly number[];
   readonly regionCells: readonly number[];
   readonly estimatedRetainedBytes: number;
+  readonly lookupStats: PdbLookupStats;
   lookup(boxCells: readonly number[]): number;
 }
 
@@ -40,7 +70,13 @@ function estimatePdbRetainedBytes(
     (regionCount + 1) * (k + 1) * Float64Array.BYTES_PER_ELEMENT +
     tableSize * Uint16Array.BYTES_PER_ELEMENT +
     regionCount * 8 +
-    k * 8;
+    k * 8 +
+    // Exit-bound distance and slack arrays, only when the region is partial.
+    (regionCount < boardCellCount ? 2 * boardCellCount * Int32Array.BYTES_PER_ELEMENT : 0);
+}
+
+function createPdbLookupStats(): PdbLookupStats {
+  return { lookups: 0, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +142,7 @@ function disabledPatternDatabase(
     goalCells: [...goalCells],
     regionCells: [...regionCells],
     estimatedRetainedBytes: 0,
+    lookupStats: createPdbLookupStats(),
     lookup: () => UNSOLVED,
   };
 }
@@ -117,26 +154,141 @@ function canAllocatePatternDatabase(tableSize: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Exit bound: full-board single-box push distances for boxes whose relaxed
+// route leaves the region.
+// ---------------------------------------------------------------------------
+
+/** Per-cell terms of the exit bound; -1 means none. */
+interface PdbExitCap {
+  /** d(c): relaxed push distance to the nearest partition goal. */
+  readonly goalDistance: Int32Array;
+  /** out(c) - d(c): extra pushes of the cheapest route through an outside cell. */
+  readonly exitSlack: Int32Array;
+}
+
+/**
+ * Settles each unsettled cell from which a push (with a floor support cell)
+ * moves a box onto `cell`, at `cost`, and queues it. Returns the new tail.
+ */
+function relaxReversePushes(
+  board: CompiledSearchBoard,
+  cell: number,
+  cost: number,
+  distances: Int32Array,
+  queue: Int32Array,
+  tail: number,
+): number {
+  const neighbors = board.neighbors[cell];
+  for (let d = 0; d < 4; d++) {
+    const previous = neighbors[d];
+    if (previous < 0 || distances[previous] >= 0) continue;
+    if (board.neighbors[previous][d] < 0) continue;
+    distances[previous] = cost;
+    queue[tail++] = previous;
+  }
+  return tail;
+}
+
+function buildPdbExitCap(
+  board: CompiledSearchBoard,
+  goalCells: readonly number[],
+  cellToRegionIndex: Int32Array,
+): PdbExitCap {
+  const cellCount = board.cellCount;
+  const queue = new Int32Array(cellCount);
+  const goalDistance = new Int32Array(cellCount).fill(-1);
+  let head = 0;
+  let tail = 0;
+  for (const goal of goalCells) {
+    if (goalDistance[goal] >= 0) continue;
+    goalDistance[goal] = 0;
+    queue[tail++] = goal;
+  }
+  while (head < tail) {
+    const cell = queue[head++];
+    tail = relaxReversePushes(board, cell, goalDistance[cell] + 1, goalDistance, queue, tail);
+  }
+
+  // out(c) = min over outside cells o of push(c -> o) + d(o). Holds out()
+  // until the final pass turns it into slack. An outside cell's out(o) is its
+  // own d(o) (triangle inequality), so those sources are settled up front and
+  // merged in cost order with the unit-cost FIFO queue.
+  const exitSlack = new Int32Array(cellCount).fill(-1);
+  const sources: number[] = [];
+  for (let cell = 0; cell < cellCount; cell++) {
+    if (cellToRegionIndex[cell] >= 0 || goalDistance[cell] < 0) continue;
+    exitSlack[cell] = goalDistance[cell];
+    sources.push(cell);
+  }
+  sources.sort((a, b) => goalDistance[a] - goalDistance[b]);
+  head = 0;
+  tail = 0;
+  let nextSource = 0;
+  while (nextSource < sources.length || head < tail) {
+    const cell = nextSource < sources.length &&
+        (head === tail || exitSlack[sources[nextSource]] <= exitSlack[queue[head]])
+      ? sources[nextSource++]
+      : queue[head++];
+    tail = relaxReversePushes(board, cell, exitSlack[cell] + 1, exitSlack, queue, tail);
+  }
+  // A cell that reaches an outside cell also reaches a goal, so d(c) >= 0.
+  for (let cell = 0; cell < cellCount; cell++) {
+    if (exitSlack[cell] >= 0) exitSlack[cell] -= goalDistance[cell];
+  }
+  return { goalDistance, exitSlack };
+}
+
+// ---------------------------------------------------------------------------
 // PDB construction via reverse-push BFS (chunked packed ranks)
 // ---------------------------------------------------------------------------
 
+/**
+ * `undiscovered` answers in-region entries the BFS never reached: UNSOLVED
+ * after a complete build, the frontier depth after a deadline.
+ */
 function makePdbLookup(
   cellToRegionIndex: Int32Array,
   binom: Float64Array[],
-  tableSize: number,
   table: Uint16Array,
+  undiscovered: number,
+  exitCap: PdbExitCap | null,
+  stats: PdbLookupStats,
 ): PatternDatabase["lookup"] {
+  const tableSize = table.length;
   return (boxCells: readonly number[]): number => {
+    stats.lookups++;
     const regionPositions: number[] = [];
+    let distanceSum = 0;
+    let minSlack = -1;
+    let outside = false;
     for (const cell of boxCells) {
+      if (exitCap !== null) {
+        const distance = exitCap.goalDistance[cell];
+        if (distance < 0) return UNSOLVED;
+        distanceSum += distance;
+        const slack = exitCap.exitSlack[cell];
+        if (slack >= 0 && (minSlack < 0 || slack < minSlack)) minSlack = slack;
+      }
       const rp = cellToRegionIndex[cell];
-      if (rp < 0) return UNSOLVED;
-      regionPositions.push(rp);
+      if (rp < 0) outside = true;
+      else regionPositions.push(rp);
+    }
+    const exitBound = minSlack < 0 ? UNSOLVED : Math.min(UNSOLVED, distanceSum + minSlack);
+    if (outside) {
+      stats.outsideRegionLookups++;
+      return exitBound;
     }
     regionPositions.sort((a, b) => a - b);
     const index = combinadicEncode(regionPositions, binom);
     if (index >= tableSize) return UNSOLVED;
-    return table[index];
+    const stored = table[index];
+    if (stored === UNSOLVED) return Math.min(undiscovered, exitBound);
+    if (exitBound < stored) {
+      stats.exitCapTrims++;
+      stats.exitCapTrimTotal += stored - exitBound;
+      return exitBound;
+    }
+    return stored;
   };
 }
 
@@ -149,6 +301,8 @@ interface PdbBfsContext {
   readonly binom: Float64Array[];
   readonly table: Uint16Array;
   readonly k: number;
+  /** Null when the region covers every floor cell. */
+  readonly exitCap: PdbExitCap | null;
 }
 
 const PDB_QUEUE_CHUNK_SIZE = 4096;
@@ -239,7 +393,10 @@ function preparePdbBfs(
   const k = goalCells.length;
 
   if (k === 0) {
-    return { k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0, lookup: () => 0 };
+    return {
+      k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0,
+      lookupStats: createPdbLookupStats(), lookup: () => 0,
+    };
   }
   if (k > MAX_K) {
     throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
@@ -266,27 +423,40 @@ function preparePdbBfs(
 
   const solvedPositions = goalCells.map((gc) => cellToRegionIndex[gc]).sort((a, b) => a - b);
   if (solvedPositions.some((p) => p < 0)) {
-    return { k, tableSize, goalCells: [...goalCells], regionCells: [...regionCells], estimatedRetainedBytes: retainedBytes, lookup: () => UNSOLVED };
+    return {
+      k, tableSize, goalCells: [...goalCells], regionCells: [...regionCells],
+      estimatedRetainedBytes: retainedBytes, lookupStats: createPdbLookupStats(), lookup: () => UNSOLVED,
+    };
   }
 
   const solvedRank = combinadicEncode(solvedPositions, binom);
   table[solvedRank] = 0;
+  const exitCap = regionCount < board.cellCount
+    ? buildPdbExitCap(board, goalCells, cellToRegionIndex)
+    : null;
 
   return {
-    ctx: { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k },
+    ctx: { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k, exitCap },
     solvedRank,
     retainedBytes,
   };
 }
 
-function finishPdb(ctx: PdbBfsContext, retainedBytes: number, goalCells: readonly number[]): PatternDatabase {
+function finishPdb(
+  ctx: PdbBfsContext,
+  retainedBytes: number,
+  goalCells: readonly number[],
+  undiscovered: number,
+): PatternDatabase {
+  const lookupStats = createPdbLookupStats();
   return {
     k: ctx.k,
     tableSize: ctx.table.length,
     goalCells: [...goalCells],
     regionCells: [...ctx.regionCells],
     estimatedRetainedBytes: retainedBytes,
-    lookup: makePdbLookup(ctx.cellToRegionIndex, ctx.binom, ctx.table.length, ctx.table),
+    lookupStats,
+    lookup: makePdbLookup(ctx.cellToRegionIndex, ctx.binom, ctx.table, undiscovered, ctx.exitCap, lookupStats),
   };
 }
 
@@ -312,7 +482,7 @@ export function buildPatternDatabase(
     expandPdbState(ctx, rank, dist + 1, queue, positions, occupiedRegion, newPositions);
   }
 
-  return finishPdb(ctx, retainedBytes, config.goalCells);
+  return finishPdb(ctx, retainedBytes, config.goalCells, UNSOLVED);
 }
 
 const PDB_BFS_YIELD_INTERVAL = 4096;
@@ -342,6 +512,9 @@ export async function buildPatternDatabaseAsync(
     checkExactPreprocessingBudget(budget, retainedBytes + workspaceBytes + queue.retainedBytes + additionalBytes);
   };
   let processed = 0;
+  // Depth of the last dequeued state. FIFO order had already expanded every
+  // shallower state, so every state this close to the goals was discovered.
+  let frontierDepth = 0;
 
   try {
     queue.push(solvedRank, checkQueueAllocation);
@@ -355,13 +528,17 @@ export async function buildPatternDatabaseAsync(
       processed++;
       const dist = ctx.table[rank];
       if (dist >= UNSOLVED - 1) continue;
+      frontierDepth = dist;
       expandPdbState(ctx, rank, dist + 1, queue, positions, occupiedRegion, newPositions, checkQueueAllocation);
     }
   } catch (err) {
     if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
+    // Missing entries are at least one push deeper than the frontier; a
+    // subset minimum needs that bound rather than UNSOLVED to stay sound.
+    return finishPdb(ctx, retainedBytes, config.goalCells, frontierDepth + 1);
   }
 
-  return finishPdb(ctx, retainedBytes, config.goalCells);
+  return finishPdb(ctx, retainedBytes, config.goalCells, UNSOLVED);
 }
 
 export function buildGoalRegion(

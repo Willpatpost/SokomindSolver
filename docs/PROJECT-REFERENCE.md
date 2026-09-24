@@ -202,7 +202,7 @@ fails when the generated facts below differ from source.
 | progress | `sokomind.progress.v1` |
 | experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
-| optimal | `sokomind.optimal.v8` |
+| optimal | `sokomind.optimal.v9` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |

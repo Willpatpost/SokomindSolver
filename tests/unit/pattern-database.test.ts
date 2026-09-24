@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parsePuzzleRows } from "../../src/core/index.ts";
+import type { SolverRequest } from "../../src/solver/contracts.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
+import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
 import {
   buildPatternDatabase,
@@ -14,6 +17,7 @@ import {
   MAX_PDB_TABLE_ENTRIES,
   UNSOLVED,
 } from "../../src/solver/search/pattern-database.ts";
+import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 
 describe("combinadic encoding", () => {
   it("encodes and decodes a roundtrip for k=1", () => {
@@ -213,7 +217,7 @@ describe("buildPatternDatabase", () => {
     }
   });
 
-  it("returns UNSOLVED for cells outside the region", () => {
+  it("answers cells outside the region with the full-board push distance", () => {
     const board = compileSearchBoard(parsePuzzleRows([
       "OOOOOOOOOOO",
       "OR        O",
@@ -232,10 +236,19 @@ describe("buildPatternDatabase", () => {
       labelIds: ["X"],
       regionCells,
     });
-    const farCell = board.cellAt(1, 1);
-    if (farCell >= 0 && !regionCells.includes(farCell)) {
-      assert.equal(pdb.lookup([farCell]), UNSOLVED);
+    const pushDistances = board.reversePushDistancesByGoal.get(goalCell)!;
+    let reachableOutside = 0;
+    for (let cell = 0; cell < board.cellCount; cell++) {
+      if (regionCells.includes(cell)) continue;
+      if (pushDistances[cell] >= 0) reachableOutside++;
+      assert.equal(pdb.lookup([cell]), pushDistances[cell] < 0 ? UNSOLVED : pushDistances[cell]);
     }
+    assert.ok(reachableOutside > 0);
+    // A corner box can never reach the goal; (2, 2) takes 5 pushes.
+    assert.equal(pdb.lookup([board.cellAt(1, 1)]), UNSOLVED);
+    assert.equal(pdb.lookup([board.cellAt(2, 2)]), 5);
+    // Unreachable boxes are answered UNSOLVED before the region check.
+    assert.equal(pdb.lookupStats.outsideRegionLookups, reachableOutside + 1);
   });
 
   it("builds a 2-box PDB with correct solved distance", () => {
@@ -328,4 +341,160 @@ describe("buildPatternDatabase", () => {
       }
     }
   });
+});
+
+// A box on the bottom row leaves it only through the gaps at columns 1-2 and
+// 12-13. The east route from (5, 10) to the goal at (1, 6) takes 12 pushes but
+// passes cells outside the radius-8 goal region, so the table's in-region
+// route through the west gap takes 16.
+const EXIT_ROUTE_ROWS = [
+  "OOOOOOOOOOOOOOO",
+  "O     S       O",
+  "O             O",
+  "O             O",
+  "O             O",
+  "O        RX   O",
+  "O  OOOOOOOOO  O",
+  "OOOOOOOOOOOOOOO",
+];
+
+describe("pattern database exit bound", () => {
+  type Board = ReturnType<typeof compileSearchBoard>;
+
+  function exitRouteBoard(): Board {
+    const board = compileSearchBoard(parsePuzzleRows(EXIT_ROUTE_ROWS));
+    assert.equal(board.cellCount, 69);
+    return board;
+  }
+
+  function singleGoalPdb(board: Board) {
+    const goalCells = [board.cellAt(1, 6)];
+    const regionCells = buildGoalRegion(board, goalCells, 8);
+    const config = { goalCells, labelIds: ["X"], regionCells };
+    return { goalCells, regionCells, config, pdb: buildPatternDatabase(board, config) };
+  }
+
+  function forEachCombination(n: number, k: number, visit: (cells: readonly number[]) => void): void {
+    const cells: number[] = [];
+    const extend = (start: number): void => {
+      if (cells.length === k) {
+        visit(cells);
+        return;
+      }
+      for (let cell = start; cell <= n - (k - cells.length); cell++) {
+        cells.push(cell);
+        extend(cell + 1);
+        cells.pop();
+      }
+    };
+    extend(0);
+  }
+
+  function describeCells(board: Board, cells: readonly number[]): string {
+    return cells.map((cell) => `(${board.positions[cell].row},${board.positions[cell].column})`).join(" ");
+  }
+
+  it("gives every single box its full-board push distance", async () => {
+    const board = exitRouteBoard();
+    const { goalCells, regionCells, config, pdb } = singleGoalPdb(board);
+    assert.ok(regionCells.length < board.cellCount);
+    const asyncPdb = await buildPatternDatabaseAsync(board, config, new AbortController().signal);
+    const pushDistances = board.reversePushDistancesByGoal.get(goalCells[0])!;
+    for (const database of [pdb, asyncPdb]) {
+      for (let cell = 0; cell < board.cellCount; cell++) {
+        assert.equal(
+          database.lookup([cell]),
+          pushDistances[cell] < 0 ? UNSOLVED : pushDistances[cell],
+          describeCells(board, [cell]),
+        );
+      }
+      assert.ok(database.lookupStats.exitCapTrims > 0);
+    }
+  });
+
+  it("trims the in-region table value to the exit bound", () => {
+    const board = exitRouteBoard();
+    const { regionCells, pdb } = singleGoalPdb(board);
+    const east = board.cellAt(5, 10);
+    assert.ok(regionCells.includes(east));
+    assert.equal(pdb.lookup([east]), 12);
+    // The trim recovers the table's west-gap value, 16.
+    assert.deepEqual(pdb.lookupStats, {
+      lookups: 1, exitCapTrims: 1, exitCapTrimTotal: 4, outsideRegionLookups: 0,
+    });
+    assert.equal(pdb.lookup([board.cellAt(5, 9)]), 13);
+    assert.equal(pdb.lookupStats.exitCapTrimTotal, 4 + 2);
+  });
+
+  for (const goalPositions of [[[1, 6], [1, 7]], [[1, 6], [1, 7], [2, 6]]]) {
+    it(`never exceeds the full-board table with ${goalPositions.length} boxes`, () => {
+      const board = exitRouteBoard();
+      const goalCells = goalPositions.map(([row, column]) => board.cellAt(row, column));
+      const labelIds = goalCells.map(() => "X");
+      const regionCells = buildGoalRegion(board, goalCells, 8);
+      assert.ok(regionCells.length < board.cellCount);
+      const capped = buildPatternDatabase(board, { goalCells, labelIds, regionCells });
+      const exact = buildPatternDatabase(board, {
+        goalCells, labelIds, regionCells: Array.from({ length: board.cellCount }, (_, cell) => cell),
+      });
+      let subsets = 0;
+      let tableOverestimates = 0;
+      forEachCombination(board.cellCount, goalCells.length, (cells) => {
+        subsets++;
+        const bound = exact.lookup(cells);
+        if (bound === UNSOLVED) return;
+        const trimmedBefore = capped.lookupStats.exitCapTrimTotal;
+        const value = capped.lookup(cells);
+        assert.ok(value <= bound, `${describeCells(board, cells)}: ${value} > ${bound}`);
+        // The untrimmed table value is what the lookup returned before the fix.
+        if (value + capped.lookupStats.exitCapTrimTotal - trimmedBefore > bound) tableOverestimates++;
+      });
+      assert.equal(subsets, buildBinomials(board.cellCount, goalCells.length)[board.cellCount][goalCells.length]);
+      assert.ok(tableOverestimates > 0);
+      assert.ok(capped.lookupStats.outsideRegionLookups > 0);
+    });
+  }
+
+  it("keeps a subset minimum sound when the cheaper box is outside the region", () => {
+    const board = exitRouteBoard();
+    const { goalCells, regionCells, pdb } = singleGoalPdb(board);
+    const evaluator = new PdbHeuristicEvaluator([{ goalCells, labels: ["X"], regionCells }], [pdb]);
+    const inside = board.cellAt(5, 10);
+    const outside = board.cellAt(4, 12);
+    assert.ok(regionCells.includes(inside));
+    assert.ok(!regionCells.includes(outside));
+    // Either box may take the goal: (4, 12) needs 9 pushes and (5, 10) 12.
+    // Skipping the outside subset used to leave the minimum at the table's 16.
+    assert.equal(evaluator.evaluate([
+      { id: "X:0", label: "X", cell: inside },
+      { id: "X:1", label: "X", cell: outside },
+    ]), 9);
+    assert.deepEqual(evaluator.lookupStats, {
+      lookups: 2, exitCapTrims: 1, exitCapTrimTotal: 4, outsideRegionLookups: 1,
+    });
+  });
+
+  for (const [name, run] of [["A*", runExactMoveAStar], ["IDA*", runIdaStarSearch]] as const) {
+    it(`${name} reports exit-bound trims and proves the 20-move optimum`, async () => {
+      const board = parsePuzzleRows(EXIT_ROUTE_ROWS);
+      const request: SolverRequest = {
+        board,
+        snapshot: {
+          puzzleId: "pdb-exit-route", robot: board.initialRobot, boxes: board.initialBoxes,
+          moves: 0, pushes: 0, solved: false,
+        },
+        objective: { kind: "moves" },
+      };
+      const result = await run(request, {
+        signal: new AbortController().signal, now: () => performance.now(), reportProgress() {},
+      });
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.moves, 20);
+      assert.equal(result.solution.optimality, "proven");
+      const counters = result.metrics.counters!;
+      assert.ok(counters.pdbLookups > 0);
+      assert.ok(counters.pdbExitCapTrims > 0);
+    });
+  }
 });

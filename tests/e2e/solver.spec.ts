@@ -217,7 +217,7 @@ test("does not claim an optimal proof was saved when both storage tiers fail", a
   await page.evaluate(() => {
     const originalSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function setItem(key: string, value: string) {
-      if (key === "sokomind.optimal.v8") {
+      if (key === "sokomind.optimal.v9") {
         throw new DOMException("Storage quota exceeded", "QuotaExceededError");
       }
       return originalSetItem.call(this, key, value);

@@ -48,6 +48,7 @@ executable tests remain authoritative when any prose disagrees.
 - npm run test
 - npm run test:coverage
 - npm run test:solver:oracle
+- npm run test:solver:fuzz
 - npm run test:solver:optimal
 - npm run test:solver:multi
 - npm run test:solver:huge
@@ -68,6 +69,7 @@ executable tests remain authoritative when any prose disagrees.
 ## Environment variables
 
 - SOKOMIND_TIMING_SCALE: multiplier for wall-clock timing gates in performance tests (default 1). Set to 2 on slower hardware (e.g. Waterfield login node). State-count and deterministic-result assertions are unaffected.
+- SOKOMIND_FUZZ_MINUTES, SOKOMIND_FUZZ_SEED, SOKOMIND_FUZZ_BOARDS, SOKOMIND_FUZZ_ALL_VARIANTS: control `npm run test:solver:fuzz` (time budget, default 10 minutes; first seed, default 1000000; board cap; `1` runs every variant on every board).
 
 ## Change workflow
 

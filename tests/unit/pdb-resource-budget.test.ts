@@ -5,7 +5,7 @@ import { parsePuzzleRows } from "../../src/core/index.ts";
 import { SolverCancelledError } from "../../src/solver/cancellation.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
-import { buildPatternDatabaseAsync, UNSOLVED } from "../../src/solver/search/pattern-database.ts";
+import { buildPatternDatabaseAsync } from "../../src/solver/search/pattern-database.ts";
 import { AssignmentHeuristic } from "../../src/solver/search/heuristic.ts";
 import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 import { ExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
@@ -81,20 +81,26 @@ describe("PDB resource budgets", () => {
     assert.equal(pdb.lookup([1]), 8997);
   });
 
-  it("retains sound finite entries and ignores missing entries after a build deadline", async () => {
+  it("bounds missing entries by the BFS frontier after a build deadline", async () => {
     const { board, config } = corridorFixture(1000);
     const signal = new AbortController().signal;
     let checks = 0;
     const pdb = await buildPatternDatabaseAsync(board, config, signal, {
       signal, now: () => ++checks <= 6 ? 0 : 10, deadline: 10, baseMemoryBytes: 0,
     });
+    const goal = config.goalCells[0];
     assert.equal(pdb.lookup(config.goalCells), 0);
-    assert.equal(pdb.lookup([config.goalCells[0] - 5]), 5);
-    assert.equal(pdb.lookup([1]), UNSOLVED);
+    assert.equal(pdb.lookup([goal - 5]), 5);
+    // The deadline hits after depth 255 was dequeued, so depth 256 is the
+    // deepest stored entry and every missing entry needs at least 256 pushes.
+    // Missing entries used to read UNSOLVED, which a subset minimum skips.
+    assert.equal(pdb.lookup([goal - 256]), 256);
+    assert.equal(pdb.lookup([goal - 257]), 256);
+    assert.equal(pdb.lookup([1]), 256);
     const evaluator = new PdbHeuristicEvaluator([
       { ...config, labels: ["X"] },
     ], [pdb]);
-    assert.equal(evaluator.evaluate([{ id: "X:0", label: "X", cell: 1 }]), 0);
+    assert.equal(evaluator.evaluate([{ id: "X:0", label: "X", cell: 1 }]), 256);
   });
 });
 

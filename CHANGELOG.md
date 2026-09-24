@@ -29,8 +29,8 @@ published a stable release.
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
-- The optimal-record proof revision is now `exact-moves-linear-conflict-v1` and
-  the storage key is `sokomind.optimal.v8`, so certificates stored under
+- The optimal-record proof revision is now `exact-moves-pdb-exit-cap-v1` and
+  the storage key is `sokomind.optimal.v9`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
 - The IDA* checkpoint schema is now 4, so checkpoints written by the earlier
@@ -170,6 +170,18 @@ published a stable release.
   single goal on that line and both boxes' push distances are straight. No
   move-level overestimate was found, so discarding earlier certificates is a
   precaution.
+- The exact pattern database no longer overestimates the remaining pushes.
+  Its table moves boxes only within a goal region, so it counted only routes
+  that keep every box inside; on a probe board it stored 16 pushes where 12
+  suffice. A lookup now returns the smaller of the table value and an exit
+  bound built from full-board push distances. Lookups with a box outside the
+  region, and entries a build deadline left missing, used to return no bound;
+  a minimum over box subsets skipped them and could settle on a larger value.
+  Outside boxes now get the exit bound, and missing entries one more than the
+  last depth the build expanded. New `pdbLookups`, `pdbExitCapTrims`,
+  `pdbExitCapTrimTotal` and `pdbOutsideRegionLookups` counters show how often
+  the bound applies. No false certificate was found, so discarding earlier
+  certificates is a precaution.
 - The exact interaction-boost and PDB-surplus caches no longer rely on callers
   passing label costs from the same state. Both values subtract the assignment
   label costs but were cached by box key alone; the evaluators now use their

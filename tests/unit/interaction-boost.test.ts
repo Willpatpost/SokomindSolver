@@ -129,6 +129,96 @@ function exactRemainingPushes(
   return null;
 }
 
+interface ExactPushTableState {
+  robot: number;
+  cells: readonly number[];
+  pushes: number | null;
+}
+
+/**
+ * Exact remaining pushes for every state whose box i has label `labels[i]`,
+ * from a backward 0-1 BFS over the whole state graph. Unsolvable states keep
+ * `pushes: null`.
+ */
+function exactPushTable(
+  board: CompiledSearchBoard,
+  labels: readonly string[],
+): readonly ExactPushTableState[] {
+  const placements: number[][] = [];
+  const place = (cells: number[]): void => {
+    if (cells.length === labels.length) {
+      placements.push([...cells]);
+      return;
+    }
+    for (let cell = 0; cell < board.cellCount; cell++) {
+      if (cells.includes(cell)) continue;
+      cells.push(cell);
+      place(cells);
+      cells.pop();
+    }
+  };
+  place([]);
+
+  const encode = (robot: number, cells: readonly number[]): number =>
+    cells.reduce((code, cell) => code * board.cellCount + cell, robot);
+  const states: ExactPushTableState[] = [];
+  const indexByCode = new Map<number, number>();
+  for (const cells of placements) {
+    for (let robot = 0; robot < board.cellCount; robot++) {
+      if (cells.includes(robot)) continue;
+      indexByCode.set(encode(robot, cells), states.length);
+      states.push({ robot, cells, pushes: null });
+    }
+  }
+
+  const predecessors: { from: number; push: boolean }[][] = states.map(() => []);
+  states.forEach(({ robot, cells }, from) => {
+    for (let d = 0; d < board.neighbors[robot].length; d++) {
+      const dest = board.neighbors[robot][d];
+      if (dest < 0) continue;
+      const pushedBoxIndex = cells.indexOf(dest);
+      let nextCells = cells;
+      if (pushedBoxIndex >= 0) {
+        const boxDest = board.neighbors[dest][d];
+        if (boxDest < 0 || cells.includes(boxDest)) continue;
+        nextCells = cells.map((cell, i) => (i === pushedBoxIndex ? boxDest : cell));
+      }
+      const to = indexByCode.get(encode(dest, nextCells));
+      if (to === undefined) throw new Error("exact push table is missing a state");
+      predecessors[to].push({ from, push: pushedBoxIndex >= 0 });
+    }
+  });
+
+  let layer: number[] = [];
+  states.forEach(({ cells }, index) => {
+    if (cells.every((cell, i) => board.goalLabelByCell[cell] === labels[i])) {
+      layer.push(index);
+    }
+  });
+  for (let pushes = 0; layer.length > 0; pushes++) {
+    const queue: number[] = [];
+    for (const index of layer) {
+      if (states[index].pushes !== null) continue;
+      states[index].pushes = pushes;
+      queue.push(index);
+    }
+    const nextLayer: number[] = [];
+    for (let head = 0; head < queue.length; head++) {
+      for (const { from, push } of predecessors[queue[head]]) {
+        if (states[from].pushes !== null) continue;
+        if (push) {
+          nextLayer.push(from);
+        } else {
+          states[from].pushes = pushes;
+          queue.push(from);
+        }
+      }
+    }
+    layer = nextLayer;
+  }
+  return states;
+}
+
 describe("interaction boost heuristic", () => {
   it("reports repeated-label open boards as statically inapplicable", () => {
     const board = compileSearchBoard(parsePuzzleRows([
@@ -285,19 +375,23 @@ describe("interaction boost heuristic", () => {
   });
 
   it("never exceeds exact optimal pushes (oracle exhaustive on tiny board)", () => {
-    // Tiny board with a room structure
+    // Both goals are in one room. A box on goal (1,3) blocks the cell the
+    // robot needs to push the other box down into goal (3,3), so that box
+    // must detour through (3,4). The room pattern table sees the detour; the
+    // assignment bound does not.
     const parsed = parsePuzzleRows([
-      "OOOOOO",
-      "ORXX O",
-      "OOO  O",
-      "O SS O",
-      "OOOOOO",
+      "OOOOOOO",
+      "O OSXRO",
+      "O   X O",
+      "O OS  O",
+      "OOOOOOO",
     ]);
     const board = compileSearchBoard(parsed);
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
 
     let violations = 0;
     let solvableStates = 0;
+    let positiveBoostStates = 0;
 
     for (let left = 0; left < board.cellCount; left++) {
       for (let right = left + 1; right < board.cellCount; right++) {
@@ -319,6 +413,7 @@ describe("interaction boost heuristic", () => {
           const labelCosts = fullAssignmentLabelCosts(board, testBoxes);
           const boost = evaluator.evaluate(testBoxes, labelCosts);
           const totalH = assignmentH + boost;
+          if (boost > 0) positiveBoostStates++;
 
           if (totalH > exact) {
             violations++;
@@ -333,27 +428,32 @@ describe("interaction boost heuristic", () => {
       `Admissibility violated: ${violations} states have h > exact out of ${solvableStates} solvable`,
     );
     assert.ok(solvableStates >= 10, `Expected broad solvable coverage; got ${solvableStates}`);
+    assert.ok(
+      positiveBoostStates > 0,
+      `Expected solvable states with a positive boost; got 0 of ${solvableStates}`,
+    );
+    assert.ok(evaluator.stats.roomBoostTotal > 0, "Expected boost from the room pattern table");
   });
 
   it("never exceeds exact pushes with typed labels (oracle)", () => {
-    // Board with two different typed labels
+    // Goal a can only be entered from below and goal b only from above, so A
+    // and B both need column 4. The pair table sees the conflict; the
+    // assignment bound does not.
     const parsed = parsePuzzleRows([
-      "OOOOOOO",
-      "OaA bBO",
-      "O  R  O",
-      "OOOOOOO",
+      "OOOOOO",
+      "OOORaO",
+      "O   BO",
+      "O  A O",
+      "O  ObO",
+      "OOOOOO",
     ]);
     const board = compileSearchBoard(parsed);
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
-    const labels = [...board.goalCellsByLabel.keys()].sort();
-    assert.ok(labels.length >= 2, "Should have at least 2 labels");
+    assert.deepEqual([...board.goalCellsByLabel.keys()].sort(), ["A", "B"]);
 
     let violations = 0;
     let solvableStates = 0;
-
-    const goalA = (board.goalCellsByLabel.get("A") ?? [])[0];
-    const goalB = (board.goalCellsByLabel.get("B") ?? [])[0];
-    if (goalA === undefined || goalB === undefined) return;
+    let positiveBoostStates = 0;
 
     for (let cellA = 0; cellA < board.cellCount; cellA++) {
       for (let cellB = 0; cellB < board.cellCount; cellB++) {
@@ -376,6 +476,7 @@ describe("interaction boost heuristic", () => {
           const labelCosts = fullAssignmentLabelCosts(board, testBoxes);
           const boost = evaluator.evaluate(testBoxes, labelCosts);
           const totalH = assignmentH + boost;
+          if (boost > 0) positiveBoostStates++;
 
           if (totalH > exact) {
             violations++;
@@ -386,6 +487,11 @@ describe("interaction boost heuristic", () => {
 
     assert.equal(violations, 0, `Admissibility violated in ${violations}/${solvableStates} states`);
     assert.ok(solvableStates >= 10, `Expected solvable coverage; got ${solvableStates}`);
+    assert.ok(
+      positiveBoostStates > 0,
+      `Expected solvable states with a positive boost; got 0 of ${solvableStates}`,
+    );
+    assert.ok(evaluator.stats.pairBoostTotal > 0, "Expected boost from the pair conflict table");
   });
 
   it("returns 0 boost when pattern table hits cutoff", () => {
@@ -426,98 +532,137 @@ describe("interaction boost heuristic", () => {
   });
 
   it("never exceeds exact pushes with combined room + pair (oracle)", () => {
-    // Board designed to have both articulation points (rooms) and pair-conflict paths
+    // Goals a and b are in a dead-end pocket behind c's goal (3,3). B must go
+    // in before A, which the room table sees, and C must arrive after both,
+    // which the A-C and B-C pair tables see (the room table does not cover C).
     const parsed = parsePuzzleRows([
-      "OOOOOOOOO",
-      "OaA R bBO",
-      "OOO   OOO",
-      "O       O",
-      "OOOOOOOOO",
+      "OOOOOOO",
+      "OR   OO",
+      "O ACOOO",
+      "O BcabO",
+      "OO  OOO",
+      "OOOOOOO",
     ]);
     const board = compileSearchBoard(parsed);
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
+    const labels = ["A", "B", "C"];
 
     let violations = 0;
     let solvableStates = 0;
+    let roomBoostStates = 0;
+    let pairBoostStates = 0;
 
-    for (let cellA = 0; cellA < board.cellCount; cellA++) {
-      for (let cellB = 0; cellB < board.cellCount; cellB++) {
-        if (cellA === cellB) continue;
-        for (let robot = 0; robot < board.cellCount; robot++) {
-          if (robot === cellA || robot === cellB) continue;
+    for (const { robot, cells, pushes } of exactPushTable(board, labels)) {
+      if (pushes === null) continue;
+      solvableStates++;
 
-          const testBoxes: readonly DenseBox[] = [
-            { id: "A:0", label: "A", cell: cellA },
-            { id: "B:0", label: "B", cell: cellB },
-          ];
+      const testBoxes: readonly DenseBox[] = cells.map((cell, i) => ({
+        id: `${labels[i]}:0`,
+        label: labels[i],
+        cell,
+      }));
+      // Spot-check the table against the forward oracle.
+      if (solvableStates % 20 === 1) {
+        assert.equal(pushes, exactRemainingPushes(board, robot, testBoxes));
+      }
 
-          const exact = exactRemainingPushes(board, robot, testBoxes);
-          if (exact === null) continue;
-          solvableStates++;
+      const assignmentH = assignmentLowerBound(board, testBoxes);
+      if (!Number.isFinite(assignmentH)) continue;
 
-          const assignmentH = assignmentLowerBound(board, testBoxes);
-          if (!Number.isFinite(assignmentH)) continue;
+      const roomBefore = evaluator.stats.roomBoostTotal;
+      const pairBefore = evaluator.stats.pairBoostTotal;
+      const labelCosts = fullAssignmentLabelCosts(board, testBoxes);
+      const boost = evaluator.evaluate(testBoxes, labelCosts);
+      if (evaluator.stats.roomBoostTotal > roomBefore) roomBoostStates++;
+      if (evaluator.stats.pairBoostTotal > pairBefore) pairBoostStates++;
 
-          const labelCosts = fullAssignmentLabelCosts(board, testBoxes);
-          const boost = evaluator.evaluate(testBoxes, labelCosts);
-          const totalH = assignmentH + boost;
-
-          if (totalH > exact) {
-            violations++;
-          }
-        }
+      if (assignmentH + boost > pushes) {
+        violations++;
       }
     }
 
     assert.equal(violations, 0, `Combined admissibility violated in ${violations}/${solvableStates} states`);
-    assert.ok(solvableStates >= 10, `Expected solvable coverage; got ${solvableStates}`);
+    assert.ok(solvableStates >= 100, `Expected solvable coverage; got ${solvableStates}`);
+    assert.ok(
+      roomBoostStates > 0,
+      `Expected solvable states with room boost; got 0 of ${solvableStates}`,
+    );
+    assert.ok(
+      pairBoostStates > 0,
+      `Expected solvable states with pair boost; got 0 of ${solvableStates}`,
+    );
   });
 
   it("produces positive boost when pair-conflict paths intersect", () => {
-    // Two singleton-label boxes whose shortest-push paths share a narrow passage
+    // Goal a can only be entered from below and goal b only from above, so A
+    // and B both need column 4: the assignment bound is 5 pushes, the exact
+    // optimum 7, and the pair table supplies the missing 2.
     const parsed = parsePuzzleRows([
-      "OOOOOOO",
-      "OaA   O",
-      "OOO OOO",
-      "O   bBO",
-      "OR    O",
-      "OOOOOOO",
+      "OOOOOO",
+      "OOORaO",
+      "O   BO",
+      "O  A O",
+      "O  ObO",
+      "OOOOOO",
     ]);
     const board = compileSearchBoard(parsed);
     const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
     const labelCosts = fullAssignmentLabelCosts(board, boxes);
     const boost = evaluator.evaluate(boxes, labelCosts);
-    assert.ok(boost >= 0, "Boost must be non-negative");
+    assert.equal(boost, 2);
+    assert.equal(evaluator.stats.pairBoostTotal, 2);
+    assert.equal(
+      assignmentLowerBound(board, boxes) + boost,
+      exactRemainingPushes(board, robot, boxes),
+    );
   });
 
   it("exposes roomPatternStats", () => {
-    const parsed = parsePuzzleRows([
+    const board = compileSearchBoard(parsePuzzleRows([
       "OOOOOOO",
-      "OSX   O",
-      "OOO OOO",
-      "O  SX O",
-      "OR    O",
+      "O OSXRO",
+      "O   X O",
+      "O OS  O",
       "OOOOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
+    ]));
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
-    const stats = evaluator.roomPatternStats;
-    assert.ok(stats !== null && typeof stats === "object");
+    // Room tables are built with the evaluator.
+    assert.equal(evaluator.roomPatternStats.builds, 1);
+    assert.ok(evaluator.roomPatternStats.states > 0);
+    assert.equal(evaluator.roomPatternStats.hits, 0);
+
+    // The box stuck on goal (1,3) sends the other box around through (3,4).
+    const boxes: readonly DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(1, 3) },
+      { id: "X:1", label: "X", cell: board.cellAt(2, 2) },
+    ];
+    assert.equal(evaluator.evaluate(boxes, fullAssignmentLabelCosts(board, boxes)), 2);
+    assert.equal(evaluator.roomPatternStats.hits, 1);
+    assert.equal(evaluator.stats.roomBoostTotal, 2);
   });
 
   it("exposes pairConflictStats", () => {
     const parsed = parsePuzzleRows([
-      "OOOOOOO",
-      "OSX   O",
-      "OOO OOO",
-      "O  SX O",
-      "OR    O",
-      "OOOOOOO",
+      "OOOOOO",
+      "OOORaO",
+      "O   BO",
+      "O  A O",
+      "O  ObO",
+      "OOOOOO",
     ]);
     const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
     const evaluator = new InteractionBoostEvaluator(board, board.topology);
-    const stats = evaluator.pairConflictStats;
-    assert.ok(stats !== null && typeof stats === "object");
+    // Pair tables are built for the first candidate, not with the evaluator.
+    assert.equal(evaluator.pairConflictStats.builds, 0);
+
+    evaluator.evaluate(boxes, fullAssignmentLabelCosts(board, boxes));
+    assert.equal(evaluator.pairConflictStats.builds, 1);
+    assert.ok(evaluator.pairConflictStats.states > 0);
+    assert.equal(evaluator.pairConflictStats.candidates, 1);
+    assert.equal(evaluator.pairConflictStats.hits, 1);
+    assert.equal(evaluator.roomPatternStats.builds, 0);
   });
 });

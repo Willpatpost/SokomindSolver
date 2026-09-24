@@ -31,6 +31,7 @@
     "test:unit:coverage": "npm run test:coverage",
     "test:solver:huge": "node --experimental-strip-types --test tests/performance/sokomind-solver-huge.test.ts",
     "test:solver:oracle": "node --experimental-strip-types --test tests/unit/solver-exact-oracle.test.ts",
+    "test:solver:fuzz": "node --experimental-strip-types --test tests/performance/solver-exact-fuzz.test.ts",
     "test:solver:optimal": "node --experimental-strip-types --test tests/unit/solver-optimal.test.ts",
     "test:solver:known": "node --experimental-strip-types --test tests/performance/solver-known-optima.test.ts",
     "test:solver:known:extended": "node --experimental-strip-types --test tests/performance/solver-known-optima-extended.test.ts",

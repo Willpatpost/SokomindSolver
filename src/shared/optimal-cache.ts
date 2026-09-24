@@ -12,7 +12,7 @@ import { isRecord } from "../core/type-guards.ts";
 import { isPuzzleRevisionFingerprint } from "../core/puzzle-revision.ts";
 
 // Bump when a proof-producing algorithm or admissibility rule is corrected.
-export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-linear-conflict-v1" as const;
+export const CURRENT_OPTIMAL_PROOF_REVISION = "exact-moves-pdb-exit-cap-v1" as const;
 
 export interface OptimalRecord {
   readonly moves: number;
@@ -93,7 +93,9 @@ function isValidOptimalRecordKey(value: string): boolean {
  * revision exact-moves-pattern-key-v1 proved with the goal-cut heuristic on
  * by default, and that bound is not proven admissible. The unreleased revision
  * exact-moves-goal-cut-off-v1 used a linear conflict that could exceed the
- * remaining pushes.
+ * remaining pushes. Revision exact-moves-linear-conflict-v1 used
+ * pattern-database values that counted only routes keeping every box inside a
+ * goal region, so they too could exceed the remaining pushes.
  * The record format has no algorithm identity, so all earlier proof revisions
  * are rejected rather than attempting to retain only unaffected certificates.
  */

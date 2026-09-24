@@ -58,11 +58,12 @@ disabled pending broader performance qualification. Quality strategic defaults
 preserve explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
-`exact-moves-linear-conflict-v1`, and storage key `sokomind.optimal.v8`.
+`exact-moves-pdb-exit-cap-v1`, and storage key `sokomind.optimal.v9`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records
 that can predate the A* frontier correction, the tunnel-macro soundness fix or
 the pattern-deadlock key fix, that were proven with the goal-cut heuristic on
-by default, or that used the earlier linear conflict.
+by default, or that used the earlier linear conflict or region-bound pattern
+database.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.
@@ -109,6 +110,12 @@ The linear conflict no longer overestimates the remaining pushes (see the
 linear-conflict paragraph below). It ran by default in both exact kernels and
 in classic A*, but no move-level overestimate has been found, so proof revision
 `exact-moves-linear-conflict-v1` rejecting earlier records is a precaution.
+
+The pattern database no longer overestimates the remaining pushes (see the
+pattern-database paragraph below). It runs by default in both exact kernels.
+No false certificate has been found; on the probe board the walking moves
+absorbed the excess. Proof revision `exact-moves-pdb-exit-cap-v1` and storage
+key `sokomind.optimal.v9` rejecting earlier records is therefore a precaution.
 
 Sokomind 1.3.0 also versions the earlier Quality changes: Quality no longer
 dispatches proof and always reports unknown optimality, `SolverRequest` accepts
@@ -213,6 +220,11 @@ selecting Quality and still requires the documented promotion evidence.
   checks as other successors, including the initial node arena allocation.
 - Pattern-database, deadlock-table, and related preprocessing share the run's
   cancellation, elapsed-time, state, and estimated-memory budgets.
+- A pattern-database lookup never exceeds the full-board relaxation. A table
+  built over a goal region is capped by an exit bound for plans that move a box
+  out of the region. A box outside the region gets that bound instead of no
+  bound. Entries a build deadline left missing get one more than the last
+  depth the build expanded.
 - Parallel rewrite lanes receive deterministic, disjoint integer shares of the
   remaining expanded, generated, and elapsed budgets.
 - Bidirectional discovery lanes receive disjoint generated-state shares and
@@ -243,6 +255,14 @@ optimum (9, 16, 19, 22, 15 and 10 moves) with default features, with
 for the former pattern-deadlock key. Both exact engines must prove the 63-move
 oracle optimum with default features and with `tunnelMacros` enabled while
 pattern-deadlock pruning is active.
+
+The exit-route board in `tests/unit/pattern-database.test.ts` is the regression
+for the former region-bound pattern database. On every cell, a single-box
+lookup must equal the full-board push distance; from the box's starting cell
+that is 12 pushes, where the table alone stores 16. For two and three goals,
+every box subset must stay within the table built over the whole board. A label
+with more boxes than goals must take the cheaper outside box. Both exact
+kernels must prove the 20-move optimum.
 
 ## Exact feature controls
 
@@ -318,6 +338,31 @@ the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`, with
 the goal-cut surplus joining that maximum when enabled. The PDB surplus is
 admissible because each label's boxes and goals are disjoint.
 
+Each partition's table is a reverse push search over the goal region: the cells
+within walking distance 8 of the partition's goals. It is a relaxation. The
+robot is ignored, and a push needs only a floor support cell, which may lie
+outside the region or be occupied. Boxes, however, move only onto region cells.
+So a table value bounds only plans that keep every box inside the region, and
+a box's cheapest route may leave it. On the exit-route board the table stores
+16 pushes where 12 suffice.
+
+A lookup therefore returns the smaller of the table value and an exit bound.
+The exit bound is `sum of d(b) + min over boxes of (out(b) - d(b))`. Here
+`d(b)` is the box's full-board single-box push distance to the nearest
+partition goal, and `out(b)` is the same distance for routes through a cell
+outside the region. A plan that moves some box out of the region costs at
+least that much. A box outside the region is answered by the exit bound alone,
+which is then `sum of d(b)`.
+
+Such lookups used to return no bound. When a label has more boxes than the
+partition has goals, the heuristic takes the minimum over box subsets and skips
+subsets without a bound, so that minimum could land on a larger in-region
+value. A build cut short by its deadline answers missing entries with one more
+than the last depth it expanded, for the same reason.
+
+The `pdbLookups`, `pdbExitCapTrims`, `pdbExitCapTrimTotal` and
+`pdbOutsideRegionLookups` counters report how often the exit bound applies.
+
 The interaction boost and the PDB surplus both subtract the assignment label
 costs, but cache their results by box key alone. The assignment heuristic
 reports the box key its last label costs belong to (`lastBoxKey`), and both
@@ -364,9 +409,13 @@ replay validation, and review before entering the frozen map. Only entries with
 `oracleStates` have step-oracle provenance; the others are frozen exact-solver
 outputs. The known-optimum gate replays every entry through exact A* and the
 small oracle-backed entries, solved and unsolvable, through exact IDA* too.
+A seeded differential fuzz compares exact A* and IDA* under each feature
+variant with an independent step oracle on generated boards: a fixed 100-board
+slice in the unit suite and a timed long run in `test:solver:fuzz`.
 
 ```text
 npm.cmd run test:solver:oracle
+npm.cmd run test:solver:fuzz
 npm.cmd run test:solver:optimal
 npm.cmd run test:solver:proof-regressions
 npm.cmd run test:solver:known
