@@ -16,6 +16,7 @@ import {
 } from "../search/proof-algorithm-selection.ts";
 import {
   isProofCommand,
+  PROOF_HEARTBEAT_MS,
   type ProofCommand,
   type ProofProgress,
   type ProofSolutionFound,
@@ -46,6 +47,7 @@ function prependSolution(
 // the browser worker bundle stays free of them.
 export function createProofWorkerRuntime(
   postResult: (result: ProofResult) => void,
+  { heartbeatMs = PROOF_HEARTBEAT_MS }: { readonly heartbeatMs?: number } = {},
 ): (data: unknown) => void {
   let abortController: AbortController | null = null;
   let pendingUpperBound: number | undefined;
@@ -79,18 +81,28 @@ export function createProofWorkerRuntime(
     const channel = createUpperBoundChannel();
 
     let lastProgressMs = 0;
+    let lastProgress: ProofProgress = {
+      type: "proof/progress",
+      partitionId,
+      lowerBound: prefixCost,
+      expandedStates: 0,
+    };
+    const postProgress = (progress: ProofProgress): void => {
+      lastProgressMs = performance.now();
+      lastProgress = progress;
+      postResult(progress);
+    };
 
     const context: SolverExecutionContext = {
       signal: abortController.signal,
       reportProgress(progress: SolverProgress): void {
         const now = performance.now();
         if (now - lastProgressMs < PROGRESS_THROTTLE_MS) return;
-        lastProgressMs = now;
         lastReportedLowerBound = Math.max(
           lastReportedLowerBound,
           (progress.lowerBound ?? 0) + prefixCost,
         );
-        postResult({
+        postProgress({
           type: "proof/progress",
           partitionId,
           lowerBound: lastReportedLowerBound,
@@ -116,6 +128,12 @@ export function createProofWorkerRuntime(
       );
     }
 
+    // The table builds before the search report no progress, so the last
+    // progress is resent from their yields. A lane that stops yielding still
+    // falls silent and trips the coordinator's watchdog.
+    const heartbeat = setInterval(() => {
+      if (performance.now() - lastProgressMs >= heartbeatMs) postProgress(lastProgress);
+    }, heartbeatMs);
     let result: SolverResult;
     try {
       if (selectedAlgorithm === "astar") {
@@ -136,6 +154,8 @@ export function createProofWorkerRuntime(
         message: error instanceof Error ? error.message : String(error),
       } satisfies ProofError);
       return;
+    } finally {
+      clearInterval(heartbeat);
     }
 
     if (result.status === "solved") {

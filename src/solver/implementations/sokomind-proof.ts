@@ -22,6 +22,7 @@ import {
   enumerateFirstPushPartitions,
   buildPartitionRequest,
   isProofResult,
+  PROOF_SILENCE_TIMEOUT_MS,
   type ProofCommand,
   type ProofResult,
   type ProofStartPartition,
@@ -81,9 +82,13 @@ function mergeProofMetrics(
     proofCountersSource.estimatedMemoryBytes;
   const discoveryCurrentMemory = discoveryCounters.currentEstimatedMemoryBytes ??
     discoveryCounters.estimatedMemoryBytes;
+  // The coordinator keeps its discovery memory while the proof runs.
   const peakEstimatedMemoryBytes = Math.max(
     discoveryCounters.peakEstimatedMemoryBytes ?? 0,
-    proofCountersSource.peakEstimatedMemoryBytes ?? 0,
+    (discoveryCurrentMemory ?? 0) + Math.max(
+      proofCountersSource.peakEstimatedMemoryBytes ?? 0,
+      proofCurrentMemory ?? 0,
+    ),
   );
   return Object.freeze({
     elapsedMs: discovery.elapsedMs + proof.elapsedMs,
@@ -104,9 +109,9 @@ function mergeProofMetrics(
         ? {}
         : {
             estimatedMemoryBytes:
-              proofCurrentMemory ?? discoveryCurrentMemory ?? 0,
+              (discoveryCurrentMemory ?? 0) + (proofCurrentMemory ?? 0),
             currentEstimatedMemoryBytes:
-              proofCurrentMemory ?? discoveryCurrentMemory ?? 0,
+              (discoveryCurrentMemory ?? 0) + (proofCurrentMemory ?? 0),
           }),
       ...(peakEstimatedMemoryBytes === 0
         ? {}
@@ -142,12 +147,19 @@ export async function runSequentialProof(
     ? Number.POSITIVE_INFINITY
     : proofPlanningStartedAt + initialProofLimits.maxElapsedMs;
 
+  // The kernel runs beside the coordinator, so like a concurrent lane it gets
+  // the memory limit less the coordinator's reservation.
+  const laneMemoryLimit = initialProofLimits?.maxMemoryBytes === undefined
+    ? undefined
+    : initialProofLimits.maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES;
+  if (laneMemoryLimit !== undefined && laneMemoryLimit <= 0) return discoveryResult;
+
   const board = compileSearchBoard(request.board);
   const boxCount = request.snapshot.boxes.length;
 
   let algorithm: ProofAlgorithm;
   if (options.proofAlgorithm === "auto") {
-    algorithm = selectProofAlgorithm(board, boxCount, request.limits?.maxMemoryBytes);
+    algorithm = selectProofAlgorithm(board, boxCount, laneMemoryLimit);
   } else {
     algorithm = options.proofAlgorithm;
   }
@@ -166,6 +178,7 @@ export async function runSequentialProof(
     : {
         ...initialProofLimits,
         ...(launchElapsedMs === undefined ? {} : { maxElapsedMs: launchElapsedMs }),
+        ...(laneMemoryLimit === undefined ? {} : { maxMemoryBytes: laneMemoryLimit }),
       };
 
   const proofRequest: SolverRequest = {
@@ -292,6 +305,7 @@ interface PartitionTracker {
 export interface ConcurrentProofOptions {
   readonly createProofWorker: () => SokomindProofWorker;
   readonly proofParallelism: number;
+  /** Lanes send a heartbeat while busy, so silence this long means a dead lane. */
   readonly silenceTimeoutMs?: number;
 }
 
@@ -692,7 +706,7 @@ export async function runConcurrentProof(
 
     function armSilenceTimer(worker: SokomindProofWorker): void {
       clearSilenceTimer(worker);
-      const configured = concurrentOptions.silenceTimeoutMs ?? 30_000;
+      const configured = concurrentOptions.silenceTimeoutMs ?? PROOF_SILENCE_TIMEOUT_MS;
       const timeout = Math.max(
         1,
         Math.min(configured, proofDeadline - context.now()),

@@ -242,7 +242,7 @@ fails when the generated facts below differ from source.
 | `classic-greedy` | `1.0.0` | first-found |
 | `classic-astar` | `2.2.2` | move-optimal proof |
 | `classic-ida-star` | `2.2.1` | move-optimal proof |
-| `sokomind-solver` | `1.3.0` | bounded discovery/rewrite/proof portfolio |
+| `sokomind-solver` | `1.3.1` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 

@@ -11,6 +11,7 @@ import {
   remainingProofLimits,
   runSequentialProof,
 } from "../../src/solver/implementations/sokomind-proof.ts";
+import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "../../src/solver/implementations/sokomind-worker-limits.ts";
 import { parsePuzzleRows } from "../../src/core/index.ts";
 import type {
   SolverExecutionContext,
@@ -437,6 +438,63 @@ describe("runSequentialProof", () => {
     assert.equal(result.status, "solved");
     if (result.status !== "solved") return;
     assert.equal(verifySolverSolution(request, result.solution).valid, true);
+  });
+
+  it("leaves the coordinator reservation out of the kernel's memory limit", async () => {
+    const base = requestFromRows(ONE_BOX);
+    const discovery = await runClassicSearch(base, oracleContext(), {
+      strategy: "greedy",
+    });
+    assert.equal(discovery.status, "solved");
+    if (discovery.status !== "solved") return;
+    // The reservation takes the whole limit, so no proof can start.
+    const request: SolverRequest = {
+      ...base,
+      limits: { maxMemoryBytes: COORDINATOR_MEMORY_RESERVATION_BYTES },
+    };
+    const result = await runSequentialProof(
+      request,
+      oracleContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal", proofAlgorithm: "astar" },
+      discovery,
+    );
+    assert.equal(result, discovery);
+  });
+
+  it("reports peak memory as discovery's retained memory plus the proof's peak", async () => {
+    const base = requestFromRows(ONE_BOX);
+    const greedy = await runClassicSearch(base, oracleContext(), {
+      strategy: "greedy",
+    });
+    assert.equal(greedy.status, "solved");
+    if (greedy.status !== "solved") return;
+    const discovery: SolverResult = {
+      ...greedy,
+      metrics: {
+        elapsedMs: greedy.metrics.elapsedMs,
+        counters: { currentEstimatedMemoryBytes: 1_000, peakEstimatedMemoryBytes: 1_000 },
+      },
+    };
+    const request: SolverRequest = {
+      ...base,
+      limits: { maxMemoryBytes: COORDINATOR_MEMORY_RESERVATION_BYTES + 64 * 1024 * 1024 },
+    };
+    const result = await runSequentialProof(
+      request,
+      oracleContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal", proofAlgorithm: "ida-star" },
+      discovery,
+    );
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.proof?.kind, "optimal");
+    const counters = result.metrics.counters ?? {};
+    const proofPeak = counters["proof.peakEstimatedMemoryBytes"] ?? 0;
+    const proofCurrent = counters["proof.currentEstimatedMemoryBytes"] ??
+      counters["proof.estimatedMemoryBytes"] ?? 0;
+    assert.ok(proofPeak > 0, `proof peak ${proofPeak}`);
+    assert.equal(counters.peakEstimatedMemoryBytes, 1_000 + Math.max(proofPeak, proofCurrent));
+    assert.equal(counters.currentEstimatedMemoryBytes, 1_000 + proofCurrent);
   });
 
   it("greedy solution replays after proof in optimal mode", async () => {

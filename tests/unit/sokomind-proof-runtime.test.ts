@@ -10,6 +10,7 @@ import {
   type ProofStartPartition,
 } from "../../src/solver/implementations/sokomind-proof-protocol.ts";
 import { createProofWorkerRuntime } from "../../src/solver/implementations/sokomind-proof-runtime.ts";
+import { configureSearchScheduler } from "../../src/solver/search/scheduling.ts";
 
 // One partition: walk right, push the box right. The inner search then needs
 // one more push, so the full route costs 3 moves and 2 pushes.
@@ -53,7 +54,7 @@ function startCommand(
   };
 }
 
-function collectingRuntime() {
+function collectingRuntime(options?: Parameters<typeof createProofWorkerRuntime>[1]) {
   const results: ProofResult[] = [];
   let settle: () => void = () => {};
   const settled = new Promise<void>((resolve) => {
@@ -64,7 +65,7 @@ function collectingRuntime() {
     if (result.type === "proof/partition-complete" || result.type === "proof/error") {
       settle();
     }
-  });
+  }, options);
   return { handle, results, settled };
 }
 
@@ -124,6 +125,33 @@ describe("createProofWorkerRuntime", () => {
     assert.equal(found.solution.moves, 3);
     assert.equal(completion(results).exhausted, true);
   });
+
+  for (const algorithm of ["astar", "ida-star"] as const) {
+    it(`resends ${algorithm} progress through slow preparation and stops after the partition`, async () => {
+      // Each yield takes 30 ms, so preparation alone outlasts several heartbeats.
+      configureSearchScheduler(() => new Promise((resolve) => setTimeout(resolve, 30)));
+      try {
+        const { handle, results, settled } = collectingRuntime({ heartbeatMs: 5 });
+        const command = startCommand(100, algorithm);
+        handle(command);
+        await settled;
+
+        const progress = results.filter((result) => result.type === "proof/progress");
+        assert.ok(progress.length >= 3, `expected heartbeats, got ${progress.length} progress messages`);
+        assert.ok(progress.every((message) => message.partitionId === command.partitionId));
+        const bounds = progress.map((message) => message.lowerBound);
+        assert.ok(bounds[0] >= command.prefixCost);
+        assert.deepEqual(bounds, [...bounds].sort((a, b) => a - b));
+
+        const posted = results.length;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(results.length, posted);
+        assert.equal(results.at(-1)?.type, "proof/partition-complete");
+      } finally {
+        configureSearchScheduler();
+      }
+    });
+  }
 
   it("ignores messages that are not proof commands", () => {
     const { handle, results } = collectingRuntime();

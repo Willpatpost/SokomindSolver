@@ -47,6 +47,19 @@ known prefix bound; they block an optimal certificate unless that prefix bound
 alone reaches the incumbent cost, whatever order lane events arrive in.
 Deadline cutoff remains bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
 
+Sokomind 1.3.1 keeps busy proof lanes alive and accounts for coordinator
+memory in single-lane proofs. The coordinator presumes a lane dead after 30 s
+without a message. Table builds before the search report no progress, so a lane
+now resends its last progress every 5 s from their yields while it holds a
+partition. A heartbeat's bound never drops below the partition's prefix cost,
+and the coordinator ignores heartbeats for partitions it has already closed. A
+lane that stops yielding still falls silent and is stopped. The single-lane
+proof gives its kernel the memory limit less the 128 MiB coordinator
+reservation, as each parallel lane already was, and starts no proof when the
+reservation takes the whole limit. Reported peak memory adds discovery's
+retained memory to the proof's peak. Neither change alters proof logic, so the
+proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

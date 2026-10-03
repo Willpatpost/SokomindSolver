@@ -15,6 +15,10 @@ import {
 } from "../search/compiled-board.ts";
 import { KeeperReachability } from "../search/reachability.ts";
 
+/** The coordinator presumes a proof lane dead after this long without a message. */
+export const PROOF_SILENCE_TIMEOUT_MS = 30_000;
+/** A lane with an active partition sends a message at least this often. */
+export const PROOF_HEARTBEAT_MS = 5_000;
 
 export interface ProofStartPartition {
   readonly type: "proof/start-partition";

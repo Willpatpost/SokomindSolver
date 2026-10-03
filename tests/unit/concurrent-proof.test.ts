@@ -1290,6 +1290,78 @@ describe("concurrent proof coordinator", () => {
     }
   });
 
+  it("keeps a lane whose heartbeats outlast the silence timeout", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    // Each partition repeats its starting progress for over twice the
+    // timeout, as a lane building its tables does, then closes.
+    const worker = new MockProofWorker((command) => {
+      let beats = 0;
+      const timer = setInterval(() => {
+        beats += 1;
+        if (beats < 25) {
+          worker.emit({
+            type: "proof/progress",
+            partitionId: command.partitionId,
+            lowerBound: command.prefixCost,
+            expandedStates: 0,
+          });
+          return;
+        }
+        clearInterval(timer);
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: Math.max(5, command.prefixCost),
+          exhausted: true,
+        });
+      }, 10);
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1, silenceTimeoutMs: 100 },
+    );
+    assert.equal(result.status, "solved");
+    assert.equal(result.proof?.kind, "optimal");
+  });
+
+  it("ignores a heartbeat for a partition that already closed", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    assert.equal(enumerateFirstPushPartitions(request).length, 2);
+    // The late heartbeat arrives once the lane holds its next partition.
+    const worker = new MockProofWorker((command) => {
+      queueMicrotask(() => {
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: Math.max(5, command.prefixCost),
+          exhausted: true,
+        });
+        worker.emit({
+          type: "proof/progress",
+          partitionId: command.partitionId,
+          lowerBound: command.prefixCost,
+          expandedStates: 0,
+        });
+      });
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+    assert.equal(result.status, "solved");
+    assert.equal(result.proof?.kind, "optimal");
+  });
+
   it("enforces one remaining wall-clock deadline across silent partitions", async () => {
     const request: SolverRequest = {
       ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
@@ -1482,11 +1554,18 @@ describe("concurrent proof coordinator", () => {
       });
       return worker;
     };
+    const discovery: SolverResult = {
+      ...makeDiscoveryResult(10, 5),
+      metrics: {
+        elapsedMs: 100,
+        counters: { currentEstimatedMemoryBytes: 1_000, peakEstimatedMemoryBytes: 1_200 },
+      },
+    };
     const result = await runConcurrentProof(
       request,
       makeContext(),
       { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 2 },
-      makeDiscoveryResult(10, 5),
+      discovery,
       { createProofWorker: createWorker, proofParallelism: 2 },
     );
     assert.deepEqual(startsByWorker, [2, 2]);
@@ -1496,6 +1575,9 @@ describe("concurrent proof coordinator", () => {
     assert.equal(result.metrics.counters?.["proof.estimatedMemoryBytes"], 270);
     assert.equal(result.metrics.counters?.["proof.pdbSearchCacheRetainedBytes"], 270);
     assert.equal(result.metrics.counters?.["proof.peakEstimatedMemoryBytes"], 290);
+    // The coordinator keeps its discovery memory while the lanes run.
+    assert.equal(result.metrics.counters?.currentEstimatedMemoryBytes, 1_270);
+    assert.equal(result.metrics.counters?.peakEstimatedMemoryBytes, 1_290);
     assert.equal(result.metrics.counters?.heuristicCalls, undefined);
     assert.equal(result.metrics.counters?.["proof.heuristicCalls"], 14);
     assert.equal(result.metrics.counters?.proofExpandedStates, 4);
