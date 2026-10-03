@@ -21,6 +21,8 @@ import {
   toLegacyState,
   type SokomindEngineWorker,
 } from "../../src/solver/implementations/sokomind-solver.ts";
+import type { SokomindProofWorker } from "../../src/solver/implementations/sokomind-proof.ts";
+import { assertValidSolverProgress } from "../../src/solver/validation.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
 const ONE_TYPED_BOX: PuzzleDefinition = {
@@ -790,6 +792,175 @@ describe("Sokomind Solver adapter", () => {
       assert.equal(verifySolverSolution(request, result.solution).valid, true);
     });
   }
+
+  /** The worker host's checks: valid events whose bounds never move the wrong way. */
+  function assertHostAcceptsProgress(events: readonly SolverProgress[]): void {
+    for (const [index, progress] of events.entries()) {
+      assertValidSolverProgress(progress);
+      const previous = events[index - 1];
+      if (previous === undefined) continue;
+      if (previous.lowerBound !== undefined && progress.lowerBound !== undefined) {
+        assert.ok(progress.lowerBound >= previous.lowerBound, `lower bound fell at event ${index}`);
+      }
+      if (previous.upperBound !== undefined && progress.upperBound !== undefined) {
+        assert.ok(progress.upperBound <= previous.upperBound, `upper bound rose at event ${index}`);
+      }
+      if (previous.gap !== undefined && progress.gap !== undefined) {
+        assert.ok(progress.gap <= previous.gap, `gap rose at event ${index}`);
+      }
+    }
+  }
+
+  function discoveryOnlyWorker(
+    path: readonly string[],
+    commands: WorkerCommand[],
+  ): () => SokomindEngineWorker {
+    return () => new ScriptedWorker((self, command) => {
+      commands.push(command);
+      queueMicrotask(() => self.emit({
+        type: "done", status: "solved", path, visited: 1, generated: 3,
+      }));
+    });
+  }
+
+  it("proves a small Optimal board before harvest, rewrite or rescheduling", async () => {
+    const commands: WorkerCommand[] = [];
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], commands),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": { mode: "optimal", maximumIncumbents: 2 } },
+      limits: { maxElapsedMs: 5_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.ok(commands.length > 0);
+    // Discovery only: no seeded harvest lane, window rewrite or box reschedule.
+    const improvementAlgorithms = new Set(["solution-window-rewrite", "solution-box-reschedule"]);
+    assert.ok(commands.every((command) =>
+      typeof command.payload.seed !== "number" &&
+      !improvementAlgorithms.has(String(command.payload.algorithm))),
+    JSON.stringify(commands.map((command) => command.payload.algorithm ?? command.payload.seed)));
+    const proving = events.find((progress) => progress.phase === "proving");
+    assert.ok(proving);
+    assert.equal(proving.upperBound, 3);
+    assert.ok(events.every((progress) => progress.phase !== "harvesting"));
+    // The capped proof's own bounds are not forwarded; only the published
+    // incumbent's upper bound is.
+    assert.ok(events.every((progress) =>
+      progress.lowerBound === undefined && progress.gap === undefined));
+    assertHostAcceptsProgress(events);
+    assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
+  });
+
+  it("skips proof-first in deterministic Optimal runs", async () => {
+    const commands: WorkerCommand[] = [];
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], commands),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": { mode: "optimal", deterministic: true, maximumIncumbents: 2 } },
+      limits: { maxElapsedMs: 5_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.optimality, "proven");
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    const proving = events.findIndex((progress) => progress.phase === "proving");
+    assert.ok(harvesting >= 0);
+    assert.ok(proving === -1 || harvesting < proving);
+    assert.ok(commands.some((command) => typeof command.payload.seed === "number"));
+    assert.equal(result.metrics.counters?.proofFirstElapsedMs, undefined);
+  });
+
+  it("follows a timed-out proof-first attempt with the pipeline proof and keeps bounds monotone", async () => {
+    const events: SolverProgress[] = [];
+    let proofWorkers = 0;
+    // Proof lanes never answer, so each proof ends at its own deadline.
+    const silentProofWorker = (): SokomindProofWorker => {
+      proofWorkers += 1;
+      return {
+        postMessage() {},
+        addEventListener() {},
+        removeEventListener() {},
+        terminate() {},
+      };
+    };
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+      createProofWorker: silentProofWorker,
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: {
+        "sokomind-solver": { mode: "optimal", proofParallelism: 2, maximumIncumbents: 2, harvestElapsedMs: 100 },
+      },
+      limits: { maxElapsedMs: 2_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3);
+    assert.notEqual(result.solution.optimality, "proven");
+    assert.notEqual(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const proofFirst = events.findIndex((progress) => /small board first/u.test(progress.detail ?? ""));
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    const pipelineBound = events.findIndex((progress) => progress.lowerBound !== undefined);
+    assert.ok(proofFirst >= 0 && harvesting > proofFirst, "proof-first runs before harvest");
+    assert.ok(pipelineBound > harvesting, "the pipeline proof reports its own lower bound");
+    assert.ok(events.slice(0, pipelineBound).every((progress) => progress.gap === undefined));
+    assertHostAcceptsProgress(events);
+    assert.ok(proofWorkers >= 2, "each proof starts its own lanes");
+    assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
+  });
+
+  it("never reports a limit-cut proof-first attempt as proven", async () => {
+    const twoGenericBoxes: PuzzleDefinition = {
+      id: "two-generic-boxes",
+      title: "Two generic boxes",
+      difficulty: "tutorial",
+      boxes: 2,
+      rows: ["OOOOOOO", "O SS  O", "O XX  O", "O  R  O", "O     O", "OOOOOOO"],
+    };
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Up", "Down", "Left", "Up"], []),
+    });
+    // Discovery spends one expansion, leaving the proof a single one.
+    const request = requestFor(twoGenericBoxes, {
+      options: { "sokomind-solver": { mode: "optimal", maximumIncumbents: 2 } },
+      limits: { maxExpandedStates: 2, maxElapsedMs: 5_000 },
+    });
+
+    const result = await adapter.solve(request, context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 6);
+    assert.notEqual(result.solution.optimality, "proven");
+    assert.notEqual(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const proofFirstExpanded = result.metrics.counters?.proofFirstExpandedStates;
+    assert.equal(typeof proofFirstExpanded, "number");
+    assert.ok((proofFirstExpanded ?? Infinity) <= 1);
+  });
 
   it("passes a validated tuning profile only into soft engine ordering", async () => {
     let receivedWeight: unknown;

@@ -720,6 +720,7 @@ export async function runExactMoveAStar(
         boostEvaluator?.estimatedRetainedBytes ?? 0,
       interactionBoostSearchCacheRetainedBytes:
         boostEvaluator?.searchCacheRetainedBytes ?? 0,
+      firstExpansionMs: featureTelemetry.firstExpansionMs,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
       pdbRetainedBytes: pdbEvaluator?.preprocessingRetainedBytes ?? 0,
@@ -1134,6 +1135,7 @@ export async function runExactMoveAStar(
       return true;
     };
 
+    featureTelemetry.firstExpansionMs = Math.max(0, context.now() - startedAt);
     searchLoop: while (heap.size > 0) {
       throwIfSolverCancelled(context.signal);
       if (elapsedLimitReached()) {

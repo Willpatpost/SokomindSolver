@@ -982,6 +982,7 @@ export async function runIdaStarSearch(
         boostEvaluator?.estimatedRetainedBytes ?? 0,
       interactionBoostSearchCacheRetainedBytes:
         boostEvaluator?.searchCacheRetainedBytes ?? 0,
+      firstExpansionMs: featureTelemetry.firstExpansionMs,
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
       pdbRetainedBytes: pdbEvaluator?.preprocessingRetainedBytes ?? 0,
@@ -1329,6 +1330,7 @@ export async function runIdaStarSearch(
     const H_CACHE_SIZE_CAP = Math.max(1, Math.floor(TT_SIZE_CAP / 2));
     const transposition = new Map<number, { bigintKey: bigint; bestG: number }>();
     transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
+    featureTelemetry.firstExpansionMs = Math.max(0, context.now() - startedAt);
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {
         const ctx = options.checkpointContext;

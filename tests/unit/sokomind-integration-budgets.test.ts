@@ -43,7 +43,7 @@ function runState(request = requestFor(), runContext = context()): SearchRunStat
     lastProgressAt: -Infinity, progressPhase: "searching", initialSolutionMoves: 0,
     bestSolutionMoves: 0, solutionImprovements: 0, suppressedImprovementErrors: 0,
     suppressedHarvestErrors: 0, qualitySlicesCompleted: 0, qualityOperatorStalls: 0,
-    publishedIncumbent: undefined, aggregateGeneration: 1, cachedAggregate: null,
+    publishedIncumbent: undefined, proofFirstWork: undefined, aggregateGeneration: 1, cachedAggregate: null,
   };
 }
 

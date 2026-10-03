@@ -73,6 +73,21 @@ published route; a user cancel still returns cancelled. Fast is unchanged.
 The upper bound comes only from verified routes, never from proof, so the
 proof revision is unchanged.
 
+Sokomind 1.5.0 proves small Optimal boards first. A board with at most 8 boxes
+and 96 floor cells (the classic exact profile's limits) runs the unmodified
+proof straight after discovery, from the discovery route's cost, for at most
+30% of the time limit. Only a completed proof (`proof.kind === "optimal"`)
+ends the run there. Otherwise its work is charged to the run's state limits,
+a better route it returns continues as an unproven incumbent once it replays,
+and harvest, rewrite, reschedule and a fresh proof use the rest of the budget.
+Nothing from the first proof carries into the second: no bound, table or
+partition state. Its progress omits the lower bound and gap, which end with
+it, and repeats the published incumbent as the upper bound. Deterministic
+runs, resumed IDA* checkpoints and requests without a time limit skip this
+step. Both exact kernels report `firstExpansionMs`, the time from kernel start
+to the first expansion (table builds included). Proof logic is unchanged, so
+the proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

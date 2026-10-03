@@ -111,6 +111,8 @@ export function isDefaultExactSearchFeatures(
 interface ExactSearchFeatureTelemetry {
   linearConflictEvaluations: number;
   linearConflictTotal: number;
+  /** Elapsed time from kernel start until the search loop takes its first state. */
+  firstExpansionMs: number;
   pdbBuildTimeMs: number;
   pdbTableEntries: number;
   pdbEvaluations: number;
@@ -158,6 +160,7 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
   return {
     linearConflictEvaluations: 0,
     linearConflictTotal: 0,
+    firstExpansionMs: 0,
     pdbBuildTimeMs: 0,
     pdbTableEntries: 0,
     pdbEvaluations: 0,

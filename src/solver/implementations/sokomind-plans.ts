@@ -49,6 +49,14 @@ export const QUALITY_INITIAL_WAVE_CAP_MS = 6_000;
 export const DEFAULT_OPTIMAL_HARVEST_MS = 3_000;
 export const OPTIMAL_REWRITE_TIME_SHARE = 0.15;
 export const OPTIMAL_RESCHEDULE_TIME_SHARE = 0.10;
+/**
+ * Small boards (the classic exact profile's limits) start the proof straight
+ * after discovery, capped at this share of the time limit.
+ */
+export const OPTIMAL_PROOF_FIRST_TIME_SHARE = 0.3;
+export const PROOF_FIRST_MAX_BOXES = 8;
+export const PROOF_FIRST_MAX_FLOOR_CELLS = 96;
+export const PROOF_FIRST_MINIMUM_MS = 500;
 
 export interface EnginePlan {
   readonly id: string;

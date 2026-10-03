@@ -1,9 +1,11 @@
 import type {
   SolverExecutionContext,
+  SolverProgress,
   SolverRequest,
   SolverResult,
   SolverSolution,
 } from "../contracts.ts";
+import { verifySolverSolution } from "../verification.ts";
 import {
   IncumbentCollector,
   computeDiversitySignature,
@@ -24,8 +26,12 @@ import {
   QUALITY_ANYTIME_SLICE_CAP_MS,
   QUALITY_INITIAL_SLICE_MS,
   QUALITY_INITIAL_WAVE_CAP_MS,
+  OPTIMAL_PROOF_FIRST_TIME_SHARE,
   OPTIMAL_RESCHEDULE_TIME_SHARE,
   OPTIMAL_REWRITE_TIME_SHARE,
+  PROOF_FIRST_MAX_BOXES,
+  PROOF_FIRST_MAX_FLOOR_CELLS,
+  PROOF_FIRST_MINIMUM_MS,
   adaptiveRewriteAllocation,
   configuredBudget,
   defaultImprovementMaxVisited,
@@ -50,12 +56,14 @@ import {
 } from "./sokomind-candidate-archive.ts";
 import {
   aggregate,
+  incumbentProgress,
   invalidateAggregate,
   metrics,
   publishIncumbent,
   recordIncumbent,
   report,
   withRemainingLimits,
+  type ProofFirstWork,
   type SearchRunState,
 } from "./sokomind-run-state.ts";
 
@@ -86,6 +94,60 @@ export function runProof(
     discoveryResult,
     checkpointOptions,
   );
+}
+
+/**
+ * Runs the unmodified proof, starting from the discovery route's cost as the
+ * pipeline's own proof does, with its time limit cut to `capMs` past the time
+ * the discovery metrics already spent. Nothing it learns carries into a later
+ * proof: only `proof.kind === "optimal"` on its result is a proof.
+ */
+export function runCappedProof(
+  request: SolverRequest,
+  context: SolverExecutionContext,
+  sokomindOptions: SokomindRequestOptions,
+  discoveryResult: SolverResult,
+  createProofWorker: () => SokomindProofWorker,
+  capMs: number,
+): Promise<SolverResult> {
+  const cappedElapsedMs = Math.floor(discoveryResult.metrics.elapsedMs + capMs);
+  const requestElapsedMs = request.limits?.maxElapsedMs;
+  const cappedRequest: SolverRequest = Object.freeze({
+    ...request,
+    limits: Object.freeze({
+      ...request.limits,
+      maxElapsedMs: requestElapsedMs === undefined
+        ? cappedElapsedMs
+        : Math.min(requestElapsedMs, cappedElapsedMs),
+    }),
+  });
+  return runProof(
+    cappedRequest, context, sokomindOptions, discoveryResult, createProofWorker,
+  );
+}
+
+/**
+ * Reports a capped proof's progress without its bounds. Its lower bound and
+ * gap end with it, while worker-host compares each event only with the one
+ * before, so a later proof's smaller bound would read as a decrease. The
+ * incumbent and upper bound stay the run's published route, which only falls:
+ * a route the proof drops on timeout was never published.
+ */
+export function publishedBoundsContext(run: SearchRunState): SolverExecutionContext {
+  return {
+    signal: run.context.signal,
+    now: run.context.now,
+    reportProgress(progress) {
+      const forwarded: { -readonly [K in keyof SolverProgress]: SolverProgress[K] } = {
+        ...progress,
+      };
+      delete forwarded.lowerBound;
+      delete forwarded.gap;
+      delete forwarded.incumbent;
+      delete forwarded.upperBound;
+      run.context.reportProgress({ ...forwarded, ...incumbentProgress(run) });
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -800,8 +862,131 @@ export async function qualityAnytimeImprove(
 }
 
 // ---------------------------------------------------------------------------
-// Optimal: quick improvement then early proof
+// Optimal: proof first on small boards, then quick improvement and proof
 // ---------------------------------------------------------------------------
+
+/**
+ * Time cap for a small board's proof-first attempt, or 0 to skip it. Small
+ * matches the classic exact profile. Deterministic runs skip it so results do
+ * not depend on timing, and a resumed IDA* checkpoint already holds proof
+ * work that only the pipeline's own proof continues.
+ */
+function proofFirstCapMs(
+  run: SearchRunState,
+  sokomindOptions: SokomindRequestOptions,
+  checkpointOptions: ProofCheckpointOptions | undefined,
+): number {
+  const requestTimeMs = run.request.limits?.maxElapsedMs;
+  if (
+    sokomindOptions.deterministic ||
+    checkpointOptions?.checkpoint !== undefined ||
+    requestTimeMs === undefined ||
+    run.request.snapshot.boxes.length > PROOF_FIRST_MAX_BOXES ||
+    run.request.board.floor.length > PROOF_FIRST_MAX_FLOOR_CELLS
+  ) {
+    return 0;
+  }
+  const capMs = Math.min(
+    Math.floor(requestTimeMs * OPTIMAL_PROOF_FIRST_TIME_SHARE),
+    Math.floor(run.deadline - run.context.now()),
+  );
+  return capMs >= PROOF_FIRST_MINIMUM_MS ? capMs : 0;
+}
+
+function proofFirstCounters(work: ProofFirstWork): Readonly<Record<string, number>> {
+  return {
+    proofFirstExpandedStates: work.expandedStates,
+    proofFirstGeneratedStates: work.generatedStates,
+    proofFirstElapsedMs: work.elapsedMs,
+  };
+}
+
+/**
+ * Proves a small board straight after discovery. Returns the final result
+ * when the capped proof completes (or the run is cancelled); otherwise the
+ * incumbent the pipeline continues from, with the proof's work charged to
+ * the run's limits.
+ */
+async function proveSmallBoardFirst(
+  run: SearchRunState,
+  firstIncumbent: SolverSolution,
+  sokomindOptions: SokomindRequestOptions,
+  createProofWorker: () => SokomindProofWorker,
+  checkpointOptions: ProofCheckpointOptions | undefined,
+): Promise<{ readonly result?: SolverResult; readonly incumbent: SolverSolution }> {
+  const capMs = proofFirstCapMs(run, sokomindOptions, checkpointOptions);
+  if (capMs === 0 || run.context.signal.aborted) return { incumbent: firstIncumbent };
+
+  run.initialSolutionMoves ||= firstIncumbent.moves;
+  run.bestSolutionMoves =
+    run.bestSolutionMoves === 0
+      ? firstIncumbent.moves
+      : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
+  invalidateAggregate(run);
+  recordIncumbent(run, firstIncumbent);
+  run.progressPhase = "proving";
+  report(run, `Proving the small board first (${capMs}ms budget).`, true);
+
+  const startedAt = run.context.now();
+  const discoveryResult: SolverResult = Object.freeze({
+    status: "solved" as const,
+    solution: firstIncumbent,
+    metrics: metrics(run),
+  });
+  const result = await runCappedProof(
+    run.request, publishedBoundsContext(run), sokomindOptions, discoveryResult,
+    createProofWorker, capMs,
+  );
+  const counters = result.metrics.counters ?? {};
+  const work: ProofFirstWork = Object.freeze({
+    expandedStates: counters.proofExpandedStates ?? 0,
+    generatedStates: counters.proofGeneratedStates ?? 0,
+    elapsedMs: Math.max(0, run.context.now() - startedAt),
+  });
+  run.proofFirstWork = work;
+  run.budget.peakEstimatedMemoryBytes = Math.max(
+    run.budget.peakEstimatedMemoryBytes,
+    counters.peakEstimatedMemoryBytes ?? 0,
+  );
+  invalidateAggregate(run);
+
+  if (run.context.signal.aborted) {
+    return {
+      result: Object.freeze({ status: "cancelled", metrics: metrics(run) }),
+      incumbent: firstIncumbent,
+    };
+  }
+  if (result.status !== "solved") return { incumbent: firstIncumbent };
+  if (result.proof?.kind === "optimal") {
+    return {
+      result: Object.freeze({
+        ...result,
+        metrics: Object.freeze({
+          ...result.metrics,
+          counters: Object.freeze({ ...counters, ...proofFirstCounters(work) }),
+        }),
+      }),
+      incumbent: firstIncumbent,
+    };
+  }
+  // A timed-out proof can still hand back a better route; it continues as an
+  // unproven incumbent once it replays.
+  if (
+    isSolutionBetter(result.solution, firstIncumbent) &&
+    verifySolverSolution(run.request, result.solution).valid
+  ) {
+    const improved: SolverSolution = Object.freeze({
+      ...result.solution,
+      optimality: "unknown" as const,
+    });
+    run.bestSolutionMoves = Math.min(run.bestSolutionMoves, improved.moves);
+    run.solutionImprovements += 1;
+    invalidateAggregate(run);
+    recordIncumbent(run, improved);
+    return { incumbent: improved };
+  }
+  return { incumbent: firstIncumbent };
+}
 
 export async function optimalQuickImprove(
   run: SearchRunState,
@@ -816,6 +1001,12 @@ export async function optimalQuickImprove(
   createProofWorker: () => SokomindProofWorker,
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
+  const proofFirst = await proveSmallBoardFirst(
+    run, firstIncumbent, sokomindOptions, createProofWorker, checkpointOptions,
+  );
+  if (proofFirst.result) return proofFirst.result;
+  firstIncumbent = proofFirst.incumbent;
+
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = Math.min(
     DEFAULT_OPTIMAL_HARVEST_MS,

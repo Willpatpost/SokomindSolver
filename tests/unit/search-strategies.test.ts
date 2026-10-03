@@ -100,6 +100,7 @@ function solved(
 }
 
 const VOLATILE_TIMING_COUNTERS = new Set([
+  "firstExpansionMs",
   "pdbBuildTimeMs",
   "deadlockTableBuildTimeMs",
 ]);

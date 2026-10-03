@@ -36,6 +36,13 @@ export const WORKER_SILENCE_WATCHDOG_MS = 120_000;
 
 export type PhaseStopReason = BudgetStopReason;
 
+/** Work an Optimal proof-first attempt spent outside the worker registry. */
+export interface ProofFirstWork {
+  readonly expandedStates: number;
+  readonly generatedStates: number;
+  readonly elapsedMs: number;
+}
+
 export interface SearchRunState {
   readonly startedAt: number;
   readonly deadline: number;
@@ -51,7 +58,7 @@ export interface SearchRunState {
   phaseTimeouts: number;
   watchdogTimeouts: number;
   lastProgressAt: number;
-  progressPhase: "searching" | "harvesting" | "improving";
+  progressPhase: "searching" | "proving" | "harvesting" | "improving";
   initialSolutionMoves: number;
   bestSolutionMoves: number;
   solutionImprovements: number;
@@ -61,6 +68,8 @@ export interface SearchRunState {
   qualityOperatorStalls: number;
   /** Best replay-verified route published as the incumbent (quality and optimal). */
   publishedIncumbent: SolverSolution | undefined;
+  /** Charged to the state limits; set once an Optimal proof-first attempt ends. */
+  proofFirstWork: ProofFirstWork | undefined;
   aggregateGeneration: number;
   cachedAggregate: AggregateSnapshot | null;
 }
@@ -182,6 +191,11 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
       valueFromPerformance(performance, "macroPackingRejections") +
       valueFromPerformance(performance, "macroGoalAccessRejections");
   }
+  const proofFirst = run.proofFirstWork;
+  if (proofFirst !== undefined) {
+    expandedStates += proofFirst.expandedStates;
+    generatedStates += proofFirst.generatedStates;
+  }
   currentMemory = Math.max(currentMemory, browserProcessMemoryBytes);
   historicalPeakCandidate = Math.max(
     historicalPeakCandidate,
@@ -240,6 +254,11 @@ export function aggregate(run: SearchRunState): AggregateSnapshot {
       solutionImprovements: run.solutionImprovements,
       qualitySlicesCompleted: run.qualitySlicesCompleted,
       qualityOperatorStalls: run.qualityOperatorStalls,
+      ...(proofFirst === undefined ? {} : {
+        proofFirstExpandedStates: proofFirst.expandedStates,
+        proofFirstGeneratedStates: proofFirst.generatedStates,
+        proofFirstElapsedMs: proofFirst.elapsedMs,
+      }),
       ...laneCounters,
     }),
   });
