@@ -5,6 +5,7 @@ import type {
   SolverAdapter,
   SolverExecutionContext,
   SolverLimits,
+  SolverPhase,
   SolverRequest,
   SolverResult,
 } from "../src/solver/contracts.ts";
@@ -50,7 +51,7 @@ import {
   type KnownFixtureOutcome,
 } from "../tests/fixtures/solver-v2/known-optima.ts";
 
-export const BENCHMARK_SCHEMA_VERSION = 3 as const;
+export const BENCHMARK_SCHEMA_VERSION = 4 as const;
 export const DEFAULT_TIMED_RUNS = 5;
 export const DEFAULT_WARMUP_RUNS = 0;
 /**
@@ -73,26 +74,27 @@ export const SOKOMIND_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
+// Production targets carry only the deadline and memory limit the app sends
+// (use-solver-progress.ts), so state caps never end a run the app would continue.
 export const PRODUCTION_FAST_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxElapsedMs: 30_000,
-  maxExpandedStates: 500_000,
-  maxGeneratedStates: 5_000_000,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
 export const PRODUCTION_QUALITY_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxElapsedMs: 60_000,
-  maxExpandedStates: 500_000,
-  maxGeneratedStates: 5_000_000,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
 export const PRODUCTION_OPTIMAL_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxElapsedMs: 120_000,
-  maxExpandedStates: 500_000,
-  maxGeneratedStates: 5_000_000,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
+
+/** Times at which each sample records its best verified route so far. */
+export const BENCHMARK_MOVE_CHECKPOINTS_MS = Object.freeze(
+  [1_000, 5_000, 10_000, 30_000, 60_000, 120_000] as const,
+);
 
 export const BENCHMARK_PROFILE_IDS = Object.freeze([
   "sokomind-fast",
@@ -559,6 +561,28 @@ export interface BenchmarkSample {
   readonly firstSolutionMs?: number;
   /** Strict move improvements timestamped at receipt within the harness run. */
   readonly incumbentHistory?: readonly { moves: number; elapsedMs: number }[];
+  /** Best verified moves by each BENCHMARK_MOVE_CHECKPOINTS_MS time, or null before any route. */
+  readonly movesAt: Readonly<Record<string, number | null>>;
+  /** Each reported phase change, timestamped at receipt. */
+  readonly phaseTimeline?: readonly { phase: SolverPhase; elapsedMs: number }[];
+  /** Strict increases of the reported lower bound, timestamped at receipt. */
+  readonly lowerBoundHistory?: readonly { lowerBound: number; elapsedMs: number }[];
+}
+
+/** The best move count reached by each checkpoint, from a strictly improving history. */
+export function benchmarkMovesAt(
+  history: readonly { moves: number; elapsedMs: number }[] | undefined,
+): Readonly<Record<string, number | null>> {
+  const movesAt: Record<string, number | null> = {};
+  for (const checkpoint of BENCHMARK_MOVE_CHECKPOINTS_MS) {
+    let best: number | null = null;
+    for (const entry of history ?? []) {
+      if (entry.elapsedMs > checkpoint) break;
+      best = entry.moves;
+    }
+    movesAt[checkpoint] = best;
+  }
+  return Object.freeze(movesAt);
 }
 
 export interface BenchmarkFeatureRun {
@@ -705,11 +729,22 @@ export async function runBenchmarkSample(
         (incumbentHistory.length > 0 && moves >= incumbentHistory[incumbentHistory.length - 1].moves)) return;
     incumbentHistory.push(Object.freeze({ moves, elapsedMs: Math.ceil(elapsedMs) }));
   };
+  const phaseTimeline: Array<Readonly<{ phase: SolverPhase; elapsedMs: number }>> = [];
+  const lowerBoundHistory: Array<Readonly<{ lowerBound: number; elapsedMs: number }>> = [];
   const context: SolverExecutionContext = {
     signal: controller.signal,
     reportProgress(progress) {
+      const now = Math.ceil(performance.now() - startedAt);
       if (progress.incumbent) {
-        recordIncumbent(progress.incumbent.moves, performance.now() - startedAt);
+        recordIncumbent(progress.incumbent.moves, now);
+      }
+      if (phaseTimeline.at(-1)?.phase !== progress.phase) {
+        phaseTimeline.push(Object.freeze({ phase: progress.phase, elapsedMs: now }));
+      }
+      const lowerBound = progress.lowerBound;
+      if (lowerBound !== undefined && Number.isSafeInteger(lowerBound) && lowerBound >= 0 &&
+          lowerBound > (lowerBoundHistory.at(-1)?.lowerBound ?? -1)) {
+        lowerBoundHistory.push(Object.freeze({ lowerBound, elapsedMs: now }));
       }
     },
     now: performance.now.bind(performance),
@@ -768,6 +803,11 @@ export async function runBenchmarkSample(
     ...(incumbentHistory.length > 0
       ? { firstSolutionMs: incumbentHistory[0].elapsedMs,
           incumbentHistory: Object.freeze([...incumbentHistory]) }
+      : {}),
+    movesAt: benchmarkMovesAt(incumbentHistory),
+    ...(phaseTimeline.length > 0 ? { phaseTimeline: Object.freeze([...phaseTimeline]) } : {}),
+    ...(lowerBoundHistory.length > 0
+      ? { lowerBoundHistory: Object.freeze([...lowerBoundHistory]) }
       : {}),
     ...(knownOutcome
       ? {
@@ -964,6 +1004,34 @@ function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+const SOLVER_PHASES: ReadonlySet<string> = new Set<SolverPhase>([
+  "preparing", "searching", "harvesting", "improving", "verifying", "proving",
+]);
+
+/** An optional non-empty list of {key, elapsedMs} entries in time order within the run. */
+function assertTimeline(
+  sample: Record<string, unknown>,
+  field: "phaseTimeline" | "lowerBoundHistory",
+  key: "phase" | "lowerBound",
+  valid: (value: unknown, previous: unknown) => boolean,
+): void {
+  const timeline = sample[field];
+  if (timeline === undefined) return;
+  if (!Array.isArray(timeline) || timeline.length === 0) {
+    throw new Error(`Benchmark child ${field} must be a non-empty array`);
+  }
+  let previous: unknown;
+  let previousTime = -1;
+  for (const entry of timeline) {
+    if (!isRecord(entry) || !valid(entry[key], previous) || !isFiniteNonNegative(entry.elapsedMs) ||
+        entry.elapsedMs < previousTime || entry.elapsedMs > (sample.elapsedMs as number)) {
+      throw new Error(`Benchmark child ${field} requires changing ${key} values in time order within the run`);
+    }
+    previous = entry[key];
+    previousTime = entry.elapsedMs;
+  }
+}
+
 function assertBenchmarkChildSampleShape(value: unknown): asserts value is BenchmarkSample {
   if (!isRecord(value)) throw new Error("Benchmark child record must be an object");
   const requiredStrings = [
@@ -1100,6 +1168,16 @@ function assertBenchmarkChildSampleShape(value: unknown): asserts value is Bench
   } else if (value.firstSolutionMs !== undefined) {
     throw new Error("Benchmark child firstSolutionMs requires incumbentHistory");
   }
+  if (stableJson(value.movesAt) !== stableJson(benchmarkMovesAt(
+    value.incumbentHistory as BenchmarkSample["incumbentHistory"],
+  ))) {
+    throw new Error("Benchmark child movesAt must match its incumbentHistory");
+  }
+  assertTimeline(value, "phaseTimeline", "phase", (phase, previous) =>
+    typeof phase === "string" && SOLVER_PHASES.has(phase) && phase !== previous);
+  assertTimeline(value, "lowerBoundHistory", "lowerBound", (lowerBound, previous) =>
+    Number.isSafeInteger(lowerBound) && (lowerBound as number) >= 0 &&
+    (previous === undefined || (lowerBound as number) > (previous as number)));
   for (const name of ["reason", "detail"] as const) {
     if (value[name] !== undefined && typeof value[name] !== "string") {
       throw new Error(`Benchmark child field ${name} must be a string`);

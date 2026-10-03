@@ -274,7 +274,7 @@ fails when the generated facts below differ from source.
 
 ### Frozen solver evidence
 
-- Immutable benchmark fixtures: **43**
+- Immutable benchmark fixtures: **44**
 - Classic-eligible fixtures: **37**
 - Frozen exact optima: **35**
 - Grand Hall discovery (base, mirrored, rotated): **893 moves / 278 pushes**, **1,329 visited / 8,425 generated**

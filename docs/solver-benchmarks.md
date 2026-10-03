@@ -14,7 +14,7 @@ npm.cmd run benchmark:solver:v2 -- --fixture=ultra-tiny --profile=sokomind-fast 
 Run the full configured matrix with five isolated samples per pair:
 
 ```text
-npm.cmd run benchmark:solver:v2 -- --runs=5 --warmup=0 --save=tests/fixtures/solver-v2/baseline-v3-YYYYMMDD.json
+npm.cmd run benchmark:solver:v2 -- --runs=5 --warmup=0 --save=tests/fixtures/solver-v2/baseline-v4-YYYYMMDD.json
 ```
 
 The default matrix is large. It includes every eligible fixture/profile pair
@@ -36,16 +36,23 @@ and may take hours on proof-heavy fixtures.
 
 Classic eligibility is at most eight boxes and at most 96 floor cells. The
 harness derives the eligible matrix from the current corpus and requested
-profiles. The all-fixture production matrix includes an intentionally difficult
-27-box memory stress fixture; it is not yet a declared reasonable-puzzle SLO suite.
+profiles. The all-fixture production matrix includes two 27-box warehouses.
+`v2-27box-memory` starts with boxes against the top wall that can never leave
+it, so every mode should end at once with `exhausted`; it checks that a large
+dead start is recognized quickly. `v2-27box-open` is the same board one row
+lower and measures 27-box route quality and memory. In its first run (job
+46880, 2026-10-03, one sample each) Fast, Quality and Optimal returned verified
+routes of 1,300, 904 and 914 moves. The matrix is not yet a declared
+reasonable-puzzle SLO suite.
 
 Every request receives the same immutable limits object recorded in its sample.
 Classic proof profiles use 60 seconds, 500,000 expanded states, 5,000,000
 generated states, and 512 MiB. General Sokomind profiles use 180 seconds,
 500,000 expanded states, 5,000,000 generated states, and 4 GiB. The three
-production target profiles use the same work and memory limits with respective
-30/60/120-second deadlines. These Node profiles retain proof parallelism one;
-browser Auto proof parallelism is a separate configuration.
+production target profiles carry only what the app sends: their 30/60/120-second
+deadlines and 4 GiB, with no state caps, so a large board runs until its
+deadline as it would in the browser. These Node profiles retain proof
+parallelism one; browser Auto proof parallelism is a separate configuration.
 
 Every solved sample must replay and return within its harness deadline. Quality
 requires at most `floor(1.1 * C*)` moves when an independent frozen optimum is
@@ -65,6 +72,10 @@ For each fixture/profile group the harness retains:
 
 - every raw sample;
 - first observed incumbent time and strictly improving published-incumbent history;
+- `movesAt`, the best published route at 1, 5, 10, 30, 60, and 120 seconds
+  (`null` before the first route; a run that ended earlier keeps its final route);
+- `phaseTimeline`, the time of each reported phase change, and
+  `lowerBoundHistory`, each strict rise of the reported lower bound;
 - minimum, median, maximum, and median absolute deviation for elapsed time;
 - before/after RSS and `process.resourceUsage().maxRSS` peak RSS;
 - solver metrics and all counters;
@@ -494,15 +505,19 @@ puzzles but +19.1% regression on maze-style; worth investigating
 class-specific activation. **firstPushWalkWeight**: net negative, +4.6%
 aggregate slowdown. All three remain correctly defaulted to disabled.
 
-## Schema 3
+## Schema 4
 
 Top-level fields include environment identity, methodology, profile definitions,
 corpus/tuning fingerprints, partial/full coverage, promotability, raw result
-groups, and optional A/B comparisons.
+groups, and optional A/B comparisons. Schema 4 added the per-sample `movesAt`,
+`phaseTimeline`, and `lowerBoundHistory` fields, removed the state caps from the
+production targets, and added `v2-27box-open`. Child validation recomputes
+`movesAt` from the incumbent history and rejects timelines that are out of
+order, outside the run, or not strictly changing.
 
 `promotableBaseline` is true only when:
 
-- the full 43-fixture/default-profile matrix was requested;
+- the full 44-fixture/default-profile matrix was requested;
 - every eligible pair is present exactly once as a sample group;
 - all groups are deterministic and accepted;
 - at least five timed samples were captured per group;
@@ -521,7 +536,7 @@ Use a new versioned filename for each reviewed capture. Existing files are not
 overwritten unless the operator deliberately passes `--force`:
 
 ```text
-npm.cmd run benchmark:solver:v2 -- --save=tests/fixtures/solver-v2/baseline-v3-YYYYMMDD.json
+npm.cmd run benchmark:solver:v2 -- --save=tests/fixtures/solver-v2/baseline-v4-YYYYMMDD.json
 ```
 
 The SLURM wrapper includes the job ID and UTC timestamp in its output filename.
@@ -534,7 +549,7 @@ The separate classic A* memory runner now consumes the flat corpus correctly:
 npm.cmd run benchmark:solver:memory -- --fixture=ultra-tiny
 ```
 
-It is a focused diagnostic, not the schema-3 baseline format. Prefer the V2
+It is a focused diagnostic, not the schema-4 baseline format. Prefer the V2
 harness when comparing production profiles or feature vectors.
 
 ## Exit behavior

@@ -7,6 +7,8 @@ import type { SolverResult } from "../../src/solver/contracts.ts";
 import {
   BENCHMARK_PROFILES,
   BENCHMARK_ABORT_GRACE_MS,
+  BENCHMARK_MOVE_CHECKPOINTS_MS,
+  benchmarkMovesAt,
   benchmarkRequest,
   benchmarkRunIdentity,
   benchmarkTuningConfiguration,
@@ -73,6 +75,7 @@ function sample(overrides: Partial<BenchmarkSample> = {}): BenchmarkSample {
     knownOptimalMoves: 28,
     knownOptimalPushes: 7,
     matchesKnownOptimum: true,
+    movesAt: benchmarkMovesAt(undefined),
     accepted: true,
     ...overrides,
   };
@@ -85,8 +88,12 @@ describe("Solver V2 benchmark harness", () => {
     ] as const) {
       const profile = BENCHMARK_PROFILES[profileId];
       assert.equal(profile.limits.maxElapsedMs, deadline);
+      // Like the app, production targets stop only on time or memory.
+      assert.deepEqual(Object.keys(profile.limits).sort(), ["maxElapsedMs", "maxMemoryBytes"]);
       assert.equal(isProfileEligible(HUGE, profile), true);
     }
+    assert.equal(BENCHMARK_PROFILES["classic-astar"].limits.maxExpandedStates, 500_000);
+    assert.equal(BENCHMARK_PROFILES["sokomind-optimal-astar"].limits.maxGeneratedStates, 5_000_000);
     assert.equal(isProfileEligible(HUGE, BENCHMARK_PROFILES["classic-astar"]), false);
     assert.equal(BENCHMARK_PROFILES["production-optimal"].requiresOptimalProof, true);
     for (const profileId of ["production-fast", "production-quality"] as const) {
@@ -166,6 +173,34 @@ describe("Solver V2 benchmark harness", () => {
       ULTRA_TINY.fixtureId, "production-fast", 0), /incumbentHistory/);
     assert.throws(() => parseChildSample(JSON.stringify({...result,
       firstSolutionMs: result.elapsedMs + 1}), ULTRA_TINY.fixtureId, "production-fast", 0), /firstSolutionMs/);
+    assert.deepEqual(result.movesAt, benchmarkMovesAt(result.incumbentHistory));
+    assert.equal(result.movesAt["120000"], 1);
+    for (const entry of result.phaseTimeline ?? []) assert.ok(entry.elapsedMs <= result.elapsedMs);
+    assert.throws(() => parseChildSample(JSON.stringify({...result, movesAt: {...result.movesAt, "120000": 2}}),
+      ULTRA_TINY.fixtureId, "production-fast", 0), /movesAt/);
+  });
+
+  it("records the best route at fixed checkpoints and validates phase and bound timelines", () => {
+    assert.deepEqual(Object.keys(benchmarkMovesAt(undefined)), BENCHMARK_MOVE_CHECKPOINTS_MS.map(String));
+    assert.ok(Object.values(benchmarkMovesAt(undefined)).every((moves) => moves === null));
+    assert.deepEqual(benchmarkMovesAt([{moves: 50, elapsedMs: 800}, {moves: 40, elapsedMs: 5_000},
+      {moves: 30, elapsedMs: 5_001}, {moves: 28, elapsedMs: 70_000}]),
+    {"1000": 50, "5000": 40, "10000": 30, "30000": 30, "60000": 30, "120000": 28});
+    const timed = sample({elapsedMs: 100, phaseTimeline: [{phase: "searching", elapsedMs: 0},
+      {phase: "proving", elapsedMs: 40}, {phase: "verifying", elapsedMs: 100}],
+    lowerBoundHistory: [{lowerBound: 20, elapsedMs: 40}, {lowerBound: 28, elapsedMs: 90}]});
+    const parse = (value: BenchmarkSample) =>
+      parseChildSample(JSON.stringify(value), "inter-rooms", "classic-astar", 0);
+    assert.deepEqual(parse(timed).phaseTimeline, timed.phaseTimeline);
+    for (const phaseTimeline of [[], [{phase: "searching", elapsedMs: 0}, {phase: "searching", elapsedMs: 1}],
+      [{phase: "thinking", elapsedMs: 0}], [{phase: "proving", elapsedMs: 101}],
+      [{phase: "searching", elapsedMs: 5}, {phase: "proving", elapsedMs: 4}]]) {
+      assert.throws(() => parse({...timed, phaseTimeline} as BenchmarkSample), /phaseTimeline/);
+    }
+    for (const lowerBoundHistory of [[{lowerBound: 20, elapsedMs: 1}, {lowerBound: 20, elapsedMs: 2}],
+      [{lowerBound: -1, elapsedMs: 1}], [{lowerBound: 1.5, elapsedMs: 1}]]) {
+      assert.throws(() => parse({...timed, lowerBoundHistory}), /lowerBoundHistory/);
+    }
   });
 
   it("validates explicit discovery treatments and rejects ignored or no-op experiments", () => {

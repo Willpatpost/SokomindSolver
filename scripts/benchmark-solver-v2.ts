@@ -19,6 +19,7 @@ import {
   BENCHMARK_PROFILES,
   BENCHMARK_SCHEMA_VERSION,
   benchmarkCorpusFingerprint,
+  benchmarkMovesAt,
   benchmarkTuningFingerprint,
   benchmarkTuningConfiguration,
   benchmarkRunIdentity,
@@ -94,6 +95,7 @@ function childErrorSample(
     rssBeforeBytes: 0,
     rssAfterBytes: 0,
     peakRssBytes: 0,
+    movesAt: benchmarkMovesAt(undefined),
     accepted: false,
     ...(featureRun
       ? {

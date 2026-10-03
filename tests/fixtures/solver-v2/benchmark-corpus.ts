@@ -559,9 +559,9 @@ export const V2_LOOP_HEAVY = freeze({
   ],
 });
 
-// 27-box memory stress test — large warehouse with 27 boxes in the upper
-// half and 27 goals in the lower half.  Not expected to solve within
-// time limits; exists to measure peak memory and state-encoding capacity.
+// 27-box warehouse whose top-row boxes sit against the wall and can never
+// leave it, so every mode ends at once with "exhausted". It checks that a
+// large dead start is recognized quickly; V2_27BOX_OPEN is the solvable twin.
 export const V2_27BOX_MEMORY = freeze({
   fixtureId: "v2-27box-memory",
   catalogId: null,
@@ -576,6 +576,35 @@ export const V2_27BOX_MEMORY = freeze({
     "O  X X X X X        O",
     "O X X X X X         O",
     "O                   O",
+    "O                   O",
+    "O         R         O",
+    "O                   O",
+    "O                   O",
+    "O       S S S S S   O",
+    "O      S S S S S    O",
+    "O       S S S S S   O",
+    "O      S S S S S S  O",
+    "O       S S S S S S O",
+    "OOOOOOOOOOOOOOOOOOOOO",
+  ],
+});
+
+// V2_27BOX_MEMORY one row lower, so no box starts against a wall: the
+// 27-box stress board for route quality, peak memory, and state encoding.
+export const V2_27BOX_OPEN = freeze({
+  fixtureId: "v2-27box-open",
+  catalogId: null,
+  fixtureGroup: "supplemental",
+  aliases: ["memory-stress-open"],
+  boxes: 27, floorCount: 285, width: 21, height: 17,
+  rows: [
+    "OOOOOOOOOOOOOOOOOOOOO",
+    "O                   O",
+    "O X X X X X X       O",
+    "O  X X X X X X      O",
+    "O X X X X X         O",
+    "O  X X X X X        O",
+    "O X X X X X         O",
     "O                   O",
     "O         R         O",
     "O                   O",
@@ -669,6 +698,7 @@ export const BENCHMARK_CORPUS: readonly BenchmarkFixture[] = Object.freeze([
   V2_WIDE_MULTI_ENTRY,
   V2_LOOP_HEAVY,
   V2_27BOX_MEMORY,
+  V2_27BOX_OPEN,
 ]);
 
 export const BENCHMARK_FIXTURE_BY_ID: Readonly<
