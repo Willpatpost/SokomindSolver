@@ -4,6 +4,7 @@ import type { DenseBox } from "./model.ts";
 import {
   buildPatternDatabase,
   buildPatternDatabaseAsync,
+  disabledPatternDatabase,
   UNSOLVED as PDB_UNSOLVED,
   type PatternDatabase,
   type PdbLookupStats,
@@ -92,11 +93,21 @@ export class PdbHeuristicEvaluator {
     try {
       for (const partition of partitions) {
         const retainedBytes = pdbs.reduce((sum, pdb) => sum + pdb.estimatedRetainedBytes, 0);
-        pdbs.push(await buildPatternDatabaseAsync(board, {
-          goalCells: partition.goalCells,
-          labelIds: partition.labels,
-          regionCells: partition.regionCells,
-        }, signal, budget ? { ...budget, baseMemoryBytes: budget.baseMemoryBytes + retainedBytes } : undefined));
+        try {
+          pdbs.push(await buildPatternDatabaseAsync(board, {
+            goalCells: partition.goalCells,
+            labelIds: partition.labels,
+            regionCells: partition.regionCells,
+          }, signal, budget ? { ...budget, baseMemoryBytes: budget.baseMemoryBytes + retainedBytes } : undefined));
+        } catch (err) {
+          if (!isExactPreprocessingLimitError(err) || err.reason !== "memory") throw err;
+          // The table did not fit before allocation. A disabled table holds
+          // no bytes and adds nothing to h, and a smaller later partition
+          // may still fit.
+          pdbs.push(disabledPatternDatabase(
+            partition.goalCells.length, partition.goalCells, partition.regionCells, "memory",
+          ));
+        }
       }
     } catch (err) {
       if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
@@ -105,6 +116,14 @@ export class PdbHeuristicEvaluator {
   }
 
   get partitionCount(): number { return this.#partitions.length; }
+  /** Partitions a build limit (deadline or memory) left with a partial or disabled table. */
+  get degradedPartitionCount(): number {
+    return this.#pdbs.filter((pdb) => pdb.truncatedBy !== undefined).length;
+  }
+  /** Degraded partitions stopped by the memory limit; these used to abort the run. */
+  get memoryFallbackCount(): number {
+    return this.#pdbs.filter((pdb) => pdb.truncatedBy === "memory").length;
+  }
   get totalTableEntries(): number { return this.#pdbs.reduce((sum, pdb) => sum + pdb.tableSize, 0); }
   get estimatedRetainedBytes(): number {
     return this.preprocessingRetainedBytes + this.searchCacheRetainedBytes;

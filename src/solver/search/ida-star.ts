@@ -986,6 +986,8 @@ export async function runIdaStarSearch(
       pdbBuildTimeMs: featureTelemetry.pdbBuildTimeMs,
       pdbTableEntries: featureTelemetry.pdbTableEntries,
       pdbRetainedBytes: pdbEvaluator?.preprocessingRetainedBytes ?? 0,
+      pdbDegradedPartitions: pdbEvaluator?.degradedPartitionCount ?? 0,
+      pdbMemoryFallbacks: pdbEvaluator?.memoryFallbackCount ?? 0,
       pdbSearchCacheRetainedBytes: pdbEvaluator?.searchCacheRetainedBytes ?? 0,
       pdbEvaluations: featureTelemetry.pdbEvaluations,
       pdbCacheHits: pdbEvaluator?.surplusCacheStats.hits ?? 0,

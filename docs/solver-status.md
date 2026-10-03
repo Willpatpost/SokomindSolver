@@ -111,6 +111,19 @@ proofs are unchanged while no memory limit binds; only extras telemetry, the
 secondary-cutoff count and search-cache bytes fall. The proof revision is
 unchanged.
 
+Classic A* 2.2.4 and IDA* 2.2.2 keep searching when a pattern-database build
+reaches the memory limit, which used to end the run with no lower bound. A
+build stopped after its table is allocated keeps the partial table under the
+rule a build deadline already used: breadth-first order has stored the exact
+distance of every state up to the last expanded depth, so a missing entry
+reads that depth plus one, and no state it stands for can be reached sooner. A
+partition whose table does not fit before allocation gets a disabled table
+that holds no bytes and adds nothing to h; later partitions still build.
+Either way h only falls relative to a complete table, so proofs stay
+admissible. `pdbDegradedPartitions` counts partitions a deadline or the memory
+limit left partial or disabled, and `pdbMemoryFallbacks` those the memory
+limit stopped. The proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

@@ -5,6 +5,7 @@ import {
   checkExactPreprocessingBudget,
   isExactPreprocessingLimitError,
   type ExactPreprocessingBudget,
+  type ExactPreprocessingLimitReason,
 } from "./preprocessing-budget.ts";
 
 export interface PatternDatabaseConfig {
@@ -35,12 +36,12 @@ export interface PdbLookupStats {
  * sum of d(b) + min over boxes of (out(b) - d(b)), where d is the full-board
  * single-box push distance to the nearest partition goal and out(b) the same
  * distance for routes through an outside cell. A box outside the region is
- * answered by the exit bound alone. Entries a build deadline left missing are
- * bounded by the BFS frontier depth.
+ * answered by the exit bound alone. Entries a build deadline or the memory
+ * limit left missing are bounded by the BFS frontier depth.
  *
  * UNSOLVED means no bound. It is returned when the boxes cannot all reach
- * partition goals, or for every lookup when the table was too large to build,
- * so a minimum over box subsets may skip it.
+ * partition goals, or for every lookup when the table was too large to build
+ * or did not fit the memory limit, so a minimum over box subsets may skip it.
  */
 export interface PatternDatabase {
   readonly k: number;
@@ -49,6 +50,8 @@ export interface PatternDatabase {
   readonly regionCells: readonly number[];
   readonly estimatedRetainedBytes: number;
   readonly lookupStats: PdbLookupStats;
+  /** The build limit that left this table partial or disabled, if any. */
+  readonly truncatedBy?: ExactPreprocessingLimitReason;
   lookup(boxCells: readonly number[]): number;
 }
 
@@ -135,6 +138,7 @@ function disabledPatternDatabase(
   k: number,
   goalCells: readonly number[],
   regionCells: readonly number[],
+  truncatedBy?: ExactPreprocessingLimitReason,
 ): PatternDatabase {
   return {
     k,
@@ -143,6 +147,7 @@ function disabledPatternDatabase(
     regionCells: [...regionCells],
     estimatedRetainedBytes: 0,
     lookupStats: createPdbLookupStats(),
+    ...(truncatedBy !== undefined ? { truncatedBy } : {}),
     lookup: () => UNSOLVED,
   };
 }
@@ -244,7 +249,8 @@ function buildPdbExitCap(
 
 /**
  * `undiscovered` answers in-region entries the BFS never reached: UNSOLVED
- * after a complete build, the frontier depth after a deadline.
+ * after a complete build, one more than the frontier depth after a deadline
+ * or the memory limit.
  */
 function makePdbLookup(
   cellToRegionIndex: Int32Array,
@@ -447,6 +453,7 @@ function finishPdb(
   retainedBytes: number,
   goalCells: readonly number[],
   undiscovered: number,
+  truncatedBy?: ExactPreprocessingLimitReason,
 ): PatternDatabase {
   const lookupStats = createPdbLookupStats();
   return {
@@ -456,6 +463,7 @@ function finishPdb(
     regionCells: [...ctx.regionCells],
     estimatedRetainedBytes: retainedBytes,
     lookupStats,
+    ...(truncatedBy !== undefined ? { truncatedBy } : {}),
     lookup: makePdbLookup(ctx.cellToRegionIndex, ctx.binom, ctx.table, undiscovered, ctx.exitCap, lookupStats),
   };
 }
@@ -500,12 +508,6 @@ export async function buildPatternDatabaseAsync(
   const { ctx, solvedRank, retainedBytes } = prepared;
 
   const workspaceBytes = ctx.regionCount + ctx.k * 16;
-  checkExactPreprocessingBudget(budget, retainedBytes + workspaceBytes);
-
-  const positions = new Array<number>(ctx.k);
-  const newPositions = new Array<number>(ctx.k);
-  const occupiedRegion = new Uint8Array(ctx.regionCount);
-
   const queue = new PackedRankQueue();
   const checkQueueAllocation = (additionalBytes = 0) => {
     throwIfSolverCancelled(signal);
@@ -517,6 +519,10 @@ export async function buildPatternDatabaseAsync(
   let frontierDepth = 0;
 
   try {
+    checkExactPreprocessingBudget(budget, retainedBytes + workspaceBytes);
+    const positions = new Array<number>(ctx.k);
+    const newPositions = new Array<number>(ctx.k);
+    const occupiedRegion = new Uint8Array(ctx.regionCount);
     queue.push(solvedRank, checkQueueAllocation);
     while (queue.size > 0) {
       if ((processed & 255) === 0) checkQueueAllocation();
@@ -532,10 +538,12 @@ export async function buildPatternDatabaseAsync(
       expandPdbState(ctx, rank, dist + 1, queue, positions, occupiedRegion, newPositions, checkQueueAllocation);
     }
   } catch (err) {
-    if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
-    // Missing entries are at least one push deeper than the frontier; a
-    // subset minimum needs that bound rather than UNSOLVED to stay sound.
-    return finishPdb(ctx, retainedBytes, config.goalCells, frontierDepth + 1);
+    if (!isExactPreprocessingLimitError(err)) throw err;
+    // The table is allocated, so a deadline and the memory limit stop the
+    // BFS alike: missing entries are at least one push deeper than the
+    // frontier, and a subset minimum needs that bound rather than UNSOLVED
+    // to stay sound. Dropping the queue frees the memory the BFS was using.
+    return finishPdb(ctx, retainedBytes, config.goalCells, frontierDepth + 1, err.reason);
   }
 
   return finishPdb(ctx, retainedBytes, config.goalCells, UNSOLVED);
@@ -577,6 +585,7 @@ export function buildGoalRegion(
 }
 
 export {
+  disabledPatternDatabase,
   combinadicEncode,
   combinadicDecode,
   buildBinomials,

@@ -6,6 +6,7 @@ import { SolverCancelledError } from "../../src/solver/cancellation.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
 import { buildPatternDatabaseAsync } from "../../src/solver/search/pattern-database.ts";
+import { partitionGoals } from "../../src/solver/search/goal-partitioning.ts";
 import { AssignmentHeuristic } from "../../src/solver/search/heuristic.ts";
 import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 import { ExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
@@ -15,7 +16,7 @@ import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
 import type { SolverRequest } from "../../src/solver/contracts.ts";
 
-function corridorFixture(cellCount: number) {
+function corridorFixture(cellCount: number, goal = cellCount - 2) {
   const base = compileSearchBoard(parsePuzzleRows(["OOOOOO", "OR XSO", "OOOOOO"]));
   const board = {
     ...base,
@@ -24,7 +25,7 @@ function corridorFixture(cellCount: number) {
       Int32Array.from([-1, -1, i > 0 ? i - 1 : -1, i < cellCount - 1 ? i + 1 : -1])),
     positions: Array.from({ length: cellCount }, (_, column) => ({ row: 0, column })),
   };
-  const goalCells = [cellCount - 2];
+  const goalCells = [goal];
   const regionCells = Array.from({ length: cellCount }, (_, i) => i);
   return { board, config: { goalCells, regionCells, labelIds: ["X"] } };
 }
@@ -101,6 +102,82 @@ describe("PDB resource budgets", () => {
       { ...config, labels: ["X"] },
     ], [pdb]);
     assert.equal(evaluator.evaluate([{ id: "X:0", label: "X", cell: 1 }]), 256);
+  });
+
+  it("keeps a partial table when the memory limit stops the BFS", async () => {
+    // The goal sits mid-corridor, so each depth holds two states and the queue
+    // reaches a second 4096-rank chunk while the first is still live.
+    const goal = 4500;
+    const { board, config } = corridorFixture(9000, goal);
+    const signal = new AbortController().signal;
+    const complete = await buildPatternDatabaseAsync(board, config, signal);
+    const pdb = await buildPatternDatabaseAsync(board, config, signal, {
+      signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
+      // Fits metadata, distance table, scratch and one queue chunk, not two.
+      maxMemoryBytes: 300_000,
+    });
+    assert.equal(complete.truncatedBy, undefined);
+    assert.equal(pdb.truncatedBy, "memory");
+    assert.equal(pdb.estimatedRetainedBytes, complete.estimatedRetainedBytes);
+    // Queue slot 4096 holds a depth-2048 state, queued while depth 2047 was
+    // expanding, so every state within 2047 pushes is stored and the rest
+    // read 2048.
+    for (const distance of [0, 1, 2047]) {
+      assert.equal(pdb.lookup([goal - distance]), distance);
+      assert.equal(pdb.lookup([goal + distance]), distance);
+    }
+    assert.equal(pdb.lookup([goal - 2048]), 2048);
+    assert.equal(pdb.lookup([goal + 2048]), 2048);
+    assert.equal(pdb.lookup([goal - 3000]), 2048);
+    assert.equal(pdb.lookup([goal + 4000]), 2048);
+    for (let cell = 0; cell < 9000; cell++) {
+      assert.ok(pdb.lookup([cell]) <= complete.lookup([cell]), `cell ${cell}`);
+    }
+  });
+
+  it("disables a partition whose table does not fit and still builds the others", async () => {
+    // Three X goals make a large table; the single Y goal makes a small one.
+    const parsed = parsePuzzleRows([
+      "OOOOOOOOOOOO",
+      "OR         O",
+      "O XXX   Y  O",
+      "O          O",
+      "O SSS   y  O",
+      "O          O",
+      "O          O",
+      "OOOOOOOOOOOO",
+    ]);
+    const board = compileSearchBoard(parsed);
+    const boxes = toDenseBoxes(board, parsed.initialBoxes);
+    const signal = new AbortController().signal;
+    const tables = await Promise.all(partitionGoals(board).map((partition) =>
+      buildPatternDatabaseAsync(board, {
+        goalCells: partition.goalCells,
+        labelIds: partition.labels,
+        regionCells: partition.regionCells,
+      }, signal)));
+    assert.equal(tables.length, 2);
+    const [large, small] = [...tables].sort((a, b) => b.estimatedRetainedBytes - a.estimatedRetainedBytes);
+    assert.equal(large.k, 3);
+    assert.equal(small.k, 1);
+    const complete = await PdbHeuristicEvaluator.createAsync(board, signal);
+
+    // The large table cannot fit; the small one, its scratch and queue chunks can.
+    const maxMemoryBytes = large.estimatedRetainedBytes - 1;
+    assert.ok(small.estimatedRetainedBytes + 32 * 1024 < maxMemoryBytes);
+    const evaluator = await PdbHeuristicEvaluator.createAsync(board, signal, {
+      signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0, maxMemoryBytes,
+    });
+    assert.equal(evaluator.partitionCount, 2);
+    assert.equal(evaluator.memoryFallbackCount, 1);
+    assert.equal(evaluator.degradedPartitionCount, 1);
+    assert.equal(evaluator.totalTableEntries, small.tableSize);
+    assert.equal(evaluator.preprocessingRetainedBytes, small.estimatedRetainedBytes);
+    // The Y box is two pushes above its goal, and the disabled X table adds 0.
+    const yBox = boxes.find((box) => box.label === "Y")!;
+    assert.equal(small.lookup([yBox.cell]), 2);
+    assert.equal(evaluator.evaluate(boxes), 2);
+    assert.ok(complete.evaluate(boxes) >= 2);
   });
 });
 

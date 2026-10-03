@@ -259,10 +259,23 @@ describe("IDA* search", () => {
       "Estimated memory should be at least the static allocation",
     );
 
+    // A pattern database that does not fit is disabled rather than fatal, so
+    // the run still fits once the table's bytes are dropped.
+    const pdbBytes = baseline.metrics.counters?.pdbRetainedBytes ?? 0;
+    assert.ok(pdbBytes > 0, "Expected the baseline to retain a pattern database");
+    const degraded = solved(
+      await runIdaStarSearch(
+        { ...solvedRequest, limits: { maxMemoryBytes: staticBytes - 1 } },
+        executionContext(),
+      ),
+    );
+    assert.equal(degraded.metrics.counters?.pdbMemoryFallbacks, 1);
+    assert.equal(degraded.metrics.counters?.pdbRetainedBytes, 0);
+
     const result = await runIdaStarSearch(
       {
         ...solvedRequest,
-        limits: { maxMemoryBytes: staticBytes - 1 },
+        limits: { maxMemoryBytes: staticBytes - pdbBytes - 1 },
       },
       executionContext(),
     );

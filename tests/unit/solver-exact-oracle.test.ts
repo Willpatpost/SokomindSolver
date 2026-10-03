@@ -23,6 +23,9 @@ import {
   runIdaStarSearch,
 } from "../../src/solver/search/ida-star.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { partitionGoals } from "../../src/solver/search/goal-partitioning.ts";
+import { buildPatternDatabaseAsync } from "../../src/solver/search/pattern-database.ts";
+import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 import {
   AssignmentHeuristic,
@@ -555,6 +558,79 @@ describe("exact search matches oracle on all reachable states", () => {
         `Expected >30 solvable states; got ${solvableChecked}`,
       );
       assert.ok(moveCostPdbRuns > 0, "at least one A* run must build a move-cost pattern");
+    });
+  });
+
+  describe("exact search with memory-degraded pattern databases matches oracle", () => {
+    it("exact A* and IDA* match oracle with a disabled and a partial table", async () => {
+      const parsed = parsePuzzleRows(BOARD_ROWS);
+      const board = compileSearchBoard(parsed);
+      const initialBoxes = toDenseBoxes(board, parsed.initialBoxes);
+      const initialRobot = board.cellAt(
+        parsed.initialRobot.row,
+        parsed.initialRobot.column,
+      );
+      const partitions = partitionGoals(board);
+      assert.equal(partitions.length, 1);
+      const table = await buildPatternDatabaseAsync(board, {
+        goalCells: partitions[0].goalCells,
+        labelIds: partitions[0].labels,
+        regionCells: partitions[0].regionCells,
+      }, new AbortController().signal);
+      const oracleStates = allReachableStates(board, initialRobot, initialBoxes);
+
+      // Memory left for the pattern database on top of the kernel's own
+      // estimate. With none the table is disabled before allocation; with
+      // room for the table and scratch but not the first 16 KB queue chunk,
+      // the build stops after storing only the solved state.
+      const cases = [
+        { allowance: 0, tableEntries: 0 },
+        { allowance: table.estimatedRetainedBytes + 1024, tableEntries: table.tableSize },
+      ];
+      const createAsync = PdbHeuristicEvaluator.createAsync;
+      try {
+        for (const { allowance, tableEntries } of cases) {
+          PdbHeuristicEvaluator.createAsync = (pdbBoard, signal, budget) => createAsync.call(
+            PdbHeuristicEvaluator,
+            pdbBoard,
+            signal,
+            budget && { ...budget, maxMemoryBytes: budget.baseMemoryBytes + allowance },
+          );
+          let solvableChecked = 0;
+          for (const [, state] of oracleStates) {
+            if (state.exactMoves === null || state.exactMoves === 0) continue;
+
+            const request = requestForOracleState(
+              parsed,
+              board,
+              state.robot,
+              state.boxes,
+            );
+            const where = `allowance=${allowance} robot=${state.robot} ` +
+              `boxes=[${state.boxes.map((b) => `${b.label}@${b.cell}`).join(",")}]`;
+            for (const [name, run] of [["A*", runExactMoveAStar], ["IDA*", runIdaStarSearch]] as const) {
+              const result = await run(request, oracleExecutionContext());
+              const solved = assertSolved(result);
+              assert.equal(solved.solution.moves, state.exactMoves, `${name} moves at ${where}`);
+              assert.equal(solved.solution.optimality, "proven", `${name} proof status at ${where}`);
+              assert.equal(
+                verifySolverSolution(request, solved.solution).valid,
+                true,
+                `${name} solution replays at ${where}`,
+              );
+              assert.equal(result.metrics.counters?.pdbMemoryFallbacks, 1, `${name} fallbacks at ${where}`);
+              assert.equal(result.metrics.counters?.pdbTableEntries, tableEntries, `${name} table at ${where}`);
+            }
+            solvableChecked++;
+          }
+          assert.ok(
+            solvableChecked > 30,
+            `Expected >30 solvable states; got ${solvableChecked}`,
+          );
+        }
+      } finally {
+        PdbHeuristicEvaluator.createAsync = createAsync;
+      }
     });
   });
 });
