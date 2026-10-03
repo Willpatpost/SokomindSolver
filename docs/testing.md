@@ -170,7 +170,10 @@ slice (`tests/unit/solver-exact-fuzz.test.ts`: seed 1 and a state cap only,
 so the result is the same on every machine). The long run takes 10 minutes
 from seed 1000000 by default; `SOKOMIND_FUZZ_MINUTES`, `SOKOMIND_FUZZ_SEED`,
 and `SOKOMIND_FUZZ_BOARDS` change that, and `SOKOMIND_FUZZ_ALL_VARIANTS=1`
-runs every variant on every board.
+runs every variant on every board. The Extended Solver Proof workflow also runs
+it weekly for 10 minutes from a new seed each run
+(10000000 + 100000 × run number, or the `fuzz-seed` input of a manual run) and
+prints that seed, so a failure can be rerun with `SOKOMIND_FUZZ_SEED`.
 
 `test:solver:multi` covers representative difficulty tiers;
 `test:solver:huge` separately gates Grand Hall discovery, rewrite, orientation

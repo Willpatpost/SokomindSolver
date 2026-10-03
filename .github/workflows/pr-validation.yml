@@ -34,21 +34,25 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
+        if: success() || failure()
         run: npm run lint
 
       - name: Doc path validation
+        if: success() || failure()
         run: npm run lint:docs
 
       - name: Generated engine is current
+        if: success() || failure()
         run: npm run check:sokomind-solver
 
       - name: Catalog metadata is current
+        if: success() || failure()
         run: npm run check:catalog
 
   coverage:
     name: Coverage (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

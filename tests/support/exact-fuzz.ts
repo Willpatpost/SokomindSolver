@@ -503,7 +503,7 @@ export function generateFuzzBoard(seed: number): FuzzBoard | null {
     ? reversePullPlacement(rng, open, goals)
     : randomPlacement(rng, open, goals);
   if (!placed) return null;
-  const symbols = open.map((line) => line.map((value) => (value ? " " : "O")));
+  const symbols: string[][] = open.map((line) => line.map((value) => (value ? " " : "O")));
   goals.forEach(([row, column], index) => {
     symbols[row][column] = goalSymbol(labels[index]);
   });

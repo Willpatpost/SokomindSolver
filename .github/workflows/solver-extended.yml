@@ -2,6 +2,11 @@ name: Extended Solver Proof
 
 on:
   workflow_dispatch:
+    inputs:
+      fuzz-seed:
+        description: First exact-fuzz seed (default derives one from the run number)
+        required: false
+        default: ""
   schedule:
     - cron: "17 10 * * 1"
 
@@ -35,3 +40,32 @@ jobs:
       # takes roughly 2.5 minutes on the audit workstation.
       - name: Prove the extended frozen optimum
         run: npm run test:solver:known:extended
+
+  exact-fuzz:
+    name: Timed exact fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Each run starts a fresh seed range. Reproduce a failure with
+      # SOKOMIND_FUZZ_SEED set to the printed seed (docs/testing.md).
+      - name: Fuzz the exact move engines
+        env:
+          FUZZ_SEED_INPUT: ${{ inputs.fuzz-seed }}
+          SOKOMIND_FUZZ_MINUTES: "10"
+        run: |
+          export SOKOMIND_FUZZ_SEED="${FUZZ_SEED_INPUT:-$((10000000 + GITHUB_RUN_NUMBER * 100000))}"
+          echo "SOKOMIND_FUZZ_SEED=$SOKOMIND_FUZZ_SEED"
+          npm run test:solver:fuzz
