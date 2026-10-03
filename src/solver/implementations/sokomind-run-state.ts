@@ -36,7 +36,10 @@ export const WORKER_SILENCE_WATCHDOG_MS = 120_000;
 
 export type PhaseStopReason = BudgetStopReason;
 
-/** Work an Optimal proof-first attempt spent outside the worker registry. */
+/**
+ * Work a small-board proof (Optimal proof-first or Quality's exact lane) spent
+ * outside the worker registry.
+ */
 export interface ProofFirstWork {
   readonly expandedStates: number;
   readonly generatedStates: number;
@@ -68,7 +71,7 @@ export interface SearchRunState {
   qualityOperatorStalls: number;
   /** Best replay-verified route published as the incumbent (quality and optimal). */
   publishedIncumbent: SolverSolution | undefined;
-  /** Charged to the state limits; set once an Optimal proof-first attempt ends. */
+  /** Charged to the state limits; set once a small-board proof ends. */
   proofFirstWork: ProofFirstWork | undefined;
   aggregateGeneration: number;
   cachedAggregate: AggregateSnapshot | null;

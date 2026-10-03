@@ -57,6 +57,12 @@ export const OPTIMAL_PROOF_FIRST_TIME_SHARE = 0.3;
 export const PROOF_FIRST_MAX_BOXES = 8;
 export const PROOF_FIRST_MAX_FLOOR_CELLS = 96;
 export const PROOF_FIRST_MINIMUM_MS = 500;
+/**
+ * Small Quality boards first search exactly for a better route, capped at this
+ * share of the time left. The search only improves the route; Quality never
+ * proves.
+ */
+export const QUALITY_EXACT_LANE_TIME_SHARE = 0.5;
 
 export interface EnginePlan {
   readonly id: string;

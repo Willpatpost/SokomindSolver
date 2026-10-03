@@ -420,7 +420,9 @@ describe("Sokomind Solver adapter", () => {
     });
     const request = requestFor(ONE_TYPED_BOX, {
       options: { "sokomind-solver": { mode: "quality", maximumIncumbents: 1 } },
-      limits: { maxElapsedMs: 1_000 },
+      // Under 1 s, so half the time left stays below the exact lane's minimum
+      // and the repair loop itself runs.
+      limits: { maxElapsedMs: 900 },
     });
 
     const result = await adapter.solve(request, context());
@@ -960,6 +962,109 @@ describe("Sokomind Solver adapter", () => {
     const proofFirstExpanded = result.metrics.counters?.proofFirstExpandedStates;
     assert.equal(typeof proofFirstExpanded, "number");
     assert.ok((proofFirstExpanded ?? Infinity) <= 1);
+  });
+
+  it("improves a small Quality board through the exact lane without claiming proof", async () => {
+    const commands: WorkerCommand[] = [];
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], commands),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": { mode: "quality", maximumIncumbents: 2 } },
+      limits: { maxElapsedMs: 5_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof, undefined);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.equal(result.metrics.counters?.bestSolutionMoves, 1);
+    // Discovery only: no seeded harvest lane, window rewrite or box reschedule.
+    const improvementAlgorithms = new Set(["solution-window-rewrite", "solution-box-reschedule"]);
+    assert.ok(commands.every((command) =>
+      typeof command.payload.seed !== "number" &&
+      !improvementAlgorithms.has(String(command.payload.algorithm))),
+    JSON.stringify(commands.map((command) => command.payload.algorithm ?? command.payload.seed)));
+    assert.ok(events.some((progress) => /small board exactly/u.test(progress.detail ?? "")));
+    assert.ok(events.some((progress) => progress.upperBound === 1));
+    // Quality never shows proof: no proving phase, lower bound, gap or
+    // optimality wording, even while the lane's proof runs.
+    assert.ok(events.every((progress) =>
+      progress.phase !== "proving" && progress.phase !== "harvesting" &&
+      progress.lowerBound === undefined && progress.gap === undefined &&
+      !/optimality/iu.test(progress.detail ?? "")));
+    assertHostAcceptsProgress(events);
+    assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
+  });
+
+  it("skips the Quality exact lane in deterministic runs", async () => {
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: { "sokomind-solver": { mode: "quality", deterministic: true, maximumIncumbents: 2 } },
+      limits: { maxElapsedMs: 5_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.optimality, "unknown");
+    assert.ok(events.some((progress) => progress.phase === "harvesting"));
+    assert.ok(events.every((progress) => !/small board exactly/u.test(progress.detail ?? "")));
+    assert.equal(result.metrics.counters?.proofFirstElapsedMs, undefined);
+  });
+
+  it("continues Quality past a timed-out exact lane without its bounds", async () => {
+    const events: SolverProgress[] = [];
+    let proofWorkers = 0;
+    // Proof lanes never answer, so the lane ends at its own deadline.
+    const silentProofWorker = (): SokomindProofWorker => {
+      proofWorkers += 1;
+      return {
+        postMessage() {},
+        addEventListener() {},
+        removeEventListener() {},
+        terminate() {},
+      };
+    };
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+      createProofWorker: silentProofWorker,
+    });
+    const request = requestFor(ONE_TYPED_BOX, {
+      options: {
+        "sokomind-solver": { mode: "quality", proofParallelism: 2, maximumIncumbents: 2, harvestElapsedMs: 100 },
+      },
+      limits: { maxElapsedMs: 2_000 },
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3);
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof, undefined);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const lane = events.findIndex((progress) => /small board exactly/u.test(progress.detail ?? ""));
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    assert.ok(lane >= 0 && harvesting > lane, "the exact lane runs before harvest");
+    assert.ok(events.every((progress) =>
+      progress.phase !== "proving" && progress.lowerBound === undefined && progress.gap === undefined));
+    assertHostAcceptsProgress(events);
+    assert.ok(proofWorkers >= 2, "the lane starts its own proof lanes");
+    assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
   });
 
   it("passes a validated tuning profile only into soft engine ordering", async () => {

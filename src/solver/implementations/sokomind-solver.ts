@@ -333,7 +333,7 @@ export const sokomindSolverMetadata: SolverMetadata = Object.freeze({
   displayName: "Sokomind Solver",
   description:
     "Typed-box Sokoban search with structural macros, compact bidirectional frontiers, and bounded move-count improvement.",
-  version: "1.5.0",
+  version: "1.6.0",
   capabilities: Object.freeze({
     executionTargets: ["web-worker"] as const,
     runtime: "javascript",
@@ -370,7 +370,7 @@ export function createSokomindSolverAdapter(
   ): Promise<SolverResult> => {
     if (sokoOpts.mode === "quality") {
       return qualityAnytimeImprove(
-        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
+        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap, proofWorkerFactory,
       );
     }
     if (sokoOpts.mode === "optimal") {

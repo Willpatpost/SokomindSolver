@@ -32,6 +32,7 @@ import {
   PROOF_FIRST_MAX_BOXES,
   PROOF_FIRST_MAX_FLOOR_CELLS,
   PROOF_FIRST_MINIMUM_MS,
+  QUALITY_EXACT_LANE_TIME_SHARE,
   adaptiveRewriteAllocation,
   configuredBudget,
   defaultImprovementMaxVisited,
@@ -131,9 +132,13 @@ export function runCappedProof(
  * gap end with it, while worker-host compares each event only with the one
  * before, so a later proof's smaller bound would read as a decrease. The
  * incumbent and upper bound stay the run's published route, which only falls:
- * a route the proof drops on timeout was never published.
+ * a route the proof drops on timeout was never published. `relabel` replaces
+ * the proof's own phase and detail, for a lane that must not claim to prove.
  */
-export function publishedBoundsContext(run: SearchRunState): SolverExecutionContext {
+export function publishedBoundsContext(
+  run: SearchRunState,
+  relabel?: Pick<SolverProgress, "phase" | "detail">,
+): SolverExecutionContext {
   return {
     signal: run.context.signal,
     now: run.context.now,
@@ -145,7 +150,7 @@ export function publishedBoundsContext(run: SearchRunState): SolverExecutionCont
       delete forwarded.gap;
       delete forwarded.incumbent;
       delete forwarded.upperBound;
-      run.context.reportProgress({ ...forwarded, ...incumbentProgress(run) });
+      run.context.reportProgress({ ...forwarded, ...relabel, ...incumbentProgress(run) });
     },
   };
 }
@@ -376,7 +381,18 @@ export async function qualityAnytimeImprove(
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
   analysisPlan: SokomindAnalysisPlan | undefined,
+  createProofWorker: () => SokomindProofWorker,
 ): Promise<SolverResult> {
+  const exactLane = await proveSmallBoardFirst(
+    run, firstIncumbent, sokomindOptions, createProofWorker,
+    qualityExactLaneCapMs(run, sokomindOptions), QUALITY_EXACT_LANE_LABEL,
+  );
+  if (exactLane.result?.status === "solved") {
+    return qualityExactLaneResult(run, exactLane.result.solution, exactLane.incumbent);
+  }
+  if (exactLane.result) return exactLane.result;
+  firstIncumbent = exactLane.incumbent;
+
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
@@ -862,15 +878,30 @@ export async function qualityAnytimeImprove(
 }
 
 // ---------------------------------------------------------------------------
-// Optimal: proof first on small boards, then quick improvement and proof
+// Small boards: a capped proof straight after discovery (Optimal proof-first,
+// Quality exact lane)
 // ---------------------------------------------------------------------------
 
 /**
- * Time cap for a small board's proof-first attempt, or 0 to skip it. Small
- * matches the classic exact profile. Deterministic runs skip it so results do
- * not depend on timing, and a resumed IDA* checkpoint already holds proof
- * work that only the pipeline's own proof continues.
+ * Whether a small board, which matches the classic exact profile, may run a
+ * capped proof straight after discovery. Deterministic runs skip it so results
+ * do not depend on timing, a resumed IDA* checkpoint already holds proof work
+ * that only the pipeline's own proof continues, and a run without a time limit
+ * has no share to cap.
  */
+function smallBoardProofEligible(
+  run: SearchRunState,
+  sokomindOptions: SokomindRequestOptions,
+  checkpointOptions: ProofCheckpointOptions | undefined,
+): boolean {
+  return !sokomindOptions.deterministic &&
+    checkpointOptions?.checkpoint === undefined &&
+    run.request.limits?.maxElapsedMs !== undefined &&
+    run.request.snapshot.boxes.length <= PROOF_FIRST_MAX_BOXES &&
+    run.request.board.floor.length <= PROOF_FIRST_MAX_FLOOR_CELLS;
+}
+
+/** Optimal's proof-first cap, a share of the time limit, or 0 to skip it. */
 function proofFirstCapMs(
   run: SearchRunState,
   sokomindOptions: SokomindRequestOptions,
@@ -878,11 +909,8 @@ function proofFirstCapMs(
 ): number {
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   if (
-    sokomindOptions.deterministic ||
-    checkpointOptions?.checkpoint !== undefined ||
     requestTimeMs === undefined ||
-    run.request.snapshot.boxes.length > PROOF_FIRST_MAX_BOXES ||
-    run.request.board.floor.length > PROOF_FIRST_MAX_FLOOR_CELLS
+    !smallBoardProofEligible(run, sokomindOptions, checkpointOptions)
   ) {
     return 0;
   }
@@ -891,6 +919,67 @@ function proofFirstCapMs(
     Math.floor(run.deadline - run.context.now()),
   );
   return capMs >= PROOF_FIRST_MINIMUM_MS ? capMs : 0;
+}
+
+/** Quality's exact-lane cap, a share of the time left, or 0 to skip it. */
+function qualityExactLaneCapMs(
+  run: SearchRunState,
+  sokomindOptions: SokomindRequestOptions,
+): number {
+  if (!smallBoardProofEligible(run, sokomindOptions, undefined)) return 0;
+  const capMs = Math.floor(
+    (run.deadline - run.context.now()) * QUALITY_EXACT_LANE_TIME_SHARE,
+  );
+  return capMs >= PROOF_FIRST_MINIMUM_MS ? capMs : 0;
+}
+
+/** How a capped small-board proof appears in progress events. */
+interface SmallBoardProofLabel {
+  readonly phase: "proving" | "improving";
+  readonly detail: string;
+  /** Replaces the proof's own phase and detail, which speak of proving. */
+  readonly relabelProof: boolean;
+}
+
+const OPTIMAL_PROOF_FIRST_LABEL: SmallBoardProofLabel = Object.freeze({
+  phase: "proving",
+  detail: "Proving the small board first",
+  relabelProof: false,
+});
+
+const QUALITY_EXACT_LANE_LABEL: SmallBoardProofLabel = Object.freeze({
+  phase: "improving",
+  detail: "Searching the small board exactly",
+  relabelProof: true,
+});
+
+/**
+ * Quality's result once its exact lane completes: no shorter route exists, but
+ * Quality never proves, so the route stays unproven and the result carries no
+ * proof. The lane's route replaces the incumbent only once it replays.
+ */
+function qualityExactLaneResult(
+  run: SearchRunState,
+  laneSolution: SolverSolution,
+  incumbent: SolverSolution,
+): SolverResult {
+  let best = incumbent;
+  if (
+    isSolutionBetter(laneSolution, incumbent) &&
+    verifySolverSolution(run.request, laneSolution).valid
+  ) {
+    best = laneSolution;
+    run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
+    run.solutionImprovements += 1;
+    invalidateAggregate(run);
+  }
+  const solution: SolverSolution = Object.freeze({ ...best, optimality: "unknown" as const });
+  publishIncumbent(run, solution, `Found a ${solution.moves}-move route.`);
+  return Object.freeze({
+    status: "solved" as const,
+    solution,
+    metrics: metrics(run),
+  });
 }
 
 function proofFirstCounters(work: ProofFirstWork): Readonly<Record<string, number>> {
@@ -902,19 +991,19 @@ function proofFirstCounters(work: ProofFirstWork): Readonly<Record<string, numbe
 }
 
 /**
- * Proves a small board straight after discovery. Returns the final result
- * when the capped proof completes (or the run is cancelled); otherwise the
- * incumbent the pipeline continues from, with the proof's work charged to
- * the run's limits.
+ * Proves a small board straight after discovery, within `capMs` (0 skips it).
+ * Returns the proof's result when it completes (or the run is cancelled);
+ * otherwise the incumbent the run continues from, with the proof's work
+ * charged to the run's limits.
  */
 async function proveSmallBoardFirst(
   run: SearchRunState,
   firstIncumbent: SolverSolution,
   sokomindOptions: SokomindRequestOptions,
   createProofWorker: () => SokomindProofWorker,
-  checkpointOptions: ProofCheckpointOptions | undefined,
+  capMs: number,
+  label: SmallBoardProofLabel,
 ): Promise<{ readonly result?: SolverResult; readonly incumbent: SolverSolution }> {
-  const capMs = proofFirstCapMs(run, sokomindOptions, checkpointOptions);
   if (capMs === 0 || run.context.signal.aborted) return { incumbent: firstIncumbent };
 
   run.initialSolutionMoves ||= firstIncumbent.moves;
@@ -924,8 +1013,8 @@ async function proveSmallBoardFirst(
       : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
   invalidateAggregate(run);
   recordIncumbent(run, firstIncumbent);
-  run.progressPhase = "proving";
-  report(run, `Proving the small board first (${capMs}ms budget).`, true);
+  run.progressPhase = label.phase;
+  report(run, `${label.detail} (${capMs}ms budget).`, true);
 
   const startedAt = run.context.now();
   const discoveryResult: SolverResult = Object.freeze({
@@ -933,8 +1022,12 @@ async function proveSmallBoardFirst(
     solution: firstIncumbent,
     metrics: metrics(run),
   });
+  const proofContext = publishedBoundsContext(
+    run,
+    label.relabelProof ? { phase: label.phase, detail: label.detail } : undefined,
+  );
   const result = await runCappedProof(
-    run.request, publishedBoundsContext(run), sokomindOptions, discoveryResult,
+    run.request, proofContext, sokomindOptions, discoveryResult,
     createProofWorker, capMs,
   );
   const counters = result.metrics.counters ?? {};
@@ -1002,7 +1095,8 @@ export async function optimalQuickImprove(
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
   const proofFirst = await proveSmallBoardFirst(
-    run, firstIncumbent, sokomindOptions, createProofWorker, checkpointOptions,
+    run, firstIncumbent, sokomindOptions, createProofWorker,
+    proofFirstCapMs(run, sokomindOptions, checkpointOptions), OPTIMAL_PROOF_FIRST_LABEL,
   );
   if (proofFirst.result) return proofFirst.result;
   firstIncumbent = proofFirst.incumbent;

@@ -88,6 +88,18 @@ step. Both exact kernels report `firstExpansionMs`, the time from kernel start
 to the first expansion (table builds included). Proof logic is unchanged, so
 the proof revision is unchanged.
 
+Sokomind 1.6.0 gives small Quality boards an exact lane. The same small
+boards run the same unmodified proof straight after discovery, for at most
+half of the time left, but only as a route improver: Quality never proves.
+When the lane completes, Quality returns its route (or the incumbent, if the
+lane's route does not replay or is not shorter) with optimality `unknown`,
+no proof, and no lower bound or gap. When it stops early, a better route it
+returns continues as an unproven incumbent once it replays, and harvest,
+rewrite and reschedule use the rest of the budget. Its progress reports phase
+`improving`, never `proving`, and omits the lower bound and gap. Deterministic
+runs and requests without a time limit skip the lane. Proof logic is
+unchanged, so the proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume
