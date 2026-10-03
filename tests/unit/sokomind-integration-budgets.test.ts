@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createSession, type PuzzleDefinition } from "../../src/core/index.ts";
-import type { SolverExecutionContext, SolverRequest } from "../../src/solver/contracts.ts";
+import type { SolverExecutionContext, SolverProgress, SolverRequest } from "../../src/solver/contracts.ts";
 import { createNodeSolverAdapter } from "../../src/solver/node-runner.ts";
 import { createSokomindSolverAdapter } from "../../src/solver/implementations/sokomind-solver.ts";
 import { BudgetTracker } from "../../src/solver/implementations/sokomind-budget-tracker.ts";
 import { bidirectionalSide } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import type { EngineResult } from "../../src/solver/implementations/sokomind-engine/engine-protocol.ts";
-import { toLegacyState } from "../../src/solver/implementations/sokomind-legacy.ts";
+import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-legacy.ts";
 import { bidirectionalPlans, configuredBudget, discoveryPlans, structuralPlan } from "../../src/solver/implementations/sokomind-plans.ts";
 import { runPhase, type SokomindEngineWorker } from "../../src/solver/implementations/sokomind-phase-runner.ts";
-import { aggregate, reachedLimit, retainLegacyRecord, type SearchRunState } from "../../src/solver/implementations/sokomind-run-state.ts";
+import {
+  aggregate, incumbentProgress, publishIncumbent, reachedLimit, recordIncumbent, retainLegacyRecord, type SearchRunState,
+} from "../../src/solver/implementations/sokomind-run-state.ts";
 import { resolveSokomindTuning } from "../../src/solver/implementations/sokomind-tuning.ts";
 import { WorkerExecutionRegistry } from "../../src/solver/implementations/sokomind-worker-registry.ts";
 
@@ -32,16 +34,16 @@ function context(signal = new AbortController().signal): SolverExecutionContext 
 function silentWorker(onPost: SokomindEngineWorker["postMessage"]): SokomindEngineWorker {
   return { postMessage: onPost, addEventListener() {}, removeEventListener() {}, terminate() {} };
 }
-function runState(request = requestFor()): SearchRunState {
+function runState(request = requestFor(), runContext = context()): SearchRunState {
   return {
-    startedAt: performance.now(), deadline: Infinity, request, context: context(), profile: resolveSokomindTuning(),
+    startedAt: performance.now(), deadline: Infinity, request, context: runContext, profile: resolveSokomindTuning(),
     workerSilenceTimeoutMs: 1000, structuralHeadStartLimitMs: 1000,
     registry: new WorkerExecutionRegistry(), budget: new BudgetTracker(),
     rejectedCandidates: 0, completedWorkers: 0, phaseTimeouts: 0, watchdogTimeouts: 0,
     lastProgressAt: -Infinity, progressPhase: "searching", initialSolutionMoves: 0,
     bestSolutionMoves: 0, solutionImprovements: 0, suppressedImprovementErrors: 0,
     suppressedHarvestErrors: 0, qualitySlicesCompleted: 0, qualityOperatorStalls: 0,
-    aggregateGeneration: 1, cachedAggregate: null,
+    publishedIncumbent: undefined, aggregateGeneration: 1, cachedAggregate: null,
   };
 }
 
@@ -66,6 +68,31 @@ describe("Sokomind integration resource contracts", () => {
     assert.deepEqual(second, { expanded: 0, generated: 0, memory: 0 });
     budget.releaseWorkerLease("first");
     assert.equal(budget.leaseWorker("third", { memory: 1024 }, { memory: 1024 }).memory, 1024);
+  });
+
+  it("publishes only strictly better incumbents as a falling upper bound", () => {
+    const progress: SolverProgress[] = [];
+    const run = runState(requestFor(), { ...context(), reportProgress: (event) => progress.push(event) });
+    const long = solutionFromLegacyPath(run.request, ["Right", "Left", "Right", "Down", "Down"]);
+    const short = solutionFromLegacyPath(run.request, ["Right", "Down", "Down"]);
+    assert.ok(long && short && long.moves === 5 && short.moves === 3);
+
+    assert.deepEqual(incumbentProgress(run), {});
+    assert.equal(recordIncumbent(run, long), true);
+    assert.equal(progress.length, 0, "recording alone does not report");
+    assert.deepEqual(incumbentProgress(run), {
+      incumbent: { moves: 5, pushes: 2, objectiveScore: long.objectiveScore },
+      upperBound: 5,
+    });
+    assert.equal(publishIncumbent(run, short, "Improved to 3 moves."), true);
+    assert.equal(publishIncumbent(run, long, "A longer route."), false);
+    assert.equal(publishIncumbent(run, short, "The same route."), false);
+    assert.equal(run.publishedIncumbent, short);
+    assert.equal(progress.length, 1);
+    assert.equal(progress[0].upperBound, 3);
+    assert.equal(progress[0].incumbent?.moves, 3);
+    assert.equal(progress[0].lowerBound, undefined);
+    assert.equal(progress[0].gap, undefined);
   });
 
   it("publishes every verified repair route and reports a task-local cutoff", async () => {

@@ -60,6 +60,19 @@ reservation takes the whole limit. Reported peak memory adds discovery's
 retained memory to the proof's peak. Neither change alters proof logic, so the
 proof revision is unchanged.
 
+Sokomind 1.4.0 publishes the first replay-verified route as soon as discovery
+finds it. Quality and Optimal progress then carries that route's move count as
+the incumbent and upper bound from the start of harvesting, instead of only
+from the improvement or proof phase. Every later verified route that is
+strictly better (fewer moves, then fewer pushes) replaces it, so the upper
+bound only falls. Quality returns the published route if the candidate archive
+dropped it under memory pressure, and the Optimal proof starts from it if no
+later phase improved on it. Quality progress still never carries a lower
+bound or gap. When a time or work limit ends the run, the result is the best
+published route; a user cancel still returns cancelled. Fast is unchanged.
+The upper bound comes only from verified routes, never from proof, so the
+proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

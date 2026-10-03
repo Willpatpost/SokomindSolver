@@ -52,6 +52,8 @@ import {
   aggregate,
   invalidateAggregate,
   metrics,
+  publishIncumbent,
+  recordIncumbent,
   report,
   withRemainingLimits,
   type SearchRunState,
@@ -113,6 +115,9 @@ async function harvestIncumbents(
     semanticDiversityTrace(run.request, firstIncumbent),
   );
 
+  // Publish the verified discovery route now, so the incumbent and upper
+  // bound reach the caller before harvesting, rewriting, or proof work.
+  recordIncumbent(run, firstIncumbent);
   run.progressPhase = "harvesting";
   report(run, `Harvesting diverse incumbents (${harvestBudgetMs}ms budget).`, true);
 
@@ -151,6 +156,7 @@ async function harvestIncumbents(
         (bestBefore === undefined || isSolutionBetter(bestAfter, bestBefore));
       if (bestAfter) {
         run.bestSolutionMoves = Math.min(run.bestSolutionMoves, bestAfter.moves);
+        recordIncumbent(run, bestAfter);
         invalidateAggregate(run);
       }
       if (accepted > 0) {
@@ -363,6 +369,7 @@ export async function qualityAnytimeImprove(
         ? solution.moves
         : Math.min(run.bestSolutionMoves, solution.moves);
       invalidateAggregate(run);
+      publishIncumbent(run, solution, `Found a ${solution.moves}-move route.`);
     }
     return accepted;
   }
@@ -778,7 +785,13 @@ export async function qualityAnytimeImprove(
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
-  const best = archive.globalBest?.solution ?? firstIncumbent;
+  // The archive can drop a route under memory pressure; the published
+  // incumbent is the best verified route this run reported.
+  const archived = archive.globalBest?.solution ?? firstIncumbent;
+  const published = run.publishedIncumbent;
+  const best = published !== undefined && isSolutionBetter(published, archived)
+    ? published
+    : archived;
   return Object.freeze({
     status: "solved" as const,
     solution: Object.freeze({ ...best, optimality: "unknown" as const }),
@@ -901,6 +914,12 @@ export async function optimalQuickImprove(
     return Object.freeze({ status: "cancelled", metrics: metrics(run) });
   }
 
+  // Proof progress reports its incumbent as the upper bound, which must not
+  // rise above the bound already published.
+  const published = run.publishedIncumbent;
+  if (published !== undefined && isSolutionBetter(published, best)) {
+    best = published;
+  }
   const discoveryResult: SolverResult = Object.freeze({
     status: "solved" as const,
     solution: best,

@@ -9,6 +9,7 @@ import {
 } from "../../src/core/index.ts";
 import type {
   SolverExecutionContext,
+  SolverProgress,
   SolverRequest,
 } from "../../src/solver/contracts.ts";
 import {
@@ -697,6 +698,98 @@ describe("Sokomind Solver adapter", () => {
       new Set(["balanced", "detour", "milestone"]),
     );
   });
+
+  for (const mode of ["quality", "optimal"] as const) {
+    it(`publishes the verified discovery route before ${mode} harvest finishes`, async () => {
+      const events: Array<{ progress: SolverProgress; harvestReplies: number }> = [];
+      let harvestReplies = 0;
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        createWorker: () =>
+          new ScriptedWorker((self, command) => {
+            // Discovery answers at once; seeded harvest workers answer later
+            // with a shorter route.
+            const seeded = typeof command.payload.seed === "number";
+            const reply = () => {
+              if (seeded) harvestReplies += 1;
+              self.emit({
+                type: "done",
+                status: "solved",
+                path: seeded ? ["Down"] : ["Left", "Right", "Down"],
+                visited: 1,
+                generated: 1,
+              });
+            };
+            if (seeded) setTimeout(reply, 20);
+            else queueMicrotask(reply);
+          }),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: {
+          "sokomind-solver": { mode, maximumIncumbents: 2, harvestElapsedMs: 500 },
+        },
+      });
+
+      const result = await adapter.solve(
+        request,
+        context(undefined, (progress) => events.push({ progress, harvestReplies })),
+      );
+
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.moves, 1);
+      assert.equal(verifySolverSolution(request, result.solution).valid, true);
+      const first = events.find(({ progress }) => progress.incumbent !== undefined);
+      assert.ok(first);
+      assert.equal(first.progress.phase, "harvesting");
+      assert.equal(first.harvestReplies, 0);
+      assert.equal(first.progress.incumbent?.moves, 3);
+      assert.equal(first.progress.upperBound, 3);
+      const upperBounds = events.flatMap(({ progress }) =>
+        progress.upperBound === undefined ? [] : [progress.upperBound]);
+      assert.ok(upperBounds.includes(1));
+      for (let index = 1; index < upperBounds.length; index += 1) {
+        assert.ok(upperBounds[index] <= upperBounds[index - 1], `upper bound rose: ${upperBounds}`);
+      }
+      if (mode === "quality") {
+        assert.equal(result.solution.optimality, "unknown");
+        assert.ok(events.every(({ progress }) =>
+          progress.lowerBound === undefined && progress.gap === undefined));
+      }
+    });
+
+    it(`returns the published discovery route when time ends during ${mode} harvest`, async () => {
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        createWorker: () =>
+          new ScriptedWorker((self, command) => {
+            // Harvest workers never answer, so the request deadline ends harvest.
+            if (typeof command.payload.seed === "number") return;
+            queueMicrotask(() => self.emit({
+              type: "done",
+              status: "solved",
+              path: ["Left", "Right", "Down"],
+              visited: 1,
+              generated: 1,
+            }));
+          }),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: {
+          "sokomind-solver": { mode, maximumIncumbents: 2, harvestElapsedMs: 5_000 },
+        },
+        limits: { maxElapsedMs: 400 },
+      });
+
+      const result = await adapter.solve(request, context());
+
+      assert.equal(result.status, "solved");
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.moves, 3);
+      assert.notEqual(result.solution.optimality, "proven");
+      assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    });
+  }
 
   it("passes a validated tuning profile only into soft engine ordering", async () => {
     let receivedWeight: unknown;

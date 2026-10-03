@@ -21,10 +21,10 @@ import {
 import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
 import { runPhase } from "./sokomind-phase-runner.ts";
 import {
-  aggregate,
-  elapsed,
   invalidateAggregate,
   metrics,
+  publishIncumbent,
+  recordIncumbent,
   report,
   withRemainingLimits,
   type SearchRunState,
@@ -122,21 +122,12 @@ export async function improveIncumbent(
   }
 
   run.progressPhase = "improving";
-  const snapshot = aggregate(run);
-  run.context.reportProgress({
-    phase: "improving",
-    elapsedMs: elapsed(run),
-    expandedStates: snapshot.expandedStates,
-    generatedStates: snapshot.generatedStates,
-    frontierSize: snapshot.frontierSize,
-    counters: snapshot.counters,
-    incumbent: {
-      moves: incumbent.moves,
-      pushes: incumbent.pushes,
-      objectiveScore: incumbent.objectiveScore,
-    },
-    detail: `Improving the ${incumbent.moves}-move route within the remaining quality budget.`,
-  });
+  recordIncumbent(run, incumbent);
+  report(
+    run,
+    `Improving the ${incumbent.moves}-move route within the remaining quality budget.`,
+    true,
+  );
 
   let best = incumbent;
   let endReason: TaskEndReason = "completed-pass";
@@ -248,6 +239,7 @@ export async function improveIncumbent(
         run.bestSolutionMoves === 0
           ? candidate.moves
           : Math.min(run.bestSolutionMoves, candidate.moves);
+      publishIncumbent(run, candidate, `Improved to ${candidate.moves} moves.`);
       if (cutoffReason) { endReason = cutoffReason; break; }
       if (outcome.stopReason) break;
     } catch (error) {

@@ -1,6 +1,8 @@
 import type {
+  SolverProgress,
   SolverRequest,
   SolverRunMetrics,
+  SolverSolution,
 } from "../contracts.ts";
 import {
   BudgetTracker,
@@ -8,6 +10,7 @@ import {
   type BudgetStopReason,
 } from "./sokomind-budget-tracker.ts";
 import type { EngineResult } from "./sokomind-engine/engine-protocol.ts";
+import { isSolutionBetter } from "./sokomind-incumbents.ts";
 import {
   finiteNonNegative,
   numericProperty,
@@ -56,6 +59,8 @@ export interface SearchRunState {
   suppressedHarvestErrors: number;
   qualitySlicesCompleted: number;
   qualityOperatorStalls: number;
+  /** Best replay-verified route published as the incumbent (quality and optimal). */
+  publishedIncumbent: SolverSolution | undefined;
   aggregateGeneration: number;
   cachedAggregate: AggregateSnapshot | null;
 }
@@ -277,8 +282,56 @@ export function report(
     generatedStates: snapshot.generatedStates,
     frontierSize: snapshot.frontierSize,
     counters: snapshot.counters,
+    ...incumbentProgress(run),
     detail,
   });
+}
+
+/**
+ * Progress fields for the published incumbent. Its move count is a verified
+ * upper bound on the optimum that only falls, so every later progress event
+ * can repeat it without breaking bound monotonicity.
+ */
+export function incumbentProgress(
+  run: SearchRunState,
+): Pick<SolverProgress, "incumbent" | "upperBound"> {
+  const incumbent = run.publishedIncumbent;
+  if (incumbent === undefined) return {};
+  return {
+    incumbent: Object.freeze({
+      moves: incumbent.moves,
+      pushes: incumbent.pushes,
+      objectiveScore: incumbent.objectiveScore,
+    }),
+    upperBound: incumbent.moves,
+  };
+}
+
+/**
+ * Makes a replay-verified route the published incumbent when it beats the
+ * current one. Later progress events carry it; returns whether it changed.
+ */
+export function recordIncumbent(
+  run: SearchRunState,
+  solution: SolverSolution,
+): boolean {
+  const published = run.publishedIncumbent;
+  if (published !== undefined && !isSolutionBetter(solution, published)) {
+    return false;
+  }
+  run.publishedIncumbent = solution;
+  return true;
+}
+
+/** Records a replay-verified route and reports it at once if it improved. */
+export function publishIncumbent(
+  run: SearchRunState,
+  solution: SolverSolution,
+  detail: string,
+): boolean {
+  if (!recordIncumbent(run, solution)) return false;
+  report(run, detail, true);
+  return true;
 }
 
 export function updateTelemetry(

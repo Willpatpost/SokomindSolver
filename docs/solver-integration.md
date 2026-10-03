@@ -149,9 +149,10 @@ not multiplied across workers. Unlimited runs also have a two-minute
 worker-silence watchdog; active progress resets it.
 
 Fast mode returns its first replay-verified route immediately. Quality and
-optimal modes may harvest up to three diverse incumbents and run bounded
-`solution-window-rewrite` workers that canonicalize walking, reorder compatible
-push chains, and search local bridge windows for fewer total moves. The rewrite
+optimal modes harvest up to `maximumIncumbents` (default 4) diverse incumbents
+and run bounded `solution-window-rewrite` workers on up to three of them. These
+workers canonicalize walking, reorder compatible push chains, and search local
+bridge windows for fewer total moves. The rewrite
 budget reserves move-cost windows so push-window work cannot consume the whole
 allowance. Every candidate is replayed again, and a timeout or optional-worker
 failure returns the already verified incumbent. Bounded improvement reports
@@ -194,26 +195,30 @@ The Sokomind Solver adapter accepts a `mode` option (`"fast"`, `"quality"`, or
 first verified route.
 
 **Fast** (default) runs the multi-lane discovery portfolio (structural
-planning, guided push search, bidirectional frontiers), takes the first
-verified solution, runs a single bounded move-rewriting pass to shorten walks,
-and returns. No incumbent harvesting and no proof work. This is the mode users
-get from the default Solve button.
+planning, guided push search, bidirectional frontiers) and returns the first
+verified solution immediately. No rewriting, harvesting, or proof work. This
+is the mode users get from the default Solve button.
 
-**Quality** extends the fast pipeline with two additional phases. After the
-first solution, the solver enters a *harvesting* phase: it continues searching
-for up to `harvestElapsedMs` (default 5 000 ms) to collect up to
-`maximumIncumbents` (default 4) diverse alternative solutions. It then rewrites
-all of them with a divided improvement budget, selects the best, and hands the
-winner to the *proof* pipeline. The proof pipeline runs exact move A\* or
-IDA\* (sequential or concurrent depending on `proofParallelism`) to establish
-whether the solution is move-optimal. The proof may attach
-`optimality: "proven"` or report a bound and gap.
+Quality and optimal publish that first verified route as the progress
+`incumbent` and `upperBound` before any further work, then publish each
+strictly better verified route as they find it.
 
-**Optimal** follows the same discovery-harvest-rewrite-proof pipeline as
-quality. The distinction is semantic: optimal mode signals that the caller
-expects the proof to complete rather than treating it as best-effort. Both
-modes take the same code path — the gate in the source is
-`sokomindOptions.mode !== "fast"`.
+**Quality** continues after the first solution with a *harvesting* phase: it
+keeps searching for up to `harvestElapsedMs` (default 5 000 ms, capped at 10%
+of a finite time limit but never under 500 ms) to collect up to
+`maximumIncumbents` (default 4) diverse solutions. It rewrites up to three of
+them in parallel, then runs an anytime loop that repairs archived candidates
+with the enabled operators until the budget runs out or the operators stall.
+Quality never runs a proof: its result always reports
+`optimality: "unknown"` and carries no `proof` field.
+
+**Optimal** harvests for at most 3 000 ms, takes the best incumbent, and gives
+one window-rewrite pass up to 15% and one box-reschedule pass up to 10% of a
+finite time limit. It then hands the best verified route to the *proof*
+pipeline, which runs exact move A\* or IDA\* (sequential or concurrent
+depending on `proofParallelism`) to establish whether the route is
+move-optimal. The proof may attach `optimality: "proven"` or report a bound
+and gap.
 
 Discovery, harvesting, rewriting, and proof consume one run-wide allowance.
 Elapsed, expanded, and generated work already spent is subtracted before the
@@ -455,8 +460,10 @@ describing the quality guarantee of the solution:
 - **`unsolvable`**: exhaustive exact search proved no solution exists. No
   `upperBound` or `gap`. Result status must be `"unsolved"`.
 
-Progress events may include `lowerBound`, `upperBound`, and `gap` fields
-during the `"proving"` phase. Bounds tighten monotonically.
+Quality and optimal progress carries the best verified route's move count as
+`incumbent` and `upperBound` from the `"harvesting"` phase onward. Progress
+adds `lowerBound` and `gap` only during the optimal `"proving"` phase. Bounds
+tighten monotonically.
 
 The `proof.algorithm` field records which search produced the proof
 (`"move-astar"`, `"move-ida-star"`, or their parallel variants).

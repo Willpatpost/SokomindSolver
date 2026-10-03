@@ -21,6 +21,7 @@ import type { EnginePlan } from "./sokomind-plans.ts";
 import {
   aggregate,
   elapsed,
+  incumbentProgress,
   reachedLimit,
   invalidateAggregate,
   report,
@@ -431,6 +432,7 @@ class PhaseRunner {
       this.run.context.reportProgress({
         phase: "verifying",
         elapsedMs: elapsed(this.run),
+        ...incumbentProgress(this.run),
         detail: `Verifying candidate from ${label}.`,
       });
       const solution = solutionFromLegacyPath(this.run.request, path);
