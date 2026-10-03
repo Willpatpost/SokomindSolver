@@ -100,6 +100,17 @@ rewrite and reschedule use the rest of the budget. Its progress reports phase
 runs and requests without a time limit skip the lane. Proof logic is
 unchanged, so the proof revision is unchanged.
 
+Classic A* 2.2.3 cuts a pushed child on `g + push bound + walk bound >= U`
+before it computes the linear-conflict, interaction-boost, PDB-surplus and
+goal-cut extras, on the ordinary and tunnel successor paths (the forced-push
+path already did). Each extra is non-negative and the full bound adds the
+largest of them to the push bound, so the full bound is never below push plus
+walk; every child the cheap test cuts would fail the existing `f >= U` test.
+Retained successors, expanded, generated and duplicate counts, moves and
+proofs are unchanged while no memory limit binds; only extras telemetry, the
+secondary-cutoff count and search-cache bytes fall. The proof revision is
+unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

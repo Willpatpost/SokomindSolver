@@ -1569,6 +1569,15 @@ export async function runExactMoveAStar(
                 continue;
               }
 
+              const tWalkBound = minimumManhattanWalkToPotentialPush(
+                board, stop.robotCell, expansionBoxes,
+              );
+              if (tChildMoves + tPushLowerBound + tWalkBound >= U) {
+                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                counters.cheapCutoffs += 1;
+                continue;
+              }
+
               const tLabelCosts = heuristic.lastLabelCosts;
               const tLabelCostsBoxKey = heuristic.lastBoxKey;
               const tInteractionBoost = tLabelCosts && boostEvaluator
@@ -1578,9 +1587,6 @@ export async function runExactMoveAStar(
               const tLC = linearConflict(expansionBoxes);
               const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts, tChildBoxKey, tLabelCostsBoxKey);
               const tGoalCut = goalCut();
-              const tWalkBound = minimumManhattanWalkToPotentialPush(
-                board, stop.robotCell, expansionBoxes,
-              );
               const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf, expansionBoxes, stop.robotCell, tChildBoxKey, tChildMoves, U);
               const tF = tChildMoves + tH;
 
@@ -1690,6 +1696,19 @@ export async function runExactMoveAStar(
 
           counters.avoidedReachabilityFloods += 1;
 
+          // Every extra below is >= 0, so computeH never returns less than
+          // push + walk: a child this test cuts would fail f >= U anyway.
+          const walkBound = minimumManhattanWalkToPotentialPush(
+            board,
+            savedCell,
+            expansionBoxes,
+          );
+          if (childMoves + pushLowerBound + walkBound >= U) {
+            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+            counters.cheapCutoffs += 1;
+            continue;
+          }
+
           const labelCosts = heuristic.lastLabelCosts;
           const labelCostsBoxKey = heuristic.lastBoxKey;
           const interactionBoost = labelCosts && boostEvaluator
@@ -1701,11 +1720,6 @@ export async function runExactMoveAStar(
           const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts, childBoxKey, labelCostsBoxKey);
           const childGoalCut = goalCut();
 
-          const walkBound = minimumManhattanWalkToPotentialPush(
-            board,
-            savedCell,
-            expansionBoxes,
-          );
           const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell, childBoxKey, childMoves, U);
           const f = childMoves + h;
 

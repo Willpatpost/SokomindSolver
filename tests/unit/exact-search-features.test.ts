@@ -210,6 +210,24 @@ describe("exact-search feature configuration", () => {
     );
   });
 
+  it("cuts ordinary A* children on push and walk bounds before the extras", async () => {
+    // Without forced-push macros every cheap cutoff comes from the ordinary
+    // successor path. A* finds no route before it pops the goal, so the cut
+    // needs a starting upper bound; 29 still admits the 28-move optimum.
+    const result = await runExactMoveAStar(request(), context(), {
+      features: { forcedPushMacros: false },
+      upperBound: 29,
+    });
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 28);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    const counters = result.metrics.counters ?? {};
+    assert.equal(counters.forcedPushMacroApplications ?? 0, 0);
+    assert.ok((counters.cheapCutoffs ?? 0) > 0, "ordinary cheap cutoffs must fire");
+  });
+
   it("rejects non-default IDA* features when checkpointing is requested", async () => {
     await assert.rejects(
       runIdaStarSearch(request(), context(), {
