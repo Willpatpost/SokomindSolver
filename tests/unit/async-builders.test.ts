@@ -14,9 +14,21 @@ import {
 } from "../../src/solver/search/deadlock-tables.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
 import { SolverCancelledError } from "../../src/solver/cancellation.ts";
+import { configureSearchScheduler } from "../../src/solver/search/scheduling.ts";
 
 function neverAbortedSignal(): AbortSignal {
   return new AbortController().signal;
+}
+
+/** A signal aborted at the build's first yield: mid-build, without racing a timer. */
+async function abortAtFirstYield(build: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
+  const ctrl = new AbortController();
+  configureSearchScheduler(async () => { ctrl.abort("mid-build cancel"); });
+  try {
+    await assert.rejects(() => build(ctrl.signal), (error: unknown) => error instanceof SolverCancelledError);
+  } finally {
+    configureSearchScheduler();
+  }
 }
 
 function preAbortedSignal(): AbortSignal {
@@ -107,13 +119,7 @@ describe("buildPatternDatabaseAsync", () => {
     const regionCells = buildGoalRegion(board, goalCells, 8);
     const config = { goalCells, labelIds: goalCells.map(() => "X"), regionCells };
 
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort("mid-build cancel"), 5);
-
-    await assert.rejects(
-      () => buildPatternDatabaseAsync(board, config, ctrl.signal),
-      (error: unknown) => error instanceof SolverCancelledError,
-    );
+    await abortAtFirstYield((signal) => buildPatternDatabaseAsync(board, config, signal));
   });
 });
 
@@ -166,12 +172,6 @@ describe("buildDeadlockTablesAsync", () => {
   it("throws on mid-build cancellation", async () => {
     const board = compileSearchBoard(parsePuzzleRows(MEDIUM_BOARD_ROWS));
 
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort("mid-build cancel"), 5);
-
-    await assert.rejects(
-      () => buildDeadlockTablesAsync(board, ctrl.signal),
-      (error: unknown) => error instanceof SolverCancelledError,
-    );
+    await abortAtFirstYield((signal) => buildDeadlockTablesAsync(board, signal));
   });
 });

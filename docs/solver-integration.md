@@ -369,7 +369,14 @@ use it to start a fresh worker.
 
 The classic engine yields with a macrotask rather than an already-resolved
 promise. That gives the worker event loop a chance to receive cancellation
-messages during CPU-heavy searches. Progress is emitted at a bounded cadence
+messages during CPU-heavy searches. The exact kernels and their pattern-database
+and deadlock-table builders share one yield in
+`src/solver/search/scheduling.ts`. It uses `setImmediate` where the host has it
+(Node), otherwise a `MessageChannel` message (browser workers), and `setTimeout`
+only as a last resort. Hosts clamp `setTimeout` to at least 1 ms (browsers to
+4 ms once nested), and a search that yields every 256 states would pay that on
+every yield. The puzzle-forge worker installs its own scheduler that yields at
+most every 25 ms. Progress is emitted at a bounded cadence
 with elapsed time, expanded/generated states, live and peak frontier sizes,
 deduplication, pruning, heuristic, reachability, depth, and estimated-memory
 counters. The dialog keeps only a bounded, throttled status history.
