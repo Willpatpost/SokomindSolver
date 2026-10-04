@@ -265,6 +265,20 @@ function encodeBoundaryState(
   return boxRank * ctx.regionSize + playerRegionIndex;
 }
 
+// Inverse of encodeBoundaryState; returns the player region index. Ranks pass
+// 2^32 on large regions, so the box rank is an exact float quotient, never an
+// int32 truncation.
+function decodeBoundaryState(
+  ctx: MoveCostPatternContext,
+  stateRank: number,
+  outRegionIndices: Uint16Array,
+): number {
+  const playerRegionIndex = stateRank % ctx.regionSize;
+  const boxRank = (stateRank - playerRegionIndex) / ctx.regionSize;
+  unrankCombination(boxRank, ctx.regionSize, ctx.pattern.boxCount, ctx.binom, outRegionIndices);
+  return playerRegionIndex;
+}
+
 // ---------------------------------------------------------------------------
 // Walk BFS workspace (reusable, epoch-based)
 // ---------------------------------------------------------------------------
@@ -397,7 +411,7 @@ export function buildMoveCostPatternPdb(
   const opts = { ...DEFAULT_BUILD_OPTIONS, ...options };
 
   const ctx = createPatternContext(board, pattern);
-  const { regionSize, cellToRegionIndex, regionIndexToCell, binom } = ctx;
+  const { regionSize, cellToRegionIndex, regionIndexToCell } = ctx;
   const k = pattern.boxCount;
 
   const tableCapacity = Math.max(opts.maxSettledStates * 3, regionSize * 2);
@@ -477,9 +491,7 @@ export function buildMoveCostPatternPdb(
       settledCount++;
       if (bucketDist > maxSettledDistance) maxSettledDistance = bucketDist;
 
-      const boxRank = (stateRank / regionSize) | 0;
-      const playerRI = stateRank % regionSize;
-      unrankCombination(boxRank, regionSize, k, binom, scratchBoxRegion);
+      const playerRI = decodeBoundaryState(ctx, stateRank, scratchBoxRegion);
       const playerCell = regionIndexToCell[playerRI];
 
       for (let i = 0; i < k; i++) {
@@ -1148,4 +1160,11 @@ export function probeAndSelectPatterns(
 // Re-export workspace for tests
 // ---------------------------------------------------------------------------
 
-export { PatternWalkWorkspace, precomputeBinomials, rankCombination, unrankCombination };
+export {
+  PatternWalkWorkspace,
+  decodeBoundaryState,
+  encodeBoundaryState,
+  precomputeBinomials,
+  rankCombination,
+  unrankCombination,
+};

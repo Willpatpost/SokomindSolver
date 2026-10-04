@@ -18,6 +18,8 @@ import {
   generateCandidatePatterns,
   probeAndSelectPatterns,
   PatternWalkWorkspace,
+  decodeBoundaryState,
+  encodeBoundaryState,
   precomputeBinomials,
   rankCombination,
   unrankCombination,
@@ -1171,6 +1173,65 @@ describe("move-cost-pattern-pdb", () => {
       }
 
       assert.ok(overflowedBuilds > 0, "no build reached the table capacity");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Rank spaces past 2^32 (Grand Hall's X pattern crashed here)
+  // -----------------------------------------------------------------------
+  describe("large rank spaces", () => {
+    // Boxes reach rows 2-9 of columns 2-9: 64 region cells and 8 goals, so
+    // C(64, 8) box placements, more than 2^32.
+    const rows = [
+      "OOOOOOOOOOOO",
+      "O          O",
+      "O          O",
+      "O    R     O",
+      "O          O",
+      "O XXXXXXXX O",
+      "O          O",
+      "O          O",
+      "O          O",
+      "O SSSSSSSS O",
+      "OOOOOOOOOOOO",
+    ];
+    const board = compileBoard(rows);
+    const goals = Array.from({ length: 8 }, (_, i) => board.cellAt(9, 2 + i));
+    const pattern = makePattern(board, "X", goals);
+
+    it("round-trips boundary states whose rank passes 2^32", () => {
+      const { ctx } = buildMoveCostPatternPdb(board, pattern, { maxSettledStates: 1 });
+      assert.equal(ctx.regionSize, 64);
+      assert.ok(ctx.boxCombinations > 2 ** 32, `C(64, 8) = ${ctx.boxCombinations}`);
+
+      const indices = new Uint16Array(8);
+      const boxRanks: number[] = [0, 2 ** 31 - 1, 2 ** 31, 2 ** 32 - 1, 2 ** 32, 2 ** 32 + 12_345, ctx.boxCombinations - 1];
+      for (const boxRank of boxRanks) {
+        for (const player of [0, 31, 63]) {
+          const stateRank: number = boxRank * ctx.regionSize + player;
+          assert.equal(decodeBoundaryState(ctx, stateRank, indices), player, `rank ${stateRank}`);
+          for (let i = 1; i < 8; i++) assert.ok(indices[i] > indices[i - 1], `rank ${stateRank}: [${indices}]`);
+          assert.ok(indices[7] < ctx.regionSize, `rank ${stateRank}: [${indices}]`);
+          assert.equal(encodeBoundaryState(ctx, indices, player), stateRank);
+        }
+      }
+    });
+
+    it("settles exact values next to the goals", () => {
+      const pdb = buildMoveCostPatternPdb(board, pattern, { maxSettledStates: 20_000, maxBuildMs: 60_000 });
+      assert.ok(pdb.stats.completedRadius >= 2, `completedRadius ${pdb.stats.completedRadius}`);
+
+      // One box one or two cells above its goal, the keeper right behind it:
+      // one or two pushes down and no walking.
+      for (let column = 2; column <= 9; column++) {
+        for (const [boxRow, distance] of [[8, 1], [7, 2]] as const) {
+          const goal = board.cellAt(9, column);
+          const cells = goals.map((cell) => (cell === goal ? board.cellAt(boxRow, column) : cell)).sort((a, b) => a - b);
+          const hits = pdb.stats.boundaryHits;
+          assert.equal(pdb.lowerBoundBoundary(cells, board.cellAt(boxRow - 1, column)), distance, `column ${column}, box row ${boxRow}`);
+          assert.equal(pdb.stats.boundaryHits, hits + 1, `column ${column}, box row ${boxRow} not settled`);
+        }
+      }
     });
   });
 });
