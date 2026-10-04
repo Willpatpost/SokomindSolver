@@ -10,6 +10,7 @@ import {
   type UpperBoundChannel,
 } from "../search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../search/ida-star.ts";
+import { ExactPreprocessingCache } from "../search/preprocessing-cache.ts";
 import {
   selectProofAlgorithm,
   type ProofAlgorithm,
@@ -57,6 +58,9 @@ export function createProofWorkerRuntime(
   let lastReportedLowerBound = 0;
   // The closure state above belongs to one partition at a time.
   let activePartition: ProofStartPartition | null = null;
+  // Outlives partitions and runs: the partitions of a proof share a board, so
+  // only the first one on this worker builds the tables.
+  const preprocessingCache = new ExactPreprocessingCache();
 
   function createUpperBoundChannel(): UpperBoundChannel {
     return {
@@ -145,11 +149,13 @@ export function createProofWorkerRuntime(
         result = await runExactMoveAStar(request, context, {
           upperBound: initialUpperBound,
           upperBoundChannel: channel,
+          preprocessingCache,
         });
       } else {
         result = await runIdaStarSearch(request, context, {
           upperBound: initialUpperBound,
           upperBoundChannel: channel,
+          preprocessingCache,
         });
       }
     } catch (error: unknown) {

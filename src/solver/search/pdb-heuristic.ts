@@ -62,6 +62,8 @@ export class PdbHeuristicEvaluator {
   #cacheMisses = 0;
   #surplusCacheBytes = 0;
   #cacheMemoryBudget: ((additionalBytes: number) => boolean) | undefined;
+  // Partitions the build deadline left without any table.
+  #droppedPartitions = 0;
 
   constructor(board: CompiledSearchBoard);
   constructor(partitions: readonly GoalPartition[], pdbs: readonly PatternDatabase[]);
@@ -112,12 +114,26 @@ export class PdbHeuristicEvaluator {
     } catch (err) {
       if (!isExactPreprocessingLimitError(err) || err.reason !== "elapsed") throw err;
     }
-    return new PdbHeuristicEvaluator(partitions.slice(0, pdbs.length), pdbs);
+    const evaluator = new PdbHeuristicEvaluator(partitions.slice(0, pdbs.length), pdbs);
+    evaluator.#droppedPartitions = partitions.length - pdbs.length;
+    return evaluator;
   }
 
   /** An evaluator over the same tables, with fresh counters and an empty surplus cache. */
   view(): PdbHeuristicEvaluator {
-    return new PdbHeuristicEvaluator(this.#partitions, this.#pdbs.map((pdb) => pdb.view()));
+    const view = new PdbHeuristicEvaluator(this.#partitions, this.#pdbs.map((pdb) => pdb.view()));
+    view.#droppedPartitions = this.#droppedPartitions;
+    return view;
+  }
+
+  /**
+   * The build deadline cut a table short or dropped a partition. Such tables
+   * depend on the machine and the deadline; every other build gives the same
+   * tables for the same board, features and memory limit.
+   */
+  get deadlineLimited(): boolean {
+    return this.#droppedPartitions > 0 ||
+      this.#pdbs.some((pdb) => pdb.truncatedBy === "elapsed");
   }
 
   get partitionCount(): number { return this.#partitions.length; }

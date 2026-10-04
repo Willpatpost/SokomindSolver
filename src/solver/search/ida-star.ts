@@ -101,6 +101,10 @@ import {
   isExactPreprocessingLimitError,
   type ExactPreprocessingBudget,
 } from "./preprocessing-budget.ts";
+import {
+  exactPreprocessingCacheKey,
+  type ExactPreprocessingCache,
+} from "./preprocessing-cache.ts";
 
 // ---------------------------------------------------------------------------
 // Public options
@@ -132,6 +136,8 @@ export interface ExactMoveIdaStarOptions {
   readonly persistTransposition?: boolean;
   /** Internal deterministic feature vector used by controlled proof A/B runs. */
   readonly features?: Partial<ExactSearchFeatures>;
+  /** Reuses the board-only tables of an earlier run with the same key. */
+  readonly preprocessingCache?: ExactPreprocessingCache;
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +612,11 @@ export async function runIdaStarSearch(
     };
     checkExactPreprocessingBudget(preprocessingBudget);
     let estimateInteractionSearchBaseMemory = () => baseStaticMemoryBytes;
+    const preprocessingCache = options?.preprocessingCache;
+    const preprocessingCacheKey = preprocessingCache
+      ? exactPreprocessingCacheKey(request, "ida-star", features)
+      : "";
+    const cachedTables = preprocessingCache?.lookup(preprocessingCacheKey);
 
     if (resumeCheckpoint) {
       const expectedStateKey = createBoardContentKey(request.board, request.snapshot);
@@ -670,6 +681,7 @@ export async function runIdaStarSearch(
             maxMemoryBytes: request.limits?.maxMemoryBytes,
             baseMemoryBytes: () => estimateInteractionSearchBaseMemory(),
           },
+          cachedTables?.roomTables ?? undefined,
         )
       : null;
     const macroDetector = features.forcedPushMacros
@@ -682,7 +694,9 @@ export async function runIdaStarSearch(
       features.goalCutHeuristic && hasPotentialGoalCut(board, board.topology)
         ? new GoalCutEvaluator(board, board.topology)
         : null;
-    const deadlockTableLookup = features.deadlockTablePruning
+    const deadlockTableLookup = cachedTables
+      ? cachedTables.deadlockTables
+      : features.deadlockTablePruning
       ? await buildDeadlockTablesAsync(
           board,
           context.signal,
@@ -713,7 +727,9 @@ export async function runIdaStarSearch(
     const totalBudgetMs = request.limits?.maxElapsedMs ?? Infinity;
     const pdbDeadline = Math.min(deadline, startedAt + 0.25 * totalBudgetMs);
     const pdbStartedAt = context.now();
-    const pdbEvaluator = features.patternDatabase
+    const pdbEvaluator = cachedTables
+      ? cachedTables.pdbEvaluator?.view() ?? null
+      : features.patternDatabase
       ? await PdbHeuristicEvaluator.createAsync(board, context.signal, {
           ...preprocessingBudget,
           deadline: pdbDeadline,
@@ -723,9 +739,16 @@ export async function runIdaStarSearch(
             (boostEvaluator?.preprocessingRetainedBytes ?? 0),
         })
       : null;
-    featureTelemetry.pdbBuildTimeMs = features.patternDatabase
+    featureTelemetry.pdbBuildTimeMs = features.patternDatabase && !cachedTables
       ? Math.max(0, context.now() - pdbStartedAt)
       : 0;
+    if (preprocessingCache && !cachedTables) {
+      preprocessingCache.store(preprocessingCacheKey, {
+        deadlockTables: deadlockTableLookup,
+        roomTables: boostEvaluator?.roomPatternTables ?? null,
+        pdbEvaluator: pdbEvaluator?.view() ?? null,
+      });
+    }
     featureTelemetry.pdbTableEntries = pdbEvaluator?.totalTableEntries ?? 0;
     throwIfSolverCancelled(context.signal);
     await delayForEventLoop();
@@ -1002,7 +1025,9 @@ export async function runIdaStarSearch(
       corralOrderingReorders: corralOrderer?.stats.reorders ?? 0,
       patternDeadlockChecks: patternCache?.stats.checks ?? 0,
       patternDeadlockApplicable: patternCache === null ? 0 : 1,
-      deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
+      deadlockTableBuildTimeMs: cachedTables
+        ? 0
+        : deadlockTableLookup?.stats.buildTimeMs ?? 0,
       deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
       deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
       deadlockTableWorkUnits: deadlockTableLookup?.stats.workUnits ?? 0,
@@ -1013,6 +1038,9 @@ export async function runIdaStarSearch(
         (pdbEvaluator?.preprocessingRetainedBytes ?? 0) +
         (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
         (boostEvaluator?.preprocessingRetainedBytes ?? 0),
+      preprocessingCacheHits: cachedTables ? 1 : 0,
+      preprocessingCacheMisses: preprocessingCache && !cachedTables ? 1 : 0,
+      preprocessingCacheRetainedBytes: preprocessingCache?.retainedBytes ?? 0,
       deadlockTableChecks: featureTelemetry.deadlockTableChecks,
       goalCommitmentChecks: commitmentDetector?.stats.checks ?? 0,
       goalCommitments: commitmentDetector?.stats.commitments ?? 0,

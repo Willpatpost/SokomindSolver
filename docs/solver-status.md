@@ -45,7 +45,7 @@ its partition completes, so the worker host's monotonic-bound check never
 rejects the run. Failed partitions retain only their independently
 known prefix bound; they block an optimal certificate unless that prefix bound
 alone reaches the incumbent cost, whatever order lane events arrive in.
-Deadline cutoff remains bounded. Deeper partition splitting and immutable preprocessing reuse remain open.
+Deadline cutoff remains bounded. Deeper partition splitting remains open.
 
 Sokomind 1.3.1 keeps busy proof lanes alive and accounts for coordinator
 memory in single-lane proofs. The coordinator presumes a lane dead after 30 s
@@ -174,6 +174,29 @@ before with less work. Patterns are stored per region because two regions can
 start at the same cell. `deadlockTableWorkUnits` and `deadlockTableTruncated`
 report the build. The deadlock rules are unchanged, so the proof revision is
 unchanged.
+
+A proof lane keeps the board-only tables of its last run: the deadlock table,
+the room-pattern tables behind the interaction boost and the pattern
+databases. The next partition or proof run on that lane reuses them when its
+key matches: the board, the resolved features, the algorithm, the box count
+and the memory limit. The snapshot is not part of the key, so a lane builds
+the tables once for all the partitions of a proof. The memory limit and the
+work cap stop a build at a count, so a fresh build with the same key gives the
+same tables. A table the deadline cut short, or a pattern database that lost a
+partition to it, is never kept. A hit therefore searches exactly as a fresh
+build would, with one exception: a complete cached table can stand in where a
+fresh build under a tighter deadline would have stopped early. Its h is larger
+but still admissible, and no proof logic changes. Each run reads the tables
+through fresh views (its own lookup counters and an empty PDB surplus cache),
+re-checks the room tables against its own budget and counts the cached bytes
+in its memory estimate as it would its own build. A lane holds one entry and
+drops it on a miss before building, so a run never holds tables its estimate
+leaves out. Two gaps remain: an idle lane's tables are not yet charged
+against the request's budget between runs, and the single-lane proof, which
+runs in the coordinator, does not cache. `preprocessingCacheHits`,
+`preprocessingCacheMisses` and `preprocessingCacheRetainedBytes` report the
+cache. On a hit, table statistics such as `deadlockTableWorkUnits` describe
+the cached table and the build times read 0. The proof revision is unchanged.
 
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional

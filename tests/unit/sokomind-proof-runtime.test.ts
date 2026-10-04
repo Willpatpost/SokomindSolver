@@ -211,6 +211,32 @@ describe("createProofWorkerRuntime", () => {
     assert.equal(found.solution.moves, 3);
   });
 
+  for (const algorithm of ["astar", "ida-star"] as const) {
+    it(`reuses the ${algorithm} tables of an earlier partition on the same board`, async () => {
+      const { handle, results, nextIdle } = collectingRuntime();
+      for (const runId of [1, 2]) {
+        const idle = nextIdle();
+        handle(startCommand(100, algorithm, runId));
+        await idle;
+      }
+
+      const [first, second] = results.filter((result) => result.type === "proof/partition-complete");
+      assert.ok(first && second);
+      const counters = (complete: typeof first) => complete.metrics.counters ?? {};
+      assert.equal(counters(first).preprocessingCacheMisses, 1);
+      assert.equal(counters(second).preprocessingCacheHits, 1);
+      assert.equal(counters(second).pdbBuildTimeMs, 0);
+      assert.ok((counters(first).pdbTableEntries ?? 0) > 0);
+      const searchCounters = (complete: typeof first) => Object.fromEntries(
+        Object.entries(counters(complete)).filter(([key]) =>
+          !key.endsWith("Ms") && !key.startsWith("preprocessingCache")),
+      );
+      assert.deepEqual(searchCounters(second), searchCounters(first));
+      assert.equal(second.metrics.expandedStates, first.metrics.expandedStates);
+      assert.equal(second.lowerBound, first.lowerBound);
+    });
+  }
+
   it("posts an error then idle when the partition cannot start", async () => {
     const { handle, results, nextIdle } = collectingRuntime();
     const command = startCommand(100, "astar", 5);
