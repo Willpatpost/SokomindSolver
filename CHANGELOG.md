@@ -12,6 +12,24 @@ published a stable release.
   guidance.
 - Source-derived documentation for the exact PDB allocation ceiling and the
   reviewed Grand Hall discovery and rewrite counters.
+- Quality and Optimal publish the first replay-verified discovery route as the
+  incumbent and upper bound when harvest starts, instead of after it ends.
+- Optimal proves classic-sized boards (at most 8 boxes and 96 floor cells)
+  right after discovery, capped at 30% of the time limit. Only a completed
+  proof ends the run there; otherwise the existing pipeline runs with a fresh
+  proof.
+- Quality runs the same unmodified proof on classic-sized boards, for at most
+  half of the time left, but only to improve the route. Quality still reports
+  unknown optimality, never returns a proof, and never reports a lower bound or
+  gap.
+- Benchmark samples record the best route at 1, 5, 10, 30, 60 and 120 s, the
+  phase timeline and the lower-bound history (benchmark schema 4). The
+  solvable `v2-27box-open` memory board joins the corpus.
+- A weekly 10-minute exact fuzz run in the Extended Solver Proof workflow,
+  with a new printed seed each run.
+- Deadlock-table telemetry: `deadlockTableWorkUnits` and
+  `deadlockTableTruncated`. PDB telemetry: `pdbDegradedPartitions` and
+  `pdbMemoryFallbacks`. The kernels also report `firstExpansionMs`.
 
 ### Changed
 
@@ -24,8 +42,8 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.2, `classic-ida-star` 2.2.1 and
-  `sokomind-solver` 1.3.0. Sokomind 1.3.0 also marks the earlier Quality
+- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
+  `sokomind-solver` 1.7.1. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -44,6 +62,43 @@ published a stable release.
 - CI browser runs now fail when a test only passes on retry. The Grand Hall
   cancel test accepts only the cancelled outcome, and browser specs wait on
   `page.clock` or web-first assertions instead of fixed sleeps.
+- The exact kernels and their table builders yield through `setImmediate` or a
+  `MessageChannel` before falling back to `setTimeout`. Search states are
+  unchanged; a same-node A/B ran the classic profiles 1.67x faster on geometric
+  mean.
+- Exact A* cuts a child on its push and walk bounds before computing the
+  extras. Retained successors, state counts, moves and proofs are unchanged.
+- A pattern-database build that hits the memory limit keeps its partial table,
+  or disables that partition, instead of aborting exact search. Both are
+  admissible: unreached entries read `frontierDepth + 1`, and a disabled table
+  adds nothing to h.
+- The deadlock-table build stops after a fixed amount of work (2,000,000
+  region-search states) instead of a 2 s wall-clock budget, so every machine
+  builds the same table. Regions enumerate label classes instead of labels,
+  and a region search cut short by any limit still adds no pattern.
+- Proof lanes that are building tables resend their progress every 5 s, so the
+  coordinator's 30 s silence watchdog no longer stops a healthy lane. The
+  single-lane proof leaves the coordinator memory reservation out of its
+  kernel's limit, as each parallel lane already did.
+- The bundled engine's collapsed forced-push chains keep their first source,
+  last destination and every touched cell, so the goal-cut decomposition and
+  the packed-room check no longer drop or miscount them. Discovery only.
+- When Quality or Optimal has no exact answer, bounded repair now runs on
+  routes of any length. Before, routes under 100 moves got no repair.
+- Diverse harvest beams now receive their profile's move weight (0.005, 0.003
+  and 0.008); before, every harvest beam ran with the default 0.002.
+- Production benchmark profiles carry only the app's deadline and memory
+  limit, so large boards run to their deadline instead of stopping at 500k
+  states.
+- CI runs lint, doc lint and the generated-file checks even after an earlier
+  step fails, and the coverage timeouts are 20 minutes.
+- Sokomind keeps its engine and proof workers for the whole request instead
+  of starting new ones for each plan and each proof, and a proof worker reuses
+  its board-only pattern-database, deadlock and room tables across runs on the
+  same board. Search results are unchanged.
+- Requests that set an expanded- or generated-state limit skip Optimal's
+  early proof and Quality's proof lane, so neither can spend the states the
+  pipeline proof needs.
 
 - Removed the unreachable Sokomind `harvestAndImprove` schedule and the
   single-rewrite fallback in `solvedWithImprovement`. Quality and Optimal
@@ -68,6 +123,9 @@ published a stable release.
   bundle, where the files share one scope. Unused variables and initial values
   that were always overwritten are removed from the sources; solver results are
   unchanged.
+- Removed the unused `allocateParallelRewriteBudgets` helper. Repair operators
+  now map to their engine plans explicitly; `perturb-and-repair` still runs
+  the window rewrite, now on purpose.
 
 ### Fixed
 
@@ -264,3 +322,8 @@ published a stable release.
   route. The advanced-settings note now says A* and IDA* prove a minimum only
   when they finish within the limits, and that Sokomind Solver marks a route
   optimal only after an explicit proof.
+- The fuzz support module's symbol grid type, which had failed typecheck, and
+  with it deploy, since 2026-09-24.
+- The move-cost pattern database decodes state ranks above 2^31 exactly.
+  Before, Grand Hall's patterns crashed the build or expanded the wrong state.
+  The feature is off by default, so no shipped run or certificate used it.
