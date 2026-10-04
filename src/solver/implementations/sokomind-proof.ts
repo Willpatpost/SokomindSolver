@@ -27,6 +27,10 @@ import {
   type ProofResult,
   type ProofStartPartition,
 } from "./sokomind-proof-protocol.ts";
+import {
+  proofWorkerSourceFromFactory,
+  type ProofWorkerSource,
+} from "./sokomind-proof-pool.ts";
 
 export interface ProofCheckpointOptions {
   readonly checkpoint?: IdaStarCheckpoint;
@@ -306,7 +310,8 @@ interface PartitionTracker {
 let nextProofRunId = 0;
 
 export interface ConcurrentProofOptions {
-  readonly createProofWorker: () => SokomindProofWorker;
+  /** A factory gives each run fresh lanes; a source may lend lanes kept from an earlier run. */
+  readonly createProofWorker: (() => SokomindProofWorker) | ProofWorkerSource;
   readonly proofParallelism: number;
   /** Lanes send a heartbeat while busy, so silence this long means a dead lane. */
   readonly silenceTimeoutMs?: number;
@@ -381,13 +386,16 @@ export async function runConcurrentProof(
     ? (algorithm === "astar" ? "parallel-move-astar" : "parallel-move-ida-star")
     : (algorithm === "astar" ? "move-astar" : "move-ida-star");
 
+  const proofWorkers = typeof concurrentOptions.createProofWorker === "function"
+    ? proofWorkerSourceFromFactory(concurrentOptions.createProofWorker)
+    : concurrentOptions.createProofWorker;
   const workers: SokomindProofWorker[] = [];
   try {
     for (let i = 0; i < workerCount; i++) {
-      workers.push(concurrentOptions.createProofWorker());
+      workers.push(proofWorkers.acquire());
     }
   } catch {
-    for (const worker of workers) worker.terminate();
+    for (const worker of workers) proofWorkers.release(worker);
     return discoveryResult;
   }
 
@@ -609,17 +617,23 @@ export async function runConcurrentProof(
       }
     };
 
+    // Failed lanes went back when they failed. A lane still running a
+    // partition drains; any other lane is free for a later run.
     function finish(result: SolverResult): void {
       if (settled) return;
       settled = true;
       cleanup();
       for (const w of workers) {
+        if (unavailableWorkers.has(w)) continue;
         try {
           w.postMessage({ type: "proof/cancel" });
         } catch {
-          // worker already terminated
+          proofWorkers.discard(w);
+          continue;
         }
-        w.terminate();
+        const active = activeByWorker.get(w);
+        if (active) proofWorkers.drain(w, runId, active.partitionId);
+        else proofWorkers.release(w);
       }
       resolve(result);
     }
@@ -692,10 +706,14 @@ export async function runConcurrentProof(
         return true;
       }
       if (context.now() >= proofDeadline) {
-        finish(solvedResult(false, Math.min(...trackers.map(partitionLowerBound))));
+        finishAtDeadline();
         return true;
       }
       return false;
+    }
+
+    function finishAtDeadline(): void {
+      finish(solvedResult(false, Math.min(...trackers.map(partitionLowerBound))));
     }
 
     function failActive(worker: SokomindProofWorker): void {
@@ -713,11 +731,14 @@ export async function runConcurrentProof(
     function armSilenceTimer(worker: SokomindProofWorker): void {
       clearSilenceTimer(worker);
       const configured = concurrentOptions.silenceTimeoutMs ?? PROOF_SILENCE_TIMEOUT_MS;
-      const timeout = Math.max(
-        1,
-        Math.min(configured, proofDeadline - context.now()),
-      );
-      silenceTimers.set(worker, setTimeout(() => handleWorkerError(worker), timeout));
+      const untilDeadline = proofDeadline - context.now();
+      const timeout = Math.max(1, Math.min(configured, untilDeadline));
+      // A timer the deadline cut short ends the run instead of failing the
+      // lane, so the lane is cancelled like every other lane at the deadline.
+      silenceTimers.set(worker, setTimeout(
+        () => (configured < untilDeadline ? handleWorkerError(worker) : finishAtDeadline()),
+        timeout,
+      ));
     }
 
     function dispatchPartition(index: number, worker: SokomindProofWorker): void {
@@ -886,7 +907,7 @@ export async function runConcurrentProof(
       } catch {
         // A crashed lane may no longer accept commands.
       }
-      worker.terminate();
+      proofWorkers.discard(worker);
       clearSilenceTimer(worker);
       const active = activeByWorker.get(worker);
       if (active) {
@@ -933,9 +954,7 @@ export async function runConcurrentProof(
         0,
         Math.floor(proofDeadline - context.now()),
       );
-      deadlineTimer = setTimeout(() => {
-        finish(solvedResult(false, Math.min(...trackers.map(partitionLowerBound))));
-      }, Math.max(1, deadlineDelayMs));
+      deadlineTimer = setTimeout(finishAtDeadline, Math.max(1, deadlineDelayMs));
     }
 
     for (const worker of workers) dispatchNext(worker);

@@ -34,6 +34,7 @@ import {
   structuralPlan,
 } from "./sokomind-plans.ts";
 import type { ProofCheckpointOptions, SokomindProofWorker } from "./sokomind-proof.ts";
+import { createProofWorkerPool, type ProofWorkerSource } from "./sokomind-proof-pool.ts";
 import {
   aggregate,
   elapsed,
@@ -355,7 +356,7 @@ export function createSokomindSolverAdapter(
   const proofWorkerFactory = options.createProofWorker ?? defaultCreateProofWorker;
   const proofCheckpointOptions = options.checkpointOptions;
 
-  const improveByMode = (
+  const improveByModeWith = (proofWorkers: ProofWorkerSource) => (
     r: SearchRunState,
     s: LegacyState,
     first: SolverSolution,
@@ -368,17 +369,338 @@ export function createSokomindSolverAdapter(
   ): Promise<SolverResult> => {
     if (sokoOpts.mode === "quality") {
       return qualityAnytimeImprove(
-        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap, proofWorkerFactory,
+        r, s, first, cw, improvOpts, sokoOpts, t, mw, ap, proofWorkers,
       );
     }
     if (sokoOpts.mode === "optimal") {
       return optimalQuickImprove(
         r, s, first, cw, improvOpts, sokoOpts, t, mw, ap,
-        proofWorkerFactory, proofCheckpointOptions,
+        proofWorkers, proofCheckpointOptions,
       );
     }
     throw new Error(`sokomind-solver: no improvement schedule for mode '${sokoOpts.mode}'`);
   };
+
+  async function solveRequest(
+    originalRequest: SolverRequest,
+    context: SolverExecutionContext,
+    proofWorkers: ProofWorkerSource,
+  ): Promise<SolverResult> {
+    const improveByMode = improveByModeWith(proofWorkers);
+    const originalOptions = extractSokomindOptions(originalRequest);
+    const rawOptions = originalRequest.options?.["sokomind-solver"] as
+      Readonly<Record<string, unknown>> | undefined;
+    const structural = isStructuralPuzzle(originalRequest);
+    const autoStrategic =
+      originalOptions.mode === "quality" &&
+      structural &&
+      !originalOptions.deterministic &&
+      !Object.hasOwn(rawOptions ?? {}, "strategicAnalysisMs");
+    const serialProof = originalOptions.deterministic && originalOptions.proofParallelism > 1;
+    const request = autoStrategic || serialProof
+      ? Object.freeze({
+          ...originalRequest,
+          options: Object.freeze({
+            ...originalRequest.options,
+            "sokomind-solver": Object.freeze({
+              ...rawOptions,
+              ...(autoStrategic ? {
+                strategicAnalysisMs: 500,
+                strategicPlanExecution: Object.hasOwn(rawOptions ?? {}, "strategicPlanExecution")
+                  ? originalOptions.strategicPlanExecution : true,
+              } : {}),
+              ...(serialProof ? { proofParallelism: 1 } : {}),
+            }),
+          }),
+        })
+      : originalRequest;
+    const sokomindOptions = extractSokomindOptions(request);
+    const startedAt = context.now();
+    const maxElapsed = request.limits?.maxElapsedMs;
+    const run: SearchRunState = {
+      startedAt,
+      deadline:
+        maxElapsed === undefined ? Infinity : startedAt + maxElapsed,
+      request,
+      context,
+      profile,
+      workerSilenceTimeoutMs:
+        finiteNonNegative(options.workerSilenceTimeoutMs) ||
+        WORKER_SILENCE_WATCHDOG_MS,
+      structuralHeadStartLimitMs:
+        finiteNonNegative(options.structuralHeadStartMs) ||
+        profile.structuralHeadStartMs,
+      registry: new WorkerExecutionRegistry(),
+      budget: new BudgetTracker(),
+      rejectedCandidates: 0,
+      completedWorkers: 0,
+      phaseTimeouts: 0,
+      watchdogTimeouts: 0,
+      lastProgressAt: -Infinity,
+      progressPhase: "searching",
+      initialSolutionMoves: 0,
+      bestSolutionMoves: 0,
+      solutionImprovements: 0,
+      suppressedImprovementErrors: 0,
+      suppressedHarvestErrors: 0,
+      qualitySlicesCompleted: 0,
+      qualityOperatorStalls: 0,
+      publishedIncumbent: undefined,
+      proofFirstWork: undefined,
+      aggregateGeneration: 1,
+      cachedAggregate: null,
+    };
+
+    if (context.signal.aborted) {
+      return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+    }
+    if (request.snapshot.solved) {
+      return Object.freeze({
+        status: "solved",
+        solution: emptySolution(request),
+        metrics: metrics(run),
+      });
+    }
+
+    let validatedInitialSolution: SolverSolution | undefined;
+    if (request.initialSolution) {
+      const validated = validateInitialSolution(request, request.initialSolution);
+      if (typeof validated === "string") {
+        return Object.freeze({
+          status: "unsolved" as const,
+          reason: "unsupported" as const,
+          detail: validated,
+          metrics: metrics(run),
+        });
+      }
+      validatedInitialSolution = validated;
+    }
+
+    context.reportProgress({
+      phase: "preparing",
+      elapsedMs: 0,
+      detail: "Compiling typed geometry and search plans.",
+    });
+
+    let state = toLegacyState(request);
+    const maxWorkers = sokomindOptions.deterministic
+      ? 1
+      : configuredWorkerCount(options, request);
+    let errors: string[] = [];
+    let stopReason: PhaseStopReason | undefined;
+    let analysisPlan: SokomindAnalysisPlan | undefined;
+    let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
+      Object.freeze([]);
+
+    if (structural) {
+      const preparation = await runPhase(
+        run,
+        [preparationPlan(state, sokomindOptions.strategicAnalysisMs, request)],
+        createWorker,
+        1,
+      );
+      if (preparation.preparedBoard) {
+        state = withPreparedBoard(state, preparation.preparedBoard);
+        run.budget.preparedBoardEstimatedMemoryBytes =
+          preparedBoardMemoryEstimate(preparation.preparedBoard);
+        invalidateAggregate(run);
+      }
+      analysisPlan = preparation.analysisPlan;
+      errors = [...errors, ...preparation.errors];
+      if (preparation.stopReason) {
+        stopReason = preparation.stopReason;
+      }
+    }
+
+    if (structural && !stopReason) {
+      const remainingRequest = withRemainingLimits(run);
+      if (!remainingRequest) {
+        stopReason = reachedLimit(run) ?? "elapsed";
+      } else {
+        const structuralRequest =
+          withStructuralStateBudget(remainingRequest, profile.structuralStateShare);
+        if (structuralRequest) {
+          const outcome = await runPhase(
+            run,
+            [
+              structuralPlan(
+                state,
+                structuralRequest,
+                tuning,
+                sokomindOptions.mode,
+                1,
+                analysisPlan,
+              ),
+            ],
+            createWorker,
+            1,
+            structuralHeadStartMs(run),
+          );
+          structuralCheckpoints = outcome.checkpoints ?? structuralCheckpoints;
+          errors = [...errors, ...outcome.errors];
+          if (outcome.solution) {
+            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+              ? validatedInitialSolution : outcome.solution;
+            return solvedWithImprovement(
+              run, state, incumbent, createWorker, options,
+              sokomindOptions, improveByMode,
+              tuning, maxWorkers, analysisPlan,
+            );
+          }
+          if (outcome.stopReason) stopReason = outcome.stopReason;
+        }
+      }
+    }
+
+    if (!stopReason) {
+      const discoveryRequest = withRemainingLimits(run);
+      if (!discoveryRequest) {
+        stopReason = reachedLimit(run) ?? "elapsed";
+      } else {
+        const remainingExpanded =
+          discoveryRequest.limits?.maxExpandedStates;
+        const remainingGenerated =
+          discoveryRequest.limits?.maxGeneratedStates;
+        const remainingStateLaneBudget = Math.min(
+          remainingExpanded ?? Infinity,
+          remainingGenerated ?? Infinity,
+        );
+        const discoveryWorkers =
+          !Number.isFinite(remainingStateLaneBudget)
+            ? maxWorkers
+            : Math.max(
+                1,
+                Math.min(
+                  maxWorkers,
+                  Math.floor(remainingStateLaneBudget),
+                ),
+              );
+        const rootPlanCount =
+          discoveryWorkers >= 3 && reverseLaneCount(analysisPlan) > 0
+            ? 3
+            : 1;
+        const checkpointPlanCount = Math.min(
+          2,
+          structuralCheckpoints.length,
+        );
+        const discoveryPlanCount = rootPlanCount + checkpointPlanCount;
+        const rootPlans = discoveryPlans(
+          state,
+          discoveryRequest,
+          discoveryWorkers,
+          tuning,
+          discoveryPlanCount,
+          analysisPlan,
+          sokomindOptions.mode === "fast",
+        );
+        const continuationPlans = checkpointContinuationPlans(
+          structuralCheckpoints,
+          state,
+          discoveryRequest,
+          tuning,
+          discoveryPlanCount,
+          analysisPlan,
+          sokomindOptions.mode === "fast",
+        );
+        const outcome = await runPhase(
+          run,
+          Object.freeze([...rootPlans, ...continuationPlans]),
+          createWorker,
+          discoveryWorkers,
+        );
+        errors = [...errors, ...outcome.errors];
+        if (outcome.solution) {
+          const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+            ? validatedInitialSolution : outcome.solution;
+          return solvedWithImprovement(
+            run, state, incumbent, createWorker, options,
+            sokomindOptions, improveByMode,
+            tuning, maxWorkers, analysisPlan,
+          );
+        }
+        if (outcome.stopReason) stopReason = outcome.stopReason;
+      }
+    }
+
+    if (!stopReason && maxWorkers === 2) {
+      const bidirectionalRequest = withRemainingLimits(run);
+      const remainingLaneBudget = Math.min(
+        bidirectionalRequest?.limits?.maxExpandedStates ?? Infinity,
+        bidirectionalRequest?.limits?.maxGeneratedStates ?? Infinity,
+      );
+      if (
+        bidirectionalRequest &&
+        (!Number.isFinite(remainingLaneBudget) ||
+          remainingLaneBudget >= 2)
+      ) {
+        const outcome = await runPhase(
+          run,
+          bidirectionalPlans(state, bidirectionalRequest, 2, analysisPlan),
+          createWorker,
+          2,
+        );
+        errors = [...errors, ...outcome.errors];
+        if (outcome.solution) {
+          const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
+            ? validatedInitialSolution : outcome.solution;
+          return solvedWithImprovement(
+            run, state, incumbent, createWorker, options,
+            sokomindOptions, improveByMode,
+            tuning, maxWorkers, analysisPlan,
+          );
+        }
+        if (outcome.stopReason) stopReason = outcome.stopReason;
+      }
+    }
+
+    if (validatedInitialSolution) {
+      if (stopReason === "cancelled" || context.signal.aborted) {
+        return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+      }
+      return solvedWithImprovement(
+        run, state, validatedInitialSolution, createWorker, options,
+        sokomindOptions, improveByMode,
+        tuning, maxWorkers, analysisPlan,
+      );
+    }
+
+    if (stopReason === "cancelled" || context.signal.aborted) {
+      return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+    }
+    if (stopReason) {
+      return Object.freeze({
+        status: "unsolved",
+        reason: "limit-reached",
+        detail: stopDetail(stopReason),
+        metrics: metrics(run),
+      });
+    }
+
+    const fallback = await runClassicFallback(run);
+    if (fallback) {
+      if (sokomindOptions.mode === "optimal" && fallback.status === "solved") {
+        return runProof(
+          run.request, run.context, sokomindOptions, fallback,
+          proofWorkers, proofCheckpointOptions,
+        );
+      }
+      return fallback;
+    }
+
+    // The fallback declines to run only once a budget is spent, and the
+    // discovery portfolio is incomplete, so finishing it without a route
+    // proves nothing about solvability. This is a limit, never exhaustion.
+    const budgetDetail = stopDetail(reachedLimit(run) ?? "elapsed");
+    return Object.freeze({
+      status: "unsolved",
+      reason: "limit-reached",
+      detail:
+        errors.length > 0
+          ? `Sokomind engine: ${errors.join(" ")} ${budgetDetail}`
+          : budgetDetail,
+      metrics: metrics(run),
+    });
+  }
 
   return Object.freeze({
     metadata: sokomindSolverMetadata,
@@ -386,319 +708,13 @@ export function createSokomindSolverAdapter(
       originalRequest: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
-      const originalOptions = extractSokomindOptions(originalRequest);
-      const rawOptions = originalRequest.options?.["sokomind-solver"] as
-        Readonly<Record<string, unknown>> | undefined;
-      const structural = isStructuralPuzzle(originalRequest);
-      const autoStrategic =
-        originalOptions.mode === "quality" &&
-        structural &&
-        !originalOptions.deterministic &&
-        !Object.hasOwn(rawOptions ?? {}, "strategicAnalysisMs");
-      const serialProof = originalOptions.deterministic && originalOptions.proofParallelism > 1;
-      const request = autoStrategic || serialProof
-        ? Object.freeze({
-            ...originalRequest,
-            options: Object.freeze({
-              ...originalRequest.options,
-              "sokomind-solver": Object.freeze({
-                ...rawOptions,
-                ...(autoStrategic ? {
-                  strategicAnalysisMs: 500,
-                  strategicPlanExecution: Object.hasOwn(rawOptions ?? {}, "strategicPlanExecution")
-                    ? originalOptions.strategicPlanExecution : true,
-                } : {}),
-                ...(serialProof ? { proofParallelism: 1 } : {}),
-              }),
-            }),
-          })
-        : originalRequest;
-      const sokomindOptions = extractSokomindOptions(request);
-      const startedAt = context.now();
-      const maxElapsed = request.limits?.maxElapsedMs;
-      const run: SearchRunState = {
-        startedAt,
-        deadline:
-          maxElapsed === undefined ? Infinity : startedAt + maxElapsed,
-        request,
-        context,
-        profile,
-        workerSilenceTimeoutMs:
-          finiteNonNegative(options.workerSilenceTimeoutMs) ||
-          WORKER_SILENCE_WATCHDOG_MS,
-        structuralHeadStartLimitMs:
-          finiteNonNegative(options.structuralHeadStartMs) ||
-          profile.structuralHeadStartMs,
-        registry: new WorkerExecutionRegistry(),
-        budget: new BudgetTracker(),
-        rejectedCandidates: 0,
-        completedWorkers: 0,
-        phaseTimeouts: 0,
-        watchdogTimeouts: 0,
-        lastProgressAt: -Infinity,
-        progressPhase: "searching",
-        initialSolutionMoves: 0,
-        bestSolutionMoves: 0,
-        solutionImprovements: 0,
-        suppressedImprovementErrors: 0,
-        suppressedHarvestErrors: 0,
-        qualitySlicesCompleted: 0,
-        qualityOperatorStalls: 0,
-        publishedIncumbent: undefined,
-        proofFirstWork: undefined,
-        aggregateGeneration: 1,
-        cachedAggregate: null,
-      };
-
-      if (context.signal.aborted) {
-        return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+      // Proof lanes serve every proof run of one request, then stop with it.
+      const proofWorkers = createProofWorkerPool(proofWorkerFactory);
+      try {
+        return await solveRequest(originalRequest, context, proofWorkers);
+      } finally {
+        proofWorkers.dispose();
       }
-      if (request.snapshot.solved) {
-        return Object.freeze({
-          status: "solved",
-          solution: emptySolution(request),
-          metrics: metrics(run),
-        });
-      }
-
-      let validatedInitialSolution: SolverSolution | undefined;
-      if (request.initialSolution) {
-        const validated = validateInitialSolution(request, request.initialSolution);
-        if (typeof validated === "string") {
-          return Object.freeze({
-            status: "unsolved" as const,
-            reason: "unsupported" as const,
-            detail: validated,
-            metrics: metrics(run),
-          });
-        }
-        validatedInitialSolution = validated;
-      }
-
-      context.reportProgress({
-        phase: "preparing",
-        elapsedMs: 0,
-        detail: "Compiling typed geometry and search plans.",
-      });
-
-      let state = toLegacyState(request);
-      const maxWorkers = sokomindOptions.deterministic
-        ? 1
-        : configuredWorkerCount(options, request);
-      let errors: string[] = [];
-      let stopReason: PhaseStopReason | undefined;
-      let analysisPlan: SokomindAnalysisPlan | undefined;
-      let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
-        Object.freeze([]);
-
-      if (structural) {
-        const preparation = await runPhase(
-          run,
-          [preparationPlan(state, sokomindOptions.strategicAnalysisMs, request)],
-          createWorker,
-          1,
-        );
-        if (preparation.preparedBoard) {
-          state = withPreparedBoard(state, preparation.preparedBoard);
-          run.budget.preparedBoardEstimatedMemoryBytes =
-            preparedBoardMemoryEstimate(preparation.preparedBoard);
-          invalidateAggregate(run);
-        }
-        analysisPlan = preparation.analysisPlan;
-        errors = [...errors, ...preparation.errors];
-        if (preparation.stopReason) {
-          stopReason = preparation.stopReason;
-        }
-      }
-
-      if (structural && !stopReason) {
-        const remainingRequest = withRemainingLimits(run);
-        if (!remainingRequest) {
-          stopReason = reachedLimit(run) ?? "elapsed";
-        } else {
-          const structuralRequest =
-            withStructuralStateBudget(remainingRequest, profile.structuralStateShare);
-          if (structuralRequest) {
-            const outcome = await runPhase(
-              run,
-              [
-                structuralPlan(
-                  state,
-                  structuralRequest,
-                  tuning,
-                  sokomindOptions.mode,
-                  1,
-                  analysisPlan,
-                ),
-              ],
-              createWorker,
-              1,
-              structuralHeadStartMs(run),
-            );
-            structuralCheckpoints = outcome.checkpoints ?? structuralCheckpoints;
-            errors = [...errors, ...outcome.errors];
-            if (outcome.solution) {
-              const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
-                ? validatedInitialSolution : outcome.solution;
-              return solvedWithImprovement(
-                run, state, incumbent, createWorker, options,
-                sokomindOptions, improveByMode,
-                tuning, maxWorkers, analysisPlan,
-              );
-            }
-            if (outcome.stopReason) stopReason = outcome.stopReason;
-          }
-        }
-      }
-
-      if (!stopReason) {
-        const discoveryRequest = withRemainingLimits(run);
-        if (!discoveryRequest) {
-          stopReason = reachedLimit(run) ?? "elapsed";
-        } else {
-          const remainingExpanded =
-            discoveryRequest.limits?.maxExpandedStates;
-          const remainingGenerated =
-            discoveryRequest.limits?.maxGeneratedStates;
-          const remainingStateLaneBudget = Math.min(
-            remainingExpanded ?? Infinity,
-            remainingGenerated ?? Infinity,
-          );
-          const discoveryWorkers =
-            !Number.isFinite(remainingStateLaneBudget)
-              ? maxWorkers
-              : Math.max(
-                  1,
-                  Math.min(
-                    maxWorkers,
-                    Math.floor(remainingStateLaneBudget),
-                  ),
-                );
-          const rootPlanCount =
-            discoveryWorkers >= 3 && reverseLaneCount(analysisPlan) > 0
-              ? 3
-              : 1;
-          const checkpointPlanCount = Math.min(
-            2,
-            structuralCheckpoints.length,
-          );
-          const discoveryPlanCount = rootPlanCount + checkpointPlanCount;
-          const rootPlans = discoveryPlans(
-            state,
-            discoveryRequest,
-            discoveryWorkers,
-            tuning,
-            discoveryPlanCount,
-            analysisPlan,
-            sokomindOptions.mode === "fast",
-          );
-          const continuationPlans = checkpointContinuationPlans(
-            structuralCheckpoints,
-            state,
-            discoveryRequest,
-            tuning,
-            discoveryPlanCount,
-            analysisPlan,
-            sokomindOptions.mode === "fast",
-          );
-          const outcome = await runPhase(
-            run,
-            Object.freeze([...rootPlans, ...continuationPlans]),
-            createWorker,
-            discoveryWorkers,
-          );
-          errors = [...errors, ...outcome.errors];
-          if (outcome.solution) {
-            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
-              ? validatedInitialSolution : outcome.solution;
-            return solvedWithImprovement(
-              run, state, incumbent, createWorker, options,
-              sokomindOptions, improveByMode,
-              tuning, maxWorkers, analysisPlan,
-            );
-          }
-          if (outcome.stopReason) stopReason = outcome.stopReason;
-        }
-      }
-
-      if (!stopReason && maxWorkers === 2) {
-        const bidirectionalRequest = withRemainingLimits(run);
-        const remainingLaneBudget = Math.min(
-          bidirectionalRequest?.limits?.maxExpandedStates ?? Infinity,
-          bidirectionalRequest?.limits?.maxGeneratedStates ?? Infinity,
-        );
-        if (
-          bidirectionalRequest &&
-          (!Number.isFinite(remainingLaneBudget) ||
-            remainingLaneBudget >= 2)
-        ) {
-          const outcome = await runPhase(
-            run,
-            bidirectionalPlans(state, bidirectionalRequest, 2, analysisPlan),
-            createWorker,
-            2,
-          );
-          errors = [...errors, ...outcome.errors];
-          if (outcome.solution) {
-            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
-              ? validatedInitialSolution : outcome.solution;
-            return solvedWithImprovement(
-              run, state, incumbent, createWorker, options,
-              sokomindOptions, improveByMode,
-              tuning, maxWorkers, analysisPlan,
-            );
-          }
-          if (outcome.stopReason) stopReason = outcome.stopReason;
-        }
-      }
-
-      if (validatedInitialSolution) {
-        if (stopReason === "cancelled" || context.signal.aborted) {
-          return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-        }
-        return solvedWithImprovement(
-          run, state, validatedInitialSolution, createWorker, options,
-          sokomindOptions, improveByMode,
-          tuning, maxWorkers, analysisPlan,
-        );
-      }
-
-      if (stopReason === "cancelled" || context.signal.aborted) {
-        return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-      }
-      if (stopReason) {
-        return Object.freeze({
-          status: "unsolved",
-          reason: "limit-reached",
-          detail: stopDetail(stopReason),
-          metrics: metrics(run),
-        });
-      }
-
-      const fallback = await runClassicFallback(run);
-      if (fallback) {
-        if (sokomindOptions.mode === "optimal" && fallback.status === "solved") {
-          return runProof(
-            run.request, run.context, sokomindOptions, fallback,
-            proofWorkerFactory, proofCheckpointOptions,
-          );
-        }
-        return fallback;
-      }
-
-      // The fallback declines to run only once a budget is spent, and the
-      // discovery portfolio is incomplete, so finishing it without a route
-      // proves nothing about solvability. This is a limit, never exhaustion.
-      const budgetDetail = stopDetail(reachedLimit(run) ?? "elapsed");
-      return Object.freeze({
-        status: "unsolved",
-        reason: "limit-reached",
-        detail:
-          errors.length > 0
-            ? `Sokomind engine: ${errors.join(" ")} ${budgetDetail}`
-            : budgetDetail,
-        metrics: metrics(run),
-      });
     },
   });
 }

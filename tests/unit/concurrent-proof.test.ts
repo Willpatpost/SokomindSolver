@@ -20,6 +20,7 @@ import {
   type SokomindProofWorker,
 } from "../../src/solver/implementations/sokomind-proof.ts";
 import { DEFAULT_SOKOMIND_REQUEST_OPTIONS } from "../../src/solver/implementations/sokomind-options.ts";
+import { createProofWorkerPool } from "../../src/solver/implementations/sokomind-proof-pool.ts";
 import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "../../src/solver/implementations/sokomind-worker-limits.ts";
 import type {
   SolutionStep,
@@ -1975,6 +1976,101 @@ describe("concurrent proof coordinator", () => {
     assert.ok(progress.some((p) => (p.counters?.["proof.pendingProofPartitions"] ?? 0) > 0 &&
       (p.lowerBound ?? 20) < 20 && (p.gap ?? 0) > 0));
     assert.equal(result.status, "cancelled");
+  });
+
+  describe("with a lane pool", () => {
+    const request = makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]);
+    const startsOf = (worker: MockProofWorker) => worker.receivedCommands.filter(
+      (command): command is ProofStartPartition => command.type === "proof/start-partition",
+    );
+    // Each partition closes at the discovery route's cost, then the lane goes idle.
+    const proving = (worker: MockProofWorker) => (command: ProofStartPartition) => {
+      worker.emit({
+        type: "proof/partition-complete",
+        partitionId: command.partitionId,
+        lowerBound: Math.max(5, command.prefixCost),
+        exhausted: true,
+      });
+      worker.emit({ type: "proof/idle", partitionId: command.partitionId });
+    };
+    const prove = (
+      createProofWorker: Parameters<typeof runConcurrentProof>[4]["createProofWorker"],
+      { proofParallelism = 2, maxElapsedMs, silenceTimeoutMs }:
+        { proofParallelism?: number; maxElapsedMs?: number; silenceTimeoutMs?: number } = {},
+    ) => runConcurrentProof(
+      maxElapsedMs === undefined ? request : { ...request, limits: { maxElapsedMs } },
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker, proofParallelism, silenceTimeoutMs },
+    );
+
+    it("lends lanes that finished their partitions to the next run", async () => {
+      const created: MockProofWorker[] = [];
+      const pool = createProofWorkerPool(() => {
+        const worker: MockProofWorker = new MockProofWorker((command) => proving(worker)(command));
+        created.push(worker);
+        return worker;
+      });
+      const first = await prove(pool);
+      const second = await prove(pool);
+
+      assert.equal(first.proof?.kind, "optimal");
+      assert.equal(second.proof?.kind, "optimal");
+      assert.equal(created.length, 2);
+      const runIds = new Set(created.flatMap((worker) => startsOf(worker).map((start) => start.runId)));
+      assert.equal(runIds.size, 2);
+      assert.ok(created.every((worker) => !worker.terminated));
+      pool.dispose();
+      assert.ok(created.every((worker) => worker.terminated));
+    });
+
+    it("drains a lane cut off mid-partition and lends it only after its idle", async () => {
+      const created: MockProofWorker[] = [];
+      let answering = false;
+      const pool = createProofWorkerPool(() => {
+        const worker: MockProofWorker = new MockProofWorker((command) => {
+          if (answering) proving(worker)(command);
+        });
+        created.push(worker);
+        return worker;
+      });
+      const cut = await prove(pool, { proofParallelism: 1, maxElapsedMs: 300, silenceTimeoutMs: 5_000 });
+      assert.notEqual(cut.proof?.kind, "optimal");
+      const [lane] = created;
+      assert.equal(lane.receivedCommands.at(-1)?.type, "proof/cancel");
+      const [cancelled] = startsOf(lane);
+
+      lane.emit({ type: "proof/idle", partitionId: cancelled.partitionId });
+      answering = true;
+      const proved = await prove(pool, { proofParallelism: 1 });
+      assert.equal(proved.proof?.kind, "optimal");
+      assert.equal(created.length, 1);
+      assert.ok(startsOf(lane).slice(1).every((start) => start.runId !== cancelled.runId));
+      pool.dispose();
+    });
+
+    it("never lends a lane the silence watchdog stopped", async () => {
+      const created: MockProofWorker[] = [];
+      let answering = false;
+      const pool = createProofWorkerPool(() => {
+        const worker: MockProofWorker = new MockProofWorker((command) => {
+          if (answering) proving(worker)(command);
+        });
+        created.push(worker);
+        return worker;
+      });
+      const silent = await prove(pool, { proofParallelism: 1, silenceTimeoutMs: 5 });
+      assert.notEqual(silent.proof?.kind, "optimal");
+      assert.equal(created[0].terminated, true);
+
+      answering = true;
+      const proved = await prove(pool, { proofParallelism: 1 });
+      assert.equal(proved.proof?.kind, "optimal");
+      assert.equal(created.length, 2);
+      assert.equal(startsOf(created[0]).length, 1);
+      pool.dispose();
+    });
   });
 });
 

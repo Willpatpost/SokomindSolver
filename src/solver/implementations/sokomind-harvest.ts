@@ -47,8 +47,8 @@ import {
   runConcurrentProof,
   runSequentialProof,
   type ProofCheckpointOptions,
-  type SokomindProofWorker,
 } from "./sokomind-proof.ts";
+import type { ProofWorkerSource } from "./sokomind-proof-pool.ts";
 import { improveIncumbent, type ImprovedIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
 import {
   CandidateArchive,
@@ -73,7 +73,7 @@ export function runProof(
   context: SolverExecutionContext,
   sokomindOptions: SokomindRequestOptions,
   discoveryResult: SolverResult,
-  createProofWorker: () => SokomindProofWorker,
+  proofWorkers: ProofWorkerSource,
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
   if (sokomindOptions.proofParallelism > 1) {
@@ -83,7 +83,7 @@ export function runProof(
       sokomindOptions,
       discoveryResult,
       {
-        createProofWorker,
+        createProofWorker: proofWorkers,
         proofParallelism: sokomindOptions.proofParallelism,
       },
     );
@@ -108,7 +108,7 @@ export function runCappedProof(
   context: SolverExecutionContext,
   sokomindOptions: SokomindRequestOptions,
   discoveryResult: SolverResult,
-  createProofWorker: () => SokomindProofWorker,
+  proofWorkers: ProofWorkerSource,
   capMs: number,
 ): Promise<SolverResult> {
   const cappedElapsedMs = Math.floor(discoveryResult.metrics.elapsedMs + capMs);
@@ -123,7 +123,7 @@ export function runCappedProof(
     }),
   });
   return runProof(
-    cappedRequest, context, sokomindOptions, discoveryResult, createProofWorker,
+    cappedRequest, context, sokomindOptions, discoveryResult, proofWorkers,
   );
 }
 
@@ -381,10 +381,10 @@ export async function qualityAnytimeImprove(
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
   analysisPlan: SokomindAnalysisPlan | undefined,
-  createProofWorker: () => SokomindProofWorker,
+  proofWorkers: ProofWorkerSource,
 ): Promise<SolverResult> {
   const exactLane = await proveSmallBoardFirst(
-    run, firstIncumbent, sokomindOptions, createProofWorker,
+    run, firstIncumbent, sokomindOptions, proofWorkers,
     qualityExactLaneCapMs(run, sokomindOptions), QUALITY_EXACT_LANE_LABEL,
   );
   if (exactLane.result?.status === "solved") {
@@ -1000,7 +1000,7 @@ async function proveSmallBoardFirst(
   run: SearchRunState,
   firstIncumbent: SolverSolution,
   sokomindOptions: SokomindRequestOptions,
-  createProofWorker: () => SokomindProofWorker,
+  proofWorkers: ProofWorkerSource,
   capMs: number,
   label: SmallBoardProofLabel,
 ): Promise<{ readonly result?: SolverResult; readonly incumbent: SolverSolution }> {
@@ -1028,7 +1028,7 @@ async function proveSmallBoardFirst(
   );
   const result = await runCappedProof(
     run.request, proofContext, sokomindOptions, discoveryResult,
-    createProofWorker, capMs,
+    proofWorkers, capMs,
   );
   const counters = result.metrics.counters ?? {};
   const work: ProofFirstWork = Object.freeze({
@@ -1091,11 +1091,11 @@ export async function optimalQuickImprove(
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
   analysisPlan: SokomindAnalysisPlan | undefined,
-  createProofWorker: () => SokomindProofWorker,
+  proofWorkers: ProofWorkerSource,
   checkpointOptions?: ProofCheckpointOptions,
 ): Promise<SolverResult> {
   const proofFirst = await proveSmallBoardFirst(
-    run, firstIncumbent, sokomindOptions, createProofWorker,
+    run, firstIncumbent, sokomindOptions, proofWorkers,
     proofFirstCapMs(run, sokomindOptions, checkpointOptions), OPTIMAL_PROOF_FIRST_LABEL,
   );
   if (proofFirst.result) return proofFirst.result;
@@ -1212,6 +1212,6 @@ export async function optimalQuickImprove(
   });
   return runProof(
     run.request, run.context, sokomindOptions, discoveryResult,
-    createProofWorker, checkpointOptions,
+    proofWorkers, checkpointOptions,
   );
 }
