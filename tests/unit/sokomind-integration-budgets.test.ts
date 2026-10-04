@@ -8,7 +8,9 @@ import { BudgetTracker } from "../../src/solver/implementations/sokomind-budget-
 import { bidirectionalSide } from "../../src/solver/implementations/sokomind-engine/engine.generated.js";
 import type { EngineResult } from "../../src/solver/implementations/sokomind-engine/engine-protocol.ts";
 import { solutionFromLegacyPath, toLegacyState } from "../../src/solver/implementations/sokomind-legacy.ts";
-import { bidirectionalPlans, configuredBudget, discoveryPlans, structuralPlan } from "../../src/solver/implementations/sokomind-plans.ts";
+import {
+  bidirectionalPlans, configuredBudget, discoveryPlans, diversifiedHarvestPlans, structuralPlan,
+} from "../../src/solver/implementations/sokomind-plans.ts";
 import { runPhase, type SokomindEngineWorker } from "../../src/solver/implementations/sokomind-phase-runner.ts";
 import {
   aggregate, incumbentProgress, publishIncumbent, reachedLimit, recordIncumbent, retainLegacyRecord, type SearchRunState,
@@ -154,6 +156,16 @@ describe("Sokomind integration resource contracts", () => {
         assert.equal(plan.payload.planMoveAwareTranspositions, moveAwareDiscovery >= 0.5 ? true : undefined);
       }
     }
+  });
+  it("gives each diverse harvest beam its profile's move weight", () => {
+    // Harvest plans run the ultimate portfolio; its push-beam lane reads
+    // moveWeight, so a profile weight set only as planMoveWeight never arrived.
+    const request = requestFor();
+    const plans = diversifiedHarvestPlans(toLegacyState(request), request, 3, { planMoveWeight: 0.005 }, 0);
+    assert.deepEqual(
+      plans.map((plan) => [plan.payload.algorithm, plan.payload.beamProfile, plan.payload.moveWeight]),
+      [["ultimate", "balanced", 0.005], ["ultimate", "detour", 0.003], ["ultimate", "milestone", 0.008]],
+    );
   });
 
   const optionCases: readonly Readonly<Record<string, string | number | boolean>>[] = [

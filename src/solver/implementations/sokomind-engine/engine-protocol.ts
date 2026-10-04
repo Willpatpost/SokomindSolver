@@ -57,6 +57,8 @@ export interface UltimateSearchPayload extends EnginePayloadBase {
   readonly planMoveAwareTranspositions?: boolean;
   readonly seed?: number;
   readonly diversity?: number;
+  /** Move-count weight in the push-beam lane's ordering score. */
+  readonly moveWeight?: number;
   readonly planMoveWeight?: number;
   readonly strategicContinuation?: Readonly<{
     root: unknown;

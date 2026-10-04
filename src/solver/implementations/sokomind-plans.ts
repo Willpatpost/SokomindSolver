@@ -427,21 +427,23 @@ export function diversifiedHarvestPlans(
   if (!direct) return Object.freeze([]);
   return Object.freeze(Array.from({ length: count }, (_, index) => {
     const seed = ((round + 1) * 104_729 + index * 13_007) >>> 0;
+    // Harvest runs the ultimate portfolio, whose push-beam lane weighs moves by
+    // moveWeight; planMoveWeight only reaches the plan-macro beam.
     const profiles = Object.freeze([
       Object.freeze({
         beamProfile: "balanced",
         diversity: 1.25,
-        planMoveWeight: 0.005,
+        moveWeight: 0.005,
       }),
       Object.freeze({
         beamProfile: "detour",
         diversity: 2.25,
-        planMoveWeight: 0.003,
+        moveWeight: 0.003,
       }),
       Object.freeze({
         beamProfile: "milestone",
         diversity: 0.8,
-        planMoveWeight: 0.008,
+        moveWeight: 0.008,
       }),
     ]);
     const profile = profiles[(round + index) % profiles.length];

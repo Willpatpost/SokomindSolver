@@ -113,6 +113,15 @@ outside the room. Discovery routes can change; they are still replayed and
 reported as unproven. The exact kernels and proof are untouched, so the proof
 revision is unchanged.
 
+Sokomind 1.6.2 passes each diverse harvest profile's move weight to the
+discovery engine's push-beam lane. Harvest runs the guided push portfolio,
+whose beam reads `moveWeight`, but the profiles set `planMoveWeight`, which only
+the structural plan search reads, so every harvest beam ran with the default
+weight. The balanced, detour and milestone profiles now weigh moves at 0.005,
+0.003 and 0.008. Only Quality and Optimal harvest; Fast is unchanged. Harvest
+routes can change; they are still replayed and reported as unproven. The exact
+kernels and proof are untouched, so the proof revision is unchanged.
+
 Classic A* 2.2.3 cuts a pushed child on `g + push bound + walk bound >= U`
 before it computes the linear-conflict, interaction-boost, PDB-surplus and
 goal-cut extras, on the ordinary and tunnel successor paths (the forced-push
