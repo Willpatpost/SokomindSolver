@@ -33,6 +33,7 @@ and may take hours on proof-heavy fixtures.
 | `production-fast` | Fast, 30-second target | No | All fixtures |
 | `production-quality` | Quality, 60-second/10% target | No | All fixtures |
 | `production-optimal` | Optimal, 120-second certificate target | No | All fixtures, including Grand Hall |
+| `production-optimal-parallel` | `production-optimal` with the app's proof workers | No | All fixtures, including Grand Hall |
 
 Classic eligibility is at most eight boxes and at most 96 floor cells. The
 harness derives the eligible matrix from the current corpus and requested
@@ -48,11 +49,16 @@ reasonable-puzzle SLO suite.
 Every request receives the same immutable limits object recorded in its sample.
 Classic proof profiles use 60 seconds, 500,000 expanded states, 5,000,000
 generated states, and 512 MiB. General Sokomind profiles use 180 seconds,
-500,000 expanded states, 5,000,000 generated states, and 4 GiB. The three
+500,000 expanded states, 5,000,000 generated states, and 4 GiB. The
 production target profiles carry only what the app sends: their 30/60/120-second
 deadlines and 4 GiB, with no state caps, so a large board runs until its
-deadline as it would in the browser. These Node profiles retain proof
-parallelism one; browser Auto proof parallelism is a separate configuration.
+deadline as it would in the browser. `production-fast`, `production-quality`
+and `production-optimal` keep proof parallelism one, so Optimal's proof runs
+on the coordinator thread. `production-optimal-parallel` passes the proof
+worker count the app derives from the same 4 GiB and the machine's CPU count
+(`effectiveProofWorkerCount`; seven on any machine with at least eight CPUs),
+so its proof runs in parallel proof workers as it does in the browser. Each
+sample records the count in `configuration.sokomindOptions`.
 
 Every solved sample must replay and return within its harness deadline. Quality
 requires at most `floor(1.1 * C*)` moves when an independent frozen optimum is

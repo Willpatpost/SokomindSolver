@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { cpus } from "node:os";
 
 import { createSession, type PuzzleDefinition } from "../src/core/index.ts";
 import type {
@@ -20,6 +21,7 @@ import {
 } from "../src/solver/implementations/sokomind-options.ts";
 import { DEFAULT_MAX_ENGINE_WORKERS } from "../src/solver/implementations/sokomind-plans.ts";
 import { sokomindSolverMetadata } from "../src/solver/implementations/sokomind-solver.ts";
+import { effectiveProofWorkerCount } from "../src/solver/implementations/sokomind-worker-limits.ts";
 import {
   resolveSokomindTuning,
   sokomindTuningPayload,
@@ -91,6 +93,15 @@ export const PRODUCTION_OPTIMAL_LIMITS: Readonly<SolverLimits> = Object.freeze({
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
 });
 
+/**
+ * The proof workers the app starts on this machine for the production memory
+ * limit (useSolverController.ts). The other production targets run the
+ * single-lane proof; `production-optimal-parallel` runs the app's concurrent one.
+ */
+export const APP_PROOF_PARALLELISM = effectiveProofWorkerCount(
+  PRODUCTION_OPTIMAL_LIMITS.maxMemoryBytes!, cpus().length,
+).count;
+
 /** Times at which each sample records its best verified route so far. */
 export const BENCHMARK_MOVE_CHECKPOINTS_MS = Object.freeze(
   [1_000, 5_000, 10_000, 30_000, 60_000, 120_000] as const,
@@ -106,6 +117,7 @@ export const BENCHMARK_PROFILE_IDS = Object.freeze([
   "production-fast",
   "production-quality",
   "production-optimal",
+  "production-optimal-parallel",
 ] as const);
 
 export type BenchmarkProfileId = (typeof BENCHMARK_PROFILE_IDS)[number];
@@ -128,13 +140,14 @@ export interface BenchmarkProfile {
 function productionSokomindOptions(
   mode: SokomindRequestOptions["mode"],
   proofAlgorithm: SokomindRequestOptions["proofAlgorithm"],
+  proofParallelism = 1,
 ): SokomindRequestOptions {
   return parseSokomindOptions({
     ...DEFAULT_SOKOMIND_REQUEST_OPTIONS,
     mode,
     proofAlgorithm,
     deterministic: false,
-    proofParallelism: 1,
+    proofParallelism,
   });
 }
 
@@ -239,6 +252,18 @@ export const BENCHMARK_PROFILES: Readonly<
     classicEligibleOnly: false,
     limits: PRODUCTION_OPTIMAL_LIMITS,
     sokomindOptions: productionSokomindOptions("optimal", "auto"),
+  }),
+  "production-optimal-parallel": Object.freeze({
+    id: "production-optimal-parallel",
+    solverId: sokomindSolverMetadata.id,
+    solverVersion: sokomindSolverMetadata.version,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
+    requiresKnownOptimum: false,
+    requiresOptimalProof: true,
+    classicEligibleOnly: false,
+    limits: PRODUCTION_OPTIMAL_LIMITS,
+    sokomindOptions: productionSokomindOptions("optimal", "auto", APP_PROOF_PARALLELISM),
   }),
 });
 
@@ -615,6 +640,7 @@ function profileAdapter(profileId: BenchmarkProfileId, tuningRun?: BenchmarkTuni
     case "production-fast":
     case "production-quality":
     case "production-optimal":
+    case "production-optimal-parallel":
       return createNodeSolverAdapter({tuning: tuningRun?.profile});
   }
 }

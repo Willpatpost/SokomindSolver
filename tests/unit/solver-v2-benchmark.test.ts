@@ -5,6 +5,7 @@ import { classicAStarSolver } from "../../src/solver/implementations/classic-sol
 import type { SolverResult } from "../../src/solver/contracts.ts";
 
 import {
+  APP_PROOF_PARALLELISM,
   BENCHMARK_PROFILES,
   BENCHMARK_ABORT_GRACE_MS,
   BENCHMARK_MOVE_CHECKPOINTS_MS,
@@ -85,6 +86,7 @@ describe("Solver V2 benchmark harness", () => {
   it("runs the three production targets at their deadlines including Grand Hall proof", () => {
     for (const [profileId, deadline] of [
       ["production-fast", 30_000], ["production-quality", 60_000], ["production-optimal", 120_000],
+      ["production-optimal-parallel", 120_000],
     ] as const) {
       const profile = BENCHMARK_PROFILES[profileId];
       assert.equal(profile.limits.maxElapsedMs, deadline);
@@ -96,6 +98,13 @@ describe("Solver V2 benchmark harness", () => {
     assert.equal(BENCHMARK_PROFILES["sokomind-optimal-astar"].limits.maxGeneratedStates, 5_000_000);
     assert.equal(isProfileEligible(HUGE, BENCHMARK_PROFILES["classic-astar"]), false);
     assert.equal(BENCHMARK_PROFILES["production-optimal"].requiresOptimalProof, true);
+    assert.equal(BENCHMARK_PROFILES["production-optimal"].sokomindOptions?.proofParallelism, 1);
+    // The parallel target sizes its proof workers as the app does on this machine.
+    const parallel = BENCHMARK_PROFILES["production-optimal-parallel"];
+    assert.equal(parallel.requiresOptimalProof, true);
+    assert.equal(parallel.sokomindOptions?.mode, "optimal");
+    assert.equal(parallel.sokomindOptions?.proofParallelism, APP_PROOF_PARALLELISM);
+    assert.ok(APP_PROOF_PARALLELISM >= 1);
     for (const profileId of ["production-fast", "production-quality"] as const) {
       const tuning = parseBenchmarkTuning('{"firstPushWalkWeight":0.05}', [profileId], "treatment");
       assert.equal(tuning?.profile.firstPushWalkWeight, 0.05);
