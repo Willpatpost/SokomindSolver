@@ -1929,16 +1929,46 @@ describe("concurrent proof coordinator", () => {
     assert.equal(result.status === "solved" && result.proof?.kind, "bounded");
   });
 
-  it("selects the automatic proof algorithm using each lane's memory", async () => {
+  it("runs fewer lanes when that keeps the automatic proof on A*", async () => {
     const request: SolverRequest = {
       ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
       limits: { maxMemoryBytes: 1024 * 1024 * 1024 },
     };
     const starts: ProofStartPartition[] = [];
+    let workersCreated = 0;
     const result = await runConcurrentProof(request, makeContext(), DEFAULT_SOKOMIND_REQUEST_OPTIONS,
       makeDiscoveryResult(10, 5), {
         proofParallelism: 2,
         createProofWorker() {
+          workersCreated += 1;
+          const worker = new MockProofWorker((command) => {
+            starts.push(command);
+            queueMicrotask(() => worker.emit({ type: "proof/partition-complete",
+              partitionId: command.partitionId, lowerBound: 10, exhausted: true }));
+          });
+          return worker;
+        },
+      });
+    // Two 448 MiB lanes would select IDA*; one 896 MiB lane keeps A*.
+    assert.equal(workersCreated, 1);
+    assert.equal(starts.length, 2);
+    assert.ok(starts.every((command) => command.algorithm === "astar" &&
+      command.request.limits?.maxMemoryBytes === 896 * 1024 * 1024));
+    assert.equal(result.status === "solved" && result.proof?.algorithm, "move-astar");
+  });
+
+  it("keeps every lane on IDA* when no lane count can select A*", async () => {
+    const request: SolverRequest = {
+      ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
+      limits: { maxMemoryBytes: 640 * 1024 * 1024 },
+    };
+    const starts: ProofStartPartition[] = [];
+    let workersCreated = 0;
+    const result = await runConcurrentProof(request, makeContext(), DEFAULT_SOKOMIND_REQUEST_OPTIONS,
+      makeDiscoveryResult(10, 5), {
+        proofParallelism: 2,
+        createProofWorker() {
+          workersCreated += 1;
           const worker = new MockProofWorker((command) => {
             starts.push(command);
             worker.emit({ type: "proof/partition-complete", partitionId: command.partitionId,
@@ -1947,10 +1977,10 @@ describe("concurrent proof coordinator", () => {
           return worker;
         },
       });
-    // The total 1 GiB permits A*, but each 448 MiB lane must select IDA*.
-    assert.equal(starts.length, 2);
+    // Even one 512 MiB lane is below A*'s 768 MiB floor.
+    assert.equal(workersCreated, 2);
     assert.ok(starts.every((command) => command.algorithm === "ida-star" &&
-      command.request.limits?.maxMemoryBytes === 448 * 1024 * 1024));
+      command.request.limits?.maxMemoryBytes === 256 * 1024 * 1024));
     assert.equal(result.status === "solved" && result.proof?.algorithm, "parallel-move-ida-star");
   });
 

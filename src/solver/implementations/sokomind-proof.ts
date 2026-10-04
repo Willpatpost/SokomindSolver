@@ -10,7 +10,11 @@ import { verifySolverSolution } from "../verification.ts";
 import type { SokomindRequestOptions } from "./sokomind-options.ts";
 import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "./sokomind-worker-limits.ts";
 import { compileSearchBoard } from "../search/compiled-board.ts";
-import { selectProofAlgorithm, type ProofAlgorithm } from "../search/proof-algorithm-selection.ts";
+import {
+  selectProofAlgorithm,
+  selectProofLanes,
+  type ProofAlgorithm,
+} from "../search/proof-algorithm-selection.ts";
 import { runExactMoveAStar, type ExactIncumbent } from "../search/exact-move-astar.ts";
 import { runIdaStarSearch, type ExactMoveIdaStarOptions } from "../search/ida-star.ts";
 import type { IdaStarCheckpoint } from "../search/ida-star-checkpoint.ts";
@@ -364,22 +368,26 @@ export async function runConcurrentProof(
     return discoveryResult;
   }
 
-  const workerCount = Math.min(
+  const maxLanes = Math.min(
     concurrentOptions.proofParallelism,
     partitions.length,
   );
-  const perWorkerMemoryLimit = proofLimits?.maxMemoryBytes === undefined
+  const laneMemoryBytes = proofLimits?.maxMemoryBytes === undefined
     ? undefined
-    : Math.floor(
-        (proofLimits.maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES) / workerCount,
-      );
+    : proofLimits.maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES;
+  // Automatic selection must use the memory actually available to one lane,
+  // so it may run fewer lanes to keep A*.
+  const lanePlan = options.proofAlgorithm === "auto"
+    ? selectProofLanes(board, boxCount, maxLanes, laneMemoryBytes)
+    : { algorithm: options.proofAlgorithm, lanes: maxLanes };
+  const algorithm: ProofAlgorithm = lanePlan.algorithm;
+  const workerCount = lanePlan.lanes;
+  const perWorkerMemoryLimit = laneMemoryBytes === undefined
+    ? undefined
+    : Math.floor(laneMemoryBytes / workerCount);
   if (workerCount < 1 || (perWorkerMemoryLimit !== undefined && perWorkerMemoryLimit <= 0)) {
     return discoveryResult;
   }
-  // Automatic selection must use the memory actually available to one lane.
-  const algorithm: ProofAlgorithm = options.proofAlgorithm === "auto"
-    ? selectProofAlgorithm(board, boxCount, perWorkerMemoryLimit)
-    : options.proofAlgorithm;
   let bestSolution: SolverSolution = discoveryResult.solution;
   let bestCost = discoveryResult.solution.moves;
   const proofAlgorithmLabel: SolverProofAlgorithm = workerCount > 1

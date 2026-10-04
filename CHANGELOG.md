@@ -43,7 +43,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
-  `sokomind-solver` 1.7.1. Sokomind 1.3.0 marked the earlier Quality
+  `sokomind-solver` 1.8.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -99,6 +99,13 @@ published a stable release.
 - Requests that set an expanded- or generated-state limit skip Optimal's
   early proof and Quality's proof lane, so neither can spend the states the
   pipeline proof needs.
+- The parallel proof runs fewer lanes when that keeps exact A*, instead of
+  splitting memory across every lane and falling back to IDA*. With the app's
+  proof workers, six light boards that stayed unproven at 120 s now prove in
+  0.4-15 s (sym-diamond in 398 ms), and the light boards' median-time
+  geometric mean falls to 0.36x. On large and theme-parking, which neither
+  version proves, peak process memory rises from about 3.2 GB to 4.0 and
+  4.9 GB.
 
 - Removed the unreachable Sokomind `harvestAndImprove` schedule and the
   single-rewrite fallback in `solvedWithImprovement`. Quality and Optimal

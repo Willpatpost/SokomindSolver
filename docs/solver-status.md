@@ -34,7 +34,8 @@ never the discovery incumbent. The [performance roadmap](SOLVER-PERFORMANCE-ROAD
 tracks qualification and the remaining scheduler work.
 
 Parallel proof uses a shared pending first-push queue with one active task per
-lane. Automatic algorithm selection uses the lane's divided memory. Active or
+lane. Automatic algorithm selection uses the lane's divided memory, and since
+Sokomind 1.8.0 it runs fewer lanes when that keeps A* (see below). Active or
 failed task grants stay reserved until safe completion; remaining elapsed time
 is recomputed at dispatch. Late candidates and certificates exceeding their
 work grants cannot establish proof. Aggregate progress publishes
@@ -229,6 +230,25 @@ share ran out, and the pipeline proof then stopped at the state limit with
 bounds 37 and 39 in five of five runs; Sokomind 1.3.0 proved 38. The app sets
 only time and memory limits, so production runs are unchanged. Proof logic is
 unchanged, so the proof revision is unchanged.
+
+Sokomind 1.8.0 chooses the parallel proof's algorithm and lane count
+together. Automatic selection keeps the most lanes whose share of memory
+still selects A*, and runs IDA* on every lane only when no lane count can.
+Before, it split memory across every lane first: seven lanes at 4 GiB got
+about 567 MiB each, below A*'s 768 MiB floor, so every lane ran IDA*, which
+searches each transposition again. At 4 GiB a board within A*'s 768 MiB
+thresholds now gets five A* lanes, and a board within its 2 GiB thresholds
+gets one. Explicit `astar` and `ida-star` requests keep every lane. Both
+algorithms are unchanged exact kernels, so the proof revision is unchanged.
+
+On the production-optimal-parallel benchmark profile (job 47198, three
+rounds), six light boards that seven IDA* lanes left unproven at 120 s now
+prove: sym-diamond in 398 ms, v2-wide-multi-entry in 450 ms, garden-1 in
+810 ms, expert-maze in 1.9 s, adv-four-color in 3.8 s and expert-tetris in
+14.7 s. Moves are unchanged on every board. The four heavy boards stay
+unproven at 120 s with unchanged routes (job 47199). A* lanes keep their
+states, so peak process memory rises on large (3.1 to 4.0 GB) and
+theme-parking (3.2 to 4.9 GB), and falls on master-exchange and theme-museum.
 
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional

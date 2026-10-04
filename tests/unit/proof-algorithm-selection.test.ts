@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { selectProofAlgorithm } from "../../src/solver/search/proof-algorithm-selection.ts";
+import {
+  selectProofAlgorithm,
+  selectProofLanes,
+} from "../../src/solver/search/proof-algorithm-selection.ts";
 import type { CompiledSearchBoard } from "../../src/solver/search/compiled-board.ts";
 
 function mockBoard(cellCount: number): CompiledSearchBoard {
@@ -69,5 +72,33 @@ describe("selectProofAlgorithm", () => {
       selectProofAlgorithm(mockBoard(140), 13, fourGB),
       "ida-star",
     );
+  });
+});
+
+describe("selectProofLanes", () => {
+  const MiB = 1024 * 1024;
+  const laneMemory = 4096 * MiB - 128 * MiB;
+
+  it("keeps the most lanes whose share still selects astar", () => {
+    // 3968 MiB / 5 lanes is 793 MiB, at least 768 MiB; six lanes would get 661 MiB.
+    assert.deepEqual(selectProofLanes(mockBoard(41), 3, 7, laneMemory), { algorithm: "astar", lanes: 5 });
+  });
+
+  it("drops to one lane when only the 2 GiB thresholds fit the board", () => {
+    assert.deepEqual(selectProofLanes(mockBoard(140), 11, 7, laneMemory), { algorithm: "astar", lanes: 1 });
+  });
+
+  it("keeps every lane for ida-star when no lane count selects astar", () => {
+    assert.deepEqual(selectProofLanes(mockBoard(140), 13, 7, laneMemory), { algorithm: "ida-star", lanes: 7 });
+    assert.deepEqual(selectProofLanes(mockBoard(41), 3, 4, 512 * MiB), { algorithm: "ida-star", lanes: 4 });
+  });
+
+  it("keeps every lane without a memory limit", () => {
+    assert.deepEqual(selectProofLanes(mockBoard(41), 3, 7), { algorithm: "astar", lanes: 7 });
+    assert.deepEqual(selectProofLanes(mockBoard(200), 13, 7), { algorithm: "ida-star", lanes: 7 });
+  });
+
+  it("never exceeds the lanes it was given", () => {
+    assert.deepEqual(selectProofLanes(mockBoard(41), 3, 2, laneMemory), { algorithm: "astar", lanes: 2 });
   });
 });
