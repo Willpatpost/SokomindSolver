@@ -124,6 +124,27 @@ admissible. `pdbDegradedPartitions` counts partitions a deadline or the memory
 limit left partial or disabled, and `pdbMemoryFallbacks` those the memory
 limit stopped. The proof revision is unchanged.
 
+Classic A* 2.2.5 and IDA* 2.2.3 bound the deadlock-table build by work
+instead of wall time. The old 2 s budget kept fewer patterns on a slower or
+busier machine, so the same request could prune differently from one run to
+the next. The build now stops after a fixed number of dequeued region-search
+states (`MAX_TABLE_WORK`, 2,000,000: about 2 s on a c4-standard-32 core, and
+no benchmark fixture's complete table needs more than 1.2 million), so every
+machine builds the same table; the run's deadline and memory limit can still
+stop it sooner. A pattern
+is added only when its region search runs to exhaustion without solving or
+emptying the region. A search the work cap, the deadline or the memory limit
+cuts short adds nothing, and the build keeps the patterns it has proven
+instead of ending the run. Each region enumerates label classes rather than
+labels: a label with a goal in the region is its own class, and the labels
+without one share a class, since none of them can be solved inside the region
+and the region search treats them alike. One stored pattern covers every label
+assignment that maps to it, so a completed build prunes the same states as
+before with less work. Patterns are stored per region because two regions can
+start at the same cell. `deadlockTableWorkUnits` and `deadlockTableTruncated`
+report the build. The deadlock rules are unchanged, so the proof revision is
+unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume
@@ -459,10 +480,10 @@ assignment + surplus + walk against the exact remaining moves of every
 reachable state on two small boards. That is evidence, not a proof, so the
 feature stays off until a move-level bound is proven.
 
-Mixed-label deadlock tables enumerate the complete label assignment product
-within the existing construction budget. Deeper PI-corral boundary-table checks
-and relaxed pattern-window eligibility remain rejected because each produced a
-false positive under its abstraction.
+Mixed-label deadlock tables cover the complete label assignment product
+within the work budget, through per-region label classes. Deeper PI-corral
+boundary-table checks and relaxed pattern-window eligibility remain rejected
+because each produced a false positive under its abstraction.
 
 Backward perimeter builds a bounded reverse push-only BFS from the solved box
 layout during preprocessing. The BFS uses relaxed un-push transitions (no

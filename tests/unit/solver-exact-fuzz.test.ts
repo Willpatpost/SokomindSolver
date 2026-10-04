@@ -295,7 +295,8 @@ describe("exact fuzz fixed-seed campaign", () => {
       firstSeed: 1,
       boards: 100,
       plansForBoard: unitPlans,
-      // A state cap only, so every result is the same on every machine.
+      // A state cap only, and table builds count work, so every result is the
+      // same on every machine.
       limits: { maxExpandedStates: 20_000 },
       oracleMaxStates: 100_000,
       crossCheckMaxStates: 5_000,

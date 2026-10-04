@@ -478,6 +478,8 @@ export async function runConcurrentProof(
         "interactionBoostSearchCacheRetainedBytes",
         "deadlockTableRegions",
         "deadlockTablePatterns",
+        "deadlockTableWorkUnits",
+        "deadlockTableTruncated",
         "deadlockTableRetainedBytes",
         "preprocessingRetainedBytes",
       ]);

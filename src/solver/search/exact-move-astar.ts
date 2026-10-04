@@ -743,6 +743,8 @@ export async function runExactMoveAStar(
       deadlockTableBuildTimeMs: deadlockTableLookup?.stats.buildTimeMs ?? 0,
       deadlockTableRegions: deadlockTableLookup?.stats.regionCount ?? 0,
       deadlockTablePatterns: deadlockTableLookup?.stats.patternCount ?? 0,
+      deadlockTableWorkUnits: deadlockTableLookup?.stats.workUnits ?? 0,
+      deadlockTableTruncated: deadlockTableLookup?.stats.truncated ? 1 : 0,
       deadlockTableRetainedBytes:
         deadlockTableLookup?.estimatedRetainedBytes ?? 0,
       preprocessingRetainedBytes:

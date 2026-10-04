@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 
 import { parsePuzzleRows } from "../../src/core/index.ts";
 import {
@@ -8,14 +8,27 @@ import {
 } from "../../src/solver/search/compiled-board.ts";
 import {
   buildDeadlockTables,
+  buildDeadlockTablesAsync,
+  type DeadlockTableLookup,
 } from "../../src/solver/search/deadlock-tables.ts";
 import {
   toDenseBoxes,
   type DenseBox,
 } from "../../src/solver/search/model.ts";
 
+const MEDIUM_ROWS = [
+  "OOOOOOOOOOOOO",
+  "OR          O",
+  "O           O",
+  "O   XXXX    O",
+  "O   SSSS    O",
+  "O           O",
+  "O           O",
+  "OOOOOOOOOOOOO",
+];
+
 describe("buildDeadlockTables", () => {
-  it("completes within time budget on a small board", () => {
+  it("completes within the work budget on a small board", () => {
     const board = compileSearchBoard(parsePuzzleRows([
       "OOOOOOO",
       "OR    O",
@@ -25,22 +38,75 @@ describe("buildDeadlockTables", () => {
       "OOOOOOO",
     ]));
     const lookup = buildDeadlockTables(board);
-    assert.ok(lookup.stats.buildTimeMs < 2000);
+    assert.equal(lookup.stats.truncated, false);
+    assert.ok(lookup.stats.workUnits > 0);
   });
 
-  it("completes within time budget on a medium board", () => {
-    const board = compileSearchBoard(parsePuzzleRows([
-      "OOOOOOOOOOOOO",
-      "OR          O",
-      "O           O",
-      "O   XXXX    O",
-      "O   SSSS    O",
-      "O           O",
-      "O           O",
-      "OOOOOOOOOOOOO",
-    ]));
-    const lookup = buildDeadlockTables(board);
-    assert.ok(lookup.stats.buildTimeMs < 2500);
+  it("builds the same table under a slow clock", () => {
+    const board = compileSearchBoard(parsePuzzleRows(MEDIUM_ROWS));
+    const reference = buildDeadlockTables(board);
+    let now = 0;
+    // Every clock read jumps a second, so any wall-clock budget would stop
+    // the second build at once.
+    const clock = mock.method(Date, "now", () => (now += 1_000));
+    let slow: DeadlockTableLookup;
+    try {
+      slow = buildDeadlockTables(board);
+    } finally {
+      clock.mock.restore();
+    }
+    assert.ok(reference.stats.patternCount > 0);
+    assert.deepEqual(tableSignature(board, slow), tableSignature(board, reference));
+  });
+
+  it("stops at the work cap and keeps only proven patterns", () => {
+    const board = compileSearchBoard(parsePuzzleRows(MEDIUM_ROWS));
+    const full = buildDeadlockTables(board);
+    assert.equal(full.stats.truncated, false);
+    const capped = buildDeadlockTables(board, {
+      maxWorkUnits: Math.floor(full.stats.workUnits / 2),
+    });
+    assert.equal(capped.stats.truncated, true);
+    assert.equal(capped.stats.workUnits, Math.floor(full.stats.workUnits / 2));
+    assert.ok(capped.stats.patternCount < full.stats.patternCount);
+    assertSubsetTable(board, capped, full, ["X"]);
+  });
+
+  it("keeps proven patterns when a preprocessing limit stops the async build", async () => {
+    const board = compileSearchBoard(parsePuzzleRows(MEDIUM_ROWS));
+    const full = buildDeadlockTables(board);
+    const signal = new AbortController().signal;
+    let reads = 0;
+    const limited = await buildDeadlockTablesAsync(board, signal, {
+      signal,
+      now: () => reads++,
+      deadline: 200,
+      baseMemoryBytes: 0,
+    });
+    assert.equal(limited.stats.truncated, true);
+    assert.ok(limited.stats.patternCount > 0);
+    assert.ok(limited.stats.patternCount < full.stats.patternCount);
+    assertSubsetTable(board, limited, full, ["X"]);
+
+    const outOfMemory = await buildDeadlockTablesAsync(board, signal, {
+      signal,
+      now: () => 0,
+      deadline: 1,
+      maxMemoryBytes: 1,
+      baseMemoryBytes: 0,
+    });
+    assert.equal(outOfMemory.stats.truncated, true);
+    assert.equal(outOfMemory.stats.regionCount, 0);
+    assert.equal(outOfMemory.stats.patternCount, 0);
+
+    const pastDeadline = await buildDeadlockTablesAsync(board, signal, {
+      signal,
+      now: () => 1,
+      deadline: 0,
+      baseMemoryBytes: 0,
+    });
+    assert.equal(pastDeadline.stats.truncated, true);
+    assert.equal(pastDeadline.stats.patternCount, 0);
   });
 
   it("reports region and pattern counts", () => {
@@ -203,6 +269,50 @@ describe("DeadlockTableLookup.check", () => {
     assert.equal(falsePositives, 0, "Mixed-label deadlock tables must not prune solvable states");
   });
 
+  it("does not produce false positives with goals split across overlapping regions", () => {
+    // Three labels on a ring of 12 wall-adjacent cells: regions of at most 9
+    // cells overlap, share first cells, and see different goal labels, so
+    // each region's label classes differ.
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOO",
+      "ORa bO",
+      "O O  O",
+      "OC  AO",
+      "Oc B O",
+      "OOOOOO",
+    ]));
+    const lookup = buildDeadlockTables(board);
+    assert.equal(lookup.stats.truncated, false);
+    assert.ok(lookup.stats.patternCount > 0);
+    const labels = ["A", "B", "C"];
+    let flagged = 0;
+    let falsePositives = 0;
+
+    for (let left = 0; left < board.cellCount; left++) {
+      for (let right = left + 1; right < board.cellCount; right++) {
+        for (const labelL of labels) {
+          for (const labelR of labels) {
+            const boxes: readonly DenseBox[] = [
+              { id: `${labelL}:0`, label: labelL, cell: left },
+              { id: `${labelR}:1`, label: labelR, cell: right },
+            ];
+            if (!lookup.check(boxes, left) && !lookup.check(boxes, right)) continue;
+            flagged++;
+            for (const robot of robotComponentCells(board, boxes)) {
+              if (exactRemainingPushes(board, robot, boxes) !== null) {
+                falsePositives++;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    assert.ok(flagged > 0);
+    assert.equal(falsePositives, 0, "Label classes must not prune solvable states");
+  });
+
   it("does not produce false positives on exhaustive small board", () => {
     const parsed = parsePuzzleRows([
       "OOOOOO",
@@ -240,6 +350,77 @@ describe("DeadlockTableLookup.check", () => {
     assert.equal(falsePositives, 0, "Deadlock tables must not prune solvable states");
   });
 });
+
+// Stats plus the check result of every two-box placement.
+function tableSignature(board: CompiledSearchBoard, lookup: DeadlockTableLookup) {
+  const { regionCount, patternCount, estimatedRetainedBytes, workUnits, truncated } = lookup.stats;
+  const flagged: string[] = [];
+  for (let left = 0; left < board.cellCount; left++) {
+    for (let right = left + 1; right < board.cellCount; right++) {
+      const boxes: readonly DenseBox[] = [
+        { id: "X:0", label: "X", cell: left },
+        { id: "X:1", label: "X", cell: right },
+      ];
+      if (lookup.check(boxes, left) || lookup.check(boxes, right)) flagged.push(`${left},${right}`);
+    }
+  }
+  return { regionCount, patternCount, estimatedRetainedBytes, workUnits, truncated, flagged };
+}
+
+// Every two- and three-box placement the partial table flags, the complete
+// table flags too.
+function assertSubsetTable(
+  board: CompiledSearchBoard,
+  partial: DeadlockTableLookup,
+  complete: DeadlockTableLookup,
+  labels: readonly string[],
+): void {
+  let flagged = 0;
+  const visit = (cells: readonly number[], boxLabels: readonly string[]) => {
+    const boxes = cells.map((cell, i) => ({ id: `${boxLabels[i]}:${i}`, label: boxLabels[i], cell }));
+    for (const cell of cells) {
+      if (!partial.check(boxes, cell)) continue;
+      flagged++;
+      assert.ok(complete.check(boxes, cell), `partial-only pattern at ${cells.join(",")}`);
+    }
+  };
+  for (let a = 0; a < board.cellCount; a++) {
+    for (let b = a + 1; b < board.cellCount; b++) {
+      for (const la of labels) for (const lb of labels) visit([a, b], [la, lb]);
+      for (let c = b + 1; c < board.cellCount; c++) {
+        for (const la of labels) for (const lb of labels) for (const lc of labels) {
+          visit([a, b, c], [la, lb, lc]);
+        }
+      }
+    }
+  }
+  assert.ok(flagged > 0, "the partial table should flag something");
+}
+
+// One robot cell per connected area of free floor: walking is free, so every
+// cell of an area reaches the same pushes.
+function robotComponentCells(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+): number[] {
+  const blocked = new Set(boxes.map(({ cell }) => cell));
+  const seen = new Set<number>();
+  const representatives: number[] = [];
+  for (let start = 0; start < board.cellCount; start++) {
+    if (blocked.has(start) || seen.has(start)) continue;
+    representatives.push(start);
+    seen.add(start);
+    const queue = [start];
+    for (let head = 0; head < queue.length; head++) {
+      for (const next of board.neighbors[queue[head]]) {
+        if (next < 0 || blocked.has(next) || seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return representatives;
+}
 
 function exactStateKey(robot: number, boxes: readonly DenseBox[]): string {
   const boxKey = boxes

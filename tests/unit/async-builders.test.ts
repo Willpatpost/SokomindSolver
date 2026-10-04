@@ -145,19 +145,28 @@ describe("buildDeadlockTablesAsync", () => {
     }
   });
 
-  it("completes on a larger board with matching region count", async () => {
+  it("builds the same table as the sync version on a larger board", async () => {
     const board = compileSearchBoard(parsePuzzleRows(MEDIUM_BOARD_ROWS));
     const syncLookup = buildDeadlockTables(board);
     const asyncLookup = await buildDeadlockTablesAsync(board, neverAbortedSignal());
 
-    // Async builder yields to the event loop, so under heavy load it may
-    // process fewer regions within the shared TIME_BUDGET_MS window.
-    assert.ok(
-      asyncLookup.stats.regionCount <= syncLookup.stats.regionCount,
-      `async regions (${asyncLookup.stats.regionCount}) should not exceed sync regions (${syncLookup.stats.regionCount})`,
-    );
-    assert.ok(asyncLookup.stats.regionCount > 0, "should process at least one region");
-    assert.ok(asyncLookup.stats.patternCount >= 0);
+    // Both builds count work instead of time, so yielding changes nothing.
+    const syncStats = syncLookup.stats;
+    assert.deepEqual({ ...asyncLookup.stats, buildTimeMs: 0 }, { ...syncStats, buildTimeMs: 0 });
+    assert.ok(syncStats.regionCount > 0 && syncStats.patternCount > 0);
+    for (let left = 0; left < board.cellCount; left++) {
+      for (let right = left + 1; right < board.cellCount; right++) {
+        const boxes = [
+          { id: "X:0", label: "X", cell: left },
+          { id: "X:1", label: "X", cell: right },
+        ];
+        assert.equal(
+          asyncLookup.check(boxes, left),
+          syncLookup.check(boxes, left),
+          `mismatch at ${left},${right}`,
+        );
+      }
+    }
   });
 
   it("throws immediately on pre-aborted signal", async () => {

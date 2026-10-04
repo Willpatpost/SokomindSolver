@@ -445,6 +445,8 @@ describe("exact preprocessing resource budgets", () => {
     );
     assert.ok((result.metrics.counters?.pdbRetainedBytes ?? 0) > 0);
     assert.ok((result.metrics.counters?.deadlockTableRetainedBytes ?? 0) > 0);
+    assert.ok((result.metrics.counters?.deadlockTableWorkUnits ?? 0) > 0);
+    assert.equal(result.metrics.counters?.deadlockTableTruncated, 0);
     assert.equal(
       result.metrics.counters?.preprocessingRetainedBytes,
       (result.metrics.counters?.pdbRetainedBytes ?? 0) +
