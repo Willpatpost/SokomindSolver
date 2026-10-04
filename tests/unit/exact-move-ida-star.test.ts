@@ -621,6 +621,43 @@ describe("IDA* numeric caps and preprocessing budgets", () => {
     assert.equal(result.metrics.counters?.lowerBound, optimum.solution.moves);
   });
 
+  it("exhausts a numeric cap equal to the optimum when the root bound is below it", async () => {
+    // Push right, walk two cells around the box, push down twice: 5 moves
+    // against a root bound of 3 pushes and no walk.
+    const request = requestFromRows([
+      "OOOOOOO",
+      "O     O",
+      "O RX  O",
+      "O     O",
+      "O   S O",
+      "OOOOOOO",
+    ]);
+    const optimum = assertSolved(await runIdaStarSearch(request, oracleContext()));
+    assert.equal(optimum.solution.moves, 5);
+    const root = await runIdaStarSearch(
+      { ...request, limits: { maxExpandedStates: 1 } },
+      oracleContext(),
+    );
+    assert.ok(
+      (root.metrics.counters?.lowerBound ?? Infinity) < optimum.solution.moves,
+      `root bound ${root.metrics.counters?.lowerBound}`,
+    );
+
+    // No incumbent, so nothing below the cap is ever found. Every contour past
+    // the root bound ends with only f >= cap left, which must finish the run
+    // rather than repeat the same contour until a limit stops it.
+    const result = await runIdaStarSearch(
+      { ...request, limits: { maxExpandedStates: 50_000 } },
+      oracleContext(),
+      { upperBound: optimum.solution.moves },
+    );
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "exhausted", result.detail);
+    assert.equal(result.proof, undefined);
+    assert.equal(result.metrics.counters?.lowerBound, optimum.solution.moves);
+  });
+
   it("enforces elapsed and memory limits while building exact features", async () => {
     let clock = 0;
     const elapsed = await runIdaStarSearch(
