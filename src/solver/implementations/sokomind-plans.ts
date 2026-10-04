@@ -40,7 +40,7 @@ export function defaultImprovementMaxVisited(maxMemoryBytes?: number): number {
 }
 
 export const DEFAULT_IMPROVEMENT_MAX_ELAPSED_MS = 45_000;
-export const DEFAULT_IMPROVEMENT_MINIMUM_MOVES = 100;
+export const DEFAULT_IMPROVEMENT_MINIMUM_MOVES = 0;
 
 export const DEFAULT_QUALITY_SLICE_MS = 10_000;
 export const QUALITY_INITIAL_SLICE_MS = 750;

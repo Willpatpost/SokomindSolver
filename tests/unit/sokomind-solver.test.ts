@@ -411,6 +411,8 @@ describe("Sokomind Solver adapter", () => {
     const algorithms: unknown[] = [];
     const adapter = createSokomindSolverAdapter({
       hardwareConcurrency: 2,
+      // Above the one-move route, so every repair is ineligible.
+      improvementMinimumMoves: 2,
       createWorker: () => new ScriptedWorker((self, command) => {
         algorithms.push(command.payload.algorithm);
         queueMicrotask(() => self.emit({
@@ -435,9 +437,9 @@ describe("Sokomind Solver adapter", () => {
   it("replay-verifies and returns a shorter bounded rewrite", async () => {
     const algorithms: unknown[] = [];
     const phases: string[] = [];
+    // No improvementMinimumMoves: the default floor admits the 3-move route.
     const adapter = createSokomindSolverAdapter({
       hardwareConcurrency: 2,
-      improvementMinimumMoves: 0,
       improvementMaxVisited: 100,
       improvementMaxElapsedMs: 1_000,
       createWorker: () =>

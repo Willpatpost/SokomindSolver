@@ -122,6 +122,14 @@ weight. The balanced, detour and milestone profiles now weigh moves at 0.005,
 routes can change; they are still replayed and reported as unproven. The exact
 kernels and proof are untouched, so the proof revision is unchanged.
 
+Sokomind 1.6.3 lets bounded rewrite and reschedule repair routes of any length.
+They used to skip routes under 100 moves, which only mattered once the Quality
+exact lane timed out or was skipped. On theme-museum, where the lane times out,
+Optimal returned 77 moves in three of three runs; with the floor it returned 88
+in five of six. The `improvementMinimumMoves` adapter option still sets a floor.
+Repaired routes are still replayed and reported as unproven, and the exact
+kernels and proof are untouched, so the proof revision is unchanged.
+
 Classic A* 2.2.3 cuts a pushed child on `g + push bound + walk bound >= U`
 before it computes the linear-conflict, interaction-boost, PDB-surplus and
 goal-cut extras, on the ordinary and tunnel successor paths (the forced-push
