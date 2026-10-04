@@ -30,7 +30,10 @@ import type {
   SolverResult,
   SolverSolution,
 } from "../../src/solver/contracts.ts";
-import { assertValidSolverResult } from "../../src/solver/validation.ts";
+import {
+  assertValidSolverResult,
+  getSolverRequestValidationIssues,
+} from "../../src/solver/validation.ts";
 import { SOLVER_WORKER_PROTOCOL_VERSION, type SolverWorkerEvent } from "../../src/solver/protocol.ts";
 import { SolverRegistry } from "../../src/solver/registry.ts";
 import { SolverWorkerHost } from "../../src/solver/worker-host.ts";
@@ -341,6 +344,23 @@ describe("first-push partitioning", () => {
     assert.deepEqual(subRequest.objective, request.objective);
     assert.deepEqual(subRequest.snapshot.robot, partition.postPushRobot);
     assert.equal(subRequest.snapshot.boxes.length, request.snapshot.boxes.length);
+    assert.equal(subRequest.snapshot.solved, false);
+    assert.deepEqual(getSolverRequestValidationIssues(subRequest), []);
+  });
+
+  it("buildPartitionRequest marks a first push that solves the board as solved", () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "OR XSO",
+      "OOOOOO",
+    ]);
+    const [partition] = enumerateFirstPushPartitions(request);
+    assert.ok(partition);
+
+    const subRequest = buildPartitionRequest(request, partition);
+
+    assert.equal(subRequest.snapshot.solved, true);
+    assert.deepEqual(getSolverRequestValidationIssues(subRequest), []);
   });
 
   it("walk steps in prefix all have kind=walk except last push", () => {

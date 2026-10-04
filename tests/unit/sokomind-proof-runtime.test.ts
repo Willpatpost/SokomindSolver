@@ -14,12 +14,12 @@ import { configureSearchScheduler } from "../../src/solver/search/scheduling.ts"
 
 // One partition: walk right, push the box right. The inner search then needs
 // one more push, so the full route costs 3 moves and 2 pushes.
-function corridorRequest(): SolverRequest {
-  const parsed = parsePuzzleRows([
-    "OOOOOOO",
-    "OR X SO",
-    "OOOOOOO",
-  ]);
+const CORRIDOR = ["OOOOOOO", "OR X SO", "OOOOOOO"];
+// The same partition's push lands the box on its goal.
+const SOLVING_CORRIDOR = ["OOOOOO", "OR XSO", "OOOOOO"];
+
+function corridorRequest(rows = CORRIDOR): SolverRequest {
+  const parsed = parsePuzzleRows(rows);
   return {
     board: parsed,
     snapshot: {
@@ -38,8 +38,9 @@ function startCommand(
   initialUpperBound: number,
   algorithm: ProofStartPartition["algorithm"],
   runId = 7,
+  rows = CORRIDOR,
 ): ProofStartPartition {
-  const request = corridorRequest();
+  const request = corridorRequest(rows);
   const partitions = enumerateFirstPushPartitions(request);
   assert.equal(partitions.length, 1);
   const [partition] = partitions;
@@ -98,6 +99,21 @@ describe("createProofWorkerRuntime", () => {
       assert.equal(found.solution.steps[1]?.kind, "push");
       const complete = completion(results);
       assert.equal(complete.exhausted, true);
+    });
+
+    it(`returns the prefix alone when the ${algorithm} partition's push solves the board`, async () => {
+      const { handle, results, settled } = collectingRuntime();
+      handle(startCommand(100, algorithm, 7, SOLVING_CORRIDOR));
+      await settled;
+
+      const found = results.find((result) => result.type === "proof/solution");
+      assert.ok(found, `expected a solution, got ${JSON.stringify(results)}`);
+      assert.equal(found.solution.moves, 2);
+      assert.equal(found.solution.pushes, 1);
+      assert.equal(found.totalCost, 2);
+      const complete = completion(results);
+      assert.equal(complete.exhausted, true);
+      assert.equal(complete.lowerBound, 2);
     });
 
     it(`closes a ${algorithm} partition at its exclusive upper bound plus the prefix`, async () => {

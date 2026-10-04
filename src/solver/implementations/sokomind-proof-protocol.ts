@@ -1,4 +1,4 @@
-import type { Direction } from "../../core/index.ts";
+import { positionKey, type Direction } from "../../core/index.ts";
 import type { Box, GameSnapshot, Position } from "../../core/model.ts";
 import type {
   SolutionStep,
@@ -296,13 +296,19 @@ export function buildPartitionRequest(
   original: SolverRequest,
   partition: ProofPartition,
 ): SolverRequest {
+  // A first push can solve the board; the request must say so to stay valid.
+  const goalLabels = new Map(
+    original.board.goals.map((goal) => [positionKey(goal.position), goal.label]),
+  );
   const snapshot: GameSnapshot = {
     puzzleId: original.snapshot.puzzleId,
     robot: partition.postPushRobot,
     boxes: partition.postPushBoxes,
     moves: 0,
     pushes: 0,
-    solved: false,
+    solved: partition.postPushBoxes.every(
+      (box) => goalLabels.get(positionKey(box.position)) === box.label,
+    ),
   };
   return { ...original, snapshot };
 }

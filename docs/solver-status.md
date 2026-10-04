@@ -47,6 +47,10 @@ rejects the run. Failed partitions retain only their independently
 known prefix bound; they block an optimal certificate unless that prefix bound
 alone reaches the incumbent cost, whatever order lane events arrive in.
 Deadline cutoff remains bounded. Deeper partition splitting remains open.
+Since Sokomind 1.11.0, a partition whose first push solves the board gets a
+snapshot marked solved, so its lane returns the prefix as the route. Before,
+the lane's request failed validation and the lane errored, which left the run
+unproven whenever the incumbent was longer than that prefix.
 
 Sokomind 1.3.1 keeps busy proof lanes alive and accounts for coordinator
 memory in single-lane proofs. The coordinator presumes a lane dead after 30 s
