@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  allocateParallelRewriteBudgets,
   sokomindRewriteConcurrency,
   solutionImprovementPlan,
 } from "../../src/solver/implementations/sokomind-solver.ts";
+import { dividedIntegerBudget } from "../../src/solver/implementations/sokomind-plans.ts";
 import { resolveSokomindTuning } from "../../src/solver/implementations/sokomind-tuning.ts";
 import type { SolverSolution, SolutionStep } from "../../src/solver/contracts.ts";
 
@@ -44,42 +44,19 @@ describe("rewrite worker telemetry identity", () => {
     assert.equal(sokomindRewriteConcurrency(3, undefined, 0), 0);
   });
 
-  it("reserves disjoint parallel state and elapsed budgets", () => {
-    const budgets = allocateParallelRewriteBudgets(3, 10, 8, 5);
-
-    assert.deepEqual(budgets, [
-      { maxVisited: 4, maxGenerated: 3, maxElapsedMs: 2 },
-      { maxVisited: 3, maxGenerated: 3, maxElapsedMs: 2 },
-      { maxVisited: 3, maxGenerated: 2, maxElapsedMs: 1 },
-    ]);
-    assert.equal(
-      budgets.reduce((sum, budget) => sum + budget.maxVisited, 0),
-      10,
-    );
-    assert.equal(
-      budgets.reduce((sum, budget) => sum + budget.maxGenerated, 0),
-      8,
-    );
-    assert.equal(
-      budgets.reduce((sum, budget) => sum + budget.maxElapsedMs, 0),
-      5,
-    );
+  it("splits a budget into disjoint integer shares", () => {
+    const shares = dividedIntegerBudget(10, 3);
+    assert.deepEqual(shares, [4, 3, 3]);
+    assert.equal(shares.reduce((sum, share) => sum + share, 0), 10);
   });
 
   it("does not manufacture one-state shares when the budget is smaller than the lane count", () => {
-    assert.deepEqual(allocateParallelRewriteBudgets(3, 1, 2, 1), [
-      { maxVisited: 1, maxGenerated: 1, maxElapsedMs: 1 },
-      { maxVisited: 0, maxGenerated: 1, maxElapsedMs: 0 },
-      { maxVisited: 0, maxGenerated: 0, maxElapsedMs: 0 },
-    ]);
+    assert.deepEqual(dividedIntegerBudget(1, 3), [1, 0, 0]);
+    assert.deepEqual(dividedIntegerBudget(5, 0), []);
   });
 
-  it("leaves an unspecified generated-state ceiling unbounded", () => {
-    const budgets = allocateParallelRewriteBudgets(2, 4, undefined, 2);
-    assert.deepEqual(budgets.map(({ maxGenerated }) => maxGenerated), [
-      Infinity,
-      Infinity,
-    ]);
+  it("leaves an unbounded budget unbounded in every share", () => {
+    assert.deepEqual(dividedIntegerBudget(Infinity, 2), [Infinity, Infinity]);
   });
 
   it("produces unique IDs for different candidates on the same pass", () => {

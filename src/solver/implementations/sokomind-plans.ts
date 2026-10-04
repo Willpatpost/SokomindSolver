@@ -651,12 +651,11 @@ export function adaptiveRewriteAllocation(
   return DEFAULT_REWRITE_BUDGET_ALLOCATION;
 }
 
-export interface ParallelRewriteBudget {
-  readonly maxVisited: number;
-  readonly maxGenerated: number;
-  readonly maxElapsedMs: number;
-}
-
+/**
+ * Splits a budget into `count` disjoint integer shares that sum to it, the
+ * remainder going to the first shares. A non-finite total leaves every share
+ * unbounded.
+ */
 export function dividedIntegerBudget(total: number, count: number): readonly number[] {
   if (count <= 0) return Object.freeze([]);
   if (!Number.isFinite(total)) {
@@ -670,29 +669,5 @@ export function dividedIntegerBudget(total: number, count: number): readonly num
       { length: count },
       (_, index) => base + (index < remainder ? 1 : 0),
     ),
-  );
-}
-
-/**
- * Reserves disjoint state and wall-clock shares before parallel rewrites start.
- * Taking the snapshot once prevents every concurrent candidate from observing
- * and spending the same global remainder.
- */
-export function allocateParallelRewriteBudgets(
-  candidateCount: number,
-  maxVisited: number,
-  maxGenerated: number | undefined,
-  maxElapsedMs: number,
-): readonly ParallelRewriteBudget[] {
-  const count = Math.max(0, Math.floor(finiteNonNegative(candidateCount)));
-  const visitedShares = dividedIntegerBudget(maxVisited, count);
-  const generatedShares = dividedIntegerBudget(maxGenerated ?? Infinity, count);
-  const elapsedShares = dividedIntegerBudget(maxElapsedMs, count);
-  return Object.freeze(
-    Array.from({ length: count }, (_, index) => Object.freeze({
-      maxVisited: visitedShares[index],
-      maxGenerated: generatedShares[index],
-      maxElapsedMs: elapsedShares[index],
-    })),
   );
 }

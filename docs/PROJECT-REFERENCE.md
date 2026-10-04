@@ -87,7 +87,7 @@ in [Generator benchmarks](generator-benchmarks.md).
 | `verifySolverSolution` / `collectProofIssues` | independently replay a route and verify that proof metadata is compatible with it |
 | `runExactMoveAStar` / `runIdaStarSearch` | return move-optimal proofs only while the open-subtree lower-bound invariant holds |
 | `createSokomindSolverAdapter` / `createNodeSolverAdapter` | run the production discovery, rewrite, and proof portfolio in browser or Node isolation |
-| `allocateParallelRewriteBudgets` / `remainingProofLimits` | derive disjoint integer phase/lane shares from one run-wide resource ledger |
+| `dividedIntegerBudget` / `remainingProofLimits` | derive disjoint integer phase/lane shares from one run-wide resource ledger |
 | `resolveExactSearchFeatures` | construct frozen default or A/B exact-search feature vectors |
 
 The tables name public or cross-boundary concepts, not every implementation

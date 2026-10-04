@@ -16,6 +16,7 @@ import {
   solutionImprovementPlan,
   solutionReschedulingPlan,
   solutionTwoBoxReschedulingPlan,
+  type EnginePlan,
   type RewriteBudgetAllocation,
 } from "./sokomind-plans.ts";
 import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
@@ -29,6 +30,7 @@ import {
   withRemainingLimits,
   type SearchRunState,
 } from "./sokomind-run-state.ts";
+import type { SokomindTuningProfile } from "./sokomind-tuning.ts";
 
 export interface SokomindImprovementOptions {
   readonly improvementMaxVisited?: number;
@@ -51,6 +53,67 @@ export interface ImprovedIncumbent {
   readonly generatedWork: number;
 }
 
+/** Operator-specific targets chosen by the anytime coordinator. */
+export type RepairContext = Readonly<{
+  boxPairs?: readonly (readonly [number, number])[];
+  targetOverrides?: Readonly<Record<number, string>>;
+  prioritizedWindows?: readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[];
+}>;
+
+/** One repair pass's budgets and inputs; each operator reads only its own. */
+export interface RepairPlanInput {
+  readonly state: import("./sokomind-legacy.ts").LegacyState;
+  readonly solution: SolverSolution;
+  readonly maxVisited: number;
+  readonly maxGenerated: number;
+  readonly maxElapsedMs: number;
+  readonly pass: number;
+  readonly profile: SokomindTuningProfile;
+  readonly candidateIndex: number;
+  readonly allocation: RewriteBudgetAllocation;
+  readonly diagnostics: boolean;
+  readonly rescheduleRounds: number;
+  readonly context?: RepairContext;
+}
+
+/**
+ * Chooses the engine plan for a repair operator. The switch is exhaustive, so
+ * a new operator does not typecheck until it is given a plan here.
+ */
+export function repairPlan(operator: RepairOperator, input: RepairPlanInput): EnginePlan {
+  const { state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex, context } = input;
+  switch (operator) {
+    case "box":
+    case "goal-reassignment":
+      return solutionReschedulingPlan(
+        state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex,
+        input.diagnostics, context?.targetOverrides, input.rescheduleRounds,
+      );
+    case "two-box":
+      return solutionTwoBoxReschedulingPlan(
+        state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex,
+        context?.boxPairs ?? [], context?.targetOverrides,
+      );
+    case "dependency-window":
+      return dependencyWindowImprovementPlan(
+        state, solution, maxVisited, maxGenerated, candidateIndex,
+        context?.prioritizedWindows ?? [],
+      );
+    // perturb-and-repair has no engine operator of its own yet, so it runs the
+    // window rewrite.
+    case "perturb-and-repair":
+    case "window":
+      return solutionImprovementPlan(
+        state, solution, maxVisited, input.pass, input.profile, candidateIndex,
+        maxGenerated, input.allocation,
+      );
+    default: {
+      const unhandled: never = operator;
+      throw new Error(`sokomind-solver: no plan for repair operator '${String(unhandled)}'`);
+    }
+  }
+}
+
 export async function improveIncumbent(
   run: SearchRunState,
   state: import("./sokomind-legacy.ts").LegacyState,
@@ -62,11 +125,7 @@ export async function improveIncumbent(
   memoryConcurrency = 1,
   allocation: RewriteBudgetAllocation = DEFAULT_REWRITE_BUDGET_ALLOCATION,
   repair: RepairOperator = "window",
-  repairContext?: Readonly<{
-    boxPairs?: readonly (readonly [number, number])[];
-    targetOverrides?: Readonly<Record<number, string>>;
-    prioritizedWindows?: readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[];
-  }>,
+  repairContext?: RepairContext,
 ): Promise<ImprovedIncumbent> {
   run.initialSolutionMoves ||= incumbent.moves;
   run.bestSolutionMoves =
@@ -81,8 +140,9 @@ export async function improveIncumbent(
   );
   const memoryLimit = run.request.limits?.maxMemoryBytes ?? Infinity;
   const scaledDefault = defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes);
+  const requestOptions = extractSokomindOptions(run.request);
   const liveMemoryRescheduling = (repair === "box" || repair === "two-box") &&
-    extractSokomindOptions(run.request).mode === "quality";
+    requestOptions.mode === "quality";
   const memoryVisitedCap =
     liveMemoryRescheduling
       ? Infinity
@@ -162,39 +222,20 @@ export async function improveIncumbent(
     try {
       const outcome = await runPhase(
         run,
-        [
-          repair === "box" || repair === "goal-reassignment"
-            ? solutionReschedulingPlan(
-                state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
-                Math.floor(remainingImprovementMs), candidateIndex,
-                extractSokomindOptions(run.request).diagnostics,
-                repairContext?.targetOverrides,
-                extractSokomindOptions(run.request).mode === "quality" ? 8 : 2,
-              )
-            : repair === "two-box"
-              ? solutionTwoBoxReschedulingPlan(
-                  state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
-                  Math.floor(remainingImprovementMs), candidateIndex,
-                  repairContext?.boxPairs ?? [],
-                  repairContext?.targetOverrides,
-                )
-              : repair === "dependency-window"
-                ? dependencyWindowImprovementPlan(
-                    state, best, Math.floor(maxVisited), Math.floor(maxGenerated),
-                    candidateIndex,
-                    repairContext?.prioritizedWindows ?? [],
-                  )
-                : solutionImprovementPlan(
-                    state,
-                    best,
-                    Math.floor(maxVisited),
-                    pass,
-                    run.profile,
-                    candidateIndex,
-                    Math.floor(maxGenerated),
-                    allocation,
-                  ),
-        ],
+        [repairPlan(repair, {
+          state,
+          solution: best,
+          maxVisited: Math.floor(maxVisited),
+          maxGenerated: Math.floor(maxGenerated),
+          maxElapsedMs: Math.floor(remainingImprovementMs),
+          pass,
+          profile: run.profile,
+          candidateIndex,
+          allocation,
+          diagnostics: requestOptions.diagnostics,
+          rescheduleRounds: requestOptions.mode === "quality" ? 8 : 2,
+          context: repairContext,
+        })],
         createWorker,
         1,
         Math.max(1, Math.floor(remainingImprovementMs)),

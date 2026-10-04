@@ -59,11 +59,9 @@ export {
   toLegacyState,
 } from "./sokomind-legacy.ts";
 export {
-  allocateParallelRewriteBudgets,
   sokomindDiscoveryBeamWidth,
   sokomindRewriteConcurrency,
   solutionImprovementPlan,
-  type ParallelRewriteBudget,
 } from "./sokomind-plans.ts";
 
 const STRUCTURAL_BOX_THRESHOLD = 10;
