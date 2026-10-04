@@ -76,11 +76,12 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Backward perimeter BFS, matching-component analysis, and component PDB in both exact engines.
   // Move-cost pattern database heuristic in both exact engines.
   // Batch 5: two-box repair, prioritized windows, N-operator coordinator.
+  // Request-lifetime engine and proof worker pools (measured 83,075 bytes).
   allScriptsAndStylesGzipBytes: 500_000,
   largestAssetGzipBytes: 100_000,
   homeRouteGzipBytes: 195_000,
   playRouteGzipBytes: 220_000,
-  solverWorkerGzipBytes: 82_000,
+  solverWorkerGzipBytes: 86_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
   // schedule trace, macro intermediate retention, and two-box rescheduling.
   engineWorkerGzipBytes: 95_000,
