@@ -147,6 +147,65 @@ every one):
 | `v2-17box-rotated` | 17 | 893 (7.2 s) | 488 | 546 | 221 |
 | `v2-27box-open` | 27 | 1,300 (26.3 s) | 912 | 914 | 397 |
 
+## Phase 1 comparison
+
+Commit `ba44091` (Sokomind 1.6.3, classic A* 2.2.5, classic IDA* 2.2.3) ends
+the first phase of the 2026-10-03 plan. It was captured like the baseline of
+record, with the same ten shards, settings and node type (SLURM jobs
+47075-47084), and compared with `b392ce8` group by group.
+
+| Profile | Groups | Solved | Proven | At frozen optimum | Median time | Median first route | Peak RSS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `classic-astar` | 33 | 33 | 33 | 33 | 92 ms | 92 ms | 565 MiB |
+| `classic-ida-star` | 33 | 32 | 32 | 32 | 186 ms | 183 ms | 484 MiB |
+| `sokomind-optimal-astar` | 33 | 33 | 32 | 32 | 438 ms | 235 ms | 896 MiB |
+| `sokomind-optimal-ida` | 33 | 33 | 32 | 32 | 534 ms | 235 ms | 526 MiB |
+| `production-fast` | 44 | 43 | 0 | 8 of 33 | 174 ms | 171 ms | 1,140 MiB |
+| `production-quality` | 44 | 43 | 0 | 33 of 33 | 322 ms | 172 ms | 3,794 MiB |
+| `production-optimal` | 44 | 43 | 33 | 33 of 33 | 320 ms | 172 ms | 3,074 MiB |
+
+178 of the 264 groups got faster, and the geometric mean of the per-group
+median time ratios is 0.505.
+
+- Quality reaches the frozen optimum on all 33 boards that have one, up from
+  15, and still reports unknown optimality.
+- Quality and Optimal publish the discovery route as soon as it replays.
+  Their median first route is 172 ms, down from 1.75 s and 1.78 s; on the
+  larger boards it arrives with Fast's route instead of 2 to 5 s later.
+- Optimal's median time fell from 1.83 s to 320 ms, and Quality's from 1.60 s
+  to 322 ms.
+
+The comparison flagged 13 groups:
+
+- `expert-tetris` lost its proof under `sokomind-optimal-astar`: 38 moves,
+  proven in five of five runs, became an unproven 39. Proof-first spent most
+  of the profile's 5,000,000 generated-state cap, and the pipeline proof ran
+  out of states. Sokomind 1.7.1 skips proof-first when a request sets a state
+  limit; a five-round same-node A/B (job 47086) proved 38 again in 20.9 s.
+  In exchange, the other 32 groups of that profile and of
+  `sokomind-optimal-ida` (job 47087) lose the proof-first speedup (geometric
+  mean time ×2.86 and ×2.55). Production profiles and the app set no state
+  limit. The same board under `sokomind-optimal-ida` expanded 0.2% more states
+  for the same unproven 62-move route.
+- Quality took longer on `adv-four-color` (5.2 to 11.2 s) and `expert-tetris`
+  (5.2 to 20.0 s), where its exact search finds the optimum (79 to 43 and 53
+  to 38 moves).
+- Peak RSS rose 11-36% for Quality and Optimal on `large`, `master-exchange`
+  and `theme-parking`, where the exact lane or proof-first runs without
+  finishing.
+- Three flags did not reproduce in same-node reruns: classic IDA* RSS on
+  `expert-maze` (job 47089), Fast time on `master-typed-grid` (job 47088) and
+  Quality RSS on `v2-17box-handdesigned` (job 47090).
+
+On the boards without a frozen optimum, every mode returns the same median
+route as at `b392ce8`, except Optimal on `theme-museum` (88 to 77 moves).
+Optimal's final lower bound fell by 1 or 2 on `large` (119 to 117),
+`master-exchange` (91 to 90), `theme-museum` (54 to 53) and `theme-parking`
+(88 to 87), and rose by 1 on `open-field` and `v2-17box-rotated`.
+
+The capture predates Sokomind 1.7.0 (worker reuse) and 1.7.1. Each was
+compared with its base in same-node A/B runs instead.
+
 ## Controlled feature A/B runs
 
 Use `--compare-feature` with exact profiles:
