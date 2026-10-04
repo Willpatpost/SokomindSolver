@@ -115,6 +115,11 @@ export class PdbHeuristicEvaluator {
     return new PdbHeuristicEvaluator(partitions.slice(0, pdbs.length), pdbs);
   }
 
+  /** An evaluator over the same tables, with fresh counters and an empty surplus cache. */
+  view(): PdbHeuristicEvaluator {
+    return new PdbHeuristicEvaluator(this.#partitions, this.#pdbs.map((pdb) => pdb.view()));
+  }
+
   get partitionCount(): number { return this.#partitions.length; }
   /** Partitions a build limit (deadline or memory) left with a partial or disabled table. */
   get degradedPartitionCount(): number {

@@ -53,6 +53,20 @@ export interface PatternDatabase {
   /** The build limit that left this table partial or disabled, if any. */
   readonly truncatedBy?: ExactPreprocessingLimitReason;
   lookup(boxCells: readonly number[]): number;
+  /** Another view of the same table, with its own lookup counters. */
+  view(): PatternDatabase;
+}
+
+/** What one build leaves behind. It never changes, so views may share it. */
+interface PdbCore {
+  readonly k: number;
+  readonly tableSize: number;
+  readonly goalCells: readonly number[];
+  readonly regionCells: readonly number[];
+  readonly estimatedRetainedBytes: number;
+  readonly truncatedBy?: ExactPreprocessingLimitReason;
+  /** The lookup, counting into `stats`. */
+  readonly lookupWith: (stats: PdbLookupStats) => PatternDatabase["lookup"];
 }
 
 const UNSOLVED = 0xffff;
@@ -80,6 +94,12 @@ function estimatePdbRetainedBytes(
 
 function createPdbLookupStats(): PdbLookupStats {
   return { lookups: 0, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 0 };
+}
+
+function viewPdbCore(core: PdbCore): PatternDatabase {
+  const { lookupWith, ...fields } = core;
+  const lookupStats = createPdbLookupStats();
+  return { ...fields, lookupStats, lookup: lookupWith(lookupStats), view: () => viewPdbCore(core) };
 }
 
 // ---------------------------------------------------------------------------
@@ -140,16 +160,15 @@ function disabledPatternDatabase(
   regionCells: readonly number[],
   truncatedBy?: ExactPreprocessingLimitReason,
 ): PatternDatabase {
-  return {
+  return viewPdbCore({
     k,
     tableSize: 0,
     goalCells: [...goalCells],
     regionCells: [...regionCells],
     estimatedRetainedBytes: 0,
-    lookupStats: createPdbLookupStats(),
     ...(truncatedBy !== undefined ? { truncatedBy } : {}),
-    lookup: () => UNSOLVED,
-  };
+    lookupWith: () => () => UNSOLVED,
+  });
 }
 
 function canAllocatePatternDatabase(tableSize: number): boolean {
@@ -399,10 +418,10 @@ function preparePdbBfs(
   const k = goalCells.length;
 
   if (k === 0) {
-    return {
+    return viewPdbCore({
       k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0,
-      lookupStats: createPdbLookupStats(), lookup: () => 0,
-    };
+      lookupWith: () => () => 0,
+    });
   }
   if (k > MAX_K) {
     throw new RangeError(`PDB k=${k} exceeds maximum ${MAX_K}`);
@@ -429,10 +448,10 @@ function preparePdbBfs(
 
   const solvedPositions = goalCells.map((gc) => cellToRegionIndex[gc]).sort((a, b) => a - b);
   if (solvedPositions.some((p) => p < 0)) {
-    return {
+    return viewPdbCore({
       k, tableSize, goalCells: [...goalCells], regionCells: [...regionCells],
-      estimatedRetainedBytes: retainedBytes, lookupStats: createPdbLookupStats(), lookup: () => UNSOLVED,
-    };
+      estimatedRetainedBytes: retainedBytes, lookupWith: () => () => UNSOLVED,
+    });
   }
 
   const solvedRank = combinadicEncode(solvedPositions, binom);
@@ -455,17 +474,17 @@ function finishPdb(
   undiscovered: number,
   truncatedBy?: ExactPreprocessingLimitReason,
 ): PatternDatabase {
-  const lookupStats = createPdbLookupStats();
-  return {
+  // The lookup keeps only what it reads, not the build context.
+  const { cellToRegionIndex, binom, table, exitCap } = ctx;
+  return viewPdbCore({
     k: ctx.k,
-    tableSize: ctx.table.length,
+    tableSize: table.length,
     goalCells: [...goalCells],
     regionCells: [...ctx.regionCells],
     estimatedRetainedBytes: retainedBytes,
-    lookupStats,
     ...(truncatedBy !== undefined ? { truncatedBy } : {}),
-    lookup: makePdbLookup(ctx.cellToRegionIndex, ctx.binom, ctx.table, undiscovered, ctx.exitCap, lookupStats),
-  };
+    lookupWith: (stats) => makePdbLookup(cellToRegionIndex, binom, table, undiscovered, exitCap, stats),
+  });
 }
 
 export function buildPatternDatabase(

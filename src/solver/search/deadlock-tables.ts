@@ -6,6 +6,7 @@ import {
   checkExactPreprocessingBudget,
   isExactPreprocessingLimitError,
   type ExactPreprocessingBudget,
+  type ExactPreprocessingLimitReason,
 } from "./preprocessing-budget.ts";
 
 const MAX_REGION_CELLS = 9;
@@ -34,7 +35,12 @@ export interface DeadlockTableStats {
   readonly workUnits: number;
   // The work cap or a preprocessing limit stopped the build early.
   readonly truncated: boolean;
+  // What stopped it: the work cap gives the same table on every machine, a
+  // preprocessing limit does not.
+  readonly truncatedBy?: DeadlockTableTruncation;
 }
+
+export type DeadlockTableTruncation = "work" | ExactPreprocessingLimitReason;
 
 export interface DeadlockTableOptions {
   readonly maxWorkUnits?: number;
@@ -66,7 +72,7 @@ interface TableBuild {
   regionBytes: number;
   patternCount: number;
   storedPatterns: number;
-  truncated: boolean;
+  truncatedBy: DeadlockTableTruncation | undefined;
 }
 
 type RegionBfsOutcome = "deadlocked" | "free" | "cut";
@@ -290,7 +296,7 @@ function* buildRegion(
           estimateDeadlockTableBytes(build.regionBytes, build.storedPatterns),
         );
         if (outcome === "cut") {
-          build.truncated = true;
+          build.truncatedBy = "work";
           return;
         }
         if (outcome === "deadlocked") {
@@ -351,11 +357,11 @@ function* buildTables(
       build.regionCount++;
       build.regionBytes += regionRetainedBytes(region);
       yield* buildRegion(board, region, build, budget);
-      if (build.truncated) return;
+      if (build.truncatedBy !== undefined) return;
     }
   } catch (error) {
     if (!isExactPreprocessingLimitError(error)) throw error;
-    build.truncated = true;
+    build.truncatedBy = error.reason;
   }
 }
 
@@ -373,7 +379,7 @@ function startTableBuild(
     regionBytes: 0,
     patternCount: 0,
     storedPatterns: 0,
-    truncated: false,
+    truncatedBy: undefined,
   };
 }
 
@@ -389,7 +395,8 @@ function finishTableBuild(
       ? 0
       : estimateDeadlockTableBytes(build.regionBytes, build.storedPatterns),
     workUnits: build.workUnits,
-    truncated: build.truncated,
+    truncated: build.truncatedBy !== undefined,
+    ...(build.truncatedBy !== undefined ? { truncatedBy: build.truncatedBy } : {}),
   });
 }
 

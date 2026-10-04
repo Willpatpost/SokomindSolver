@@ -12,6 +12,7 @@ import { maximumDisjointSelection } from "../../src/solver/search/disjoint-selec
 import type { HeuristicCandidate } from "../../src/solver/search/room-pattern-heuristic.ts";
 import { minimumAssignmentCost } from "../../src/solver/search/assignment.ts";
 import { type DenseBox, toDenseBoxes } from "../../src/solver/search/model.ts";
+import { isExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
 
 function fullAssignmentLabelCosts(
   board: CompiledSearchBoard,
@@ -641,6 +642,56 @@ describe("interaction boost heuristic", () => {
     assert.equal(evaluator.evaluate(boxes, fullAssignmentLabelCosts(board, boxes)), 2);
     assert.equal(evaluator.roomPatternStats.hits, 1);
     assert.equal(evaluator.stats.roomBoostTotal, 2);
+  });
+
+  it("reuses room tables built by an earlier evaluator", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O OSXRO",
+      "O   X O",
+      "O OS  O",
+      "OOOOOOO",
+    ]));
+    const boxes: readonly DenseBox[] = [
+      { id: "X:0", label: "X", cell: board.cellAt(1, 3) },
+      { id: "X:1", label: "X", cell: board.cellAt(2, 2) },
+    ];
+    const built = new InteractionBoostEvaluator(board, board.topology);
+    assert.equal(built.evaluate(boxes, fullAssignmentLabelCosts(board, boxes)), 2);
+    const tables = built.roomPatternTables;
+
+    const reused = new InteractionBoostEvaluator(board, board.topology, undefined, undefined, tables);
+    assert.equal(reused.roomPatternTables, tables);
+    assert.equal(reused.preprocessingRetainedBytes, built.preprocessingRetainedBytes);
+    // Build counts carry over; hits are this evaluator's own.
+    assert.deepEqual(reused.roomPatternStats, {
+      builds: tables.builds, states: tables.states, hits: 0,
+    });
+    assert.equal(reused.evaluate(boxes, fullAssignmentLabelCosts(board, boxes)), 2);
+    assert.equal(reused.roomPatternStats.hits, 1);
+    assert.equal(built.roomPatternStats.hits, 1);
+  });
+
+  it("checks reused room tables against the memory budget", () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "O OSXRO",
+      "O   X O",
+      "O OS  O",
+      "OOOOOOO",
+    ]));
+    const tables = new InteractionBoostEvaluator(board, board.topology).roomPatternTables;
+    assert.ok(tables.estimatedRetainedBytes > 0);
+    assert.throws(
+      () => new InteractionBoostEvaluator(board, board.topology, {
+        signal: new AbortController().signal,
+        now: () => 0,
+        deadline: 1,
+        maxMemoryBytes: tables.estimatedRetainedBytes - 1,
+        baseMemoryBytes: 0,
+      }, undefined, tables),
+      (error: unknown) => isExactPreprocessingLimitError(error) && error.reason === "memory",
+    );
   });
 
   it("exposes pairConflictStats", () => {

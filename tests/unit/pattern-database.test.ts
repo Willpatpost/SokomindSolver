@@ -167,7 +167,7 @@ describe("buildPatternDatabase", () => {
       new AbortController().signal,
     );
 
-    for (const pdb of [syncPdb, asyncPdb]) {
+    for (const pdb of [syncPdb, asyncPdb, syncPdb.view()]) {
       assert.equal(pdb.tableSize, 0);
       assert.equal(pdb.estimatedRetainedBytes, 0);
       assert.equal(pdb.lookup(goalCells), UNSOLVED);
@@ -311,6 +311,7 @@ describe("buildPatternDatabase", () => {
     });
     assert.equal(pdb.k, 0);
     assert.equal(pdb.lookup([]), 0);
+    assert.equal(pdb.view().lookup([]), 0);
   });
 
   it("PDB values are admissible (never exceed exact push distance)", () => {
@@ -424,6 +425,46 @@ describe("pattern database exit bound", () => {
     });
     assert.equal(pdb.lookup([board.cellAt(5, 9)]), 13);
     assert.equal(pdb.lookupStats.exitCapTrimTotal, 4 + 2);
+  });
+
+  it("lets a view answer from the same table with its own lookup counters", async () => {
+    const board = exitRouteBoard();
+    const { config, pdb } = singleGoalPdb(board);
+    const asyncPdb = await buildPatternDatabaseAsync(board, config, new AbortController().signal);
+    for (const database of [pdb, asyncPdb]) {
+      database.lookup([board.cellAt(5, 10)]);
+      const view = database.view();
+      assert.deepEqual(view.lookupStats, {
+        lookups: 0, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 0,
+      });
+      for (let cell = 0; cell < board.cellCount; cell++) {
+        assert.equal(view.lookup([cell]), database.lookup([cell]), describeCells(board, [cell]));
+      }
+      assert.equal(view.tableSize, database.tableSize);
+      assert.equal(view.estimatedRetainedBytes, database.estimatedRetainedBytes);
+      assert.equal(view.lookupStats.lookups, board.cellCount);
+      assert.equal(database.lookupStats.lookups, board.cellCount + 1);
+      assert.equal(view.view().lookupStats.lookups, 0);
+    }
+  });
+
+  it("gives an evaluator view the same values with fresh counters", () => {
+    const board = exitRouteBoard();
+    const { goalCells, regionCells, pdb } = singleGoalPdb(board);
+    const evaluator = new PdbHeuristicEvaluator([{ goalCells, labels: ["X"], regionCells }], [pdb]);
+    const boxes = [
+      { id: "X:0", label: "X", cell: board.cellAt(5, 10) },
+      { id: "X:1", label: "X", cell: board.cellAt(4, 12) },
+    ];
+    assert.equal(evaluator.evaluate(boxes), 9);
+    const view = evaluator.view();
+    assert.equal(view.lookupStats.lookups, 0);
+    assert.equal(view.preprocessingRetainedBytes, evaluator.preprocessingRetainedBytes);
+    assert.equal(view.evaluate(boxes), 9);
+    assert.deepEqual(view.lookupStats, {
+      lookups: 2, exitCapTrims: 1, exitCapTrimTotal: 4, outsideRegionLookups: 1,
+    });
+    assert.equal(evaluator.lookupStats.lookups, 2);
   });
 
   for (const goalPositions of [[[1, 6], [1, 7]], [[1, 6], [1, 7], [2, 6]]]) {

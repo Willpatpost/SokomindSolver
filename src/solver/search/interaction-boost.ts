@@ -6,6 +6,7 @@ import { PairConflictHeuristic } from "./pair-conflict-heuristic.ts";
 import {
   hasPotentialRoomPattern,
   RoomPatternHeuristic,
+  type RoomPatternTableSet,
 } from "./room-pattern-heuristic.ts";
 import type { BoardTopology } from "./topology.ts";
 import {
@@ -78,9 +79,11 @@ export class InteractionBoostEvaluator {
     topology: BoardTopology,
     budget?: ExactPreprocessingBudget,
     searchBudget?: InteractionSearchBudget,
+    /** Room tables an earlier evaluator built for this board, reused instead of rebuilt. */
+    roomTables?: RoomPatternTableSet,
   ) {
     checkExactPreprocessingBudget(budget);
-    this.#roomHeuristic = new RoomPatternHeuristic(board, topology, budget);
+    this.#roomHeuristic = new RoomPatternHeuristic(board, roomTables ?? topology, budget);
     this.#searchBudget = searchBudget;
     this.#pairHeuristic = new PairConflictHeuristic(
       board,
@@ -128,6 +131,10 @@ export class InteractionBoostEvaluator {
         estimatedMemoryBytes,
       );
     }
+  }
+
+  get roomPatternTables(): RoomPatternTableSet {
+    return this.#roomHeuristic.tableSet;
   }
 
   get roomPatternStats() {

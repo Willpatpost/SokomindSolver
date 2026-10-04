@@ -39,6 +39,7 @@ describe("buildDeadlockTables", () => {
     ]));
     const lookup = buildDeadlockTables(board);
     assert.equal(lookup.stats.truncated, false);
+    assert.equal(lookup.stats.truncatedBy, undefined);
     assert.ok(lookup.stats.workUnits > 0);
   });
 
@@ -67,6 +68,7 @@ describe("buildDeadlockTables", () => {
       maxWorkUnits: Math.floor(full.stats.workUnits / 2),
     });
     assert.equal(capped.stats.truncated, true);
+    assert.equal(capped.stats.truncatedBy, "work");
     assert.equal(capped.stats.workUnits, Math.floor(full.stats.workUnits / 2));
     assert.ok(capped.stats.patternCount < full.stats.patternCount);
     assertSubsetTable(board, capped, full, ["X"]);
@@ -84,6 +86,7 @@ describe("buildDeadlockTables", () => {
       baseMemoryBytes: 0,
     });
     assert.equal(limited.stats.truncated, true);
+    assert.equal(limited.stats.truncatedBy, "elapsed");
     assert.ok(limited.stats.patternCount > 0);
     assert.ok(limited.stats.patternCount < full.stats.patternCount);
     assertSubsetTable(board, limited, full, ["X"]);
@@ -96,6 +99,7 @@ describe("buildDeadlockTables", () => {
       baseMemoryBytes: 0,
     });
     assert.equal(outOfMemory.stats.truncated, true);
+    assert.equal(outOfMemory.stats.truncatedBy, "memory");
     assert.equal(outOfMemory.stats.regionCount, 0);
     assert.equal(outOfMemory.stats.patternCount, 0);
 
@@ -106,6 +110,7 @@ describe("buildDeadlockTables", () => {
       baseMemoryBytes: 0,
     });
     assert.equal(pastDeadline.stats.truncated, true);
+    assert.equal(pastDeadline.stats.truncatedBy, "elapsed");
     assert.equal(pastDeadline.stats.patternCount, 0);
   });
 

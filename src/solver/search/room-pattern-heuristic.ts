@@ -37,57 +37,80 @@ export interface RoomPatternStats {
   hits: number;
 }
 
-export class RoomPatternHeuristic {
+/** The tables one build leaves behind. They never change, so heuristics may share them. */
+export interface RoomPatternTableSet {
   readonly tables: readonly PatternTable[];
-  readonly stats: RoomPatternStats = { builds: 0, states: 0, hits: 0 };
-  readonly #board: CompiledSearchBoard;
-  readonly #estimatedRetainedBytes: number;
+  readonly builds: number;
+  readonly states: number;
+  readonly estimatedRetainedBytes: number;
+}
 
+export function buildRoomPatternTableSet(
+  board: CompiledSearchBoard,
+  topology: BoardTopology,
+  budget?: ExactPreprocessingBudget,
+): RoomPatternTableSet {
+  const tables: PatternTable[] = [];
+  let builds = 0;
+  let states = 0;
+  let estimatedRetainedBytes = 0;
+  checkExactPreprocessingBudget(budget);
+  for (const room of topology.rooms) {
+    for (const partition of roomPatternGoalPartitions(room, board)) {
+      checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
+      const targetBoxes: PatternBox[] = partition.map((goalCell) => ({
+        cell: goalCell,
+        label: board.goalLabelByCell[goalCell]!,
+      }));
+      const labels = new Set(targetBoxes.map((b) => b.label));
+      const result = relaxedReversePushTable(
+        board,
+        targetBoxes,
+        ROOM_PATTERN_MAX_STATES,
+        budget
+          ? {
+              ...budget,
+              baseMemoryBytes:
+                budget.baseMemoryBytes + estimatedRetainedBytes,
+            }
+          : undefined,
+      );
+      builds++;
+      states += result.visited;
+      if (result.states.size > 0) {
+        tables.push({ labels, targetBoxes, result, room });
+        estimatedRetainedBytes +=
+          result.estimatedRetainedBytes + 256 + targetBoxes.length * 32;
+      }
+    }
+  }
+  return { tables, builds, states, estimatedRetainedBytes };
+}
+
+export class RoomPatternHeuristic {
+  readonly tableSet: RoomPatternTableSet;
+  readonly tables: readonly PatternTable[];
+  readonly stats: RoomPatternStats;
+  readonly #board: CompiledSearchBoard;
+
+  /** Builds the tables from the topology, or reuses a set built for this board. */
   constructor(
     board: CompiledSearchBoard,
-    topology: BoardTopology,
+    source: BoardTopology | RoomPatternTableSet,
     budget?: ExactPreprocessingBudget,
   ) {
     this.#board = board;
-    const tables: PatternTable[] = [];
-    let estimatedRetainedBytes = 0;
-    checkExactPreprocessingBudget(budget);
-    for (const room of topology.rooms) {
-      for (const partition of roomPatternGoalPartitions(room, board)) {
-        checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
-        const targetBoxes: PatternBox[] = partition.map((goalCell) => ({
-          cell: goalCell,
-          label: board.goalLabelByCell[goalCell]!,
-        }));
-        const labels = new Set(targetBoxes.map((b) => b.label));
-        const result = relaxedReversePushTable(
-          board,
-          targetBoxes,
-          ROOM_PATTERN_MAX_STATES,
-          budget
-            ? {
-                ...budget,
-                baseMemoryBytes:
-                  budget.baseMemoryBytes + estimatedRetainedBytes,
-              }
-            : undefined,
-        );
-        this.stats.builds++;
-        this.stats.states += result.visited;
-        if (result.states.size > 0) {
-          tables.push({ labels, targetBoxes, result, room });
-          estimatedRetainedBytes +=
-            result.estimatedRetainedBytes + 256 + targetBoxes.length * 32;
-        }
-      }
-    }
-    this.tables = tables;
-    this.#estimatedRetainedBytes = estimatedRetainedBytes;
-    checkExactPreprocessingBudget(budget, estimatedRetainedBytes);
+    const tableSet = "rooms" in source
+      ? buildRoomPatternTableSet(board, source, budget)
+      : source;
+    this.tableSet = tableSet;
+    this.tables = tableSet.tables;
+    this.stats = { builds: tableSet.builds, states: tableSet.states, hits: 0 };
+    checkExactPreprocessingBudget(budget, tableSet.estimatedRetainedBytes);
   }
 
   get estimatedRetainedBytes(): number {
-    return this.#estimatedRetainedBytes;
+    return this.tableSet.estimatedRetainedBytes;
   }
 
   candidates(
