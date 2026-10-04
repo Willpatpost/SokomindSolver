@@ -35,6 +35,10 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
   const [result, setResult] = useState<SolverResult | null>(null);
   const [runFingerprint, setRunFingerprint] = useState<SolverRunFingerprint | null>(null);
   const [runSolverId, setRunSolverId] = useState<string | null>(null);
+  const [stopRequested, setStopRequested] = useState(false);
+  // The route stop() would keep: the client keeps the fewest-move incumbent
+  // that carried a route, the first on ties.
+  const [bestRoute, setBestRoute] = useState<NonNullable<SolverProgress["incumbent"]> | null>(null);
   const currentSessionRef = useRef(session);
   const prevKeyRef = useRef(sessionKey(session));
   const prevOpenRef = useRef(open);
@@ -46,6 +50,7 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
 
   const resetRunState = useCallback(() => {
     setProgress(null); setResult(null); setRunFingerprint(null); setRunSolverId(null);
+    setStopRequested(false); setBestRoute(null);
   }, []);
 
   const cancel = useCallback((reason = "Search cancelled by user") => {
@@ -55,6 +60,18 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
     setUiPhase("cancelling");
     setStatusMessage("Cancelling search.");
     appendLog("Cancellation requested.", "warning", elapsedRef.current);
+  }, [appendLog, uiPhase, runRef, setUiPhase, setStatusMessage, elapsedRef]);
+
+  // Ends the run like cancel, but the client resolves it with the best route
+  // the solver published, replay-verified, instead of discarding it.
+  const stop = useCallback(() => {
+    const run = runRef.current;
+    if (!run || uiPhase === "cancelling") return;
+    run.stop("Search stopped by user; keeping the best route");
+    setStopRequested(true);
+    setUiPhase("cancelling");
+    setStatusMessage("Stopping and keeping the best route.");
+    appendLog("Stop requested; keeping the best route so far.", "warning", elapsedRef.current);
   }, [appendLog, uiPhase, runRef, setUiPhase, setStatusMessage, elapsedRef]);
 
   useEffect(() => {
@@ -102,6 +119,10 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
         onProgress(u) {
           if (runTokenRef.current !== token) return;
           setProgress(u);
+          const incumbent = u.incumbent;
+          if (incumbent?.route !== undefined) {
+            setBestRoute((best) => (best === null || incumbent.moves < best.moves ? incumbent : best));
+          }
           setLiveElapsedMs((c) => Math.max(c, u.elapsedMs));
           const last = lastProgRef.current;
           const pc = last.phase !== u.phase;
@@ -142,5 +163,5 @@ export function useSolverProgress(opts: UseSolverProgressOptions) {
     clientRef, runTokenRef, runRef, startedAtRef, setLiveElapsedMs, resetLog,
     setUiPhase, setStatusMessage, setError, elapsedRef, resetRunState]);
 
-  return { progress, result, runFingerprint, runSolverId, start, cancel, resetRunState };
+  return { progress, result, runFingerprint, runSolverId, bestRoute, stopRequested, start, cancel, stop, resetRunState };
 }

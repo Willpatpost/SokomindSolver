@@ -348,6 +348,24 @@ export function SolverDialog({
                 </div>
               ) : null}
 
+              {solver.bestSoFar ? (
+                <div className={styles.bestSoFar}>
+                  <p>
+                    Best so far: {formatCount(solver.bestSoFar.moves)} moves
+                    {" · "}
+                    {formatCount(solver.bestSoFar.pushes)} pushes
+                  </p>
+                  <button
+                    className={styles.keepBest}
+                    disabled={!solver.canStop}
+                    onClick={() => solver.stop()}
+                    type="button"
+                  >
+                    {solver.stopRequested ? "Stopping…" : "Stop and keep best"}
+                  </button>
+                </div>
+              ) : null}
+
               <p
                 className={styles.liveStatus}
                 role="status"
@@ -471,7 +489,9 @@ export function SolverDialog({
                       <div>
                         <dt>Guarantee</dt>
                         <dd>
-                          {solver.proof?.kind === "optimal"
+                          {solver.keptBest
+                            ? "Best found before stopping"
+                            : solver.proof?.kind === "optimal"
                             ? "Proven optimal"
                             : solver.proof?.kind === "bounded"
                               ? `Best found (gap: ${formatGap(solver.proof.gap, solver.proof.kind)})`

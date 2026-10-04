@@ -6,6 +6,7 @@ import type {
   SolverProgress,
   SolverRequest,
   SolverResult,
+  SolverRunMetrics,
 } from "./contracts.ts";
 import {
   isSolverWorkerEvent,
@@ -15,7 +16,10 @@ import {
   type SolverWorkerEvent,
 } from "./protocol.ts";
 import { assertValidSolverRequest, assertValidSolverResult } from "./validation.ts";
-import { assertVerifiedSolverSolution } from "./verification.ts";
+import {
+  assertVerifiedSolverSolution,
+  solutionFromIncumbentRoute,
+} from "./verification.ts";
 
 export interface SolverClientMessageEvent {
   readonly data: unknown;
@@ -74,6 +78,12 @@ export interface SolverRunHandle {
   readonly jobId: string;
   readonly result: Promise<SolverResult>;
   cancel(reason?: string): void;
+  /**
+   * Cancels the run but keeps the best incumbent route the worker published:
+   * the result is then a replay-verified "solved" result with optimality
+   * "unknown". Without a published route it settles like `cancel()`.
+   */
+  stop(reason?: string): void;
 }
 
 export class SolverClientDisposedError extends Error {
@@ -119,6 +129,11 @@ interface ActiveClientRun {
   readonly resolve: (result: SolverResult) => void;
   readonly reject: (error: unknown) => void;
   readonly detachSignal: () => void;
+  /** Set by stop(), cleared by cancel(): the latest request wins. */
+  keepBest: boolean;
+  /** Fewest-move incumbent with a route; replay-verified only when kept. */
+  best?: NonNullable<SolverProgress["incumbent"]>;
+  lastProgress?: SolverProgress;
 }
 
 interface DiscoveryPromise {
@@ -127,6 +142,23 @@ interface DiscoveryPromise {
 }
 
 let nextJobNumber = 1;
+
+function metricsFromProgress(
+  progress: SolverProgress | undefined,
+): SolverRunMetrics {
+  return {
+    elapsedMs: progress?.elapsedMs ?? 0,
+    ...(progress?.expandedStates === undefined
+      ? {}
+      : { expandedStates: progress.expandedStates }),
+    ...(progress?.generatedStates === undefined
+      ? {}
+      : { generatedStates: progress.generatedStates }),
+    ...(progress?.counters === undefined
+      ? {}
+      : { counters: progress.counters }),
+  };
+}
 
 function defaultJobId(): string {
   const randomUuid = globalThis.crypto?.randomUUID?.();
@@ -246,6 +278,7 @@ export class SolverWorkerClient {
       detachSignal: () => {
         options.signal?.removeEventListener("abort", onAbort);
       },
+      keepBest: false,
     };
     this.#active = active;
 
@@ -268,12 +301,25 @@ export class SolverWorkerClient {
       cancel: (reason?: string) => {
         if (this.#active === active) this.cancel(reason);
       },
+      stop: (reason?: string) => {
+        if (this.#active === active) this.stop(reason);
+      },
     });
   }
 
   cancel(reason?: string): void {
+    this.#requestCancel(false, reason);
+  }
+
+  /** Cancels the active run but keeps its best published route; see SolverRunHandle.stop. */
+  stop(reason?: string): void {
+    this.#requestCancel(true, reason);
+  }
+
+  #requestCancel(keepBest: boolean, reason?: string): void {
     const active = this.#active;
     if (!active || this.#disposed) return;
+    active.keepBest = keepBest;
     try {
       this.#post({
         protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
@@ -370,6 +416,14 @@ export class SolverWorkerClient {
     if (!active || active.jobId !== event.jobId) return;
     // Worker is responsive — reset the cancellation watchdog if armed.
     this.#resetCancelWatchdog(active);
+    active.lastProgress = event.progress;
+    const incumbent = event.progress.incumbent;
+    if (
+      incumbent?.route !== undefined &&
+      (active.best === undefined || incumbent.moves < active.best.moves)
+    ) {
+      active.best = incumbent;
+    }
     try {
       active.options.onProgress?.(event.progress);
     } catch (error) {
@@ -385,16 +439,34 @@ export class SolverWorkerClient {
     if (!active || active.jobId !== event.jobId) return;
     try {
       assertValidSolverResult(event.result);
-      if (event.result.status === "solved") {
-        assertVerifiedSolverSolution(active.request, event.result.solution);
+      const result =
+        event.result.status === "cancelled"
+          ? this.#keptBest(active, event.result.metrics) ?? event.result
+          : event.result;
+      if (result.status === "solved") {
+        assertVerifiedSolverSolution(active.request, result.solution);
       }
-      this.#clearCancelWatchdog();
-      active.detachSignal();
-      this.#active = undefined;
-      active.resolve(event.result);
+      this.#resolveActive(active, result);
     } catch (error) {
       this.#settleActive(active, error);
     }
+  }
+
+  /**
+   * The result of a stopped run: its best published route, replayed against
+   * the request (a worker route is never trusted as sent). Undefined when the
+   * run was not stopped or no route arrived.
+   */
+  #keptBest(
+    active: ActiveClientRun,
+    metrics: SolverRunMetrics,
+  ): SolverResult | undefined {
+    if (!active.keepBest || active.best === undefined) return undefined;
+    return Object.freeze({
+      status: "solved",
+      solution: solutionFromIncumbentRoute(active.request, active.best),
+      metrics,
+    });
   }
 
   #handleFailure(
@@ -409,6 +481,14 @@ export class SolverWorkerClient {
     const active = this.#active;
     if (!active || active.jobId !== event.jobId) return;
     this.#settleActive(active, error);
+  }
+
+  #resolveActive(active: ActiveClientRun, result: SolverResult): void {
+    if (this.#active !== active) return;
+    this.#clearCancelWatchdog();
+    active.detachSignal();
+    this.#active = undefined;
+    active.resolve(result);
   }
 
   #settleActive(active: ActiveClientRun, error: unknown): void {
@@ -427,8 +507,9 @@ export class SolverWorkerClient {
    * Arms or re-arms the watchdog timer. After `cancel()` sends the protocol
    * command, the timer starts. If the worker does not respond (result, failure,
    * or even progress) within the deadline the worker is forcibly terminated,
-   * the run is rejected with a `SolverCancelledError`, and the client is
-   * retired because it no longer has a worker to talk to.
+   * the run is rejected with a `SolverCancelledError` (or, after `stop()`,
+   * resolved with its best published route), and the client is retired
+   * because it no longer has a worker to talk to.
    */
   #armCancelWatchdog(active: ActiveClientRun, reason?: string): void {
     if (!Number.isFinite(this.#cancelWatchdogMs)) return;
@@ -443,14 +524,26 @@ export class SolverWorkerClient {
       this.#disposed = true;
       this.#transport.removeEventListener("message", this.#onMessage);
       this.#transport.terminate?.();
-      this.#settleActive(
-        active,
-        new SolverCancelledError(
-          reason ??
-            "Solver worker terminated by cancellation watchdog " +
-              `after ${this.#cancelWatchdogMs}ms with no response`,
-        ),
-      );
+      let kept: SolverResult | undefined;
+      let keptError: unknown;
+      try {
+        kept = this.#keptBest(active, metricsFromProgress(active.lastProgress));
+      } catch (error) {
+        keptError = error;
+      }
+      if (kept) {
+        this.#resolveActive(active, kept);
+      } else {
+        this.#settleActive(
+          active,
+          keptError ??
+            new SolverCancelledError(
+              reason ??
+                "Solver worker terminated by cancellation watchdog " +
+                  `after ${this.#cancelWatchdogMs}ms with no response`,
+            ),
+        );
+      }
       this.#rejectDiscoveries(new SolverClientDisposedError());
       this.#onTerminated?.();
     }, this.#cancelWatchdogMs);

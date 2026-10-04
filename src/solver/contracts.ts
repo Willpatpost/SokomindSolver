@@ -147,6 +147,12 @@ export interface SolverProgress {
     moves: number;
     pushes: number;
     objectiveScore: number;
+    /**
+     * The incumbent route as a compact action log (U, D, L, R), one letter per
+     * move. Walk and push kinds are not sent: receivers derive them by replay,
+     * so the route is trusted only after it replays to a solved state.
+     */
+    route?: string;
   }>;
   readonly detail?: string;
   readonly lowerBound?: number;

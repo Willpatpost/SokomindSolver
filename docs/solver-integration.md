@@ -353,7 +353,10 @@ Use `isSolverWorkerCommand()` and `isSolverWorkerEvent()` before dispatch.
 Those guards recursively validate the envelope and nested request, geometry,
 snapshot, metadata, progress, and result data. The assertion variants expose
 structured validation failures. Reject protocol-version mismatches rather than
-guessing compatibility.
+guessing compatibility. The protocol is version 2: version 2 added the
+optional `progress.incumbent.route`, an action log of `U`, `D`, `L` and `R`
+with one action per incumbent move. Step kinds are never sent; every reader
+derives them by replay.
 
 Maintain one run-scoped cancellation controller per `jobId`. Delete it after a
 terminal result or failure. A cancelled job must not emit later progress or
@@ -371,6 +374,20 @@ the worker, rejects the run as cancelled, and retires itself: later calls throw
 `SolverClientDisposedError` rather than posting to a dead worker. Its
 `onTerminated` option notifies the owner, and the solver dialog and Solver Lab
 use it to start a fresh worker.
+
+`SolverWorkerHost` replays every new route against the request before it
+forwards the progress. A route that is blocked, does not end solved, or does
+not match the incumbent's move and push counts fails the job like any other
+invalid progress. The client keeps the fewest-move incumbent that carried a
+route; on ties the first one stays. `stop()` (on the client or a run handle)
+sends the same `solver/cancel` as `cancel()`, but when the worker answers
+cancelled, or the watchdog retires it, the client replays the kept route again
+and resolves the run as solved with optimality `"unknown"` and no proof. The
+worker's cancelled metrics, or after the watchdog the last progress metrics,
+become the result's metrics. Without a kept route, `stop()` settles like
+`cancel()`; a solved worker result that arrives first is returned as sent; and
+`cancel()` after `stop()` discards the route. The solver dialog shows the kept
+route as "Best so far" with a **Stop and keep best** button.
 
 The classic engine yields with a macrotask rather than an already-resolved
 promise. That gives the worker event loop a chance to receive cancellation
@@ -461,7 +478,11 @@ describing the quality guarantee of the solution:
   `upperBound` or `gap`. Result status must be `"unsolved"`.
 
 Quality and optimal progress carries the best verified route's move count as
-`incumbent` and `upperBound` from the `"harvesting"` phase onward. Progress
+`incumbent` and `upperBound` from the `"harvesting"` phase onward. Sokomind
+1.9.0 also sends that route as `incumbent.route`, including during the proof
+while the kernel's incumbent still has the route's move count. The exact
+kernels report counts only, so a shorter route a single-lane kernel finds
+reaches the client only in the final result. Progress
 adds `lowerBound` and `gap` only during the optimal `"proving"` phase. Bounds
 tighten monotonically.
 

@@ -1,3 +1,4 @@
+import { encodeActionLog } from "../../core/index.ts";
 import type {
   SolverProgress,
   SolverRequest,
@@ -71,6 +72,8 @@ export interface SearchRunState {
   qualityOperatorStalls: number;
   /** Best replay-verified route published as the incumbent (quality and optimal). */
   publishedIncumbent: SolverSolution | undefined;
+  /** publishedIncumbent as an action log, encoded once per new incumbent. */
+  publishedRoute: string | undefined;
   /** Charged to the state limits; set once a small-board proof ends. */
   proofFirstWork: ProofFirstWork | undefined;
   aggregateGeneration: number;
@@ -312,7 +315,8 @@ export function report(
 /**
  * Progress fields for the published incumbent. Its move count is a verified
  * upper bound on the optimum that only falls, so every later progress event
- * can repeat it without breaking bound monotonicity.
+ * can repeat it without breaking bound monotonicity. The route travels with
+ * it so a stopped run can keep it (protocol v2).
  */
 export function incumbentProgress(
   run: SearchRunState,
@@ -324,6 +328,7 @@ export function incumbentProgress(
       moves: incumbent.moves,
       pushes: incumbent.pushes,
       objectiveScore: incumbent.objectiveScore,
+      ...(run.publishedRoute === undefined ? {} : { route: run.publishedRoute }),
     }),
     upperBound: incumbent.moves,
   };
@@ -342,6 +347,7 @@ export function recordIncumbent(
     return false;
   }
   run.publishedIncumbent = solution;
+  run.publishedRoute = encodeActionLog(solution.steps.map((step) => step.direction));
   return true;
 }
 

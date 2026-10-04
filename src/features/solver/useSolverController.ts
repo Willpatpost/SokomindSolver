@@ -128,6 +128,12 @@ export function useSolverController({
       }
     : null;
   const running = uiPhase === "running" || uiPhase === "cancelling";
+  const bestSoFar = running ? run.bestRoute : null;
+  const canStop = uiPhase === "running" && bestSoFar !== null;
+  // A stopped run that resolved solved without a proof returned the kept
+  // route; a proof that completed first keeps its own guarantee.
+  const keptBest =
+    run.stopRequested && run.result?.status === "solved" && !run.result.proof;
   const currentFingerprint = fingerprintFor(session);
   const canPlay =
     run.result?.status === "solved" &&
@@ -169,8 +175,13 @@ export function useSolverController({
     peakFrontierSize,
     counters,
     canPlay,
+    bestSoFar,
+    canStop,
+    keptBest,
+    stopRequested: run.stopRequested,
     start: run.start,
     cancel: run.cancel,
+    stop: run.stop,
     retryConnection,
   } as const;
 }

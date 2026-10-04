@@ -21,7 +21,10 @@ import {
   assertValidSolverProgress,
   assertValidSolverResult,
 } from "./validation.ts";
-import { assertVerifiedSolverSolution } from "./verification.ts";
+import {
+  assertVerifiedSolverSolution,
+  solutionFromIncumbentRoute,
+} from "./verification.ts";
 
 interface SolverMessageEvent {
   readonly data: unknown;
@@ -49,6 +52,8 @@ interface ActiveRun {
   readonly startedAt: number;
   readonly cancellation: SolverCancellationController;
   lastProgress?: SolverProgress;
+  /** Last incumbent whose route replayed; unchanged routes skip the replay. */
+  verifiedIncumbent?: SolverProgress["incumbent"];
   peakFrontierSize: number;
 }
 
@@ -60,6 +65,19 @@ class SolverWorkerRuntimeError extends Error {
     this.name = "SolverWorkerRuntimeError";
     this.code = code;
   }
+}
+
+function sameIncumbent(
+  a: SolverProgress["incumbent"],
+  b: NonNullable<SolverProgress["incumbent"]>,
+): boolean {
+  return (
+    a !== undefined &&
+    a.route === b.route &&
+    a.moves === b.moves &&
+    a.pushes === b.pushes &&
+    a.objectiveScore === b.objectiveScore
+  );
 }
 
 function inferJobId(value: unknown): string | undefined {
@@ -276,6 +294,16 @@ export class SolverWorkerHost {
               `Progress gap increased from ${prev.gap} to ${progress.gap}`,
             );
           }
+        }
+        // A published route must replay to a solved state before it leaves
+        // the worker; the client may later return it as a kept result.
+        const incumbent = progress.incumbent;
+        if (
+          incumbent?.route !== undefined &&
+          !sameIncumbent(run.verifiedIncumbent, incumbent)
+        ) {
+          solutionFromIncumbentRoute(command.request, incumbent);
+          run.verifiedIncumbent = incumbent;
         }
       } catch (error) {
         invalidProgress = error;

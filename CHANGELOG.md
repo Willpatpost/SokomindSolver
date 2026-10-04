@@ -30,6 +30,10 @@ published a stable release.
 - Deadlock-table telemetry: `deadlockTableWorkUnits` and
   `deadlockTableTruncated`. PDB telemetry: `pdbDegradedPartitions` and
   `pdbMemoryFallbacks`. The kernels also report `firstExpansionMs`.
+- Solver progress can carry the incumbent's route (worker protocol 2), which
+  the worker host and the client both replay. The solver dialog shows the best
+  route so far, and **Stop and keep best** ends the search with that route as
+  an unproven solved result.
 
 ### Changed
 
@@ -43,7 +47,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
-  `sokomind-solver` 1.8.0. Sokomind 1.3.0 marked the earlier Quality
+  `sokomind-solver` 1.9.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.

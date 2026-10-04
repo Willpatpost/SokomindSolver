@@ -242,11 +242,11 @@ fails when the generated facts below differ from source.
 | `classic-greedy` | `1.0.0` | first-found |
 | `classic-astar` | `2.2.5` | move-optimal proof |
 | `classic-ida-star` | `2.2.3` | move-optimal proof |
-| `sokomind-solver` | `1.8.0` | bounded discovery/rewrite/proof portfolio |
+| `sokomind-solver` | `1.9.0` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
-- Outer worker protocol: `1`
+- Outer worker protocol: `2`
 - IDA* checkpoint schema: `4`
 - Sokomind mode: `fast`
 - Proof algorithm: `auto`; proof parallelism: **1**

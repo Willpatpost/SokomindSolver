@@ -164,6 +164,29 @@ describe("solver runtime validation", () => {
     );
   });
 
+  it("accepts an incumbent route only as one action per incumbent move", () => {
+    const progress = (incumbent: object) => ({ phase: "improving", elapsedMs: 3, incumbent });
+    const counts = { moves: 4, pushes: 1, objectiveScore: 4 };
+
+    assert.equal(isSolverProgress(progress(counts)), true);
+    assert.equal(isSolverProgress(progress({ ...counts, route: "RLRR" })), true);
+    assert.equal(isSolverProgress(progress({ ...counts, route: "rlrr" })), false);
+    assert.equal(isSolverProgress(progress({ ...counts, route: ["R", "L", "R", "R"] })), false);
+    assert.equal(isSolverProgress(progress({ ...counts, route: "RR" })), false);
+    assert.equal(isSolverProgress(progress({ ...counts, route: "RLRR", kinds: "wwwp" })), false);
+
+    // Version 2 added the route; an event from a version 1 worker is refused.
+    const event = {
+      protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
+      type: "solver/progress",
+      jobId: "job-1",
+      progress: progress({ ...counts, route: "RLRR" }),
+    };
+    assert.equal(SOLVER_WORKER_PROTOCOL_VERSION, 2);
+    assert.equal(isSolverWorkerEvent(event), true);
+    assert.equal(isSolverWorkerEvent({ ...event, protocolVersion: 1 }), false);
+  });
+
   it("strictly validates nested command and event payloads", () => {
     const command = {
       protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,

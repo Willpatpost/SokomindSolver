@@ -5,7 +5,7 @@ import {
   createHintWorkerConnection,
   HintWorkerTimeoutError,
 } from "../../src/features/game/hint-worker-runtime.ts";
-import type { SolverWorkerCommand } from "../../src/solver/protocol.ts";
+import { SOLVER_WORKER_PROTOCOL_VERSION, type SolverWorkerCommand } from "../../src/solver/protocol.ts";
 import { createSession, stepSnapshot } from "../../src/core/game-session.ts";
 import { DIRECTIONS, type Direction, type PuzzleDefinition } from "../../src/core/model.ts";
 import type { SolverResult, SolverSolution } from "../../src/solver/contracts.ts";
@@ -127,7 +127,7 @@ describe("hint worker connection", () => {
 
     const discovery = connection.discover();
     worker.emitMessage({
-      protocolVersion: 1,
+      protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
       type: "solver/ready",
       solvers: [metadata],
     });
@@ -236,7 +236,7 @@ function solvedResultEvent(jobId: string, solution: SolverSolution): unknown {
     metrics: { elapsedMs: 1 },
   };
   return {
-    protocolVersion: 1,
+    protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
     type: "solver/result",
     jobId,
     result,
@@ -261,7 +261,7 @@ describe("hint correctness", () => {
 
     const discovery = connection.discover();
     worker.emitMessage({
-      protocolVersion: 1,
+      protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION,
       type: "solver/ready",
       solvers: [metadata],
     });

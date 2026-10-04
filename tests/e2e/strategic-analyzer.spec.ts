@@ -37,7 +37,7 @@ test("the public quality worker solves Grand Hall through automatic rescheduling
         if (data.type === "solver/failure") {finish(); reject(new Error(data.error.message));}
         if (data.type === "solver/result") {finish(); resolve({result: data.result, rescheduled});}
       };
-      worker.postMessage({type: "solver/run", protocolVersion: 1, jobId: "quality-rescheduling",
+      worker.postMessage({type: "solver/run", protocolVersion: 2, jobId: "quality-rescheduling",
         solverId: "sokomind-solver", request});
     }), {asset, request});
   await testInfo.attach("grand-hall-public-quality.json", {

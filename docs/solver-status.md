@@ -250,6 +250,15 @@ unproven at 120 s with unchanged routes (job 47199). A* lanes keep their
 states, so peak process memory rises on large (3.1 to 4.0 GB) and
 theme-parking (3.2 to 4.9 GB), and falls on master-exchange and theme-museum.
 
+Sokomind 1.9.0 sends each published route with its progress incumbent
+(worker protocol 2), so the solver dialog can offer **Stop and keep best**.
+The worker host replays a route before it leaves the worker, and the client
+replays it again before returning it. A kept route is a solved result with
+optimality `"unknown"` and no proof, whatever mode produced it: a stopped run
+never claims a bound or a proof. A proof that completes before the stop
+arrives keeps its own result. Search and proof logic are unchanged, so the
+proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

@@ -793,3 +793,59 @@ describe("SolverWorkerHost - uncovered paths", () => {
     // No error means it works
   });
 });
+
+describe("SolverWorkerHost - incumbent routes", () => {
+  type Incumbent = NonNullable<SolverProgress["incumbent"]>;
+  const routedAdapter = (incumbent: Incumbent) =>
+    testAdapter(async (_request, context) => {
+      context.reportProgress({ phase: "improving", elapsedMs: 1, incumbent });
+      context.reportProgress({ phase: "improving", elapsedMs: 2, incumbent });
+      return solvedResult();
+    });
+
+  async function runRouted(incumbent: Incumbent, jobId: string) {
+    const transport = new MockTransport();
+    const host = new SolverWorkerHost(
+      new SolverRegistry([routedAdapter(incumbent)]),
+      transport,
+    );
+    host.start();
+    transport.emit(runCommand(jobId));
+    await flushMicrotasks();
+    host.dispose();
+    return transport.posted;
+  }
+
+  it("forwards a route that replays to a solved state", async () => {
+    const posted = await runRouted(
+      { moves: 1, pushes: 1, objectiveScore: 1, route: "R" },
+      "route-ok",
+    );
+
+    const progress = posted.filter((event) => event.type === "solver/progress");
+    assert.equal(progress.length, 2);
+    for (const event of progress) {
+      assert.equal(event.progress.incumbent?.route, "R");
+    }
+    const result = posted.find((event) => event.type === "solver/result");
+    assert.ok(result && result.type === "solver/result");
+    assert.equal(result.result.status, "solved");
+  });
+
+  it("fails the run before publishing a blocked or miscounted route", async () => {
+    for (const [jobId, incumbent, message] of [
+      ["route-blocked", { moves: 1, pushes: 0, objectiveScore: 1, route: "L" }, /step 1 is blocked/u],
+      ["route-miscounted", { moves: 1, pushes: 0, objectiveScore: 1, route: "R" }, /push/iu],
+    ] as const) {
+      const posted = await runRouted(incumbent, jobId);
+
+      assert.equal(posted.some((event) => event.type === "solver/progress"), false, jobId);
+      assert.equal(posted.some((event) => event.type === "solver/result"), false, jobId);
+      const failure = posted.find((event) => event.type === "solver/failure");
+      assert.ok(failure && failure.type === "solver/failure", jobId);
+      assert.equal(failure.jobId, jobId);
+      assert.equal(failure.error.name, "SolverSolutionVerificationError");
+      assert.match(failure.error.message, message);
+    }
+  });
+});

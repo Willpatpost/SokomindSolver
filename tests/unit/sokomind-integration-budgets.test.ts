@@ -45,7 +45,7 @@ function runState(request = requestFor(), runContext = context()): SearchRunStat
     lastProgressAt: -Infinity, progressPhase: "searching", initialSolutionMoves: 0,
     bestSolutionMoves: 0, solutionImprovements: 0, suppressedImprovementErrors: 0,
     suppressedHarvestErrors: 0, qualitySlicesCompleted: 0, qualityOperatorStalls: 0,
-    publishedIncumbent: undefined, proofFirstWork: undefined, aggregateGeneration: 1, cachedAggregate: null,
+    publishedIncumbent: undefined, publishedRoute: undefined, proofFirstWork: undefined, aggregateGeneration: 1, cachedAggregate: null,
   };
 }
 
@@ -83,7 +83,7 @@ describe("Sokomind integration resource contracts", () => {
     assert.equal(recordIncumbent(run, long), true);
     assert.equal(progress.length, 0, "recording alone does not report");
     assert.deepEqual(incumbentProgress(run), {
-      incumbent: { moves: 5, pushes: 2, objectiveScore: long.objectiveScore },
+      incumbent: { moves: 5, pushes: 2, objectiveScore: long.objectiveScore, route: "RLRDD" },
       upperBound: 5,
     });
     assert.equal(publishIncumbent(run, short, "Improved to 3 moves."), true);
@@ -93,6 +93,7 @@ describe("Sokomind integration resource contracts", () => {
     assert.equal(progress.length, 1);
     assert.equal(progress[0].upperBound, 3);
     assert.equal(progress[0].incumbent?.moves, 3);
+    assert.equal(progress[0].incumbent?.route, "RDD", "the route travels with the incumbent");
     assert.equal(progress[0].lowerBound, undefined);
     assert.equal(progress[0].gap, undefined);
   });

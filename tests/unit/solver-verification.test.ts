@@ -7,11 +7,13 @@ import {
   type PuzzleDefinition,
 } from "../../src/core/index.ts";
 import type {
+  SolverProgress,
   SolverRequest,
   SolverSolution,
 } from "../../src/solver/contracts.ts";
 import {
   assertVerifiedSolverSolution,
+  solutionFromIncumbentRoute,
   SolverSolutionVerificationError,
   verifySolverSolution,
 } from "../../src/solver/verification.ts";
@@ -220,6 +222,60 @@ describe("solver solution verification", () => {
       (error: unknown) =>
         error instanceof SolverSolutionVerificationError &&
         error.failure.code === "illegal-step",
+    );
+  });
+});
+
+describe("incumbent route replay", () => {
+  type Incumbent = NonNullable<SolverProgress["incumbent"]>;
+  const incumbent = (route: string, pushes: number): Incumbent => ({
+    moves: route.length,
+    pushes,
+    objectiveScore: route.length,
+    route,
+  });
+  const rejects = (
+    request: SolverRequest,
+    value: Incumbent,
+    code: string,
+    stepIndex?: number,
+  ) =>
+    assert.throws(
+      () => solutionFromIncumbentRoute(request, value),
+      (error: unknown) =>
+        error instanceof SolverSolutionVerificationError &&
+        error.failure.code === code &&
+        (stepIndex === undefined || error.failure.stepIndex === stepIndex),
+    );
+
+  it("derives step kinds by replay and never claims optimality", () => {
+    const request = makeRequest(["OOOOOO", "OR XSO", "OOOOOO"]);
+    const solution = solutionFromIncumbentRoute(request, incumbent("RR", 1));
+
+    assert.deepEqual(solution.steps, [
+      { direction: "right", kind: "walk" },
+      { direction: "right", kind: "push" },
+    ]);
+    assert.equal(solution.moves, 2);
+    assert.equal(solution.pushes, 1);
+    assert.equal(solution.objectiveScore, 2);
+    assert.equal(solution.optimality, "unknown");
+    assert.ok(Object.isFrozen(solution) && Object.isFrozen(solution.steps));
+    assert.equal(verifySolverSolution(request, solution).valid, true);
+  });
+
+  it("rejects routes that are missing, blocked, unfinished, or miscounted", () => {
+    const request = makeRequest(["OOOOOO", "OR XSO", "OOOOOO"]);
+
+    rejects(request, { moves: 2, pushes: 1, objectiveScore: 2 }, "invalid-solution");
+    rejects(request, incumbent("RU", 1), "illegal-step", 1);
+    rejects(request, incumbent("R", 0), "unsolved");
+    rejects(request, incumbent("RR", 0), "invalid-solution");
+    rejects(request, { ...incumbent("RR", 1), moves: 3, objectiveScore: 3 }, "invalid-solution");
+    rejects(
+      { ...request, board: "not a board" } as unknown as SolverRequest,
+      incumbent("RR", 1),
+      "invalid-request",
     );
   });
 });

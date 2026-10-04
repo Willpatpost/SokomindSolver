@@ -183,7 +183,7 @@ async function solveInBrowser(
 
   const result = await page.evaluate<DeterministicFingerprint, { url: string; req: unknown }>(
     async (args) => {
-      const PROTOCOL_VERSION = 1;
+      const PROTOCOL_VERSION = 2;
 
       return new Promise((resolve, reject) => {
         const timeoutId = setTimeout(

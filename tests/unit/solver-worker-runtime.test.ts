@@ -10,6 +10,7 @@ import type {
   SolverAdapter,
   SolverCapabilities,
   SolverExecutionContext,
+  SolverProgress,
   SolverRequest,
   SolverResult,
 } from "../../src/solver/contracts.ts";
@@ -22,6 +23,7 @@ import {
   SolverRunSupersededError,
   SolverWorkerClient,
 } from "../../src/solver/worker-client.ts";
+import { SolverSolutionVerificationError } from "../../src/solver/verification.ts";
 import { SolverWorkerHost } from "../../src/solver/worker-host.ts";
 import { SolverRegistry } from "../../src/solver/registry.ts";
 
@@ -592,5 +594,187 @@ describe("solver worker client cancellation watchdog", () => {
     await assert.rejects(next.result, SolverClientDisposedError);
     assert.equal(transport.terminated, 1);
     assert.equal(terminatedEvents, 0);
+  });
+});
+
+describe("solver worker client stop and keep best", () => {
+  type Incumbent = NonNullable<SolverProgress["incumbent"]>;
+  // One walk then one push solves it, so routes of several lengths replay.
+  const walkPuzzle: PuzzleDefinition = {
+    id: "runtime-walk",
+    title: "Runtime walk",
+    difficulty: "tutorial",
+    boxes: 1,
+    rows: ["OOOOOO", "OR XSO", "OOOOOO"],
+  };
+  const walkRequest = (): SolverRequest => {
+    const session = createSession(walkPuzzle);
+    return { board: session.board, snapshot: session.snapshot, objective: { kind: "moves" } };
+  };
+  const routed = (route: string): Incumbent => ({
+    moves: route.length, pushes: 1, objectiveScore: route.length, route,
+  });
+  const silentClient = (options: { cancelWatchdogMs?: number; onTerminated?: () => void } = {}) => {
+    const transport = new SilentTransport();
+    let nextId = 1;
+    const client = new SolverWorkerClient(transport, {
+      createJobId: () => `job-${nextId++}`,
+      cancelWatchdogMs: Number.POSITIVE_INFINITY,
+      ...options,
+    });
+    const emit = (jobId: string, type: "solver/progress" | "solver/result", payload: object) =>
+      transport.emit({ protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION, type, jobId, ...payload });
+    const progress = (jobId: string, incumbent?: Incumbent, extra: object = {}) =>
+      emit(jobId, "solver/progress", {
+        progress: { phase: "improving", elapsedMs: 1, ...extra, ...(incumbent ? { incumbent } : {}) },
+      });
+    const cancelled = (jobId: string, metrics: object = { elapsedMs: 9 }) =>
+      emit(jobId, "solver/result", { result: { status: "cancelled", metrics } });
+    return { transport, client, emit, progress, cancelled };
+  };
+  const directions = (result: SolverResult) =>
+    result.status === "solved"
+      ? result.solution.steps.map(({ direction, kind }) => `${direction}:${kind}`)
+      : [];
+
+  it("keeps the fewest-move route, the first on ties, as an unproven solved result", async () => {
+    const { transport, client, progress, cancelled } = silentClient();
+
+    const tied = client.run("test-solver", walkRequest());
+    progress("job-1", routed("RLRR"));
+    progress("job-1", routed("RRLR"));
+    // Kernel progress reports counts only; a route-less incumbent is never kept.
+    progress("job-1", { moves: 1, pushes: 1, objectiveScore: 1 });
+    tied.stop("Keep best");
+    assert.deepEqual(transport.sent.at(-1), {
+      protocolVersion: SOLVER_WORKER_PROTOCOL_VERSION, type: "solver/cancel", jobId: "job-1", reason: "Keep best",
+    });
+    cancelled("job-1", { elapsedMs: 9, expandedStates: 5 });
+    const kept = await tied.result;
+    assert.deepEqual(directions(kept), ["right:walk", "left:walk", "right:walk", "right:push"]);
+    assert.ok(kept.status === "solved");
+    assert.equal(kept.solution.moves, 4);
+    assert.equal(kept.solution.optimality, "unknown");
+    assert.equal(kept.proof, undefined);
+    assert.deepEqual(kept.metrics, { elapsedMs: 9, expandedStates: 5 });
+
+    const improved = client.run("test-solver", walkRequest());
+    progress("job-2", routed("RLRR"));
+    progress("job-2", routed("RR"));
+    progress("job-2", routed("RRLR"));
+    improved.stop();
+    cancelled("job-2");
+    assert.deepEqual(directions(await improved.result), ["right:walk", "right:push"]);
+    client.dispose();
+  });
+
+  it("settles as cancelled without a route, after cancel, or after a later cancel", async () => {
+    const { client, progress, cancelled } = silentClient();
+
+    const unrouted = client.run("test-solver", walkRequest());
+    progress("job-1", { moves: 2, pushes: 1, objectiveScore: 2 });
+    unrouted.stop();
+    cancelled("job-1");
+    assert.equal((await unrouted.result).status, "cancelled");
+
+    const cancelledRun = client.run("test-solver", walkRequest());
+    progress("job-2", routed("RR"));
+    cancelledRun.cancel();
+    cancelled("job-2");
+    assert.equal((await cancelledRun.result).status, "cancelled");
+
+    // The latest request wins: cancel after stop discards the route.
+    const overridden = client.run("test-solver", walkRequest());
+    progress("job-3", routed("RR"));
+    overridden.stop();
+    overridden.cancel();
+    cancelled("job-3");
+    assert.equal((await overridden.result).status, "cancelled");
+    client.dispose();
+  });
+
+  it("returns a solved worker result as sent even after stop", async () => {
+    const { client, emit, progress } = silentClient();
+    const run = client.run("test-solver", walkRequest());
+    progress("job-1", routed("RLRR"));
+    run.stop();
+    const solution = {
+      steps: [{ direction: "right", kind: "walk" }, { direction: "right", kind: "push" }],
+      moves: 2, pushes: 1, objective: { kind: "moves" }, objectiveScore: 2, optimality: "unknown",
+    };
+    emit("job-1", "solver/result", { result: { status: "solved", solution, metrics: { elapsedMs: 3 } } });
+    const result = await run.result;
+    assert.ok(result.status === "solved");
+    assert.equal(result.solution.moves, 2);
+    assert.deepEqual(result.metrics, { elapsedMs: 3 });
+    client.dispose();
+  });
+
+  it("rejects a kept route that does not replay", async () => {
+    const { client, progress, cancelled } = silentClient();
+    const run = client.run("test-solver", walkRequest());
+    progress("job-1", routed("RU"));
+    run.stop();
+    const rejected = assert.rejects(
+      run.result,
+      (error: unknown) =>
+        error instanceof SolverSolutionVerificationError &&
+        error.failure.code === "illegal-step" &&
+        error.failure.stepIndex === 1,
+    );
+    cancelled("job-1");
+    await rejected;
+    client.dispose();
+  });
+
+  it("resolves the kept route when the watchdog retires a stopped worker", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let terminatedEvents = 0;
+    const { transport, client, progress } = silentClient({
+      cancelWatchdogMs: 1_000,
+      onTerminated: () => { terminatedEvents += 1; },
+    });
+    const run = client.run("test-solver", walkRequest());
+    progress("job-1", routed("RR"), { elapsedMs: 7, expandedStates: 3, counters: { lanes: 2 } });
+    run.stop();
+    t.mock.timers.tick(1_000);
+
+    assert.equal(transport.terminated, 1);
+    assert.equal(terminatedEvents, 1);
+    const result = await run.result;
+    assert.deepEqual(directions(result), ["right:walk", "right:push"]);
+    assert.deepEqual(result.metrics, { elapsedMs: 7, expandedStates: 3, counters: { lanes: 2 } });
+    assert.throws(() => client.run("test-solver", walkRequest()), SolverClientDisposedError);
+  });
+
+  it("keeps a host-verified route end to end and aborts the adapter", async () => {
+    const pending = deferred<SolverResult>();
+    let signal: AbortSignal | undefined;
+    const [mainTransport, workerTransport] = linkedTransports();
+    const host = new SolverWorkerHost(
+      new SolverRegistry([
+        adapter(async (_request, context) => {
+          signal = context.signal;
+          context.reportProgress({ phase: "improving", elapsedMs: 2, incumbent: routed("RLRR") });
+          return pending.promise;
+        }),
+      ]),
+      workerTransport,
+    );
+    host.start();
+    const client = new SolverWorkerClient(mainTransport, { createJobId: () => "job-stop" });
+
+    const handle = client.run("test-solver", walkRequest());
+    await flushMessages();
+    handle.stop();
+    const result = await handle.result;
+    assert.deepEqual(directions(result), ["right:walk", "left:walk", "right:walk", "right:push"]);
+    assert.equal(signal?.aborted, true);
+    assert.equal(host.activeJobCount, 0);
+
+    pending.resolve(solvedResult());
+    await flushMessages();
+    client.dispose();
+    host.dispose();
   });
 });

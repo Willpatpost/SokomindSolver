@@ -1,4 +1,4 @@
-import type { ParsedBoard } from "../core/index.ts";
+import { isActionLog, type ParsedBoard } from "../core/index.ts";
 import type {
   SolverMetadata,
   SolverProgress,
@@ -136,7 +136,7 @@ function collectProgressIssues(value: unknown): Issues {
       valid =
         checkExactKeys(
           value.incumbent,
-          ["moves", "pushes", "objectiveScore"],
+          ["moves", "pushes", "objectiveScore", "route"],
           "progress.incumbent",
           issues,
         ) && valid;
@@ -158,6 +158,24 @@ function collectProgressIssues(value: unknown): Issues {
           "progress.incumbent.objectiveScore",
           issues,
         ) && valid;
+      const route = value.incumbent.route;
+      if (route !== undefined) {
+        if (!isActionLog(route)) {
+          valid =
+            issue(
+              issues,
+              "progress.incumbent.route",
+              "must be an action log of U, D, L, and R",
+            ) && valid;
+        } else if (route.length !== value.incumbent.moves) {
+          valid =
+            issue(
+              issues,
+              "progress.incumbent.route",
+              "must have one action per incumbent move",
+            ) && valid;
+        }
+      }
     }
   }
   if (value.detail !== undefined && typeof value.detail !== "string") {

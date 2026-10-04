@@ -1,8 +1,12 @@
 import {
+  decodeActionLog,
+  isActionLog,
   stepSnapshot,
   type GameSnapshot,
 } from "../core/index.ts";
 import type {
+  SolutionStep,
+  SolverProgress,
   SolverRequest,
   SolverSolution,
 } from "./contracts.ts";
@@ -60,6 +64,22 @@ function failure(
   });
 }
 
+function requestFailure(
+  request: SolverRequest,
+): SolverVerificationFailure | undefined {
+  try {
+    assertValidSolverRequest(request);
+    return undefined;
+  } catch (error) {
+    const detail =
+      error instanceof SolverValidationError ? error.message : "invalid request";
+    return failure(
+      "invalid-request",
+      `Cannot verify against an invalid solver request: ${detail}`,
+    );
+  }
+}
+
 /**
  * Treats a solver result as untrusted input and replays every step through the
  * core transition API. A solution is accepted only when every declared action
@@ -70,16 +90,8 @@ export function verifySolverSolution(
   request: SolverRequest,
   solution: SolverSolution,
 ): SolverVerificationResult {
-  try {
-    assertValidSolverRequest(request);
-  } catch (error) {
-    const detail =
-      error instanceof SolverValidationError ? error.message : "invalid request";
-    return failure(
-      "invalid-request",
-      `Cannot verify against an invalid solver request: ${detail}`,
-    );
-  }
+  const invalidRequest = requestFailure(request);
+  if (invalidRequest) return invalidRequest;
 
   try {
     assertValidSolverSolution(solution);
@@ -148,4 +160,54 @@ export function assertVerifiedSolverSolution(
   const result = verifySolverSolution(request, solution);
   if (!result.valid) throw new SolverSolutionVerificationError(result);
   return result.finalSnapshot;
+}
+
+/**
+ * Rebuilds a progress incumbent's route as a solution. The route is untrusted:
+ * each action replays through the core transition API, walk/push kinds come
+ * from that replay, and the declared counts and the solved state are checked
+ * as for a returned solution. The solution never claims optimality. Throws
+ * SolverSolutionVerificationError when the route does not verify.
+ */
+export function solutionFromIncumbentRoute(
+  request: SolverRequest,
+  incumbent: NonNullable<SolverProgress["incumbent"]>,
+): SolverSolution {
+  const invalidRequest = requestFailure(request);
+  if (invalidRequest) throw new SolverSolutionVerificationError(invalidRequest);
+  const route = incumbent.route;
+  if (!isActionLog(route)) {
+    throw new SolverSolutionVerificationError(
+      failure("invalid-solution", "The incumbent carries no valid route."),
+    );
+  }
+
+  const steps: SolutionStep[] = [];
+  let snapshot = request.snapshot;
+  for (const [stepIndex, direction] of decodeActionLog(route).entries()) {
+    const transition = stepSnapshot(request.board, snapshot, direction);
+    if (!transition.moved) {
+      throw new SolverSolutionVerificationError(
+        failure(
+          "illegal-step",
+          `Incumbent route step ${stepIndex + 1} is blocked.`,
+          stepIndex,
+        ),
+      );
+    }
+    const kind: SolutionStep["kind"] = transition.pushed ? "push" : "walk";
+    steps.push(Object.freeze({ direction, kind }));
+    snapshot = transition.snapshot;
+  }
+
+  const solution: SolverSolution = Object.freeze({
+    steps: Object.freeze(steps),
+    moves: incumbent.moves,
+    pushes: incumbent.pushes,
+    objective: request.objective,
+    objectiveScore: incumbent.objectiveScore,
+    optimality: "unknown",
+  });
+  assertVerifiedSolverSolution(request, solution);
+  return solution;
 }

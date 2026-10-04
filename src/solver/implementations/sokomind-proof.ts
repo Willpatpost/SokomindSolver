@@ -6,6 +6,7 @@ import type {
   SolverRunMetrics,
   SolverSolution,
 } from "../contracts.ts";
+import { encodeActionLog } from "../../core/index.ts";
 import { verifySolverSolution } from "../verification.ts";
 import type { SokomindRequestOptions } from "./sokomind-options.ts";
 import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "./sokomind-worker-limits.ts";
@@ -40,6 +41,11 @@ export interface ProofCheckpointOptions {
   readonly checkpoint?: IdaStarCheckpoint;
   readonly onCheckpoint?: (checkpoint: IdaStarCheckpoint) => void;
   readonly solverVersion?: string;
+}
+
+/** The action log a verified route publishes with its progress incumbent. */
+function routeOf(solution: SolverSolution): string {
+  return encodeActionLog(solution.steps.map((step) => step.direction));
 }
 
 export function remainingProofLimits(
@@ -193,12 +199,21 @@ export async function runSequentialProof(
     ...request,
     limits: proofLimits,
   };
+  const discoveryRoute = routeOf(discoveryResult.solution);
   const proofContext: SolverExecutionContext = {
     signal: context.signal,
     now: context.now,
     reportProgress(progress) {
+      // The kernel reports incumbent counts only. A kernel replaces its
+      // incumbent only with a shorter route, so while the count still matches
+      // the discovery route that route is the one it holds.
+      const kernelIncumbent = progress.incumbent;
+      const incumbent = kernelIncumbent?.moves === discoveryResult.solution.moves
+        ? { ...kernelIncumbent, route: discoveryRoute }
+        : kernelIncumbent;
       context.reportProgress({
         ...progress,
+        ...(incumbent === undefined ? {} : { incumbent }),
         elapsedMs:
           discoveryResult.metrics.elapsedMs +
           proofPlanningElapsedMs +
@@ -390,6 +405,7 @@ export async function runConcurrentProof(
   }
   let bestSolution: SolverSolution = discoveryResult.solution;
   let bestCost = discoveryResult.solution.moves;
+  let bestRoute = routeOf(bestSolution);
   const proofAlgorithmLabel: SolverProofAlgorithm = workerCount > 1
     ? (algorithm === "astar" ? "parallel-move-astar" : "parallel-move-ida-star")
     : (algorithm === "astar" ? "move-astar" : "move-ida-star");
@@ -596,6 +612,7 @@ export async function runConcurrentProof(
           moves: bestCost,
           pushes: bestSolution.pushes,
           objectiveScore: bestCost,
+          route: bestRoute,
         },
         lowerBound,
         upperBound: bestCost,
@@ -860,6 +877,7 @@ export async function runConcurrentProof(
           if (result.totalCost < bestCost) {
             bestCost = result.totalCost;
             bestSolution = result.solution;
+            bestRoute = routeOf(bestSolution);
             for (const w of workers) {
               try {
                 w.postMessage({

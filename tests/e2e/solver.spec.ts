@@ -276,6 +276,38 @@ test("Sokomind Solver finds a replay-verified Grand Hall route", async ({
   await expect(dialog.getByRole("button", { name: "Play solution" })).toBeEnabled();
 });
 
+test("stops an Optimal search and keeps its best verified route", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("./#/play/large");
+  await expect(page.getByRole("heading", { name: "The Warehouse" })).toBeVisible();
+
+  const dialog = await openSolver(page);
+  await dialog.getByLabel("Mode").selectOption("optimal");
+  // Optimal publishes The Warehouse's first route within a second but does not
+  // prove it within 120 s, so the stop click, not a proof, ends the run.
+  await dialog.getByLabel("Time limit").selectOption("120000");
+
+  const keep = dialog.getByRole("button", { name: "Stop and keep best" });
+  await dialog.getByRole("button", { name: "Start search" }).click();
+  await expect(keep).toBeEnabled({ timeout: 60_000 });
+  const bestPattern = /^Best so far: ([\d,]+) moves · ([\d,]+) pushes$/u;
+  const bestText = (await dialog.getByText(bestPattern).textContent()) ?? "";
+  const bestMoves = Number((bestText.match(bestPattern)?.[1] ?? "").replaceAll(",", ""));
+  expect(bestMoves).toBeGreaterThan(0);
+  await keep.click();
+
+  const result = dialog.locator('[data-status="solved"]');
+  await expect(result.getByRole("heading", { name: "Route found" })).toBeVisible();
+  await expect(result).toContainText("Best found before stopping");
+  const summaryText = (await result.getByText(/^Found [\d,]+ moves and [\d,]+ pushes\.$/u).textContent()) ?? "";
+  const keptMoves = Number((summaryText.match(/^Found ([\d,]+) moves/u)?.[1] ?? "").replaceAll(",", ""));
+  // A shorter route may arrive between reading the label and the worker's answer.
+  expect(keptMoves).toBeGreaterThan(0);
+  expect(keptMoves).toBeLessThanOrEqual(bestMoves);
+  await expect(keep).toBeHidden();
+  await expect(dialog.getByRole("button", { name: "Play solution" })).toBeEnabled();
+});
+
 test("cancels a running Grand Hall A* search", async ({ page }) => {
   test.skip(Boolean(process.env.CI), "Grand Hall A* exceeds CI budget; preprocessing cancellation covered by tests/unit/async-builders.test.ts");
   await page.goto("./#/play/huge");

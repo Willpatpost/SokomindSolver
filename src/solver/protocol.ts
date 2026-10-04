@@ -12,7 +12,7 @@ import {
   isSolverResult,
 } from "./validation.ts";
 
-export const SOLVER_WORKER_PROTOCOL_VERSION = 1 as const;
+export const SOLVER_WORKER_PROTOCOL_VERSION = 2 as const;
 
 interface SolverWorkerEnvelope {
   readonly protocolVersion: typeof SOLVER_WORKER_PROTOCOL_VERSION;
