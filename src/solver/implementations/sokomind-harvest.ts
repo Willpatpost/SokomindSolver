@@ -41,7 +41,7 @@ import {
   sokomindRewriteConcurrency,
   supportsBoxRescheduling,
 } from "./sokomind-plans.ts";
-import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
+import type { EngineWorkerSource } from "./sokomind-engine-pool.ts";
 import { runPhase } from "./sokomind-phase-runner.ts";
 import {
   runConcurrentProof,
@@ -163,7 +163,7 @@ async function harvestIncumbents(
   run: SearchRunState,
   state: LegacyState,
   firstIncumbent: SolverSolution,
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource,
   sokomindOptions: SokomindRequestOptions,
   tuning: Readonly<Record<string, number>>,
   maxWorkers: number,
@@ -207,7 +207,7 @@ async function harvestIncumbents(
       state, harvestRequest, harvestWorkers, tuning, harvestRound, analysisPlan,
     );
     try {
-      const outcome = await runPhase(run, plans, createWorker, harvestWorkers, remaining, {
+      const outcome = await runPhase(run, plans, engineWorkers, harvestWorkers, remaining, {
         collectSolutions: true,
         maxSolutions: plans.length,
       });
@@ -375,7 +375,7 @@ export async function qualityAnytimeImprove(
   run: SearchRunState,
   state: LegacyState,
   firstIncumbent: SolverSolution,
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource,
   options: SokomindImprovementOptions,
   sokomindOptions: SokomindRequestOptions,
   tuning: Readonly<Record<string, number>>,
@@ -397,7 +397,7 @@ export async function qualityAnytimeImprove(
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
 
   const { collector, cancelled } = await harvestIncumbents(
-    run, state, firstIncumbent, createWorker, sokomindOptions,
+    run, state, firstIncumbent, engineWorkers, sokomindOptions,
     tuning, maxWorkers, analysisPlan, harvestMs,
   );
   if (cancelled) {
@@ -528,7 +528,7 @@ export async function qualityAnytimeImprove(
         if (maxVisited < 1 || maxGenerated < 1) return;
         const sliceStart = run.context.now();
         const improved = await improveIncumbent(
-          run, state, incumbent.solution, createWorker,
+          run, state, incumbent.solution, engineWorkers,
           {
             ...options,
             improvementMaxVisited: maxVisited,
@@ -745,7 +745,7 @@ export async function qualityAnytimeImprove(
     leasedExpanded += perSliceVisited;
     leasedGenerated += maxGenerated;
     const promise = improveIncumbent(
-      run, state, target.solution, createWorker,
+      run, state, target.solution, engineWorkers,
       {
         ...options,
         improvementMaxVisited: perSliceVisited,
@@ -1085,7 +1085,7 @@ export async function optimalQuickImprove(
   run: SearchRunState,
   state: LegacyState,
   firstIncumbent: SolverSolution,
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource,
   options: SokomindImprovementOptions,
   sokomindOptions: SokomindRequestOptions,
   tuning: Readonly<Record<string, number>>,
@@ -1108,7 +1108,7 @@ export async function optimalQuickImprove(
   );
 
   const { collector, cancelled } = await harvestIncumbents(
-    run, state, firstIncumbent, createWorker, sokomindOptions,
+    run, state, firstIncumbent, engineWorkers, sokomindOptions,
     tuning, maxWorkers, analysisPlan, harvestMs,
   );
   if (cancelled) {
@@ -1146,7 +1146,7 @@ export async function optimalQuickImprove(
       const maxGenerated = remainingRequest.limits?.maxGeneratedStates ?? Infinity;
       if (maxVisited >= 1 && maxGenerated >= 1) {
         const improved = await improveIncumbent(
-          run, state, best, createWorker,
+          run, state, best, engineWorkers,
           { ...options, improvementMaxVisited: maxVisited, improvementMaxElapsedMs: rewriteMs, improvementMaxPasses: 1 },
           0, maxGenerated, 1, rewriteAllocation, "window",
         );
@@ -1179,7 +1179,7 @@ export async function optimalQuickImprove(
       const maxGenerated = remainingRequest.limits?.maxGeneratedStates ?? Infinity;
       if (maxVisited >= 1 && maxGenerated >= 1) {
         const improved = await improveIncumbent(
-          run, state, best, createWorker,
+          run, state, best, engineWorkers,
           { ...options, improvementMaxVisited: maxVisited, improvementMaxElapsedMs: rescheduleMs, improvementMaxPasses: 1 },
           1, maxGenerated, 1, rewriteAllocation, "box",
         );

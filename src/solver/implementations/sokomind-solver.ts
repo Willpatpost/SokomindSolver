@@ -21,6 +21,7 @@ import {
   type LegacyState,
   type SokomindAnalysisPlan,
 } from "./sokomind-legacy.ts";
+import { createEngineWorkerPool, type EngineWorkerSource } from "./sokomind-engine-pool.ts";
 import { extractSokomindOptions } from "./sokomind-options.ts";
 import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
 import { runPhase } from "./sokomind-phase-runner.ts";
@@ -360,7 +361,7 @@ export function createSokomindSolverAdapter(
     r: SearchRunState,
     s: LegacyState,
     first: SolverSolution,
-    cw: () => SokomindEngineWorker,
+    cw: EngineWorkerSource,
     improvOpts: SokomindImprovementOptions,
     sokoOpts: import("./sokomind-options.ts").SokomindRequestOptions,
     t: Readonly<Record<string, number>>,
@@ -384,6 +385,7 @@ export function createSokomindSolverAdapter(
   async function solveRequest(
     originalRequest: SolverRequest,
     context: SolverExecutionContext,
+    engineWorkers: EngineWorkerSource,
     proofWorkers: ProofWorkerSource,
   ): Promise<SolverResult> {
     const improveByMode = improveByModeWith(proofWorkers);
@@ -496,7 +498,7 @@ export function createSokomindSolverAdapter(
       const preparation = await runPhase(
         run,
         [preparationPlan(state, sokomindOptions.strategicAnalysisMs, request)],
-        createWorker,
+        engineWorkers,
         1,
       );
       if (preparation.preparedBoard) {
@@ -532,7 +534,7 @@ export function createSokomindSolverAdapter(
                 analysisPlan,
               ),
             ],
-            createWorker,
+            engineWorkers,
             1,
             structuralHeadStartMs(run),
           );
@@ -542,7 +544,7 @@ export function createSokomindSolverAdapter(
             const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
               ? validatedInitialSolution : outcome.solution;
             return solvedWithImprovement(
-              run, state, incumbent, createWorker, options,
+              run, state, incumbent, engineWorkers, options,
               sokomindOptions, improveByMode,
               tuning, maxWorkers, analysisPlan,
             );
@@ -605,7 +607,7 @@ export function createSokomindSolverAdapter(
         const outcome = await runPhase(
           run,
           Object.freeze([...rootPlans, ...continuationPlans]),
-          createWorker,
+          engineWorkers,
           discoveryWorkers,
         );
         errors = [...errors, ...outcome.errors];
@@ -613,7 +615,7 @@ export function createSokomindSolverAdapter(
           const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
             ? validatedInitialSolution : outcome.solution;
           return solvedWithImprovement(
-            run, state, incumbent, createWorker, options,
+            run, state, incumbent, engineWorkers, options,
             sokomindOptions, improveByMode,
             tuning, maxWorkers, analysisPlan,
           );
@@ -636,7 +638,7 @@ export function createSokomindSolverAdapter(
         const outcome = await runPhase(
           run,
           bidirectionalPlans(state, bidirectionalRequest, 2, analysisPlan),
-          createWorker,
+          engineWorkers,
           2,
         );
         errors = [...errors, ...outcome.errors];
@@ -644,7 +646,7 @@ export function createSokomindSolverAdapter(
           const incumbent = validatedInitialSolution && validatedInitialSolution.moves < outcome.solution.moves
             ? validatedInitialSolution : outcome.solution;
           return solvedWithImprovement(
-            run, state, incumbent, createWorker, options,
+            run, state, incumbent, engineWorkers, options,
             sokomindOptions, improveByMode,
             tuning, maxWorkers, analysisPlan,
           );
@@ -658,7 +660,7 @@ export function createSokomindSolverAdapter(
         return Object.freeze({ status: "cancelled", metrics: metrics(run) });
       }
       return solvedWithImprovement(
-        run, state, validatedInitialSolution, createWorker, options,
+        run, state, validatedInitialSolution, engineWorkers, options,
         sokomindOptions, improveByMode,
         tuning, maxWorkers, analysisPlan,
       );
@@ -708,11 +710,14 @@ export function createSokomindSolverAdapter(
       originalRequest: SolverRequest,
       context: SolverExecutionContext,
     ): Promise<SolverResult> {
-      // Proof lanes serve every proof run of one request, then stop with it.
+      // Engine workers and proof lanes serve every phase and proof run of
+      // one request, then stop with it.
+      const engineWorkers = createEngineWorkerPool(createWorker);
       const proofWorkers = createProofWorkerPool(proofWorkerFactory);
       try {
-        return await solveRequest(originalRequest, context, proofWorkers);
+        return await solveRequest(originalRequest, context, engineWorkers, proofWorkers);
       } finally {
+        engineWorkers.dispose();
         proofWorkers.dispose();
       }
     },

@@ -19,7 +19,7 @@ import {
   type EnginePlan,
   type RewriteBudgetAllocation,
 } from "./sokomind-plans.ts";
-import type { SokomindEngineWorker } from "./sokomind-phase-runner.ts";
+import type { EngineWorkerSource } from "./sokomind-engine-pool.ts";
 import { runPhase } from "./sokomind-phase-runner.ts";
 import {
   invalidateAggregate,
@@ -118,7 +118,7 @@ export async function improveIncumbent(
   run: SearchRunState,
   state: import("./sokomind-legacy.ts").LegacyState,
   incumbent: SolverSolution,
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource,
   options: SokomindImprovementOptions,
   candidateIndex = 0,
   reservedGenerated = Infinity,
@@ -236,7 +236,7 @@ export async function improveIncumbent(
           rescheduleRounds: requestOptions.mode === "quality" ? 8 : 2,
           context: repairContext,
         })],
-        createWorker,
+        engineWorkers,
         1,
         Math.max(1, Math.floor(remainingImprovementMs)),
         {
@@ -308,14 +308,14 @@ export async function solvedWithImprovement(
   run: SearchRunState,
   state: import("./sokomind-legacy.ts").LegacyState,
   incumbent: SolverSolution,
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource,
   options: SokomindImprovementOptions,
   sokomindOptions: SokomindRequestOptions,
   improveByMode: (
     run: SearchRunState,
     state: import("./sokomind-legacy.ts").LegacyState,
     firstIncumbent: SolverSolution,
-    createWorker: () => SokomindEngineWorker,
+    engineWorkers: EngineWorkerSource,
     options: SokomindImprovementOptions,
     sokomindOptions: SokomindRequestOptions,
     tuning: Readonly<Record<string, number>>,
@@ -344,7 +344,7 @@ export async function solvedWithImprovement(
     run,
     state,
     incumbent,
-    createWorker,
+    engineWorkers,
     options,
     sokomindOptions,
     tuning,

@@ -3,6 +3,10 @@ import type {
 } from "../contracts.ts";
 import type { EngineCommand, EngineResult } from "./sokomind-engine/engine-protocol.ts";
 import { isEngineResult } from "./sokomind-engine/engine-protocol.ts";
+import {
+  engineWorkerSourceFromFactory,
+  type EngineWorkerSource,
+} from "./sokomind-engine-pool.ts";
 import { isSolutionBetter } from "./sokomind-incumbents.ts";
 import {
   asLegacyPath,
@@ -185,7 +189,7 @@ interface ActiveWorkerEntry {
 class PhaseRunner {
   private readonly run: SearchRunState;
   private readonly plans: readonly EnginePlan[];
-  private readonly createWorker: () => SokomindEngineWorker;
+  private readonly engineWorkers: EngineWorkerSource;
   private readonly maxConcurrent: number;
   private readonly maxPhaseElapsedMs: number | undefined;
   private readonly options: PhaseRunOptions;
@@ -197,6 +201,9 @@ class PhaseRunner {
   private readonly collectedSolutions: SolverSolution[] = [];
   private readonly collectedSolutionKeys = new Set<string>();
   private readonly collectedCheckpoints: LegacySearchCheckpoint[] = [];
+  // Workers whose last message was a done that did not fail; only these go
+  // back to the source for reuse.
+  private readonly cleanlyDone = new Set<string>();
 
   private settled = false;
   private cutoff = false;
@@ -218,14 +225,14 @@ class PhaseRunner {
   constructor(
     run: SearchRunState,
     plans: readonly EnginePlan[],
-    createWorker: () => SokomindEngineWorker,
+    engineWorkers: EngineWorkerSource,
     maxConcurrent: number,
     maxPhaseElapsedMs: number | undefined,
     options: PhaseRunOptions,
   ) {
     this.run = run;
     this.plans = plans;
-    this.createWorker = createWorker;
+    this.engineWorkers = engineWorkers;
     this.maxConcurrent = maxConcurrent;
     this.maxPhaseElapsedMs = maxPhaseElapsedMs;
     this.options = options;
@@ -364,7 +371,7 @@ class PhaseRunner {
       "messageerror",
       entry.onMessageError,
     );
-    entry.worker.terminate();
+    this.engineWorkers.release(entry.worker, this.cleanlyDone.delete(id));
     this.run.registry.deactivate(id);
     this.run.budget.releaseWorkerLease(id);
     this.run.completedWorkers += 1;
@@ -602,7 +609,7 @@ class PhaseRunner {
   private startPlan(plan: EnginePlan): void {
     const executionId = this.run.registry.uniqueId(plan.id);
     try {
-      const worker = this.createWorker();
+      const worker = this.engineWorkers.acquire();
       this.startedWorkers += 1;
       const recordMap = recordMapForPlan(
         plan,
@@ -623,6 +630,9 @@ class PhaseRunner {
         }
         this.resetWatchdog();
         const message: EngineResult = data;
+        if (message.type === "done" && message.status !== "failed" && !message.error) {
+          this.cleanlyDone.add(executionId);
+        }
         const previousWork = this.workerWork.get(executionId) ?? { expanded: 0, generated: 0 };
         const nextExpanded = nonNegativeFinite(message.visited);
         const nextGenerated = nonNegativeFinite(message.generated);
@@ -821,15 +831,19 @@ class PhaseRunner {
   }
 }
 
+/** `engineWorkers` lends workers across phases; a bare factory starts each plan on a fresh one. */
 export async function runPhase(
   run: SearchRunState,
   plans: readonly EnginePlan[],
-  createWorker: () => SokomindEngineWorker,
+  engineWorkers: EngineWorkerSource | (() => SokomindEngineWorker),
   maxConcurrent = plans.length,
   maxPhaseElapsedMs?: number,
   options: PhaseRunOptions = {},
 ): Promise<PhaseOutcome> {
+  const source = typeof engineWorkers === "function"
+    ? engineWorkerSourceFromFactory(engineWorkers)
+    : engineWorkers;
   return new PhaseRunner(
-    run, plans, createWorker, maxConcurrent, maxPhaseElapsedMs, options,
+    run, plans, source, maxConcurrent, maxPhaseElapsedMs, options,
   ).execute();
 }

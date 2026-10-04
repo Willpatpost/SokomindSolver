@@ -1174,6 +1174,7 @@ describe("Sokomind Solver adapter", () => {
 
   it("reserves time for discovery after a structural worker goes silent", async () => {
     const algorithms: unknown[] = [];
+    const ranBy: ScriptedWorker[] = [];
     const workers: ScriptedWorker[] = [];
     const adapter = createSokomindSolverAdapter({
       hardwareConcurrency: 2,
@@ -1182,6 +1183,7 @@ describe("Sokomind Solver adapter", () => {
         const worker = new ScriptedWorker((self, command) => {
           const algorithm = command.payload.algorithm;
           algorithms.push(algorithm);
+          ranBy.push(self);
           if (algorithm === "analyze-puzzle") {
             queueMicrotask(() => {
               self.emit({ type: "done" });
@@ -1216,7 +1218,55 @@ describe("Sokomind Solver adapter", () => {
       "plan-macro-beam",
       "ultimate",
     ]);
-    assert.equal(workers[1]?.terminated, true);
+    // The analysis worker finished cleanly and took the structural plan. That
+    // plan went silent, so its worker was terminated rather than lent again.
+    const [analysis, structural, discovery] = ranBy;
+    assert.equal(structural, analysis);
+    assert.notEqual(discovery, structural);
+    assert.equal(workers.length, 2);
+    assert.equal(workers.every(({ terminated }) => terminated), true);
+  });
+
+  it("starts the next plan on a fresh engine after a done that failed", async () => {
+    const ranBy: ScriptedWorker[] = [];
+    const terminatedBeforeNextPlan: boolean[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 2,
+      structuralHeadStartMs: 5,
+      createWorker: () => new ScriptedWorker((self, command) => {
+        const algorithm = command.payload.algorithm;
+        const previous = ranBy.at(-1);
+        if (previous) terminatedBeforeNextPlan.push(previous.terminated);
+        ranBy.push(self);
+        if (algorithm === "analyze-puzzle") {
+          queueMicrotask(() => {
+            self.emit({ type: "done", status: "failed", error: "analysis crashed" });
+          });
+        } else if (algorithm !== "plan-macro-beam") {
+          queueMicrotask(() => {
+            self.emit({
+              type: "done",
+              status: "solved",
+              path: ["Down"],
+              visited: 1,
+              generated: 1,
+            });
+          });
+        }
+      }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(LARGE_ONE_TYPED_BOX, {
+        limits: { maxElapsedMs: 1_000 },
+      }),
+      context(),
+    );
+
+    assert.equal(result.status, "solved");
+    assert.equal(ranBy.length, 3);
+    assert.equal(new Set(ranBy).size, 3);
+    assert.deepEqual(terminatedBeforeNextPlan, [true, true]);
   });
 
   it("consumes typed analysis recommendations and resumes a structural checkpoint", async () => {
