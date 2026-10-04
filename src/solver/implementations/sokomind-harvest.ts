@@ -887,16 +887,21 @@ export async function qualityAnytimeImprove(
  * capped proof straight after discovery. Deterministic runs skip it so results
  * do not depend on timing, a resumed IDA* checkpoint already holds proof work
  * that only the pipeline's own proof continues, and a run without a time limit
- * has no share to cap.
+ * has no share to cap. A run with an expanded- or generated-state limit also
+ * skips it: the capped attempt would spend the shared state budget that the
+ * pipeline's proof needs, because the cap limits only its time.
  */
 function smallBoardProofEligible(
   run: SearchRunState,
   sokomindOptions: SokomindRequestOptions,
   checkpointOptions: ProofCheckpointOptions | undefined,
 ): boolean {
+  const limits = run.request.limits;
   return !sokomindOptions.deterministic &&
     checkpointOptions?.checkpoint === undefined &&
-    run.request.limits?.maxElapsedMs !== undefined &&
+    limits?.maxElapsedMs !== undefined &&
+    limits.maxExpandedStates === undefined &&
+    limits.maxGeneratedStates === undefined &&
     run.request.snapshot.boxes.length <= PROOF_FIRST_MAX_BOXES &&
     run.request.board.floor.length <= PROOF_FIRST_MAX_FLOOR_CELLS;
 }

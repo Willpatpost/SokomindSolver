@@ -220,6 +220,16 @@ runs in the coordinator, does not cache. `preprocessingCacheHits`,
 cache. On a hit, table statistics such as `deadlockTableWorkUnits` describe
 the cached table and the build times read 0. The proof revision is unchanged.
 
+Sokomind 1.7.1 skips Optimal proof-first and the Quality exact lane when the
+request sets an expanded- or generated-state limit. Their caps limit only time,
+so the capped attempt spent the state budget the pipeline's proof needs. On
+expert-tetris under the capped `sokomind-optimal-astar` benchmark profile (5M
+generated states), proof-first used about 2.6M generated states before its time
+share ran out, and the pipeline proof then stopped at the state limit with
+bounds 37 and 39 in five of five runs; Sokomind 1.3.0 proved 38. The app sets
+only time and memory limits, so production runs are unchanged. Proof logic is
+unchanged, so the proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

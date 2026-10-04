@@ -935,7 +935,39 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
   });
 
-  it("never reports a limit-cut proof-first attempt as proven", async () => {
+  it("skips proof-first under a state limit and proves through the pipeline", async () => {
+    // The capped attempt limits only its time, so it would spend the state
+    // budget the pipeline's proof needs.
+    for (const stateLimit of [{ maxExpandedStates: 10_000 }, { maxGeneratedStates: 100_000 }]) {
+      const events: SolverProgress[] = [];
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: { "sokomind-solver": { mode: "optimal", maximumIncumbents: 2 } },
+        limits: { ...stateLimit, maxElapsedMs: 5_000 },
+      });
+
+      const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+      const label = JSON.stringify(stateLimit);
+      assert.equal(result.status, "solved", label);
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.moves, 1, label);
+      assert.equal(result.solution.optimality, "proven", label);
+      assert.equal(result.proof?.kind, "optimal", label);
+      assert.ok(events.every((progress) => !/small board first/u.test(progress.detail ?? "")), label);
+      const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+      const proving = events.findIndex((progress) => progress.phase === "proving");
+      assert.ok(harvesting >= 0 && proving > harvesting, label);
+      assertHostAcceptsProgress(events);
+      assert.equal(result.metrics.counters?.proofFirstElapsedMs, undefined, label);
+      assert.equal(result.metrics.counters?.proofFirstExpandedStates, undefined, label);
+    }
+  });
+
+  it("never reports a limit-cut pipeline proof as proven", async () => {
     const twoGenericBoxes: PuzzleDefinition = {
       id: "two-generic-boxes",
       title: "Two generic boxes",
@@ -947,7 +979,7 @@ describe("Sokomind Solver adapter", () => {
       hardwareConcurrency: 2,
       createWorker: discoveryOnlyWorker(["Left", "Right", "Up", "Down", "Left", "Up"], []),
     });
-    // Discovery spends one expansion, leaving the proof a single one.
+    // Discovery spends one expansion, leaving the proof at most one.
     const request = requestFor(twoGenericBoxes, {
       options: { "sokomind-solver": { mode: "optimal", maximumIncumbents: 2 } },
       limits: { maxExpandedStates: 2, maxElapsedMs: 5_000 },
@@ -961,9 +993,7 @@ describe("Sokomind Solver adapter", () => {
     assert.notEqual(result.solution.optimality, "proven");
     assert.notEqual(result.proof?.kind, "optimal");
     assert.equal(verifySolverSolution(request, result.solution).valid, true);
-    const proofFirstExpanded = result.metrics.counters?.proofFirstExpandedStates;
-    assert.equal(typeof proofFirstExpanded, "number");
-    assert.ok((proofFirstExpanded ?? Infinity) <= 1);
+    assert.equal(result.metrics.counters?.proofFirstExpandedStates, undefined);
   });
 
   it("improves a small Quality board through the exact lane without claiming proof", async () => {
@@ -1024,6 +1054,31 @@ describe("Sokomind Solver adapter", () => {
     assert.ok(events.some((progress) => progress.phase === "harvesting"));
     assert.ok(events.every((progress) => !/small board exactly/u.test(progress.detail ?? "")));
     assert.equal(result.metrics.counters?.proofFirstElapsedMs, undefined);
+  });
+
+  it("skips the Quality exact lane under a state limit", async () => {
+    for (const stateLimit of [{ maxExpandedStates: 10_000 }, { maxGeneratedStates: 100_000 }]) {
+      const events: SolverProgress[] = [];
+      const adapter = createSokomindSolverAdapter({
+        hardwareConcurrency: 2,
+        createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+      });
+      const request = requestFor(ONE_TYPED_BOX, {
+        options: { "sokomind-solver": { mode: "quality", maximumIncumbents: 2 } },
+        limits: { ...stateLimit, maxElapsedMs: 5_000 },
+      });
+
+      const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+      const label = JSON.stringify(stateLimit);
+      assert.equal(result.status, "solved", label);
+      if (result.status !== "solved") return;
+      assert.equal(result.solution.optimality, "unknown", label);
+      assert.equal(result.proof, undefined, label);
+      assert.equal(verifySolverSolution(request, result.solution).valid, true, label);
+      assert.ok(events.every((progress) => !/small board exactly/u.test(progress.detail ?? "")), label);
+      assert.equal(result.metrics.counters?.proofFirstElapsedMs, undefined, label);
+    }
   });
 
   it("continues Quality past a timed-out exact lane without its bounds", async () => {
