@@ -100,6 +100,19 @@ rewrite and reschedule use the rest of the budget. Its progress reports phase
 runs and requests without a time limit skip the lane. Proof logic is
 unchanged, so the proof revision is unchanged.
 
+Sokomind 1.6.1 keeps the push endpoints on the discovery engine's collapsed
+forced-push chains. A chain now carries its first push's source, its last
+push's destination, and every box cell it touched. Before, a chain had no
+endpoints: push-astar's goal-cut decomposition dropped every chain that began
+with a push into a tunnel and fell back to the undecomposed search, the
+push-ordering terms read nothing for it, and the packed-room check counted it
+as not touching the room even when it moved a box in or out. The goal-cut
+domain filter now admits a chain only when every touched cell lies in the
+component, and the packed-room check requires every touched cell to lie
+outside the room. Discovery routes can change; they are still replayed and
+reported as unproven. The exact kernels and proof are untouched, so the proof
+revision is unchanged.
+
 Classic A* 2.2.3 cuts a pushed child on `g + push bound + walk bound >= U`
 before it computes the linear-conflict, interaction-boost, PDB-surplus and
 goal-cut extras, on the ordinary and tunnel successor paths (the forced-push

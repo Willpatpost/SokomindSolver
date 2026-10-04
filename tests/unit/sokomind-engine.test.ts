@@ -604,6 +604,41 @@ describe("vendored Sokomind engine", () => {
       assert.ok(pushSolution.moves >= fixture.moves, `push-astar ${fixture.id} moves`);
     }
   });
+
+  it("keeps forced tunnel macros inside a goal-cut component", () => {
+    // The dead corridor in column 7 splits the board into two one-box
+    // components. The robot's lower component is solved first; the upper box
+    // then has one push, into the tunnel at (1,4), which collapses into a
+    // forced four-push macro. Without its push endpoints the goal-cut domain
+    // filter dropped that macro, the upper component failed, and push-astar
+    // fell back to the undecomposed search (no decomposition fields).
+    const request = requestFor({
+      id: "goal-cut-tunnel-engine",
+      title: "Goal-cut tunnel engine",
+      difficulty: "tutorial",
+      boxes: 2,
+      rows: [
+        "OOOOOOOOOO",
+        "OS   X  OO",
+        "OOOOOOO OO",
+        "OOOO    OO",
+        "OOOOSX ROO",
+        "OOOOOOOOOO",
+      ],
+    });
+    const result = search({ algorithm: "push-astar", state: toLegacyState(request) }) as
+      ReturnType<typeof search> & {
+        readonly decompositionComponents?: number;
+        readonly decompositionCut?: string;
+      };
+    assert.equal(result.status, "solved");
+    assert.ok(Array.isArray(result.path));
+    const solution = solutionFromLegacyPath(request, result.path);
+    assert.ok(solution, "replayable path");
+    assert.equal(verifySolverSolution(request, solution).valid, true);
+    assert.equal(result.decompositionComponents, 2);
+    assert.equal(typeof result.decompositionCut, "string");
+  });
 });
 
 describe("classic search on the es01 tunnel boards", () => {

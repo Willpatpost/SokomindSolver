@@ -128,10 +128,15 @@ function pushKey(state, reachable) {
   return `${robotRegion}|${[...state.boxes.map(b => b.join(","))].sort().join(";")}`;
 }
 
+// A collapsed chain keeps the first push's source and the last push's
+// destination for ordering (cells of different boxes when the chain switches
+// boxes), and lists every box cell it touched so a domain filter can reject a
+// chain that leaves the domain part way.
 function collapseForcedPushes(first, board, limit = 32, options = {}) {
   let state = {robot: first.robot, boxes: first.boxes};
   const path = [...first.path], seen = new Set([exactPushKey(state, board)]);
-  let pushes = 1;
+  const touchedCells = [first.pushedFrom, first.pushedTo];
+  let pushes = 1, pushedTo = first.pushedTo;
   while (pushes < limit && !goal(state.boxes, board.goals)) {
     const reachable = reachablePaths(state, board);
     if (createsSealedCorralDeadlock(state, board, reachable)) return null;
@@ -142,9 +147,18 @@ function collapseForcedPushes(first, board, limit = 32, options = {}) {
     seen.add(signature);
     path.push(...next.path);
     state = {robot: next.robot, boxes: next.boxes};
+    touchedCells.push(next.pushedFrom, next.pushedTo);
+    pushedTo = next.pushedTo;
     pushes++;
   }
-  return {...state, path, pushes, pushClass: first.pushClass};
+  return {
+    ...state, path, pushes, pushClass: first.pushClass,
+    pushedFrom: first.pushedFrom, pushedTo, touchedCells,
+  };
+}
+
+function pushTouchedCells(next) {
+  return next.touchedCells ?? [next.pushedFrom, next.pushedTo];
 }
 
 function expandPushMacro(next, board, enabled = true, options = {}) {
@@ -785,6 +799,7 @@ const SokomindPushGeneration = {
   pushBoxNeighbors,
   pushKey,
   collapseForcedPushes,
+  pushTouchedCells,
   expandPushMacro,
   recordMacroDiscoveryRejection,
   macroPathRoot,

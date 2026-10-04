@@ -4904,8 +4904,7 @@ function searchCore(payload) {
       neighbors(current, board).map(n => ({robot: n.robot, boxes: n.boxes, path: [n.move]}));
     if (payload._goalCutDomain && pushMacro) {
       nextStates = nextStates.filter(next =>
-        payload._goalCutDomain.has(next.pushedFrom) &&
-        payload._goalCutDomain.has(next.pushedTo));
+        pushTouchedCells(next).every(cell => payload._goalCutDomain.has(cell)));
     }
     for (const next of nextStates) {
       const child = {robot: next.robot, boxes: next.boxes,

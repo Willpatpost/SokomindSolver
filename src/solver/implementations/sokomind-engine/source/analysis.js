@@ -477,7 +477,7 @@ function exactRoomCompletionProven(analysis, evidence) {
   const transition = evidence?.transition;
   if (analysis.status === "packed") {
     return !transition ||
-      (!analysis.domain.has(transition.pushedFrom) && !analysis.domain.has(transition.pushedTo));
+      pushTouchedCells(transition).every(cell => !analysis.domain.has(cell));
   }
   return analysis.status === "solvable" && analysis.pushes === 1 &&
     transition?.pushes === 1 &&
