@@ -59,6 +59,7 @@ describe("proof protocol type guards", () => {
     assert.ok(
       isProofCommand({
         type: "proof/start-partition",
+        runId: 1,
         partitionId: "abc",
         request: { board: {}, snapshot: {} },
         initialUpperBound: 10,
@@ -67,6 +68,22 @@ describe("proof protocol type guards", () => {
         algorithm: "astar",
       }),
     );
+  });
+
+  it("isProofCommand rejects start-partition without a run id", () => {
+    const command = {
+      type: "proof/start-partition",
+      partitionId: "abc",
+      request: { board: {}, snapshot: {} },
+      initialUpperBound: 10,
+      prefixCost: 2,
+      prefixSteps: [],
+      algorithm: "astar",
+    };
+    assert.equal(isProofCommand(command), false);
+    for (const runId of [-1, 1.5, "1"]) {
+      assert.equal(isProofCommand({ ...command, runId }), false);
+    }
   });
 
   it("isProofCommand accepts valid update-upper-bound", () => {
@@ -123,6 +140,7 @@ describe("proof protocol type guards", () => {
     assert.ok(
       isProofResult({
         type: "proof/progress",
+        runId: 1,
         partitionId: "abc",
         lowerBound: 3,
         expandedStates: 100,
@@ -134,6 +152,7 @@ describe("proof protocol type guards", () => {
     assert.ok(
       isProofResult({
         type: "proof/solution",
+        runId: 1,
         partitionId: "abc",
         solution: {
           steps: [{ direction: "right", kind: "walk" }],
@@ -175,6 +194,7 @@ describe("proof protocol type guards", () => {
     assert.ok(
       isProofResult({
         type: "proof/partition-complete",
+        runId: 1,
         partitionId: "abc",
         lowerBound: 3,
         exhausted: true,
@@ -187,10 +207,29 @@ describe("proof protocol type guards", () => {
     assert.ok(
       isProofResult({
         type: "proof/error",
+        runId: 1,
         partitionId: "abc",
         message: "out of memory",
       }),
     );
+  });
+
+  it("isProofResult accepts idle and requires a run id on every result", () => {
+    assert.ok(isProofResult({ type: "proof/idle", runId: 1, partitionId: "abc" }));
+    assert.equal(isProofResult({ type: "proof/idle", runId: 1 }), false);
+    assert.equal(isProofResult({ type: "proof/idle", partitionId: "abc" }), false);
+    assert.equal(isProofResult({
+      type: "proof/progress",
+      partitionId: "abc",
+      lowerBound: 3,
+      expandedStates: 100,
+    }), false);
+    assert.equal(isProofResult({
+      type: "proof/error",
+      runId: -1,
+      partitionId: "abc",
+      message: "out of memory",
+    }), false);
   });
 
   it("isProofResult rejects unknown type", () => {
@@ -515,14 +554,21 @@ class MockProofWorker implements SokomindProofWorker {
     this.#terminated = true;
   }
 
+  // Results echo the latest start's run id unless the test names one.
   emit(data: unknown): void {
     const record = data && typeof data === "object"
       ? data as Record<string, unknown>
       : null;
-    const normalized = record?.type === "proof/partition-complete" &&
-      record.metrics === undefined
-      ? { ...record, metrics: { elapsedMs: 0 } }
-      : data;
+    const lastStart = this.receivedCommands.filter(
+      (command): command is ProofStartPartition => command.type === "proof/start-partition",
+    ).at(-1);
+    const withRunId = record && record.runId === undefined && lastStart
+      ? { ...record, runId: lastStart.runId }
+      : record;
+    const normalized = withRunId?.type === "proof/partition-complete" &&
+      withRunId.metrics === undefined
+      ? { ...withRunId, metrics: { elapsedMs: 0 } }
+      : withRunId ?? data;
     for (const listener of this.#messageListeners) {
       listener({ data: normalized });
     }
@@ -1360,6 +1406,95 @@ describe("concurrent proof coordinator", () => {
     );
     assert.equal(result.status, "solved");
     assert.equal(result.proof?.kind, "optimal");
+  });
+
+  it("tags each run's starts with a fresh run id and ignores results from another run", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    assert.equal(enumerateFirstPushPartitions(request).length, 2);
+    const starts: ProofStartPartition[] = [];
+    // A certificate under another run id would prove the board; the lane's
+    // own result for this run leaves each partition open.
+    const createProofWorker = () => {
+      const worker = new MockProofWorker((command) => {
+        starts.push(command);
+        worker.emit({
+          type: "proof/partition-complete",
+          runId: command.runId + 1,
+          partitionId: command.partitionId,
+          lowerBound: 100,
+          exhausted: true,
+        });
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: command.prefixCost,
+          exhausted: false,
+        });
+      });
+      return worker;
+    };
+    const run = () => runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker, proofParallelism: 1 },
+    );
+    const result = await run();
+    assert.equal(result.status, "solved");
+    assert.notEqual(result.proof?.kind, "optimal");
+    assert.equal(starts.length, 2);
+    assert.equal(starts[0].runId, starts[1].runId);
+
+    await run();
+    assert.equal(starts.length, 4);
+    assert.notEqual(starts[2].runId, starts[0].runId);
+  });
+
+  it("ignores a lane's idle after its partition completes", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const worker = new MockProofWorker((command) => {
+      worker.emit({
+        type: "proof/partition-complete",
+        partitionId: command.partitionId,
+        lowerBound: Math.max(5, command.prefixCost),
+        exhausted: true,
+      });
+      worker.emit({ type: "proof/idle", partitionId: command.partitionId });
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+    assert.equal(result.status, "solved");
+    assert.equal(result.proof?.kind, "optimal");
+  });
+
+  it("fails a lane that goes idle before its partition completes", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    const worker = new MockProofWorker((command) => {
+      worker.emit({ type: "proof/idle", partitionId: command.partitionId });
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") assert.equal(result.solution.optimality, "unknown");
+    assert.notEqual(result.proof?.kind, "optimal");
+    assert.equal(worker.terminated, true);
   });
 
   it("enforces one remaining wall-clock deadline across silent partitions", async () => {

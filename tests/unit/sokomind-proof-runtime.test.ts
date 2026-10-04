@@ -37,6 +37,7 @@ function corridorRequest(): SolverRequest {
 function startCommand(
   initialUpperBound: number,
   algorithm: ProofStartPartition["algorithm"],
+  runId = 7,
 ): ProofStartPartition {
   const request = corridorRequest();
   const partitions = enumerateFirstPushPartitions(request);
@@ -45,6 +46,7 @@ function startCommand(
   assert.equal(partition.prefixCost, 2);
   return {
     type: "proof/start-partition",
+    runId,
     partitionId: partition.partitionId,
     request: buildPartitionRequest(request, partition),
     initialUpperBound,
@@ -60,13 +62,19 @@ function collectingRuntime(options?: Parameters<typeof createProofWorkerRuntime>
   const settled = new Promise<void>((resolve) => {
     settle = resolve;
   });
+  const idleWaiters: (() => void)[] = [];
   const handle = createProofWorkerRuntime((result) => {
     results.push(result);
     if (result.type === "proof/partition-complete" || result.type === "proof/error") {
       settle();
     }
+    if (result.type === "proof/idle") {
+      for (const resolve of idleWaiters.splice(0)) resolve();
+    }
   }, options);
-  return { handle, results, settled };
+  /** Resolves at the first idle posted after the call. */
+  const nextIdle = () => new Promise<void>((resolve) => idleWaiters.push(resolve));
+  return { handle, results, settled, nextIdle };
 }
 
 function completion(results: readonly ProofResult[]) {
@@ -131,10 +139,11 @@ describe("createProofWorkerRuntime", () => {
       // Each yield takes 30 ms, so preparation alone outlasts several heartbeats.
       configureSearchScheduler(() => new Promise((resolve) => setTimeout(resolve, 30)));
       try {
-        const { handle, results, settled } = collectingRuntime({ heartbeatMs: 5 });
+        const { handle, results, nextIdle } = collectingRuntime({ heartbeatMs: 5 });
         const command = startCommand(100, algorithm);
+        const idle = nextIdle();
         handle(command);
-        await settled;
+        await idle;
 
         const progress = results.filter((result) => result.type === "proof/progress");
         assert.ok(progress.length >= 3, `expected heartbeats, got ${progress.length} progress messages`);
@@ -146,12 +155,72 @@ describe("createProofWorkerRuntime", () => {
         const posted = results.length;
         await new Promise((resolve) => setTimeout(resolve, 30));
         assert.equal(results.length, posted);
-        assert.equal(results.at(-1)?.type, "proof/partition-complete");
+        assert.deepEqual(
+          results.slice(-2).map((result) => result.type),
+          ["proof/partition-complete", "proof/idle"],
+        );
       } finally {
         configureSearchScheduler();
       }
     });
   }
+
+  it("echoes the run id and goes idle after the partition's last result", async () => {
+    const { handle, results, nextIdle } = collectingRuntime();
+    const command = startCommand(100, "astar", 11);
+    const idle = nextIdle();
+    handle(command);
+    await idle;
+
+    assert.ok(results.every((result) => result.runId === 11));
+    assert.ok(results.every((result) => result.partitionId === command.partitionId));
+    assert.deepEqual(
+      results.slice(-2).map((result) => result.type),
+      ["proof/partition-complete", "proof/idle"],
+    );
+    assert.equal(results.filter((result) => result.type === "proof/idle").length, 1);
+  });
+
+  it("rejects a start while a partition runs, then takes the next one once idle", async () => {
+    const { handle, results, nextIdle } = collectingRuntime();
+    const running = startCommand(100, "astar", 1);
+    const overlapping = { ...startCommand(100, "astar", 2), partitionId: "overlap" };
+    const firstIdle = nextIdle();
+    handle(running);
+    handle(overlapping);
+    await firstIdle;
+
+    const rejected = results.filter((result) => result.runId === 2);
+    assert.equal(rejected.length, 1);
+    assert.equal(rejected[0].type, "proof/error");
+    assert.equal(rejected[0].partitionId, "overlap");
+    assert.equal(completion(results).exhausted, true);
+    const idles = results.filter((result) => result.type === "proof/idle");
+    assert.deepEqual(idles, [{ type: "proof/idle", runId: 1, partitionId: running.partitionId }]);
+
+    // The same lane serves a later run once it has gone idle.
+    const posted = results.length;
+    const secondIdle = nextIdle();
+    handle(startCommand(100, "astar", 3));
+    await secondIdle;
+    const later = results.slice(posted);
+    assert.ok(later.every((result) => result.runId === 3));
+    assert.equal(later.some((result) => result.type === "proof/error"), false);
+    const found = later.find((result) => result.type === "proof/solution");
+    assert.ok(found);
+    assert.equal(found.solution.moves, 3);
+  });
+
+  it("posts an error then idle when the partition cannot start", async () => {
+    const { handle, results, nextIdle } = collectingRuntime();
+    const command = startCommand(100, "astar", 5);
+    const idle = nextIdle();
+    handle({ ...command, request: { ...command.request, board: { rows: 0 } } });
+    await idle;
+
+    assert.deepEqual(results.map((result) => result.type), ["proof/error", "proof/idle"]);
+    assert.ok(results.every((result) => result.runId === 5));
+  });
 
   it("ignores messages that are not proof commands", () => {
     const { handle, results } = collectingRuntime();

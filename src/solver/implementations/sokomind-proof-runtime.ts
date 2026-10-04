@@ -22,6 +22,7 @@ import {
   type ProofSolutionFound,
   type ProofPartitionComplete,
   type ProofError,
+  type ProofIdle,
   type ProofResult,
   type ProofStartPartition,
 } from "./sokomind-proof-protocol.ts";
@@ -54,6 +55,8 @@ export function createProofWorkerRuntime(
   let activePrefixCost = 0;
   let activeUpperBound = Number.POSITIVE_INFINITY;
   let lastReportedLowerBound = 0;
+  // The closure state above belongs to one partition at a time.
+  let activePartition: ProofStartPartition | null = null;
 
   function createUpperBoundChannel(): UpperBoundChannel {
     return {
@@ -69,7 +72,7 @@ export function createProofWorkerRuntime(
   }
 
   async function runPartition(command: ProofStartPartition): Promise<void> {
-    const { partitionId, request, initialUpperBound, prefixCost, algorithm } =
+    const { runId, partitionId, request, initialUpperBound, prefixCost, algorithm } =
       command;
 
     abortController = new AbortController();
@@ -83,6 +86,7 @@ export function createProofWorkerRuntime(
     let lastProgressMs = 0;
     let lastProgress: ProofProgress = {
       type: "proof/progress",
+      runId,
       partitionId,
       lowerBound: prefixCost,
       expandedStates: 0,
@@ -104,6 +108,7 @@ export function createProofWorkerRuntime(
         );
         postProgress({
           type: "proof/progress",
+          runId,
           partitionId,
           lowerBound: lastReportedLowerBound,
           expandedStates: progress.expandedStates ?? 0,
@@ -150,6 +155,7 @@ export function createProofWorkerRuntime(
     } catch (error: unknown) {
       postResult({
         type: "proof/error",
+        runId,
         partitionId,
         message: error instanceof Error ? error.message : String(error),
       } satisfies ProofError);
@@ -162,12 +168,14 @@ export function createProofWorkerRuntime(
       const fullSolution = prependSolution(command, result.solution);
       postResult({
         type: "proof/solution",
+        runId,
         partitionId,
         solution: fullSolution,
         totalCost: fullSolution.moves,
       } satisfies ProofSolutionFound);
       postResult({
         type: "proof/partition-complete",
+        runId,
         partitionId,
         lowerBound: Math.max(
           lastReportedLowerBound,
@@ -179,6 +187,7 @@ export function createProofWorkerRuntime(
     } else if (result.status === "unsolved") {
       postResult({
         type: "proof/partition-complete",
+        runId,
         partitionId,
         lowerBound: Math.max(
           lastReportedLowerBound,
@@ -192,6 +201,7 @@ export function createProofWorkerRuntime(
     } else {
       postResult({
         type: "proof/partition-complete",
+        runId,
         partitionId,
         lowerBound: lastReportedLowerBound,
         exhausted: false,
@@ -206,9 +216,33 @@ export function createProofWorkerRuntime(
     const command: ProofCommand = data;
 
     switch (command.type) {
-      case "proof/start-partition":
-        void runPartition(command);
+      case "proof/start-partition": {
+        const { runId, partitionId } = command;
+        if (activePartition !== null) {
+          postResult({
+            type: "proof/error",
+            runId,
+            partitionId,
+            message: `Partition ${activePartition.partitionId} is still running.`,
+          } satisfies ProofError);
+          break;
+        }
+        activePartition = command;
+        void runPartition(command)
+          .catch((error: unknown) => {
+            postResult({
+              type: "proof/error",
+              runId,
+              partitionId,
+              message: error instanceof Error ? error.message : String(error),
+            } satisfies ProofError);
+          })
+          .finally(() => {
+            activePartition = null;
+            postResult({ type: "proof/idle", runId, partitionId } satisfies ProofIdle);
+          });
         break;
+      }
 
       case "solver/update-upper-bound": {
         const localBound = command.moves - activePrefixCost;

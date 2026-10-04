@@ -22,6 +22,12 @@ export const PROOF_HEARTBEAT_MS = 5_000;
 
 export interface ProofStartPartition {
   readonly type: "proof/start-partition";
+  /**
+   * Names one coordinator run. A lane may serve several runs in turn, and
+   * partition ids repeat across runs of the same board, so every result
+   * echoes it.
+   */
+  readonly runId: number;
   readonly partitionId: string;
   readonly request: SolverRequest;
   /** Exclusive numeric move cap; it is not evidence that a route exists. */
@@ -48,6 +54,7 @@ export type ProofCommand =
 
 export interface ProofProgress {
   readonly type: "proof/progress";
+  readonly runId: number;
   readonly partitionId: string;
   readonly lowerBound: number;
   readonly expandedStates: number;
@@ -57,6 +64,7 @@ export interface ProofProgress {
 
 export interface ProofSolutionFound {
   readonly type: "proof/solution";
+  readonly runId: number;
   readonly partitionId: string;
   readonly solution: SolverSolution;
   readonly totalCost: number;
@@ -64,6 +72,7 @@ export interface ProofSolutionFound {
 
 export interface ProofPartitionComplete {
   readonly type: "proof/partition-complete";
+  readonly runId: number;
   readonly partitionId: string;
   readonly lowerBound: number;
   readonly exhausted: boolean;
@@ -72,15 +81,24 @@ export interface ProofPartitionComplete {
 
 export interface ProofError {
   readonly type: "proof/error";
+  readonly runId: number;
   readonly partitionId: string;
   readonly message: string;
+}
+
+/** Posted after a partition's last result, once the lane can take another. */
+export interface ProofIdle {
+  readonly type: "proof/idle";
+  readonly runId: number;
+  readonly partitionId: string;
 }
 
 export type ProofResult =
   | ProofProgress
   | ProofSolutionFound
   | ProofPartitionComplete
-  | ProofError;
+  | ProofError
+  | ProofIdle;
 
 const PROOF_COMMAND_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/start-partition",
@@ -93,6 +111,7 @@ const PROOF_RESULT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/solution",
   "proof/partition-complete",
   "proof/error",
+  "proof/idle",
 ]);
 
 function isNonNegativeSafeCost(value: unknown): value is number {
@@ -106,6 +125,7 @@ export function isProofCommand(value: unknown): value is ProofCommand {
   switch (value.type) {
     case "proof/start-partition":
       return (
+        isNonNegativeSafeCost(value.runId) &&
         typeof value.partitionId === "string" &&
         isRecord(value.request) &&
         isNonNegativeSafeCost(value.initialUpperBound) &&
@@ -131,6 +151,7 @@ export function isProofCommand(value: unknown): value is ProofCommand {
 export function isProofResult(value: unknown): value is ProofResult {
   if (!isRecord(value)) return false;
   if (!PROOF_RESULT_TYPES.has(value.type)) return false;
+  if (!isNonNegativeSafeCost(value.runId)) return false;
 
   switch (value.type) {
     case "proof/progress":
@@ -167,6 +188,8 @@ export function isProofResult(value: unknown): value is ProofResult {
         typeof value.partitionId === "string" &&
         typeof value.message === "string"
       );
+    case "proof/idle":
+      return typeof value.partitionId === "string";
     default:
       return false;
   }

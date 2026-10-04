@@ -302,6 +302,9 @@ interface PartitionTracker {
   metrics?: SolverRunMetrics;
 }
 
+// Each coordinator run gets its own id, which every lane result echoes.
+let nextProofRunId = 0;
+
 export interface ConcurrentProofOptions {
   readonly createProofWorker: () => SokomindProofWorker;
   readonly proofParallelism: number;
@@ -439,6 +442,7 @@ export async function runConcurrentProof(
   }
 
   const proofStartedAt = proofPlanningStartedAt;
+  const runId = ++nextProofRunId;
 
   return new Promise<SolverResult>((resolve) => {
     let settled = false;
@@ -743,6 +747,7 @@ export async function runConcurrentProof(
 
       const command: ProofStartPartition = {
         type: "proof/start-partition",
+        runId,
         partitionId: partition.partitionId,
         request: {
           ...buildPartitionRequest(request, partition),
@@ -780,6 +785,8 @@ export async function runConcurrentProof(
         return;
       }
       const result: ProofResult = data;
+      // A lane's results from an earlier run can say nothing about this one.
+      if (result.runId !== runId) return;
       const tracker = trackerById.get(result.partitionId);
       const active = activeByWorker.get(worker);
       if (tracker?.completed) return;
@@ -858,6 +865,13 @@ export async function runConcurrentProof(
         }
 
         case "proof/error": {
+          failActive(worker);
+          break;
+        }
+
+        case "proof/idle": {
+          // A lane goes idle only after its partition's last result, which
+          // completes or fails the partition before this message arrives.
           failActive(worker);
           break;
         }
