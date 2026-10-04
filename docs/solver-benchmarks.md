@@ -93,6 +93,60 @@ invisible. Certificate timing, p95, occupied-worker telemetry, supported/holdout
 suites, and isolated browser qualification remain open in the
 [performance roadmap](SOLVER-PERFORMANCE-ROADMAP-2026-09-16.md).
 
+## Baseline of record
+
+Solver changes from the 2026-10-03 plan are compared against commit `b392ce8`
+(Sokomind 1.3.0, classic A* 2.2.2, classic IDA* 2.2.1). The capture used
+`--runs=5 --warmup=0` from clean checkouts on Waterfield c4-standard-32 nodes
+(Intel Xeon Platinum 8581C, 16 visible CPUs, Node 22.16.0), one exclusive node
+per shard. Ten shards (SLURM jobs 46901-46909 and 46944) cover production
+fast/quality/optimal on all 44 fixtures, and the four exact profiles on the 33
+fixtures with a frozen optimum: 264 sample groups.
+
+The capture is not promotable. Each shard is a partial run, and Optimal cannot
+meet its certificate target on the 10 solvable boards without a frozen optimum,
+so those shards exit 2. The artifacts and their merged summary are kept with
+the SLURM tooling, outside the repository.
+
+| Profile | Groups | Solved | Proven | At frozen optimum | Median time | Median first route | Peak RSS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `classic-astar` | 33 | 33 | 33 | 33 | 134 ms | 134 ms | 561 MiB |
+| `classic-ida-star` | 33 | 32 | 32 | 32 | 273 ms | 273 ms | 493 MiB |
+| `sokomind-optimal-astar` | 33 | 33 | 33 | 33 | 1.21 s | 1.17 s | 646 MiB |
+| `sokomind-optimal-ida` | 33 | 33 | 32 | 32 | 1.45 s | 1.17 s | 535 MiB |
+| `production-fast` | 44 | 43 | 0 | 8 of 33 | 182 ms | 180 ms | 1,134 MiB |
+| `production-quality` | 44 | 43 | 0 | 15 of 33 | 1.60 s | 1.75 s | 4,311 MiB |
+| `production-optimal` | 44 | 43 | 33 | 33 of 33 | 1.83 s | 1.78 s | 2,863 MiB |
+
+Times are the median over groups of each group's median sample; peak RSS is
+the largest group median.
+
+- The unsolved production group is `v2-27box-memory`, which every mode ends as
+  exhausted in about 640 ms.
+- `expert-tetris` is the only exact miss. Classic IDA* stops at the
+  5,000,000 generated-state cap after 38 s, and the Sokomind IDA* profile
+  returns an unproven 62-move route; the optimum is 38.
+- The largest peak RSS is Quality on `open-field`. Process RSS can pass the
+  4 GiB request limit because that limit governs the solver's own memory
+  estimate.
+
+Boards without a frozen optimum (median moves and final lower bound over five
+runs; Quality and Optimal ran to their 60-second and 120-second deadlines on
+every one):
+
+| Fixture | Boxes | Fast | Quality | Optimal | Optimal lower bound |
+|---|---:|---:|---:|---:|---:|
+| `large` | 6 | 168 (0.26 s) | 150 | 150 | 119 |
+| `master-exchange` | 8 | 257 (0.25 s) | 137 | 144 | 91 |
+| `master-typed-grid` | 8 | 135 (0.28 s) | 114 | 114 | 70 |
+| `open-field` | 10 | 180 (4.1 s) | 143 | 145 | 84 |
+| `theme-museum` | 6 | 102 (0.24 s) | 77 | 88 | 54 |
+| `theme-parking` | 5 | 170 (0.84 s) | 116 | 120 | 88 |
+| `v2-17box-handdesigned` | 17 | 893 (7.5 s) | 491 | 520 | 221 |
+| `v2-17box-mirrored` | 17 | 893 (7.2 s) | 499 | 548 | 221 |
+| `v2-17box-rotated` | 17 | 893 (7.2 s) | 488 | 546 | 221 |
+| `v2-27box-open` | 27 | 1,300 (26.3 s) | 912 | 914 | 397 |
+
 ## Controlled feature A/B runs
 
 Use `--compare-feature` with exact profiles:
