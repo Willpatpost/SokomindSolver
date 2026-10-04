@@ -175,7 +175,29 @@ start at the same cell. `deadlockTableWorkUnits` and `deadlockTableTruncated`
 report the build. The deadlock rules are unchanged, so the proof revision is
 unchanged.
 
-A proof lane keeps the board-only tables of its last run: the deadlock table,
+Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
+used to start for every plan and a proof lane for every proof run, each
+loading the engine or kernels again. The next plan now takes an engine whose
+last message was a done that did not fail: the engine runs each command
+synchronously and posts done last, so such an engine is idle. Any other engine
+is terminated, and so is a parked engine that no plan takes within 1 s. A
+proof lane that ended its partition serves the next proof run. A lane
+cancelled mid-partition serves it once it posts the idle that ends that
+partition, and is terminated if that takes over 2 s; a failed lane is never
+reused. Every lane message carries its run's id, and a run ignores messages
+from any other run. A parked worker that reports an error is dropped, and
+every worker stops when the request ends. A parked worker is lent before a new
+one starts. An engine becomes lendable only once the done that freed it has
+reached every listener, so a plan started from that done takes another engine,
+and a request can hold one engine more than it ran at once. Parked workers
+hold no lease against the request's budget. Outside tests no
+heap reading feeds an engine's memory estimate (Chromium's covers the whole
+process and Node gives none), so reuse leaves memory accounting unchanged.
+Each plan and proof run sends the same
+commands as before; the exact kernels and proof logic are untouched, and the
+proof revision is unchanged.
+
+A kept proof lane also holds the board-only tables of its last run: the deadlock table,
 the room-pattern tables behind the interaction boost and the pattern
 databases. The next partition or proof run on that lane reuses them when its
 key matches: the board, the resolved features, the algorithm, the box count
