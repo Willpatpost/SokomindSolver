@@ -1612,7 +1612,7 @@ describe("concurrent proof coordinator", () => {
       moves: 4,
       pushes: 2,
       objective: { kind: "moves" },
-      objectiveScore: 40,
+      objectiveScore: 4,
       optimality: "unknown",
     };
     let offer: ((solution: SolverSolution) => void) | undefined;
@@ -1656,7 +1656,6 @@ describe("concurrent proof coordinator", () => {
     if (result.status === "solved") {
       assert.equal(result.proof?.kind, "optimal");
       assert.equal(result.solution.moves, 4);
-      assert.equal(result.solution.objectiveScore, 4);
       assert.equal(result.solution.optimality, "proven");
     }
     const bounds = workers.flatMap((worker) => worker.receivedCommands)

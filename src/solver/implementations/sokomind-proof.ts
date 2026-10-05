@@ -869,17 +869,15 @@ export async function runConcurrentProof(
       if (!settled) reportProgress(true);
     }
 
-    // An outside route replays on the root request like a lane's. Replay does
-    // not check the objective fields, so the incumbent keeps a copy scored for
-    // this request. A bad route is dropped without failing any lane.
+    // An outside route replays on the root request like a lane's, and a bad
+    // route is dropped without failing any lane. The incumbent keeps a frozen
+    // copy that claims no optimality.
     function injectIncumbent(solution: SolverSolution): void {
       if (settled || solution.moves >= bestCost) return;
       const verification = verifySolverSolution(request, solution);
       if (atDeadline() || !verification.valid || solution.moves >= bestCost) return;
       lowerIncumbent(Object.freeze({
         ...solution,
-        objective: request.objective,
-        objectiveScore: solution.moves,
         optimality: "unknown" as const,
       }));
     }

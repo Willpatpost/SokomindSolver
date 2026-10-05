@@ -316,10 +316,9 @@ publishes is offered to the proof coordinator, which takes it only when:
   applies to a lane's route; and
 - it is shorter than the coordinator's best route.
 
-The coordinator stores a copy scored for its request (moves objective, unknown
-optimality), because replay does not check those fields. It then sends the
+The coordinator stores a frozen copy that claims no optimality, then sends the
 lower bound to every lane, as it does for a lane's route. A route that fails
-replay is dropped and no lane is stopped.
+replay or validation is dropped and no lane is stopped.
 
 This keeps the proof sound. A partition closes only when its search shows no
 route shorter than the coordinator's best cost, and that cost only falls to the
