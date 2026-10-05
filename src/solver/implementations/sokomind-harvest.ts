@@ -1243,9 +1243,10 @@ interface BesideProof {
 /**
  * Launches the unmodified proof from `firstIncumbent`, as the pipeline's own
  * proof starts, within the split's lane memory and capped at `capMs` past now
- * (undefined: the run's own time limit). Its lanes' worker threads and memory
- * are reserved from the engines until it ends, and its work counts against
- * the run's limits while it runs.
+ * (undefined: the run's own time limit). Each route the improvement publishes
+ * is offered to it; the proof replays it and lowers its bound only when it is
+ * shorter. Its lanes' worker threads and memory are reserved from the engines
+ * until it ends, and its work counts against the run's limits while it runs.
  */
 function launchBesideProof(
   run: SearchRunState,
@@ -1365,6 +1366,14 @@ function launchBesideProof(
       onLanePlan(plan) {
         heldWorkers = plan.lanes;
         run.budget.reservedWorkers += plan.lanes;
+      },
+      outsideIncumbents: {
+        subscribe(offer) {
+          run.incumbentListener = offer;
+          return () => {
+            if (run.incumbentListener === offer) run.incumbentListener = undefined;
+          };
+        },
       },
     },
   ).then(settle, (error: unknown) => {
@@ -1825,12 +1834,13 @@ async function settleUnprovenAnytime(
  * alone for the split's head start. A proof done by then stands, and one that
  * stopped short leaves the improvement every core before the final proof, as
  * proof-first does. Otherwise the route improvement runs beside the same proof
- * on the engines' share. A completed proof stands at once. When the
- * improvement ends, the same proof continues, even from a longer route than
- * the improvement found: a proof's starting bound barely changes its work, so
- * a fresh proof would redo it. Its bounds then reach progress, held to the
- * published route. A proof that ends unproven is followed by the final proof
- * when time allows (see settleUnprovenAnytime).
+ * on the engines' share, and each route it publishes lowers the proof's bound
+ * once the proof has replayed it. A completed proof stands at once. When the
+ * improvement ends, the same proof continues: it already holds the
+ * improvement's best route, and a fresh proof would redo its work. Its bounds
+ * then reach progress, held to the published route. A proof that ends
+ * unproven is followed by the final proof when time allows (see
+ * settleUnprovenAnytime).
  */
 async function optimalAnytimeImprove(
   run: SearchRunState,

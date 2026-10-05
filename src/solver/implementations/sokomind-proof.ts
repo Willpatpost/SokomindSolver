@@ -341,6 +341,17 @@ export interface ConcurrentProofOptions {
   readonly planMemoryBytes?: number;
   /** Called with the lane plan, before any lane starts. */
   readonly onLanePlan?: (plan: ProofLanePlan) => void;
+  /**
+   * Routes found outside the proof while it runs, such as the route
+   * improvement's. Each one must replay on this request and beat the
+   * incumbent before it lowers the bound. Deterministic runs take none.
+   */
+  readonly outsideIncumbents?: OutsideIncumbentSource;
+}
+
+export interface OutsideIncumbentSource {
+  /** Offers each new route until the returned function is called. */
+  subscribe(offer: (solution: SolverSolution) => void): () => void;
 }
 
 export async function runConcurrentProof(
@@ -494,6 +505,7 @@ export async function runConcurrentProof(
     const errorListeners = new Map<SokomindProofWorker, ProofErrorListener>();
     const silenceTimers = new Map<SokomindProofWorker, ReturnType<typeof setTimeout>>();
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeOutside: (() => void) | undefined;
     let lastProgressAt = Number.NEGATIVE_INFINITY;
 
     const aggregateProofMetrics = (): SolverRunMetrics => {
@@ -640,6 +652,7 @@ export async function runConcurrentProof(
 
     const cleanup = (): void => {
       if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+      unsubscribeOutside?.();
       context.signal.removeEventListener("abort", onAbort);
       for (const worker of workers) {
         clearSilenceTimer(worker);
@@ -835,6 +848,42 @@ export async function runConcurrentProof(
       checkTermination();
     }
 
+    // Takes a replay-verified route shorter than the incumbent. Every partition
+    // closure compares against bestCost, which only ever falls to the length of
+    // such a route, so a closed partition still holds no shorter route.
+    function lowerIncumbent(solution: SolverSolution): void {
+      bestCost = solution.moves;
+      bestSolution = solution;
+      bestRoute = routeOf(bestSolution);
+      for (const w of workers) {
+        try {
+          w.postMessage({
+            type: "solver/update-upper-bound",
+            moves: bestCost,
+          });
+        } catch {
+          // worker already terminated
+        }
+      }
+      checkTermination();
+      if (!settled) reportProgress(true);
+    }
+
+    // An outside route replays on the root request like a lane's. Replay does
+    // not check the objective fields, so the incumbent keeps a copy scored for
+    // this request. A bad route is dropped without failing any lane.
+    function injectIncumbent(solution: SolverSolution): void {
+      if (settled || solution.moves >= bestCost) return;
+      const verification = verifySolverSolution(request, solution);
+      if (atDeadline() || !verification.valid || solution.moves >= bestCost) return;
+      lowerIncumbent(Object.freeze({
+        ...solution,
+        objective: request.objective,
+        objectiveScore: solution.moves,
+        optimality: "unknown" as const,
+      }));
+    }
+
     function handleMessage(worker: SokomindProofWorker, data: unknown): void {
       if (atDeadline() || unavailableWorkers.has(worker)) return;
       if (!isProofResult(data)) {
@@ -884,23 +933,7 @@ export async function runConcurrentProof(
             failActive(worker);
             break;
           }
-          if (result.totalCost < bestCost) {
-            bestCost = result.totalCost;
-            bestSolution = result.solution;
-            bestRoute = routeOf(bestSolution);
-            for (const w of workers) {
-              try {
-                w.postMessage({
-                  type: "solver/update-upper-bound",
-                  moves: bestCost,
-                });
-              } catch {
-                // worker already terminated
-              }
-            }
-            checkTermination();
-            if (!settled) reportProgress(true);
-          }
+          if (result.totalCost < bestCost) lowerIncumbent(result.solution);
           break;
         }
 
@@ -992,6 +1025,11 @@ export async function runConcurrentProof(
         Math.floor(proofDeadline - context.now()),
       );
       deadlineTimer = setTimeout(finishAtDeadline, Math.max(1, deadlineDelayMs));
+    }
+
+    if (!options.deterministic) {
+      unsubscribeOutside = concurrentOptions.outsideIncumbents?.subscribe(injectIncumbent);
+      if (settled) unsubscribeOutside?.();
     }
 
     for (const worker of workers) dispatchNext(worker);

@@ -1595,6 +1595,105 @@ describe("concurrent proof coordinator", () => {
     );
   });
 
+  it("closes partitions against a replayed outside route and drops a bad one", async () => {
+    const request = makeRequest([
+      "OOOOOO",
+      "O R  O",
+      "O X SO",
+      "OOOOOO",
+    ]);
+    const outsideRoute: SolverSolution = {
+      steps: [
+        { direction: "left", kind: "walk" },
+        { direction: "down", kind: "walk" },
+        { direction: "right", kind: "push" },
+        { direction: "right", kind: "push" },
+      ],
+      moves: 4,
+      pushes: 2,
+      objective: { kind: "moves" },
+      objectiveScore: 40,
+      optimality: "unknown",
+    };
+    let offer: ((solution: SolverSolution) => void) | undefined;
+    const outsideIncumbents = {
+      subscribe(fn: (solution: SolverSolution) => void) {
+        offer = fn;
+        return () => { offer = undefined; };
+      },
+    };
+    const workers: MockProofWorker[] = [];
+    let offered = false;
+    const createWorker = () => {
+      const worker = new MockProofWorker((command) => {
+        if (!offered) {
+          offered = true;
+          offer?.(makeSolution(3, 1));
+          offer?.(outsideRoute);
+        }
+        // Each lane found no route shorter than 4 but was not exhausted, so
+        // only an incumbent of 4 can close its partition.
+        worker.emit({
+          type: "proof/partition-complete",
+          partitionId: command.partitionId,
+          lowerBound: Math.max(4, command.prefixCost),
+          exhausted: false,
+        });
+      });
+      workers.push(worker);
+      return worker;
+    };
+
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal", proofParallelism: 2 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: createWorker, proofParallelism: 2, outsideIncumbents },
+    );
+
+    assert.equal(result.status, "solved");
+    if (result.status === "solved") {
+      assert.equal(result.proof?.kind, "optimal");
+      assert.equal(result.solution.moves, 4);
+      assert.equal(result.solution.objectiveScore, 4);
+      assert.equal(result.solution.optimality, "proven");
+    }
+    const bounds = workers.flatMap((worker) => worker.receivedCommands)
+      .flatMap((command) => command.type === "solver/update-upper-bound" ? [command.moves] : []);
+    assert.ok(bounds.includes(4));
+    assert.equal(bounds.includes(3), false);
+    assert.equal(offer, undefined);
+    assertValidSolverResult(result);
+  });
+
+  it("takes no outside routes in a deterministic run", async () => {
+    const request = makeRequest([
+      "OOOOOO", "OR X O", "O   SO", "OOOOOO",
+    ]);
+    let subscribed = false;
+    const worker = new MockProofWorker((command) => {
+      queueMicrotask(() => worker.emit({
+        type: "proof/partition-complete",
+        partitionId: command.partitionId,
+        lowerBound: Math.max(5, command.prefixCost),
+        exhausted: true,
+      }));
+    });
+    await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "optimal", proofParallelism: 2, deterministic: true },
+      makeDiscoveryResult(10, 5),
+      {
+        createProofWorker: () => worker,
+        proofParallelism: 2,
+        outsideIncumbents: { subscribe() { subscribed = true; return () => {}; } },
+      },
+    );
+    assert.equal(subscribed, false);
+  });
+
   it("partitions remaining limits and merges discovery plus proof metrics", async () => {
     const request: SolverRequest = {
       ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),

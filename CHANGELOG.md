@@ -62,7 +62,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.12.4. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -102,6 +102,10 @@ published a stable release.
   side of each axis, or by dead cells on both sides, as long as it is off its
   own goal or leaves the other boxes no way to the free goals. Exact searches
   prune these states, and the UI deadlock warning flags them sooner.
+- On small boards, the parallel proof beside the route improvement takes each
+  route the improvement publishes. A route that replays and beats the proof's
+  best lowers its bound, so partitions close sooner; one that fails replay is
+  dropped without stopping a lane.
 - A pattern-database build that hits the memory limit keeps its partial table,
   or disables that partition, instead of aborting exact search. Both are
   admissible: unreached entries read `frontierDepth + 1`, and a disabled table

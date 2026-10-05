@@ -307,6 +307,33 @@ check, so it now flags these states sooner. The version change restarts
 earlier IDA* checkpoints. Proof revision `exact-moves-ida-contour-exit-v1` and
 storage key `sokomind.optimal.v10` also cover this change.
 
+Sokomind 1.13.0 hands the route improvement's routes to the small-board proof
+running beside it. That proof used to keep the bound it started with until one
+of its own lanes found a shorter route. Now every route the improvement
+publishes is offered to the proof coordinator, which takes it only when:
+
+- it replays on the proof's own request, with the same check the coordinator
+  applies to a lane's route; and
+- it is shorter than the coordinator's best route.
+
+The coordinator stores a copy scored for its request (moves objective, unknown
+optimality), because replay does not check those fields. It then sends the
+lower bound to every lane, as it does for a lane's route. A route that fails
+replay is dropped and no lane is stopped.
+
+This keeps the proof sound. A partition closes only when its search shows no
+route shorter than the coordinator's best cost, and that cost only falls to the
+length of a route that replays. So every closed partition still holds no route
+shorter than the result, and a proof that completes still proves it optimal.
+A shorter bound only lets partitions close sooner.
+
+Only the parallel proof beside the improvement takes outside routes. A
+single-lane proof never runs beside the improvement, deterministic runs take
+none, and the kernels are unchanged. Quality's exact lane takes the routes too,
+and its result still reports unknown optimality. Proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
+cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

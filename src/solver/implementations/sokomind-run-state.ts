@@ -75,6 +75,8 @@ export interface SearchRunState {
   publishedIncumbent: SolverSolution | undefined;
   /** publishedIncumbent as an action log, encoded once per new incumbent. */
   publishedRoute: string | undefined;
+  /** Offered each new published incumbent while a small-board proof runs beside the improvement. */
+  incumbentListener?: ((solution: SolverSolution) => void) | undefined;
   /**
    * Charged to the state limits; set once a small-board proof ends, or live
    * while the small-board proof runs beside the improvement.
@@ -352,6 +354,7 @@ export function recordIncumbent(
   }
   run.publishedIncumbent = solution;
   run.publishedRoute = encodeActionLog(solution.steps.map((step) => step.direction));
+  run.incumbentListener?.(solution);
   return true;
 }
 

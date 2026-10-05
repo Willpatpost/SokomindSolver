@@ -341,7 +341,7 @@ export const sokomindSolverMetadata: SolverMetadata = Object.freeze({
   displayName: "Sokomind Solver",
   description:
     "Typed-box Sokoban search with structural macros, compact bidirectional frontiers, and bounded move-count improvement.",
-  version: "1.12.4",
+  version: "1.13.0",
   capabilities: Object.freeze({
     executionTargets: ["web-worker"] as const,
     runtime: "javascript",
