@@ -90,7 +90,7 @@ describe("label-disjoint extra selection", () => {
     for (let trial = 0; trial < 40; trial++) {
       // Every candidate keeps a positive weight and the first eight cover all
       // 24 labels, so the greedy fallback runs.
-      const surplus = Array.from({ length: 24 }, () => (rng.chance(0.2) ? 1 : 0));
+      const surplus = Array.from({ length: 24 }, (): number => (rng.chance(0.2) ? 1 : 0));
       const candidates = [
         ...Array.from({ length: 8 }, (_, c) => ({ labels: [3 * c, 3 * c + 1, 3 * c + 2], value: rng.int(4, 8) })),
         ...Array.from({ length: 4 }, () => ({
@@ -120,12 +120,15 @@ describe("label-disjoint extra selection", () => {
 });
 
 describe("shared exact heuristic admissibility", () => {
-  it("never exceeds the pushes or moves left on small fuzz boards", () => {
+  it("never exceeds the pushes or moves left on fuzz boards", () => {
     let boards = 0;
     let states = 0;
     let raises = 0;
-    for (let seed = 1; seed < 20_000 && boards < 40; seed++) {
-      if (boards >= 8 && raises > 0) break;
+    for (let i = 0; i < 20_000 && boards < 41; i++) {
+      // Seed 7777 (four typed boxes) is the only one of the first 40,000
+      // seeds whose states get an additive raise, so it always runs first.
+      // Small boards fill the rest.
+      const seed = i === 0 ? 7777 : i;
       const fuzz = generateFuzzBoard(seed);
       // A label's PDB surplus needs two of its boxes, and a raise needs
       // parts on disjoint labels, so take boards with at least three boxes.
@@ -134,7 +137,7 @@ describe("shared exact heuristic admissibility", () => {
       const board = compileSearchBoard(parsed);
       let stateBound = 1;
       for (let k = 0; k <= fuzz.boxCount; k++) stateBound *= board.cellCount - k;
-      if (stateBound > 60_000) continue;
+      if (i > 0 && stateBound > 60_000) continue;
       boards += 1;
 
       const labels = [...board.goalCellsByLabel.keys()].sort();
