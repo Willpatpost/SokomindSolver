@@ -10,7 +10,9 @@ import { encodeActionLog } from "../../core/index.ts";
 import { verifySolverSolution } from "../verification.ts";
 import type { SokomindRequestOptions } from "./sokomind-options.ts";
 import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "./sokomind-worker-limits.ts";
-import { compileSearchBoard } from "../search/compiled-board.ts";
+import { compileSearchBoard, type CompiledSearchBoard } from "../search/compiled-board.ts";
+import { assignmentLowerBound } from "../search/heuristic.ts";
+import { toDenseBoxes } from "../search/model.ts";
 import {
   selectProofAlgorithm,
   selectProofLanes,
@@ -30,6 +32,7 @@ import {
   isProofResult,
   PROOF_SILENCE_TIMEOUT_MS,
   type ProofCommand,
+  type ProofPartition,
   type ProofResult,
   type ProofStartPartition,
 } from "./sokomind-proof-protocol.ts";
@@ -42,6 +45,25 @@ export interface ProofCheckpointOptions {
   readonly checkpoint?: IdaStarCheckpoint;
   readonly onCheckpoint?: (checkpoint: IdaStarCheckpoint) => void;
   readonly solverVersion?: string;
+}
+
+// Lanes take the partitions whose prefix plus walls-only push bound is lowest
+// first, since a shorter route most likely starts there. Order cannot change
+// the verdict, which is the minimum over every partition. Ties keep
+// enumeration order (the sort is stable).
+function orderPartitionsByRootBound(
+  board: CompiledSearchBoard,
+  partitions: readonly ProofPartition[],
+): readonly ProofPartition[] {
+  const rootBound = new Map(partitions.map((partition) => [
+    partition,
+    partition.prefixCost + assignmentLowerBound(board, toDenseBoxes(board, partition.postPushBoxes)),
+  ]));
+  return [...partitions].sort((left, right) => {
+    const a = rootBound.get(left)!;
+    const b = rootBound.get(right)!;
+    return a === b ? 0 : a < b ? -1 : 1;
+  });
 }
 
 /** The action log a verified route publishes with its progress incumbent. */
@@ -375,7 +397,7 @@ export async function runConcurrentProof(
   const board = compileSearchBoard(request.board);
   const boxCount = request.snapshot.boxes.length;
 
-  const partitions = enumerateFirstPushPartitions(request, board);
+  const partitions = orderPartitionsByRootBound(board, enumerateFirstPushPartitions(request, board));
 
   if (partitions.length === 0) {
     return discoveryResult;

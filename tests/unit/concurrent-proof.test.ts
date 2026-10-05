@@ -1090,6 +1090,28 @@ describe("concurrent proof coordinator", () => {
     assertValidSolverResult(result);
   });
 
+  it("dispatches partitions in root-bound order, keeping ties in enumeration order", async () => {
+    const request = makeRequest(["OOOOOOO", "O     O", "OR X SO", "O     O", "OOOOOOO"]);
+    // Enumerated up (dead), down (dead), left (bound 6 + 3), right (bound 2 + 1).
+    const [up, down, left, right] = enumerateFirstPushPartitions(request).map((p) => p.partitionId);
+    const started: string[] = [];
+    const worker = new MockProofWorker((cmd) => {
+      started.push(cmd.partitionId);
+      queueMicrotask(() => worker.emit({
+        type: "proof/partition-complete", partitionId: cmd.partitionId, lowerBound: 10, exhausted: true,
+      }));
+    });
+    const result = await runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, mode: "quality", proofParallelism: 1 },
+      makeDiscoveryResult(10, 5),
+      { createProofWorker: () => worker, proofParallelism: 1 },
+    );
+    assert.deepEqual(started, [right, left, up, down]);
+    assert.equal(result.status === "solved" ? result.proof?.kind : undefined, "optimal");
+  });
+
   for (const lastLaneReportsBound of [true, false]) {
     it(`failed partition dominated by a later incumbent proves optimality ${
       lastLaneReportsBound ? "after a closing progress report" : "on the final completion"

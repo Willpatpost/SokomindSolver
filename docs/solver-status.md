@@ -333,6 +333,17 @@ and its result still reports unknown optimality. Proof revision
 `exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
 cover this change.
 
+Sokomind 1.13.1 gives lanes the first-push partitions in order of root bound:
+the partition's prefix cost plus the walls-only push assignment bound of its
+boxes. A shorter route most likely starts in a partition with a low bound, so
+the proof tends to find it sooner and close the rest against it. Partitions
+with equal bounds keep enumeration order. Order cannot change the verdict. A
+proof is optimal only when every partition closes at the best cost, and a
+partition not yet searched still counts only its prefix cost. No bound is taken
+from the root bound, so a partition whose lane fails still closes at its prefix
+cost as before. Proof revision `exact-moves-ida-contour-exit-v1` and storage
+key `sokomind.optimal.v10` also cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

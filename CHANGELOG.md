@@ -37,6 +37,9 @@ published a stable release.
 
 ### Changed
 
+- The parallel proof gives its lanes the first-push partitions with the lowest
+  prefix cost plus push bound first, so a shorter route tends to turn up
+  sooner. Verdicts are unchanged.
 - Fast no longer holds discovery back for the structural head start on large
   boards. With two or more workers and no state limit, discovery runs beside
   the structural plan search, and the first replayed route wins. With four or
@@ -62,7 +65,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.0. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.1. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
