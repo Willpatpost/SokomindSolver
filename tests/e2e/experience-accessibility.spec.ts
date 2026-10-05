@@ -1,6 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+// Axe reads computed colors, so a dialog still fading in reports a blend of its
+// start and end colors. Reduced motion removes the entrance animations; the
+// motion test below sets its own preference.
+test.use({ reducedMotion: "reduce" });
+
 async function openExperienceControls(page: Page): Promise<Locator> {
   await page
     .getByRole("button", { name: "Sound and motion settings" })
@@ -63,16 +68,6 @@ function expectMotionSuppressed(styles: Awaited<ReturnType<typeof readMotionStyl
 }
 
 async function expectAxeClean(page: Page, view: string) {
-  // Axe reads computed colors, so a dialog still fading in reports a contrast
-  // between its start and end colors. Wait for every finite animation first.
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
-        .map((animation) => animation.finished.catch(() => undefined)),
-    ),
-  );
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
