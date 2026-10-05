@@ -180,6 +180,10 @@
   background: rgb(40 42 38);
 }
 
+:global(html[data-theme="dark"]) .ruleNumber {
+  color: var(--sage-700);
+}
+
 :global(html[data-theme="dark"]) .rules {
   border-top-color: rgb(255 255 255 / 0.08);
 }
