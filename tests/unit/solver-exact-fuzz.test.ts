@@ -208,6 +208,7 @@ describe("exact fuzz generator", () => {
     const labelModes = new Set<string>();
     const boxCounts = new Set<number>();
     let boards = 0;
+    let starts = 0;
     for (let seed = 1; seed <= 300; seed += 1) {
       const board = generateFuzzBoard(seed);
       assert.deepEqual(generateFuzzBoard(seed), board, `seed ${seed}`);
@@ -234,11 +235,17 @@ describe("exact fuzz generator", () => {
         assert.ok(boxes.filter((symbol) => symbol === "A").length >= 2, label);
       }
       if (board.placement === "reverse-pull") {
-        const oracle = fuzzOracle(rows, 100_000);
+        const oracle = fuzzOracle(rows, 100_000, board.start);
         assert.ok(oracle.capped || oracle.moves !== null, `reverse-pull board is unsolvable: ${label}`);
+      }
+      if (board.start) {
+        starts += 1;
+        const cells = [board.start.robot, ...board.start.boxes.map((box) => box.position)];
+        assert.ok(cells.some(({ row, column }) => /^[Sa-z]$/.test(rows[row][column])), `start: ${label}`);
       }
     }
     assert.ok(boards >= 100, `only ${boards} boards from 300 seeds`);
+    assert.ok(starts > 0, "no board has an on-goal start");
     assert.deepEqual([...layouts].sort(), [...FUZZ_LAYOUTS].sort());
     assert.deepEqual([...placements].sort(), [...FUZZ_PLACEMENTS].sort());
     assert.deepEqual([...labelModes].sort(), [...FUZZ_LABEL_MODES].sort());
@@ -309,13 +316,14 @@ describe("exact fuzz fixed-seed campaign", () => {
     assert.equal(report.boards, 100, summary);
     assert.deepEqual(report.runsByEngine, { astar: 100, ida: 100 }, summary);
 
-    // Non-vacuity: seed 1 gives 57 solvable and 43 unsolvable boards, and
-    // every solvable run ends with a proven optimum.
+    // Non-vacuity: seed 1 gives about 57 solvable and 43 unsolvable boards,
+    // and every solvable run ends with a proven optimum.
     assert.ok(report.solvable >= 40, summary);
     assert.ok(report.unsolvable >= 25, summary);
     assert.ok(report.provenOptimal >= 80, summary);
     assert.ok(report.provenUnsolvable >= 50, summary);
     assert.ok(report.crossChecks >= 15, summary);
+    assert.ok(report.onGoalStarts > 0, summary);
     for (const layout of FUZZ_LAYOUTS) assert.ok(report.byLayout[layout] > 0, `${layout}: ${summary}`);
     for (const placement of FUZZ_PLACEMENTS) assert.ok(report.byPlacement[placement] > 0, summary);
     for (const mode of FUZZ_LABEL_MODES) assert.ok(report.byLabelMode[mode] > 0, `${mode}: ${summary}`);

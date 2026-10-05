@@ -158,14 +158,17 @@ Extended Solver Proof workflow.
 `test:solver:fuzz` is a seeded differential fuzz of exact A* and IDA*
 (`tests/support/exact-fuzz.ts`). It generates small boards (sparse, dense,
 corridor, rooms, and repeated-motif layouts; reverse-pull or random box
-placement; all-X, typed, mixed, and duplicate-typed labels; 1-4 boxes),
-solves each with an independent step BFS that is cross-checked against
+placement; all-X, typed, mixed, and duplicate-typed labels; 1-4 boxes). Some
+reverse-pull boards start mid-game with a box or the robot on a goal, which the
+rows cannot show, so the start is passed as a snapshot. The fuzz solves each
+board with an independent step BFS that is cross-checked against
 `exactRemainingMoves`, and runs the engines with default features, tunnel
 macros on, each default-on feature switched off, and the admissible opt-in
 features. A wrong proven optimum, a false unsolvable or solvable verdict, a
 solution that fails replay, or a bound on the wrong side of the optimum fails
 the run; a limit result is only a bound. Each failure prints its seed,
-variant, rows, and a minimized board. The unit suite runs a fixed 100-board
+variant, rows, and a minimized board (a mid-game start prints the start and is
+not minimized). The unit suite runs a fixed 100-board
 slice (`tests/unit/solver-exact-fuzz.test.ts`: seed 1 and a state cap only,
 so the result is the same on every machine). The long run takes 10 minutes
 from seed 1000000 by default; `SOKOMIND_FUZZ_MINUTES`, `SOKOMIND_FUZZ_SEED`,

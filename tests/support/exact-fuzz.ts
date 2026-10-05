@@ -5,7 +5,9 @@
  *   dense, corridor, rooms, and repeated motif (D4-transformed copies of one
  *   corridor motif with random stubs, so congruent windows get different
  *   exits). Boxes are placed by reverse pulls from the goals, which always
- *   gives a solvable board, or at random.
+ *   gives a solvable board, or at random. Some reverse-pull boards also carry
+ *   a mid-game start with a box or the robot on a goal, which the rows cannot
+ *   show.
  * - `fuzzOracle` is a step-level BFS that parses the rows itself. It shares no
  *   code with the solver or the core engine; campaigns cross-check it against
  *   `exactRemainingMoves` on small boards.
@@ -17,6 +19,8 @@ import {
   encodeActionLog,
   parsePuzzleRows,
   replayActionLog,
+  type Box,
+  type Position,
 } from "../../src/core/index.ts";
 import type {
   SolverExecutionContext,
@@ -98,6 +102,12 @@ export const FUZZ_LABEL_MODES: readonly FuzzLabelMode[] = Object.freeze([
 /** Boards with more floor than this are rejected. */
 export const MAX_FUZZ_FLOOR = 36;
 
+/** A starting position in row coordinates; boxes and the robot may sit on goals. */
+export interface FuzzStart {
+  readonly robot: Position;
+  readonly boxes: readonly Box[];
+}
+
 export interface FuzzBoard {
   readonly seed: number;
   readonly rows: readonly string[];
@@ -105,6 +115,11 @@ export interface FuzzBoard {
   readonly placement: FuzzPlacement;
   readonly labelMode: FuzzLabelMode;
   readonly boxCount: number;
+  /**
+   * When set, runs start here instead of at the rows' position. It is an
+   * earlier position of the same reverse pull as the rows, so it is solvable.
+   */
+  readonly start?: FuzzStart;
 }
 
 type Cell = readonly [row: number, column: number];
@@ -406,6 +421,8 @@ function chooseGoals(rng: FuzzRng, open: OpenGrid, count: number): Cell[] {
 interface Placement {
   readonly boxes: readonly Cell[];
   readonly robot: Cell;
+  /** The position after the planned pulls, kept when a box or the robot is on a goal there. */
+  readonly onGoal?: { readonly boxes: readonly Cell[]; readonly robot: Cell };
 }
 
 /**
@@ -424,7 +441,12 @@ function reversePullPlacement(rng: FuzzRng, open: OpenGrid, goals: readonly Cell
   const steps = rng.int(20, 300);
   const offGoals = (): boolean =>
     !goalKeys.has(cellKey(robot)) && boxes.every((cell) => !goalKeys.has(cellKey(cell)));
+  let onGoal: Placement["onGoal"];
   for (let step = 0; step < steps + 300; step += 1) {
+    // A box off every goal keeps the start unsolved.
+    if (step === steps && !offGoals() && boxes.some((cell) => !goalKeys.has(cellKey(cell)))) {
+      onGoal = { boxes: [...boxes], robot };
+    }
     if (step >= steps && offGoals()) break;
     const [dr, dc] = rng.pick(STEPS);
     const next: Cell = [robot[0] + dr, robot[1] + dc];
@@ -437,7 +459,7 @@ function reversePullPlacement(rng: FuzzRng, open: OpenGrid, goals: readonly Cell
     }
     robot = next;
   }
-  return offGoals() ? { boxes, robot } : null;
+  return offGoals() ? { boxes, robot, onGoal } : null;
 }
 
 /** Boxes on non-goal cells with floor degree >= 2; often unsolvable. */
@@ -511,6 +533,8 @@ export function generateFuzzBoard(seed: number): FuzzBoard | null {
     symbols[row][column] = labels[index];
   });
   symbols[placed.robot[0]][placed.robot[1]] = "R";
+  // Drawn last so the rows of every seed stay the same.
+  const start = placed.onGoal && rng.chance(0.4) ? croppedStart(open, labels, placed.onGoal) : undefined;
   return Object.freeze({
     seed,
     rows: Object.freeze(cropRows(symbols.map((line) => line.join("")))),
@@ -518,6 +542,29 @@ export function generateFuzzBoard(seed: number): FuzzBoard | null {
     placement,
     labelMode: mode,
     boxCount,
+    ...(start ? { start } : {}),
+  });
+}
+
+/** Moves a placement into the coordinates `cropRows` gives the board. */
+function croppedStart(
+  open: OpenGrid,
+  labels: readonly string[],
+  placement: NonNullable<Placement["onGoal"]>,
+): FuzzStart {
+  const floor = floorCells(open);
+  const top = Math.min(...floor.map(([row]) => row)) - 1;
+  const left = Math.min(...floor.map(([, column]) => column)) - 1;
+  const position = ([row, column]: Cell): Position => ({ row: row - top, column: column - left });
+  const perLabel = new Map<string, number>();
+  return Object.freeze({
+    robot: position(placement.robot),
+    boxes: Object.freeze(placement.boxes.map((cell, index) => {
+      const label = labels[index];
+      const ordinal = perLabel.get(label) ?? 0;
+      perLabel.set(label, ordinal + 1);
+      return Object.freeze({ id: `${label}:${ordinal}`, label, position: position(cell) });
+    })),
   });
 }
 
@@ -537,7 +584,11 @@ export interface FuzzOracleResult {
  * Box cells are kept sorted within each label group, and a state is one
  * integer key, so equal-label boxes share one state.
  */
-export function fuzzOracle(rows: readonly string[], maxStates: number): FuzzOracleResult {
+export function fuzzOracle(
+  rows: readonly string[],
+  maxStates: number,
+  start?: FuzzStart,
+): FuzzOracleResult {
   const width = Math.max(0, ...rows.map((row) => row.length));
   const indexAt = rows.map(() => new Array<number>(width).fill(-1));
   const goalLabels: string[] = [];
@@ -557,6 +608,13 @@ export function fuzzOracle(rows: readonly string[], maxStates: number): FuzzOrac
       }
     }
   });
+  if (start) {
+    const cellOf = ({ row, column }: Position): number => indexAt[row]?.[column] ?? -1;
+    robot = cellOf(start.robot);
+    boxes.length = 0;
+    boxes.push(...start.boxes.map((box) => ({ label: box.label, cell: cellOf(box.position) })));
+    if (boxes.some((box) => box.cell < 0)) throw new Error("fuzzOracle: start box is off the floor");
+  }
   if (robot < 0) throw new Error("fuzzOracle: board has no robot");
   const cellCount = goalLabels.length;
   const boxCount = boxes.length;
@@ -603,10 +661,10 @@ export function fuzzOracle(rows: readonly string[], maxStates: number): FuzzOrac
     return true;
   };
 
-  const start = Int32Array.from(boxes, (box) => box.cell);
-  if (solved(start)) return { moves: 0, capped: false, states: 1 };
-  const seen = new Set<number>([encode(start, robot)]);
-  let frontier = [encode(start, robot)];
+  const initial = Int32Array.from(boxes, (box) => box.cell);
+  if (solved(initial)) return { moves: 0, capped: false, states: 1 };
+  const seen = new Set<number>([encode(initial, robot)]);
+  let frontier = [encode(initial, robot)];
   const slots = new Int32Array(boxCount);
   const pushed = new Int32Array(boxCount);
   for (let depth = 1; frontier.length > 0; depth += 1) {
@@ -648,13 +706,14 @@ export function fuzzOracle(rows: readonly string[], maxStates: number): FuzzOrac
 }
 
 /** The repository oracle (`exactRemainingMoves`, no state cap). */
-export function referenceOracleMoves(rows: readonly string[]): number | null {
+export function referenceOracleMoves(rows: readonly string[], start?: FuzzStart): number | null {
   const parsed = parsePuzzleRows([...rows]);
   const board = compileSearchBoard(parsed);
+  const robot = start?.robot ?? parsed.initialRobot;
   return exactRemainingMoves(
     board,
-    board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column),
-    toDenseBoxes(board, parsed.initialBoxes),
+    board.cellAt(robot.row, robot.column),
+    toDenseBoxes(board, start?.boxes ?? parsed.initialBoxes),
   ).exactMoves;
 }
 
@@ -725,14 +784,18 @@ function fuzzContext(): SolverExecutionContext {
   };
 }
 
-export function fuzzRequest(rows: readonly string[], limits: SolverLimits): SolverRequest {
+export function fuzzRequest(
+  rows: readonly string[],
+  limits: SolverLimits,
+  start?: FuzzStart,
+): SolverRequest {
   const parsed = parsePuzzleRows([...rows]);
   return {
     board: parsed,
     snapshot: {
       puzzleId: "fuzz",
-      robot: parsed.initialRobot,
-      boxes: parsed.initialBoxes,
+      robot: start?.robot ?? parsed.initialRobot,
+      boxes: start?.boxes ?? parsed.initialBoxes,
       moves: 0,
       pushes: 0,
       solved: false,
@@ -746,14 +809,19 @@ function errorText(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
-/** Replays through both core paths: stepSnapshot and a live session. */
+/**
+ * Replays through both core paths: stepSnapshot and a live session. A live
+ * session can only start from the rows, so a mid-game start skips it.
+ */
 function replayFailure(
   request: SolverRequest,
   rows: readonly string[],
   solution: SolverSolution,
+  start?: FuzzStart,
 ): string | undefined {
   const verified = verifySolverSolution(request, solution);
   if (!verified.valid) return `verifySolverSolution ${verified.code}: ${verified.message}`;
+  if (start) return undefined;
   try {
     const session = replayActionLog(
       { id: "fuzz", title: "fuzz", difficulty: "tutorial", boxes: request.board.initialBoxes.length, rows },
@@ -775,12 +843,13 @@ export async function runFuzzEngine(
   rows: readonly string[],
   fuzzVariant: FuzzVariant,
   limits: SolverLimits,
+  start?: FuzzStart,
 ): Promise<FuzzRun> {
   const base = { engine, variant: fuzzVariant.name, features: fuzzVariant.features };
   let request: SolverRequest;
   let result: SolverResult;
   try {
-    request = fuzzRequest(rows, limits);
+    request = fuzzRequest(rows, limits, start);
     const options = { features: fuzzVariant.features };
     result = engine === "astar"
       ? await runExactMoveAStar(request, fuzzContext(), options)
@@ -803,7 +872,7 @@ export async function runFuzzEngine(
       moves: result.solution.moves,
       pushes: result.solution.pushes,
       optimality: result.solution.optimality,
-      replayError: replayFailure(request, rows, result.solution),
+      replayError: replayFailure(request, rows, result.solution, start),
     };
   }
   if (result.status === "unsolved") return { ...common, reason: result.reason, detail: result.detail };
@@ -978,6 +1047,7 @@ export function formatFuzzFailure(failure: FuzzFailure): string {
     `  rows=${JSON.stringify(board.rows)}`,
     ...board.rows.map((row) => `    ${row}`),
   ];
+  if (board.start) lines.push(`  start=${JSON.stringify(board.start)}`);
   if (failure.minimizedRows) {
     lines.push(`  minimized=${JSON.stringify(failure.minimizedRows)}`);
     lines.push(...failure.minimizedRows.map((row) => `    ${row}`));
@@ -1031,6 +1101,8 @@ export interface FuzzCampaignReport {
   unsolvable: number;
   /** Reverse-pull boards the oracle calls unsolvable; a generator bug. */
   reversePullUnsolvable: number;
+  /** Boards run from a mid-game start with a box or the robot on a goal. */
+  onGoalStarts: number;
   runs: number;
   runsByEngine: Record<FuzzEngine, number>;
   runsByVariant: Record<string, number>;
@@ -1065,6 +1137,7 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
     solvable: 0,
     unsolvable: 0,
     reversePullUnsolvable: 0,
+    onGoalStarts: 0,
     runs: 0,
     runsByEngine: zeroCounts(FUZZ_ENGINES),
     runsByVariant: {},
@@ -1090,7 +1163,7 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
       report.rejected += 1;
       continue;
     }
-    const oracle = fuzzOracle(board.rows, options.oracleMaxStates);
+    const oracle = fuzzOracle(board.rows, options.oracleMaxStates, board.start);
     if (oracle.capped) {
       report.capped += 1;
       continue;
@@ -1101,6 +1174,7 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
     report.byPlacement[board.placement] += 1;
     report.byLabelMode[board.labelMode] += 1;
     report.byBoxCount[board.boxCount] += 1;
+    if (board.start) report.onGoalStarts += 1;
     if (oracle.moves === null) {
       report.unsolvable += 1;
       if (board.placement === "reverse-pull") report.reversePullUnsolvable += 1;
@@ -1109,7 +1183,7 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
     }
     if (report.crossChecks < options.crossCheckLimit && oracle.states <= options.crossCheckMaxStates) {
       report.crossChecks += 1;
-      const reference = referenceOracleMoves(board.rows);
+      const reference = referenceOracleMoves(board.rows, board.start);
       if (reference !== oracle.moves) {
         report.crossCheckMismatches.push(
           `seed ${seed}: fuzzOracle ${oracle.moves} vs exactRemainingMoves ${reference} ` +
@@ -1118,7 +1192,7 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
       }
     }
     for (const { engine, variant: fuzzVariant } of options.plansForBoard(boardIndex)) {
-      const run = await runFuzzEngine(engine, board.rows, fuzzVariant, options.limits);
+      const run = await runFuzzEngine(engine, board.rows, fuzzVariant, options.limits, board.start);
       report.runs += 1;
       report.runsByEngine[engine] += 1;
       report.runsByVariant[fuzzVariant.name] = (report.runsByVariant[fuzzVariant.name] ?? 0) + 1;
@@ -1133,7 +1207,8 @@ export async function runFuzzCampaign(options: FuzzCampaignOptions): Promise<Fuz
       }
       const kind = classifyFuzzRun(run, oracle.moves);
       if (kind === null) continue;
-      const minimizedRows = options.minimizeFailures
+      // The minimizer edits rows, which cannot carry a mid-game start.
+      const minimizedRows = options.minimizeFailures && !board.start
         ? await minimizeFuzzBoard(board.rows, async (candidate) => {
           const candidateOracle = fuzzOracle(candidate, options.oracleMaxStates);
           if (candidateOracle.capped) return false;
@@ -1156,7 +1231,8 @@ export function summarizeFuzzCampaign(report: FuzzCampaignReport): string {
     `boards=${report.boards} seeds=${report.seedsTried} rejected=${report.rejected} capped=${report.capped}`,
     `solvable=${report.solvable} unsolvable=${report.unsolvable} runs=${report.runs}`,
     `provenOptimal=${report.provenOptimal} provenUnsolvable=${report.provenUnsolvable} limits=${report.limitResults}`,
-    `crossChecks=${report.crossChecks} failures=${report.failures.length} ms=${Math.round(report.elapsedMs)}`,
+    `crossChecks=${report.crossChecks} onGoalStarts=${report.onGoalStarts}`,
+    `failures=${report.failures.length} ms=${Math.round(report.elapsedMs)}`,
     `layouts=${JSON.stringify(report.byLayout)} placements=${JSON.stringify(report.byPlacement)}`,
     `labels=${JSON.stringify(report.byLabelMode)} boxCounts=${JSON.stringify(report.byBoxCount)}`,
   ].join(" ");

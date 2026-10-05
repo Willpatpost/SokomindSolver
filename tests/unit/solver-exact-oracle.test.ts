@@ -212,7 +212,10 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
     assert.ok(solvableChecked > 30);
   });
 
-  it("combined proof heuristic (push + linear conflict + walk) never exceeds exact moves", () => {
+  // Linear conflict skips labels with several goals, so it is always 0 here;
+  // linear-conflict.test.ts sweeps push + linear conflict + walk on boards
+  // where it fires.
+  it("combined proof heuristic (push + walk) never exceeds exact moves", () => {
     const board = makeBoard([
       "OOOOOO",
       "ORXX O",
@@ -237,9 +240,8 @@ describe("heuristic admissibility on exhaustive tiny states", () => {
           solvableChecked++;
 
           const pushBound = heuristic.evaluate(boxes);
-          const conflict = heuristic.lastLinearConflict(boxes);
           const walkBound = minimumManhattanWalkToPotentialPush(board, r, boxes);
-          const combined = pushBound + conflict + walkBound;
+          const combined = pushBound + walkBound;
 
           if (combined > oracleResult.exactMoves) {
             violations++;
