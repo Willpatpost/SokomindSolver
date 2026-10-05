@@ -1112,6 +1112,59 @@ describe("concurrent proof coordinator", () => {
     assert.equal(result.status === "solved" ? result.proof?.kind : undefined, "optimal");
   });
 
+  it("cancels only the lanes whose prefix alone reaches a new incumbent", async () => {
+    const request = makeRequest(["OOOOOOO", "O     O", "OR X SO", "O     O", "OOOOOOO"]);
+    const lanes: MockProofWorker[] = [];
+    const run = runConcurrentProof(
+      request,
+      makeContext(),
+      { ...DEFAULT_SOKOMIND_REQUEST_OPTIONS, proofAlgorithm: "astar", proofParallelism: 2 },
+      makeDiscoveryResult(9, 2),
+      {
+        proofParallelism: 2,
+        createProofWorker() {
+          const lane = new MockProofWorker();
+          lanes.push(lane);
+          return lane;
+        },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const start = (lane: MockProofWorker) => lane.receivedCommands[0] as ProofStartPartition;
+    const [searching, dominated] = lanes;
+    assert.deepEqual(lanes.map((lane) => start(lane).prefixCost), [2, 6]);
+
+    searching.emit({
+      type: "proof/solution",
+      partitionId: start(searching).partitionId,
+      totalCost: 3,
+      solution: {
+        steps: [
+          { direction: "right", kind: "walk" },
+          { direction: "right", kind: "push" },
+          { direction: "right", kind: "push" },
+        ],
+        moves: 3,
+        pushes: 2,
+        objective: { kind: "moves" },
+        objectiveScore: 3,
+        optimality: "unknown",
+      },
+    });
+    assert.equal(dominated.receivedCommands.at(-1)?.type, "proof/cancel");
+    assert.equal(searching.receivedCommands.some((command) => command.type === "proof/cancel"), false);
+
+    // The cancelled lane reports its prefix bound and is not exhausted.
+    dominated.emit({ type: "proof/partition-complete", partitionId: start(dominated).partitionId,
+      lowerBound: 6, exhausted: false });
+    searching.emit({ type: "proof/partition-complete", partitionId: start(searching).partitionId,
+      lowerBound: 3, exhausted: true });
+
+    const result = await run;
+    assert.equal(result.status === "solved" ? result.proof?.kind : undefined, "optimal");
+    assert.equal(result.status === "solved" ? result.solution.moves : undefined, 3);
+  });
+
   for (const lastLaneReportsBound of [true, false]) {
     it(`failed partition dominated by a later incumbent proves optimality ${
       lastLaneReportsBound ? "after a closing progress report" : "on the final completion"

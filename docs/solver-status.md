@@ -344,6 +344,20 @@ from the root bound, so a partition whose lane fails still closes at its prefix
 cost as before. Proof revision `exact-moves-ida-contour-exit-v1` and storage
 key `sokomind.optimal.v10` also cover this change.
 
+Sokomind 1.13.2 stops a lane whose partition's prefix cost alone reaches a new
+best cost, and the lane takes the next partition. Every route in the partition
+starts with that prefix, so none is shorter than the incumbent. The partition
+already counts at least its prefix cost, whether its lane completes, is
+cancelled or fails, so it closes whatever the lane answers, and the cancel only
+frees the lane. A lane whose bound came from its own search is never cancelled:
+if it failed on cancel, its partition would reopen with no lane left to run it.
+Such lanes stop on their own once their bound reaches the incumbent. Each
+partition run on a lane now keeps its own abort signal and bounds, so a cancel
+or bound can only reach the run it was sent to. The case is rare, since a lane
+seldom runs a partition whose prefix costs the whole route. Proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
+cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

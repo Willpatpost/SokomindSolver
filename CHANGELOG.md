@@ -37,6 +37,9 @@ published a stable release.
 
 ### Changed
 
+- When the parallel proof finds a shorter route, it stops any lane whose
+  partition's prefix alone already costs at least that route, and gives the
+  lane the next partition. Verdicts are unchanged.
 - The parallel proof gives its lanes the first-push partitions with the lowest
   prefix cost plus push bound first, so a shorter route tends to turn up
   sooner. Verdicts are unchanged.
@@ -65,7 +68,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.1. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.2. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.

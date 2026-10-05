@@ -888,7 +888,22 @@ export async function runConcurrentProof(
         }
       }
       checkTermination();
-      if (!settled) reportProgress(true);
+      if (settled) return;
+      // A lane whose prefix alone costs at least the incumbent can hold no
+      // shorter route, and partitionLowerBound already closes its partition
+      // whether the lane completes or fails, so cancelling only frees the lane
+      // for the next partition. A lane whose bound came from its own search
+      // keeps running: if it failed on cancel, its partition would reopen
+      // with no lane left to run it.
+      for (const [w, tracker] of activeByWorker) {
+        if (tracker.prefixCost < bestCost) continue;
+        try {
+          w.postMessage({ type: "proof/cancel" });
+        } catch {
+          // worker already terminated
+        }
+      }
+      reportProgress(true);
     }
 
     // An outside route replays on the root request like a lane's, and a bad
