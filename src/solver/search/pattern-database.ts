@@ -281,8 +281,6 @@ function buildPdbExitCap(
     sources.push(cell);
   }
   sources.sort((a, b) => goalDistance[a] - goalDistance[b]);
-  head = 0;
-  tail = 0;
   let nextSource = 0;
   while (nextSource < sources.length || head < tail) {
     const cell = nextSource < sources.length &&
