@@ -41,6 +41,9 @@ export interface ZobristTable {
   /** Low 32 bits of the full hash, without allocating. */
   hashLo(sortedTokens: ArrayLike<number>, robotCell: number): number;
 
+  /** High 32 bits of the full hash, without allocating. */
+  hashHi(sortedTokens: ArrayLike<number>, robotCell: number): number;
+
   /**
    * Low 32 bits after one box token and the robot move. XOR makes this equal
    * to `hashLo` of the new state bit for bit.
@@ -154,6 +157,14 @@ export function createZobristTable(
     return lo >>> 0;
   }
 
+  function hashHi(sortedTokens: ArrayLike<number>, robotCell: number): number {
+    let hi = robotHi[robotCell];
+    for (let i = 0; i < sortedTokens.length; i++) {
+      hi ^= tokenHi[sortedTokens[i]];
+    }
+    return hi >>> 0;
+  }
+
   function updateLo(
     lo: number,
     oldToken: number,
@@ -179,6 +190,7 @@ export function createZobristTable(
     hashComponents,
     hashComponentsNoRobot,
     hashLo,
+    hashHi,
     updateLo,
   };
 }

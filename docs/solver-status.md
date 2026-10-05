@@ -375,6 +375,35 @@ the table's bytes instead of 96 bytes per state. A node's stored `h`, kept in
 bound. IDA* is unchanged. Proof revision `exact-moves-ida-contour-exit-v1` and
 storage key `sokomind.optimal.v10` also cover this change.
 
+IDA* 2.2.9 and Sokomind 1.13.4 keep IDA*'s contour-local best `g` and its h
+cache in open-addressing tables instead of maps of BigInt keys. A slot stores
+the state's identity inline: its robot cell and sorted box tokens, at 16 or 32
+bits each, plus the full 64-bit Zobrist hash. The hash picks the slot and
+screens candidates, but a state matches only when its robot cell and every
+token are equal. A collision therefore never merges two states, and boxes that
+share a label stay interchangeable as before. Each slot carries a generation
+stamp, and every probe treats a slot as empty unless its stamp is the current
+generation. A new contour increments the generation, so a best `g` from an
+earlier contour is never read; before the 32-bit stamp would wrap, every stamp
+is zeroed. The dominance test is unchanged: a state is pruned only when the
+same contour reached it with no greater `g`. The h cache stores h in 31 bits
+with the truncated flag in the top bit, and an infinite h has its own value. A
+finite h above 65,535 is stored as 65,535 and marked truncated, so it is
+reused only when even 65,535 exceeds the contour bound, where any lower bound
+prunes the same way. The tables keep their load at or below 0.7 and double
+until they can hold the old caps (2, 3 or 4 million best-`g` entries by memory
+limit, half that for h) or the memory estimate would pass the limit. A table
+that cannot grow replaces the live entry in a new state's home slot, or skips
+the store. A lost best `g` or h only costs repeated work, because the search
+expands the state again or recomputes its h. A failed allocation stops the
+search at its memory limit. Below those limits the tables behave as exact maps,
+so states, moves and proofs match the old maps. The memory estimate now counts
+the tables' real bytes. The old estimate added 192 bytes per new entry and
+never subtracted evicted entries, so runs near the memory limit can now run
+longer. IDA* checkpoint schema 5 retires checkpoints written with the old
+tables. Proof revision `exact-moves-ida-contour-exit-v1` and storage key
+`sokomind.optimal.v10` also cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -694,6 +723,11 @@ selecting Quality and still requires the documented promotion evidence.
   hash only picks a slot; a state matches only on its exact robot cell and
   sorted box tokens. Entries are never evicted, and a table that cannot grow
   stops the search at its memory limit.
+- IDA* keeps its contour-local best `g` and its h cache in open-addressing
+  tables that store each state's exact robot cell and sorted box tokens. The
+  hash only picks a slot. A generation stamp, checked on every probe, hides
+  every earlier contour's best `g`. A full table replaces or skips entries,
+  which only costs repeated work.
 - The unproved goal-depth macro prune is disconnected from both exact kernels.
 - A numeric upper bound is an exclusive pruning ceiling. Only a complete,
   replay-valid incumbent can become a public solution.

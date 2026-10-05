@@ -5,8 +5,9 @@ import { isSolverSolution } from "../validation.ts";
 // Earlier contours may have exhausted branches using the unsound PI-corral prune
 // (schema 2 and earlier) or the unsound tunnel-macro single-push replacement
 // (schema 3). Checkpoints do not record the exact-search feature vector, so the
-// tunnelMacros default change also requires this bump.
-export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 4 as const;
+// tunnelMacros default change also requires this bump. Schema 5 marks the move
+// to full-key open-addressing transposition and h-cache tables.
+export const IDA_STAR_CHECKPOINT_SCHEMA_VERSION = 5 as const;
 
 export interface IdaStarCheckpointCounters {
   readonly expanded: number;

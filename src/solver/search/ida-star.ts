@@ -78,6 +78,7 @@ import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { KeeperReachability, type KeeperReachabilityResult } from "./reachability.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import { createZobristTable, type ZobristTable } from "./zobrist-state.ts";
+import { createBoundedStateTable } from "./bounded-state-table.ts";
 import {
   sortedBoxes,
   movedBoxes,
@@ -158,8 +159,10 @@ interface PushRecord {
 interface StackFrame {
   readonly robot: number;
   readonly boxes: readonly DenseBox[];
-  readonly exactKey: bigint;
-  readonly zobristKey: number;
+  /** Sorted box tokens; with `robot`, the state's exact identity. */
+  readonly tokens: Uint32Array;
+  readonly hashLo: number;
+  readonly hashHi: number;
   readonly moves: number;
   readonly pushes: number;
   readonly g: number;
@@ -288,8 +291,29 @@ function isFrozenBoxAt(
 const IDA_RUNTIME_BASE_BYTES = 2_048;
 const IDA_REUSABLE_BUFFER_BASE_BYTES = 256;
 const IDA_HEURISTIC_WORKSPACE_BASE_BYTES = 512;
-const IDA_TRANSPOSITION_BASE_BYTES = 256;
 const IDA_DFS_STACK_BASE_BYTES = 128;
+
+// An h-cache value is h in the low 31 bits plus a truncated flag in bit 31.
+// Finite h above 0xffff is stored as 0xffff and marked truncated, so it is
+// reused only when even 0xffff exceeds the contour bound.
+const H_CACHE_TRUNCATED = 0x80000000;
+const H_CACHE_INFINITE = 0x7fffffff;
+const H_CACHE_MAX_FINITE = 0xffff;
+
+/** The cache value for h, or -1 when h is not cached. */
+function encodeCachedH(h: number, truncated: boolean): number {
+  if (h === Number.POSITIVE_INFINITY) {
+    return (H_CACHE_INFINITE | (truncated ? H_CACHE_TRUNCATED : 0)) >>> 0;
+  }
+  if (!Number.isInteger(h) || h < 0) return -1;
+  if (h > H_CACHE_MAX_FINITE) return (H_CACHE_MAX_FINITE | H_CACHE_TRUNCATED) >>> 0;
+  return (h | (truncated ? H_CACHE_TRUNCATED : 0)) >>> 0;
+}
+
+function decodeCachedH(value: number): number {
+  const h = value & H_CACHE_INFINITE;
+  return h === H_CACHE_INFINITE ? Number.POSITIVE_INFINITY : h;
+}
 
 /**
  * Static reservation for allocations that exist for the whole IDA* run.
@@ -328,20 +352,15 @@ function estimateHeuristicCacheBytes(
   return cacheEntries * (160 + boxCount * 24);
 }
 
-function estimateTranspositionEntryBytes(): number {
-  // Map entry, numeric g-cost, and the retained bigint identity key.
-  return 128 + 64;
-}
-
 function estimateStackFrameBytes(
   boxes: readonly DenseBox[],
   hasPush: boolean,
 ): number {
-  // Frame/array overhead, canonical box records, bigint key, and push record.
+  // Frame/array overhead, canonical box records, token key, and push record.
   return (
     448 +
     boxes.length * 80 +
-    64 +
+    64 + boxes.length * 4 +
     (hasPush ? 64 : 0)
   );
 }
@@ -976,16 +995,6 @@ export async function runIdaStarSearch(
       return deadlockTableLookup.check(boxes, movedCell);
     };
 
-    function exactKey(robotCell: number, boxes: readonly DenseBox[]): bigint {
-      const tokens = exactCodec.tokensFromBoxes(boxes);
-      return exactCodec.packMoveState(robotCell, tokens);
-    }
-
-    function zobristKey(robotCell: number, boxes: readonly DenseBox[]): number {
-      const tokens = exactCodec.tokensFromBoxes(boxes);
-      return zobristTable.hashFromTokens(tokens, robotCell);
-    }
-
     const preprocessingStaticMemoryBytes = baseStaticMemoryBytes +
       (deadlockTableLookup?.estimatedRetainedBytes ?? 0) +
       (boostEvaluator?.preprocessingRetainedBytes ?? 0) +
@@ -997,23 +1006,48 @@ export async function runIdaStarSearch(
       preprocessingStaticMemoryBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0) +
       (pdbEvaluator?.searchCacheRetainedBytes ?? 0);
-    let transpositionMemoryBytes = 0;
     let dfsStackMemoryBytes = 0;
     let reachabilitySnapshotMemoryBytes = 0;
     let heuristicCacheEntries = 0;
-    let hCacheMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
     let hCacheHits = 0;
     let hCacheUpgrades = 0;
-    // `truncated` marks an h cut short by the cheap push+walk cutoff or by
-    // computeH's secondary cutoff. It is reused only while it still exceeds
-    // the contour bound; otherwise the full h is recomputed so later contours
-    // are not stuck with the weaker value.
-    const hCache = new Map<number, { bigintKey: bigint; h: number; truncated: boolean }>();
+
+    const maxMem = request.limits?.maxMemoryBytes;
+    const TT_SIZE_CAP = maxMem !== undefined && maxMem >= 2 * 1024 * 1024 * 1024
+      ? 4_000_000
+      : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
+        ? 3_000_000
+        : 2_000_000;
+    const H_CACHE_SIZE_CAP = Math.max(1, Math.floor(TT_SIZE_CAP / 2));
+    // Both tables key on the exact state (robot cell plus sorted box tokens)
+    // and grow only while the estimated total stays within the memory limit.
+    const stateTableOptions = {
+      cellCount: board.cellCount,
+      maxToken: zobristTable.maxToken,
+      boxCount: initialBoxes.length,
+      canGrow: (additionalBytes: number) =>
+        maxMem === undefined || recordCurrentMemory() + additionalBytes <= maxMem,
+    };
+    // Holds h with a truncated bit (see encodeCachedH). A truncated h was cut
+    // short by the cheap push+walk cutoff or computeH's secondary cutoff. It
+    // is reused only while it still exceeds the contour bound; otherwise the
+    // full h is recomputed so later contours are not stuck with the weaker
+    // value.
+    const hCache = createBoundedStateTable({
+      ...stateTableOptions,
+      maxEntries: H_CACHE_SIZE_CAP,
+    });
+    // Contour-local best g per state, cleared at the start of each contour.
+    const transposition = createBoundedStateTable({
+      ...stateTableOptions,
+      maxEntries: TT_SIZE_CAP,
+    });
+    const stateTableBytes = () => transposition.byteLength + hCache.byteLength;
     let peakEstimatedMemoryBytes = 0;
     estimateInteractionSearchBaseMemory = () =>
       estimateIdaCurrentBytes(
         preprocessingStaticMemoryBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0),
-        transpositionMemoryBytes + hCacheMemoryBytes,
+        stateTableBytes(),
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
           initialBoxes.length,
@@ -1119,7 +1153,7 @@ export async function runIdaStarSearch(
     const currentMemory = (): IdaMemoryBreakdown =>
       estimateIdaMemory(
         currentStaticMemoryBytes(),
-        transpositionMemoryBytes + hCacheMemoryBytes,
+        stateTableBytes(),
         heuristicCacheEntries,
         initialBoxes.length,
         dfsStackMemoryBytes,
@@ -1139,7 +1173,7 @@ export async function runIdaStarSearch(
     const recordCurrentMemory = (): number => {
       const currentBytes = estimateIdaCurrentBytes(
         currentStaticMemoryBytes(),
-        transpositionMemoryBytes + hCacheMemoryBytes,
+        stateTableBytes(),
         estimateHeuristicCacheBytes(
           heuristicCacheEntries,
           initialBoxes.length,
@@ -1353,8 +1387,9 @@ export async function runIdaStarSearch(
         : finishCapExhausted(U);
     }
 
-    const initialExactKey = exactKey(initialRobot, initialBoxes);
-    const initialZobristKey = zobristKey(initialRobot, initialBoxes);
+    const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
+    const initialHashLo = zobristTable.hashLo(initialTokens, initialRobot);
+    const initialHashHi = zobristTable.hashHi(initialTokens, initialRobot);
     const initialG = 0;
 
     // Pre-allocate reusable buffers
@@ -1377,15 +1412,6 @@ export async function runIdaStarSearch(
       : initialG + initialH;
     let limitDetail: string | undefined;
 
-    const maxMem = request.limits?.maxMemoryBytes;
-    const TT_SIZE_CAP = maxMem !== undefined && maxMem >= 2 * 1024 * 1024 * 1024
-      ? 4_000_000
-      : maxMem !== undefined && maxMem >= 1024 * 1024 * 1024
-        ? 3_000_000
-        : 2_000_000;
-    const H_CACHE_SIZE_CAP = Math.max(1, Math.floor(TT_SIZE_CAP / 2));
-    const transposition = new Map<number, { bigintKey: bigint; bestG: number }>();
-    transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
     featureTelemetry.firstExpansionMs = Math.max(0, context.now() - startedAt);
     idaLoop: while (true) {
       if (options?.onCheckpoint && options.checkpointContext) {
@@ -1419,7 +1445,6 @@ export async function runIdaStarSearch(
       // contours risks mixing partially explored path contexts and is not
       // required for correctness.
       transposition.clear();
-      transpositionMemoryBytes = IDA_TRANSPOSITION_BASE_BYTES;
       transpositionSize = transposition.size;
 
       // Path stack: current DFS path from root to active node.
@@ -1456,8 +1481,9 @@ export async function runIdaStarSearch(
       const rootFrame: StackFrame = {
         robot: initialRobot,
         boxes: initialBoxes,
-        exactKey: initialExactKey,
-        zobristKey: initialZobristKey,
+        tokens: initialTokens,
+        hashLo: initialHashLo,
+        hashHi: initialHashHi,
         moves: 0,
         pushes: 0,
         g: initialG,
@@ -1528,14 +1554,17 @@ export async function runIdaStarSearch(
 
         // ----- First visit: f-bound, TT, solved check, mark expanded -----
         if (!frame.expanded) {
-          const hCacheEntry = hCache.get(frame.zobristKey);
-          const cachedEntry = hCacheEntry?.bigintKey === frame.exactKey
-            ? hCacheEntry
-            : undefined;
-          const cachedH = cachedEntry !== undefined &&
-            (!cachedEntry.truncated || frame.g + cachedEntry.h > fLimit)
-            ? cachedEntry.h
-            : -1;
+          const hCacheSlot = hCache.find(
+            frame.hashLo, frame.hashHi, frame.robot, frame.tokens,
+          );
+          let cachedH = -1;
+          if (hCacheSlot >= 0) {
+            const cached = hCache.value(hCacheSlot);
+            const cachedValue = decodeCachedH(cached);
+            if ((cached & H_CACHE_TRUNCATED) === 0 || frame.g + cachedValue > fLimit) {
+              cachedH = cachedValue;
+            }
+          }
 
           let h: number;
           let hTruncated = false;
@@ -1543,7 +1572,7 @@ export async function runIdaStarSearch(
             h = cachedH;
             hCacheHits++;
           } else {
-            if (cachedEntry !== undefined) hCacheUpgrades++;
+            if (hCacheSlot >= 0) hCacheUpgrades++;
             let hPush: number;
             if (pathStack.length >= 2 && frame.push) {
               const parentFrame = pathStack[pathStack.length - 2];
@@ -1609,14 +1638,16 @@ export async function runIdaStarSearch(
             hTruncated = lastHTruncated;
             }
 
-            const oldHCacheSize = hCache.size;
-            hCache.set(frame.zobristKey, { bigintKey: frame.exactKey, h, truncated: hTruncated });
-            if (hCache.size > oldHCacheSize) {
-              hCacheMemoryBytes += estimateTranspositionEntryBytes();
-            }
-            if (hCache.size > H_CACHE_SIZE_CAP) {
-              const firstKey = hCache.keys().next().value;
-              if (firstKey !== undefined) hCache.delete(firstKey);
+            const encodedH = encodeCachedH(h, hTruncated);
+            if (encodedH >= 0) {
+              if (hCacheSlot >= 0) {
+                hCache.setValue(hCacheSlot, encodedH);
+              } else if (
+                !hCache.insert(frame.hashLo, frame.hashHi, frame.robot, frame.tokens, encodedH)
+              ) {
+                limitDetail = "Estimated solver memory limit reached.";
+                break idaLoop;
+              }
             }
           }
           frame.h = h;
@@ -1646,32 +1677,26 @@ export async function runIdaStarSearch(
           // at the exact same state with no greater path cost dominates this
           // arrival. Do not store or reuse backed f-values here: those are
           // root/path-relative and caused false optimality certificates.
-          const ttEntry = transposition.get(frame.zobristKey);
-          const storedBestG =
-            ttEntry !== undefined && ttEntry.bigintKey === frame.exactKey
-              ? ttEntry.bestG
-              : undefined;
-          if (storedBestG !== undefined && storedBestG <= frame.g) {
+          // The table matches full keys, so a hash collision never prunes,
+          // and its generation stamp hides every earlier contour's entries.
+          // A state the full table could not keep is only searched again.
+          const ttSlot = transposition.find(
+            frame.hashLo, frame.hashHi, frame.robot, frame.tokens,
+          );
+          if (ttSlot >= 0 && transposition.value(ttSlot) <= frame.g) {
             counters.duplicates += 1;
             popFrame();
             continue;
           }
-          // Single-entry replacement: collisions lose cached g-values but
-          // the bigint check above prevents false dominance pruning.
-          const oldTTSize = transposition.size;
-          transposition.set(frame.zobristKey, {
-            bigintKey: frame.exactKey,
-            bestG: frame.g,
-          });
-          if (transposition.size > oldTTSize) {
-            transpositionSize = transposition.size;
-            transpositionMemoryBytes += estimateTranspositionEntryBytes();
+          if (ttSlot >= 0) {
+            transposition.setValue(ttSlot, frame.g);
+          } else if (
+            !transposition.insert(frame.hashLo, frame.hashHi, frame.robot, frame.tokens, frame.g)
+          ) {
+            limitDetail = "Estimated solver memory limit reached.";
+            break idaLoop;
           }
-          // TT size cap with replacement policy
-          if (transposition.size > TT_SIZE_CAP) {
-            const firstKey = transposition.keys().next().value;
-            if (firstKey !== undefined) transposition.delete(firstKey);
-          }
+          transpositionSize = transposition.size;
           if (memoryLimitReached()) {
             limitDetail = "Estimated solver memory limit reached.";
             break idaLoop;
@@ -1887,16 +1912,16 @@ export async function runIdaStarSearch(
             workSinceYield += 1;
 
             const fpNewMoves = frame.moves + fpDistance + 1;
-            const fpNewKey = exactKey(fpBox.cell, fpNewBoxes!);
-            const fpNewZobristKey = zobristKey(fpBox.cell, fpNewBoxes!);
+            const fpNewTokens = exactCodec.tokensFromBoxes(fpNewBoxes!);
 
             frame.childCursor = totalChildren;
 
             pushFrame({
               robot: fpBox.cell,
               boxes: fpNewBoxes!,
-              exactKey: fpNewKey,
-              zobristKey: fpNewZobristKey,
+              tokens: fpNewTokens,
+              hashLo: zobristTable.hashLo(fpNewTokens, fpBox.cell),
+              hashHi: zobristTable.hashHi(fpNewTokens, fpBox.cell),
               moves: fpNewMoves,
               pushes: frame.pushes + 1,
               g: fpNewMoves,
@@ -1986,14 +2011,14 @@ export async function runIdaStarSearch(
 
               const tmNewMoves = frame.moves + tm.walkDistance + stop.pushCount;
               const tmNewPushes = frame.pushes + stop.pushCount;
-              const tmNewExactKey = exactKey(stop.robotCell, tmNewBoxes);
-              const tmNewZobristKey = zobristKey(stop.robotCell, tmNewBoxes);
+              const tmNewTokens = exactCodec.tokensFromBoxes(tmNewBoxes);
 
               pushFrame({
                 robot: stop.robotCell,
                 boxes: tmNewBoxes,
-                exactKey: tmNewExactKey,
-                zobristKey: tmNewZobristKey,
+                tokens: tmNewTokens,
+                hashLo: zobristTable.hashLo(tmNewTokens, stop.robotCell),
+                hashHi: zobristTable.hashHi(tmNewTokens, stop.robotCell),
                 moves: tmNewMoves,
                 pushes: tmNewPushes,
                 g: tmNewMoves,
@@ -2114,14 +2139,14 @@ export async function runIdaStarSearch(
           const newMoves = frame.moves + distance + 1;
           const newPushes = frame.pushes + 1;
           const newG = newMoves;
-          const newExactKey = exactKey(box.cell, newBoxes);
-          const newZobristKey = zobristKey(box.cell, newBoxes);
+          const newTokens = exactCodec.tokensFromBoxes(newBoxes);
 
           const childFrame: StackFrame = {
             robot: box.cell,
             boxes: newBoxes,
-            exactKey: newExactKey,
-            zobristKey: newZobristKey,
+            tokens: newTokens,
+            hashLo: zobristTable.hashLo(newTokens, box.cell),
+            hashHi: zobristTable.hashHi(newTokens, box.cell),
             moves: newMoves,
             pushes: newPushes,
             g: newG,

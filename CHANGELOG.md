@@ -37,6 +37,12 @@ published a stable release.
 
 ### Changed
 
+- IDA* keeps its contour-local best g and its h cache in open-addressing
+  tables that store each state's exact robot cell and sorted box tokens,
+  instead of maps of BigInt keys. A hash collision never merges two states,
+  memory accounting counts the tables' real bytes, and a full table replaces or
+  skips entries instead of evicting the oldest. Moves and proofs are unchanged.
+  IDA* checkpoint schema 5.
 - A* keeps its best path per state in an open-addressing table keyed by an
   incrementally updated Zobrist hash, instead of a map of BigInt keys. States
   still match only on the exact robot cell and box positions. Search counts,
@@ -72,7 +78,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.9, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.13.3. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.9, `classic-ida-star` 2.2.9 and `sokomind-solver` 1.13.4. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
