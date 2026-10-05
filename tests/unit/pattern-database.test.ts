@@ -619,8 +619,10 @@ describe("pattern database exit bound", () => {
         });
         assert.equal(minSubsetLookup(searched, cells, table.k), expected, `${name}: ${describeCells(board, cells)}`);
       }
-      // A disabled table counts no lookups.
-      if (name !== "disabled") assert.ok(searched.lookupStats.lookups < reference.lookupStats.lookups, name);
+      // Disabled and goals-outside tables have no subset bound and count no lookups.
+      if (table.subsetBound !== null) {
+        assert.ok(searched.lookupStats.lookups < reference.lookupStats.lookups, name);
+      }
     }
   });
 
