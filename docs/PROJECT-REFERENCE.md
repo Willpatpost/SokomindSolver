@@ -240,9 +240,9 @@ fails when the generated facts below differ from source.
 |---|---:|---|
 | `classic-dfs` | `1.0.0` | first-found |
 | `classic-greedy` | `1.0.0` | first-found |
-| `classic-astar` | `2.2.6` | move-optimal proof |
-| `classic-ida-star` | `2.2.6` | move-optimal proof |
-| `sokomind-solver` | `1.12.2` | bounded discovery/rewrite/proof portfolio |
+| `classic-astar` | `2.2.7` | move-optimal proof |
+| `classic-ida-star` | `2.2.7` | move-optimal proof |
+| `sokomind-solver` | `1.12.3` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
