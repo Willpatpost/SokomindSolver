@@ -58,57 +58,88 @@ export function createsFullyBlockedTwoByTwoDeadlock(
   occupancy?: Int32Array,
 ): boolean {
   const occ = occupancy ?? occupancyByCell(board, boxes);
-  const origins: Array<readonly [number, number]> = [];
 
-  if (movedCell !== undefined) {
-    if (
-      !Number.isInteger(movedCell) ||
-      movedCell < 0 ||
-      movedCell >= board.cellCount
-    ) {
-      throw new RangeError("movedCell must identify a floor cell.");
-    }
-    const moved = board.positions[movedCell];
-    for (const row of [moved.row - 1, moved.row]) {
-      for (const column of [moved.column - 1, moved.column]) {
-        if (
-          row >= 0 &&
-          column >= 0 &&
-          row + 1 < board.height &&
-          column + 1 < board.width
-        ) {
-          origins.push([row, column]);
-        }
-      }
-    }
-  } else {
+  if (movedCell === undefined) {
     for (let row = 0; row + 1 < board.height; row += 1) {
       for (let column = 0; column + 1 < board.width; column += 1) {
-        origins.push([row, column]);
+        if (isDeadTwoByTwo(board, boxes, occ, row, column)) return true;
+      }
+    }
+    return false;
+  }
+
+  if (
+    !Number.isInteger(movedCell) ||
+    movedCell < 0 ||
+    movedCell >= board.cellCount
+  ) {
+    throw new RangeError("movedCell must identify a floor cell.");
+  }
+  const moved = board.positions[movedCell];
+  for (let row = moved.row - 1; row <= moved.row; row += 1) {
+    for (let column = moved.column - 1; column <= moved.column; column += 1) {
+      if (
+        row >= 0 &&
+        column >= 0 &&
+        row + 1 < board.height &&
+        column + 1 < board.width &&
+        isDeadTwoByTwo(board, boxes, occ, row, column)
+      ) {
+        return true;
       }
     }
   }
-
-  for (const [row, column] of origins) {
-    const cells = [
-      board.cellAt(row, column),
-      board.cellAt(row + 1, column),
-      board.cellAt(row, column + 1),
-      board.cellAt(row + 1, column + 1),
-    ];
-    if (!cells.every((cell) => cell < 0 || occ[cell] >= 0)) continue;
-
-    const containsUnsolvedBox = cells.some((cell) => {
-      if (cell < 0) return false;
-      const boxIndex = occ[cell];
-      if (boxIndex < 0) return false;
-      return board.goalLabelByCell[cell] !== boxes[boxIndex].label;
-    });
-    if (containsUnsolvedBox) return true;
-  }
-
   return false;
 }
+
+/** The 2×2 square at (row, column) is all walls and boxes, with a box off its goal. */
+function isDeadTwoByTwo(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+  occ: Int32Array,
+  row: number,
+  column: number,
+): boolean {
+  const topLeft = board.cellAt(row, column);
+  const bottomLeft = board.cellAt(row + 1, column);
+  const topRight = board.cellAt(row, column + 1);
+  const bottomRight = board.cellAt(row + 1, column + 1);
+  if (
+    !isWallOrBox(occ, topLeft) ||
+    !isWallOrBox(occ, bottomLeft) ||
+    !isWallOrBox(occ, topRight) ||
+    !isWallOrBox(occ, bottomRight)
+  ) {
+    return false;
+  }
+  return (
+    holdsUnsolvedBox(board, boxes, occ, topLeft) ||
+    holdsUnsolvedBox(board, boxes, occ, bottomLeft) ||
+    holdsUnsolvedBox(board, boxes, occ, topRight) ||
+    holdsUnsolvedBox(board, boxes, occ, bottomRight)
+  );
+}
+
+function isWallOrBox(occ: Int32Array, cell: number): boolean {
+  return cell < 0 || occ[cell] >= 0;
+}
+
+function holdsUnsolvedBox(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+  occ: Int32Array,
+  cell: number,
+): boolean {
+  if (cell < 0) return false;
+  const boxIndex = occ[cell];
+  return boxIndex >= 0 && board.goalLabelByCell[cell] !== boxes[boxIndex].label;
+}
+
+// Scratch for hasFreezeDeadlock, grown on demand. The check is synchronous and
+// never re-enters itself, so one set of buffers serves every caller.
+let freezeFrozen = new Uint8Array(0);
+let freezeInQueue = new Uint8Array(0);
+let freezeQueue = new Int32Array(0);
 
 /**
  * Detect freeze deadlocks via fixpoint analysis.
@@ -128,9 +159,17 @@ export function hasFreezeDeadlock(
   occupancy: Int32Array,
 ): boolean {
   const n = boxes.length;
-  const frozen = new Uint8Array(n); // 0 = not frozen, 1 = frozen
-  const inQueue = new Uint8Array(n);
-  const queue = new Int32Array(5 * n + 1);
+  if (freezeFrozen.length < n) {
+    freezeFrozen = new Uint8Array(n);
+    freezeInQueue = new Uint8Array(n);
+    // Each box enters once at the start and again at most once per frozen
+    // neighbor, which bounds the queue by 5n.
+    freezeQueue = new Int32Array(5 * n + 1);
+  }
+  const frozen = freezeFrozen; // 0 = not frozen, 1 = frozen
+  const inQueue = freezeInQueue;
+  const queue = freezeQueue;
+  frozen.fill(0, 0, n);
   let qHead = 0;
   let qTail = 0;
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hasFreezeDeadlock } from "../../src/solver/search/deadlocks.ts";
+import {
+  createsFullyBlockedTwoByTwoDeadlock,
+  hasFreezeDeadlock,
+} from "../../src/solver/search/deadlocks.ts";
 import {
   compileSearchBoard,
   type CompiledSearchBoard,
@@ -217,5 +220,63 @@ describe("hasFreezeDeadlock", () => {
       true,
       "frozen box with wrong label for cell goal is a deadlock",
     );
+  });
+
+  it("starts each call unfrozen after an earlier call froze a box on its goal", () => {
+    // Box 0 is frozen in a pocket on its goal: no deadlock, but it is marked.
+    const pocket = compile([
+      "OOOOOOO",
+      "OOOO  O",
+      "OOSO  O",
+      "OOOO  O",
+      "O RXXSO",
+      "OOOOOOO",
+    ]);
+    const pocketBoxes = [boxAt(pocket, 2, 2, "X", "X:0"), boxAt(pocket, 1, 5, "X", "X:1")];
+    assert.equal(hasFreezeDeadlock(pocket, pocketBoxes, makeOccupancy(pocket, pocketBoxes)), false);
+
+    // Box 1 sits between a wall and box 0, which is free; a stale mark on
+    // box 0 would freeze box 1 off its goal.
+    const corridor = compile([
+      "OOOOOOO",
+      "OO    O",
+      "O     O",
+      "OO SS O",
+      "O RXX O",
+      "OOOOOOO",
+    ]);
+    const corridorBoxes = [boxAt(corridor, 2, 2, "X", "X:0"), boxAt(corridor, 2, 1, "X", "X:1")];
+    assert.equal(
+      hasFreezeDeadlock(corridor, corridorBoxes, makeOccupancy(corridor, corridorBoxes)),
+      false,
+    );
+  });
+});
+
+describe("createsFullyBlockedTwoByTwoDeadlock", () => {
+  it("agrees with the full-board scan for every moved box against a wall", () => {
+    const offGoal = compile([
+      "OOOOOO",
+      "OXX  O",
+      "O  SSO",
+      "OR   O",
+      "OOOOOO",
+    ]);
+    const onGoal = compile([
+      "OOOOOO",
+      "OSS  O",
+      "O XX O",
+      "OR   O",
+      "OOOOOO",
+    ]);
+    for (const [board, dead] of [[offGoal, true], [onGoal, false]] as const) {
+      // Both boxes on row 1, under the top wall: walls fill the square's top half.
+      const boxes = [boxAt(board, 1, 1, "X", "X:0"), boxAt(board, 1, 2, "X", "X:1")];
+      const occ = makeOccupancy(board, boxes);
+      assert.equal(createsFullyBlockedTwoByTwoDeadlock(board, boxes), dead);
+      for (const box of boxes) {
+        assert.equal(createsFullyBlockedTwoByTwoDeadlock(board, boxes, box.cell, occ), dead);
+      }
+    }
   });
 });

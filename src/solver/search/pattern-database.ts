@@ -125,9 +125,10 @@ function buildBinomials(maxN: number, maxK: number): Float64Array[] {
 function combinadicEncode(
   positions: readonly number[],
   binom: Float64Array[],
+  count = positions.length,
 ): number {
   let index = 0;
-  for (let i = 0; i < positions.length; i++) {
+  for (let i = 0; i < count; i++) {
     index += binom[positions[i]][i + 1];
   }
   return index;
@@ -280,9 +281,11 @@ function makePdbLookup(
   stats: PdbLookupStats,
 ): PatternDatabase["lookup"] {
   const tableSize = table.length;
+  // Reused by every call: a lookup runs to completion and never re-enters.
+  const regionPositions: number[] = [];
   return (boxCells: readonly number[]): number => {
     stats.lookups++;
-    const regionPositions: number[] = [];
+    let count = 0;
     let distanceSum = 0;
     let minSlack = -1;
     let outside = false;
@@ -296,15 +299,24 @@ function makePdbLookup(
       }
       const rp = cellToRegionIndex[cell];
       if (rp < 0) outside = true;
-      else regionPositions.push(rp);
+      else regionPositions[count++] = rp;
     }
     const exitBound = minSlack < 0 ? UNSOLVED : Math.min(UNSOLVED, distanceSum + minSlack);
     if (outside) {
       stats.outsideRegionLookups++;
       return exitBound;
     }
-    regionPositions.sort((a, b) => a - b);
-    const index = combinadicEncode(regionPositions, binom);
+    // Insertion sort: a pattern holds only a few boxes.
+    for (let i = 1; i < count; i++) {
+      const position = regionPositions[i];
+      let j = i - 1;
+      while (j >= 0 && regionPositions[j] > position) {
+        regionPositions[j + 1] = regionPositions[j];
+        j--;
+      }
+      regionPositions[j + 1] = position;
+    }
+    const index = combinadicEncode(regionPositions, binom, count);
     if (index >= tableSize) return UNSOLVED;
     const stored = table[index];
     if (stored === UNSOLVED) return Math.min(undiscovered, exitBound);
@@ -377,7 +389,8 @@ function expandPdbState(
   const { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k } = ctx;
   combinadicDecode(rank, k, regionCount, binom, positions);
 
-  occupiedRegion.fill(0);
+  // Marks only this state's boxes and clears them at the end. A queue limit
+  // error ends the whole build, so the buffer is never reused after one.
   for (let i = 0; i < k; i++) occupiedRegion[positions[i]] = 1;
 
   for (let bi = 0; bi < k; bi++) {
@@ -393,12 +406,22 @@ function expandPdbState(
 
       const supportCell = board.neighbors[destCell]?.[d] ?? -1;
       if (supportCell < 0) continue;
-      if (!regionSet.has(supportCell) && board.neighbors[supportCell] === undefined) continue;
+      if (board.neighbors[supportCell] === undefined && !regionSet.has(supportCell)) continue;
       if (board.positions[supportCell] === undefined) continue;
 
+      // positions is sorted and destRegion is free, so sliding it from slot
+      // bi to its place keeps newPositions sorted.
       for (let i = 0; i < k; i++) newPositions[i] = positions[i];
-      newPositions[bi] = destRegion;
-      newPositions.sort((a, b) => a - b);
+      let slot = bi;
+      while (slot > 0 && newPositions[slot - 1] > destRegion) {
+        newPositions[slot] = newPositions[slot - 1];
+        slot--;
+      }
+      while (slot < k - 1 && newPositions[slot + 1] < destRegion) {
+        newPositions[slot] = newPositions[slot + 1];
+        slot++;
+      }
+      newPositions[slot] = destRegion;
 
       const newIndex = combinadicEncode(newPositions, binom);
       if (table[newIndex] !== UNSOLVED) continue;
@@ -407,6 +430,7 @@ function expandPdbState(
       table[newIndex] = dist;
     }
   }
+  for (let i = 0; i < k; i++) occupiedRegion[positions[i]] = 0;
 }
 
 function preparePdbBfs(

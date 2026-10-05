@@ -297,6 +297,62 @@ describe("buildPatternDatabase", () => {
     assert.ok(dist !== UNSOLVED, "should not be UNSOLVED within region");
   });
 
+  it("matches a reference reverse-push search on every 3-box placement", async () => {
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOO",
+      "OR    O",
+      "O XXX O",
+      "O SSS O",
+      "O     O",
+      "OOOOOOO",
+    ]));
+    const goalCells = [...board.goalCellsByLabel.get("X")!];
+    // The whole board is the region, so no exit bound trims the table.
+    const regionCells = Array.from({ length: board.cellCount }, (_, cell) => cell);
+    const config = { goalCells, labelIds: ["X", "X", "X"], regionCells };
+    const pdbs = [
+      buildPatternDatabase(board, config),
+      await buildPatternDatabaseAsync(board, config, new AbortController().signal),
+    ];
+
+    // Reference: pull one box at a time, keeper stepping back onto any floor cell.
+    const key = (cells: readonly number[]) => [...cells].sort((a, b) => a - b).join(",");
+    const expected = new Map([[key(goalCells), 0]]);
+    const queue = [goalCells];
+    for (let head = 0; head < queue.length; head++) {
+      const state = queue[head];
+      const distance = expected.get(key(state))!;
+      for (let box = 0; box < state.length; box++) {
+        for (let direction = 0; direction < 4; direction++) {
+          const destination = board.neighbors[state[box]][direction];
+          if (destination < 0 || state.includes(destination)) continue;
+          if (board.neighbors[destination][direction] < 0) continue;
+          const next = state.map((cell, index) => (index === box ? destination : cell));
+          if (expected.has(key(next))) continue;
+          expected.set(key(next), distance + 1);
+          queue.push(next);
+        }
+      }
+    }
+
+    let reachable = 0;
+    for (let a = 0; a < board.cellCount; a++) {
+      for (let b = a + 1; b < board.cellCount; b++) {
+        for (let c = b + 1; c < board.cellCount; c++) {
+          const want = expected.get(key([a, b, c])) ?? UNSOLVED;
+          if (want !== UNSOLVED) reachable++;
+          for (const pdb of pdbs) {
+            // Unsorted input: the lookup sorts the region positions itself.
+            assert.equal(pdb.lookup([c, a, b]), want, `cells ${a},${b},${c}`);
+            assert.equal(pdb.lookup([b, c, a]), want, `cells ${b},${c},${a}`);
+          }
+        }
+      }
+    }
+    assert.ok(reachable > 1);
+    assert.equal(reachable, expected.size);
+  });
+
   it("handles k=0 gracefully", () => {
     const board = compileSearchBoard(parsePuzzleRows([
       "OOOOO",
