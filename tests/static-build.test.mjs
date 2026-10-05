@@ -78,11 +78,12 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Batch 5: two-box repair, prioritized windows, N-operator coordinator.
   // Request-lifetime engine and proof worker pools (measured 83,075 bytes).
   // Small-board proof beside the route improvement (measured 501,452 bytes).
+  // Fast discovery raced beside the structural head start (measured 86,376 bytes).
   allScriptsAndStylesGzipBytes: 510_000,
   largestAssetGzipBytes: 100_000,
   homeRouteGzipBytes: 195_000,
   playRouteGzipBytes: 220_000,
-  solverWorkerGzipBytes: 86_000,
+  solverWorkerGzipBytes: 89_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
   // schedule trace, macro intermediate retention, and two-box rescheduling.
   engineWorkerGzipBytes: 95_000,

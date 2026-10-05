@@ -30,6 +30,7 @@ export class BudgetTracker {
   reservedMemoryBytes = 0;
   // Worker threads that proof holds; the engines run on the rest.
   reservedWorkers = 0;
+  private openPhases = 0;
   private readonly workerLeases = new Map<string, {
     expanded: number;
     generated: number;
@@ -119,6 +120,17 @@ export class BudgetTracker {
   resetPhase(): void {
     this.coordinatorRecordCount = 0;
     this.coordinatorEstimatedMemoryBytes = 0;
+  }
+
+  // Phases can run side by side. Coordinator records belong to whichever
+  // phase is still open, so the ledger resets only when the last one closes.
+  openPhase(): void {
+    this.openPhases += 1;
+  }
+
+  closePhase(): void {
+    this.openPhases = Math.max(0, this.openPhases - 1);
+    if (this.openPhases === 0) this.resetPhase();
   }
 
   retainPersistent(bytes: number): void {

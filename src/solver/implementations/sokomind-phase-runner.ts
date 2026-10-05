@@ -64,6 +64,8 @@ export interface PhaseRunOptions {
   readonly memoryConcurrency?: number;
   readonly memoryLimitBytes?: number;
   readonly onSolutionPublished?: (solution: SolverSolution) => void;
+  /** Ends this phase alone, quietly: no stop reason, and the run continues. */
+  readonly signal?: AbortSignal;
 }
 
 export interface PhaseOutcome {
@@ -253,6 +255,7 @@ class PhaseRunner {
     return new Promise<PhaseOutcome>((resolve, reject) => {
       this.resolve = resolve;
       this.reject = reject;
+      this.run.budget.openPhase();
 
       const memoryConcurrency = Math.max(
         1,
@@ -297,6 +300,10 @@ class PhaseRunner {
         this.stopForLimit("cancelled");
       };
       this.run.context.signal.addEventListener("abort", onAbort, { once: true });
+      const onPhaseAbort = () => {
+        this.finish();
+      };
+      this.options.signal?.addEventListener("abort", onPhaseAbort, { once: true });
 
       if (timerDelay !== undefined) {
         this.timer = setTimeout(() => {
@@ -316,6 +323,7 @@ class PhaseRunner {
       // Store onAbort for cleanup
       const cleanupOnAbort = () => {
         this.run.context.signal.removeEventListener("abort", onAbort);
+        this.options.signal?.removeEventListener("abort", onPhaseAbort);
       };
 
       // Override finish/fail to include onAbort cleanup
@@ -334,6 +342,10 @@ class PhaseRunner {
       this._memoryConcurrency = memoryConcurrency;
 
       if (this.settled) return;
+      if (this.options.signal?.aborted) {
+        this.finish();
+        return;
+      }
       const initialLimit = reachedLimit(this.run);
       if (initialLimit) {
         this.stopForLimit(initialLimit);
@@ -390,7 +402,7 @@ class PhaseRunner {
     if (this.watchdogTimer !== undefined) clearTimeout(this.watchdogTimer);
     aggregate(this.run);
     for (const id of [...this.active.keys()]) this.cleanupWorker(id);
-    this.run.budget.resetPhase();
+    this.run.budget.closePhase();
     invalidateAggregate(this.run);
     this.resolve({
       ...(this.collectedSolutions.length
@@ -419,7 +431,7 @@ class PhaseRunner {
     if (this.watchdogTimer !== undefined) clearTimeout(this.watchdogTimer);
     aggregate(this.run);
     for (const id of [...this.active.keys()]) this.cleanupWorker(id);
-    this.run.budget.resetPhase();
+    this.run.budget.closePhase();
     invalidateAggregate(this.run);
     this.reject(error);
   }

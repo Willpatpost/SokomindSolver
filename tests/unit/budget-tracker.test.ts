@@ -144,6 +144,26 @@ describe("BudgetTracker", () => {
     assert.equal(tracker.peakCoordinatorRecordCount, 2);
   });
 
+  it("closePhase resets coordinator state only when the last open phase closes", () => {
+    const tracker = new BudgetTracker();
+    tracker.openPhase();
+    tracker.openPhase();
+    tracker.retainRecord(100);
+    tracker.closePhase();
+    assert.equal(tracker.coordinatorRecordCount, 1);
+    assert.equal(tracker.coordinatorEstimatedMemoryBytes, 100);
+    tracker.closePhase();
+    assert.equal(tracker.coordinatorRecordCount, 0);
+    assert.equal(tracker.coordinatorEstimatedMemoryBytes, 0);
+    // An unmatched close still resets, and does not leave the count negative.
+    tracker.retainRecord(50);
+    tracker.closePhase();
+    assert.equal(tracker.coordinatorEstimatedMemoryBytes, 0);
+    tracker.openPhase();
+    tracker.retainRecord(25);
+    assert.equal(tracker.coordinatorEstimatedMemoryBytes, 25);
+  });
+
   it("priority: cancelled > elapsed > expanded > generated > memory", () => {
     const tracker = new BudgetTracker();
     const controller = new AbortController();

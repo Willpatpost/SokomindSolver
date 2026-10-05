@@ -289,6 +289,35 @@ it.
 The bound is sound but weak. On `theme-parking` it fell from 74 to 7 when the
 proof started keeping fewer A* lanes (job 47199).
 
+### Fast race beside the structural head start
+
+Sokomind 1.12.0, merged after this capture, runs Fast's discovery beside the
+structural head start. A same-node A/B (job 48085, `wf-c4-standard-32-5`,
+three interleaved rounds of `production-fast`) compared it with `2e629de` on
+the ten structural boards:
+
+| Board | Moves | Median time | Peak RSS |
+|---|---:|---:|---:|
+| `open-field` | 180 → 176 | 4,091 → 537 ms | 379 → 371 MiB |
+| `v2-27box-open` | 1,300 | 26.1 → 5.3 s | 1,173 → 1,004 MiB |
+| `v2-17box-handdesigned` | 893 | 7.0 → 7.4 s | 505 → 1,246 MiB |
+| `v2-17box-mirrored` | 893 | 6.8 → 7.2 s | 496 → 1,170 MiB |
+| `v2-17box-rotated` | 893 | 6.8 → 7.1 s | 489 → 1,068 MiB |
+
+On `large`, `master-exchange`, `master-typed-grid`, `theme-museum` and
+`theme-parking`, routes did not change, median times stayed within 1%, and
+peak RSS stayed within 5%. On the 17-box boards structural search still finds
+the route, and the discovery lanes beside it hold 580 to 740 MiB more for about
+7 s. That cost was accepted for the two wins.
+
+Two other lane sets were measured against a race that ran the guided push
+portfolio beside the forward and reverse frontiers. The portfolio alone lost
+both wins (job 47952): `v2-27box-open` was unsolved at 30 s, and `open-field`
+went back to 180 moves at 4.3 s. The frontiers alone kept both wins with less
+memory (job 47954): `v2-27box-open` fell from 1,300 to 989 MiB, and the 17-box
+boards from 1,441-1,634 to 1,079-1,219 MiB. Sokomind 1.12.0 runs the frontiers
+first and starts the portfolio only if they end without a route.
+
 ## Controlled feature A/B runs
 
 Use `--compare-feature` with exact profiles:

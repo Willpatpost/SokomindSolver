@@ -47,6 +47,7 @@ import {
   type PhaseStopReason,
   type SearchRunState,
 } from "./sokomind-run-state.ts";
+import { raceStructuralDiscovery } from "./sokomind-structural-race.ts";
 import {
   resolveSokomindTuning,
   sokomindTuningPayload,
@@ -143,6 +144,13 @@ function structuralHeadStartMs(run: SearchRunState): number {
   return Math.min(
     run.structuralHeadStartLimitMs,
     remaining * run.profile.structuralTimeShare,
+  );
+}
+
+function hasFiniteStateLimit(request: SolverRequest): boolean {
+  return (
+    Number.isFinite(request.limits?.maxExpandedStates ?? Infinity) ||
+    Number.isFinite(request.limits?.maxGeneratedStates ?? Infinity)
   );
 }
 
@@ -333,7 +341,7 @@ export const sokomindSolverMetadata: SolverMetadata = Object.freeze({
   displayName: "Sokomind Solver",
   description:
     "Typed-box Sokoban search with structural macros, compact bidirectional frontiers, and bounded move-count improvement.",
-  version: "1.11.0",
+  version: "1.12.0",
   capabilities: Object.freeze({
     executionTargets: ["web-worker"] as const,
     runtime: "javascript",
@@ -494,6 +502,7 @@ export function createSokomindSolverAdapter(
     let analysisPlan: SokomindAnalysisPlan | undefined;
     let structuralCheckpoints: readonly LegacySearchCheckpoint[] =
       Object.freeze([]);
+    let discoveryRan = false;
 
     if (structural) {
       const preparation = await runPhase(
@@ -522,7 +531,36 @@ export function createSokomindSolverAdapter(
       } else {
         const structuralRequest =
           withStructuralStateBudget(remainingRequest, profile.structuralStateShare);
-        if (structuralRequest) {
+        if (
+          structuralRequest &&
+          sokomindOptions.mode === "fast" &&
+          maxWorkers >= 2 &&
+          !hasFiniteStateLimit(remainingRequest)
+        ) {
+          // Fast takes the first route, so discovery need not wait for the
+          // structural head start; idle workers race it.
+          discoveryRan = true;
+          const race = await raceStructuralDiscovery(run, engineWorkers, {
+            state,
+            structuralRequest,
+            discoveryRequest: remainingRequest,
+            tuning,
+            analysisPlan,
+            maxWorkers,
+            headStartMs: structuralHeadStartMs(run),
+          });
+          errors = [...errors, ...race.errors];
+          if (race.solution) {
+            const incumbent = validatedInitialSolution && validatedInitialSolution.moves < race.solution.moves
+              ? validatedInitialSolution : race.solution;
+            return solvedWithImprovement(
+              run, state, incumbent, engineWorkers, options,
+              sokomindOptions, improveByMode,
+              tuning, maxWorkers, analysisPlan,
+            );
+          }
+          if (race.stopReason) stopReason = race.stopReason;
+        } else if (structuralRequest) {
           const outcome = await runPhase(
             run,
             [
@@ -555,7 +593,7 @@ export function createSokomindSolverAdapter(
       }
     }
 
-    if (!stopReason) {
+    if (!stopReason && !discoveryRan) {
       const discoveryRequest = withRemainingLimits(run);
       if (!discoveryRequest) {
         stopReason = reachedLimit(run) ?? "elapsed";

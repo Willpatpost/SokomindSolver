@@ -220,7 +220,9 @@ orientation matches it; canonical transformed structural orientations safely
 rebuild geometry. The structural lane receives a bounded fractional head start
 before the direct/bidirectional discovery portfolio, so it neither competes
 with Grand Hall for the browser memory ceiling nor monopolizes an entire
-unsuccessful short run.
+unsuccessful short run. Fast keeps the first route, so it runs discovery beside
+the head start on the idle workers instead: with four or more workers, the
+bidirectional frontiers first and the direct lane only if they find no route.
 
 Every move-optimal search identity retains the exact keeper cell because walking
 distance contributes to the sole move-count objective. First-found searches may

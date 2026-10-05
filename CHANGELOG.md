@@ -37,6 +37,11 @@ published a stable release.
 
 ### Changed
 
+- Fast no longer holds discovery back for the structural head start on large
+  boards. With two or more workers and no state limit, discovery runs beside
+  the structural plan search, and the first replayed route wins. With four or
+  more workers, discovery runs the forward and reverse frontiers first and the
+  guided push portfolio only if they find no route.
 - With parallel proof workers, the small-board proof runs beside the route
   improvement. Optimal's proof and Quality's exact lane run alone for 5 s,
   then harvest and repair start beside the same proof on the threads and the
@@ -57,7 +62,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.4 and
-  `sokomind-solver` 1.11.0. Sokomind 1.3.0 marked the earlier Quality
+  `sokomind-solver` 1.12.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.

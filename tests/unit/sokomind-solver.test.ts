@@ -1932,6 +1932,231 @@ describe("Sokomind Solver adapter", () => {
     assert.equal(modes.includes("bidir-reverse"), false);
   });
 
+  it("races Fast discovery beside the structural head start and stops structural when it wins", { timeout: 10_000 }, async () => {
+    const posted: unknown[] = [];
+    const structuralRunningAtDiscovery: boolean[] = [];
+    const structural: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      structuralHeadStartMs: 60_000,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          posted.push(algorithm);
+          if (algorithm === "plan-macro-beam") {
+            structural.push(self);
+            return;
+          }
+          if (algorithm === "ultimate") {
+            structuralRunningAtDiscovery.push(structural[0]?.terminated === false);
+          }
+          queueMicrotask(() => {
+            self.emit(algorithm === "analyze-puzzle"
+              ? { type: "done" }
+              : { type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(LARGE_ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.deepEqual(posted, ["analyze-puzzle", "plan-macro-beam", "ultimate"]);
+    assert.deepEqual(structuralRunningAtDiscovery, [true]);
+    assert.equal(structural.length, 1);
+    assert.equal(structural[0]?.terminated, true);
+  });
+
+  it("races only the bidirectional frontiers beside the structural head start on four workers", { timeout: 10_000 }, async () => {
+    const posted: string[] = [];
+    const parked: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 5,
+      deviceMemoryGb: 16,
+      structuralHeadStartMs: 60_000,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          posted.push(command.mode === "search" ? String(algorithm) : command.mode);
+          // Structural and the reverse frontier stay busy; the forward frontier solves.
+          if (algorithm === "plan-macro-beam" || command.mode === "bidir-reverse") {
+            parked.push(self);
+            return;
+          }
+          queueMicrotask(() => {
+            self.emit(algorithm === "analyze-puzzle"
+              ? { type: "done" }
+              : { type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(LARGE_ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.deepEqual(posted, ["analyze-puzzle", "plan-macro-beam", "bidir-forward", "bidir-reverse"]);
+    assert.equal(parked.length, 2);
+    assert.ok(parked.every((worker) => worker.terminated));
+  });
+
+  it("starts the guided push portfolio beside structural once the frontiers end without a route", { timeout: 10_000 }, async () => {
+    const posted: string[] = [];
+    const structural: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 5,
+      deviceMemoryGb: 16,
+      structuralHeadStartMs: 60_000,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          posted.push(command.mode === "search" ? String(algorithm) : command.mode);
+          if (algorithm === "plan-macro-beam") {
+            structural.push(self);
+            return;
+          }
+          queueMicrotask(() => {
+            self.emit(algorithm === "ultimate"
+              ? { type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 }
+              : { type: "done", visited: 1, generated: 1 });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(LARGE_ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.deepEqual(posted, [
+      "analyze-puzzle", "plan-macro-beam", "bidir-forward", "bidir-reverse", "ultimate",
+    ]);
+    assert.equal(structural.length, 1);
+    assert.equal(structural[0]?.terminated, true);
+  });
+
+  it("keeps a structural route that wins the Fast race and stops discovery", { timeout: 10_000 }, async () => {
+    const discovery: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          if (algorithm === "ultimate") {
+            discovery.push(self);
+            return;
+          }
+          queueMicrotask(() => {
+            self.emit(algorithm === "analyze-puzzle"
+              ? { type: "done" }
+              : { type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(LARGE_ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(discovery.length, 1);
+    assert.equal(discovery[0]?.terminated, true);
+  });
+
+  it("starts structural checkpoint continuations beside Fast discovery that is still running", { timeout: 10_000 }, async () => {
+    const seeds: unknown[] = [];
+    const roots: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          if (algorithm === "ultimate") {
+            seeds.push(command.payload.seed);
+            // The root discovery plan stays busy; only the continuation solves.
+            if (command.payload.seed === undefined) {
+              roots.push(self);
+              return;
+            }
+          }
+          queueMicrotask(() => {
+            if (algorithm === "analyze-puzzle") {
+              self.emit({ type: "done" });
+            } else if (algorithm === "plan-macro-beam") {
+              self.emit({
+                type: "done",
+                visited: 1,
+                generated: 1,
+                checkpoint: {
+                  state: {
+                    rows: LARGE_ONE_TYPED_BOX.rows,
+                    robot: [1, 2],
+                    boxes: [["2,2", "A"]],
+                  },
+                  path: ["Left", "Right"],
+                  cost: 2,
+                  estimate: 1,
+                },
+              });
+            } else {
+              self.emit({ type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 });
+            }
+          });
+        }),
+    });
+
+    const result = await adapter.solve(requestFor(LARGE_ONE_TYPED_BOX), context());
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3, "the continuation's route keeps its checkpoint prefix");
+    assert.equal(seeds.length, 2);
+    assert.equal(seeds[0], undefined);
+    assert.equal(typeof seeds[1], "number");
+    assert.equal(roots.length, 1);
+    assert.equal(roots[0]?.terminated, true);
+  });
+
+  it("keeps the structural head start ahead of Fast discovery under a state limit", { timeout: 10_000 }, async () => {
+    const structuralEndedAtDiscovery: boolean[] = [];
+    const structural: ScriptedWorker[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      deviceMemoryGb: 16,
+      structuralHeadStartMs: 5,
+      createWorker: () =>
+        new ScriptedWorker((self, command) => {
+          const algorithm = command.payload.algorithm;
+          if (algorithm === "plan-macro-beam") {
+            structural.push(self);
+            return;
+          }
+          if (algorithm === "ultimate") {
+            structuralEndedAtDiscovery.push(structural[0]?.terminated === true);
+          }
+          queueMicrotask(() => {
+            self.emit(algorithm === "analyze-puzzle"
+              ? { type: "done" }
+              : { type: "done", status: "solved", path: ["Down"], visited: 1, generated: 1 });
+          });
+        }),
+    });
+
+    const result = await adapter.solve(
+      requestFor(LARGE_ONE_TYPED_BOX, { limits: { maxExpandedStates: 1_000_000 } }),
+      context(),
+    );
+
+    assert.equal(result.status, "solved");
+    assert.deepEqual(structuralEndedAtDiscovery, [true]);
+  });
+
   it("reserves a one-state expanded budget for discovery", async () => {
     const algorithms: unknown[] = [];
     const adapter = createSokomindSolverAdapter({

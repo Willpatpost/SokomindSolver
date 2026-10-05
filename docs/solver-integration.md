@@ -53,7 +53,11 @@ the reviewed structural plan-macro beam a head start capped at 25 seconds and
 similarly reserve at least one state and normally 40% for discovery. If the
 structural lane misses or exhausts its share, the remaining budget goes to a
 guided push lane with compact forward and reverse frontiers when the browser
-has enough CPU and memory. This keeps Grand Hall's low-memory fast path while
+has enough CPU and memory. Fast with at least two workers and no state limit
+does not wait: discovery runs beside the head start on the other workers, and
+the first replayed route wins. With four or more workers it starts with the
+forward and reverse frontiers and runs the guided push lane only if they find
+no route. This keeps Grand Hall's low-memory fast path while
 ensuring short runs still reach discovery. Smaller boards start directly with
 the discovery portfolio. For rooms with at least eight boxes, a web-safe
 memory declaration selects a 256-wide direct beam; the explicit 1.5 GiB class

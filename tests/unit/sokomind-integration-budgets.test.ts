@@ -315,4 +315,52 @@ describe("Sokomind integration resource contracts", () => {
     assert.equal(aggregate(run).counters.coordinatorRecords, 0);
     assert.equal(aggregate(run).counters.peakCoordinatorRecords, 1);
   });
+
+  it("ends a phase quietly on its own signal and keeps the run going", async () => {
+    const run = runState();
+    const controller = new AbortController();
+    const terminated: boolean[] = [];
+    let posted = 0;
+    const plan = { id: "silent", label: "Silent", mode: "search", payload: {} } as const;
+    const pending = runPhase(run, [plan], () => {
+      const index = terminated.push(false) - 1;
+      return {
+        ...silentWorker(() => {
+          posted += 1;
+          queueMicrotask(() => controller.abort());
+        }),
+        terminate() { terminated[index] = true; },
+      };
+    }, 1, undefined, { signal: controller.signal });
+    const result = await pending;
+    assert.equal(posted, 1);
+    assert.equal(result.stopReason, undefined);
+    assert.equal(result.solution, undefined);
+    assert.deepEqual(terminated, [true], "the unfinished worker is not lent again");
+    assert.equal(run.context.signal.aborted, false);
+    assert.equal(run.budget.leasedWorkerMemoryBytes, 0);
+
+    const already = await runPhase(run, [plan], () => {
+      throw new Error("an aborted phase starts no worker");
+    }, 1, undefined, { signal: controller.signal });
+    assert.equal(already.stopReason, undefined);
+    assert.equal(already.startedWorkers, 0);
+  });
+
+  it("keeps the coordinator ledger while a phase beside the closing one is open", async () => {
+    const run = runState();
+    const first = new AbortController();
+    const second = new AbortController();
+    const plan = { id: "silent", label: "Silent", mode: "search", payload: {} } as const;
+    const factory = () => silentWorker(() => {});
+    const firstPhase = runPhase(run, [plan], factory, 1, undefined, { signal: first.signal });
+    const secondPhase = runPhase(run, [plan], factory, 1, undefined, { signal: second.signal });
+    retainLegacyRecord(run, new Map(), { id: "a", parent: null, robot: [1, 2], segment: "R" });
+    first.abort();
+    await firstPhase;
+    assert.equal(aggregate(run).counters.coordinatorRecords, 1);
+    second.abort();
+    await secondPhase;
+    assert.equal(aggregate(run).counters.coordinatorRecords, 0);
+  });
 });

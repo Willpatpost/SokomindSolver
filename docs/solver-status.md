@@ -322,6 +322,27 @@ logic is unchanged: only the lanes' memory limits shrink, a lane that reaches
 its limit keeps its kernel's own bound, and no outside route enters a running
 proof, so the proof revision is unchanged.
 
+Sokomind 1.12.0 runs Fast's discovery beside the structural head start on
+structural boards (at least 10 boxes or 100 floor cells). With at least two
+engine workers and no expanded- or generated-state limit, structural search
+keeps its head start on one worker while discovery starts on the others. With
+at least four workers, discovery runs the forward and reverse frontiers, and
+the guided push portfolio starts only if they end without a route; with two or
+three workers, it runs the portfolio. Beside the frontiers, the portfolio
+added about 300 MiB on `v2-27box-open` and found no route sooner. The first
+replayed route wins: the other lanes stop, and the better of any routes they
+already hold is kept. When the head start ends
+without a route, its checkpoint continuations take its place beside discovery
+that is still running. Each lane leases one memory share of the lanes that can
+run at once. If no lane finds a route, the two-worker bidirectional search and
+the classic fallback run as before. Before, discovery waited for the head
+start: on `v2-27box-open` the structural search timed out after 21 s, and
+discovery then found its route in 5 s. Fast's route can now differ from
+1.11.0's when discovery finishes first. Quality, Optimal, deterministic and
+single-worker runs, and runs with a state limit, keep the sequential order.
+Fast still returns bounded, unproven routes that replay, and the exact kernels
+and proof are untouched, so the proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

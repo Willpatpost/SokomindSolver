@@ -16,7 +16,7 @@ precedence over historical benchmark reports.
 ## Status — October 5, 2026
 
 This status follows the second phase of the 2026-10-03 solver plan, merged
-through Sokomind 1.11.0, classic A* 2.2.5 and classic IDA* 2.2.4. Its
+through Sokomind 1.12.0, classic A* 2.2.5 and classic IDA* 2.2.4. Its
 measurements are in [the solver benchmarks](solver-benchmarks.md), under
 "Phase 2 comparison".
 
@@ -29,7 +29,7 @@ measurements are in [the solver benchmarks](solver-benchmarks.md), under
 | 5. Exact preprocessing | Partial: A* push-and-walk cutoffs; proof workers reuse board-only tables; the deadlock-table build is bounded by work; a PDB build that runs out of memory keeps a partial table | Useful-pattern selection; the single-lane path does not reuse tables |
 | 6. Proof balancing | Partial: busy lanes send heartbeats; the single-lane proof keeps the coordinator reserve; the parallel proof runs fewer lanes when that keeps exact A* | Deeper partition splitting and shared tables need sign-off |
 | 7. Stronger lower bounds | Open; candidate bounds await soundness sign-off | Walking bounds or a corrected MC-PDB |
-| 8. Earlier Fast portfolio | Open: discovery beside the structural head start is measured but not merged | A decision on its memory cost |
+| 8. Earlier Fast portfolio | Done: on structural boards, Fast's discovery runs beside the structural head start, with the forward and reverse frontiers first when at least four workers run | Boards that structural solves hold the discovery lanes' memory until it finishes (580 to 740 MiB more on the 17-box boards) |
 | 9. Broader Quality repair | Partial: repair runs on routes of any length; harvest beams receive their move weights; pair repair picks two-box pairs by push detour and swaps the goals of same-label pairs | Broader neighbourhoods; wider move windows and more rewrite slots found no shorter routes within 60 s |
 | 10. Hot paths and worker reuse | Partial: kernels yield through `setImmediate` or `MessageChannel`; engine and proof workers last the whole request; the kernels reuse their scratch buffers and IDA* floods once per frame | A BigInt-free state table needs sign-off |
 | 11. Public anytime results | Done: progress carries the replay-verified route, the dialog shows the best route so far, and **Stop and keep best** returns it | Sequential IDA* improvements carry no route until the result |
