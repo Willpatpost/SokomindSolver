@@ -259,6 +259,22 @@ never claims a bound or a proof. A proof that completes before the stop
 arrives keeps its own result. Search and proof logic are unchanged, so the
 proof revision is unchanged.
 
+Sokomind 1.10.0 adds pair repair to Quality's anytime loop on boards with at
+most 200 floor cells, the two-box reschedule's limit. Two-box repair frees two
+boxes while every other box's push events stay fixed. The engine now picks
+the pairs from the route: the boxes with the largest push detours, meaning
+pushes in the route minus the shortest player-aware push distance. The
+coordinator's consecutive-push pairs never improved a measured route. Goal
+reassignment becomes a same-label goal swap: two boxes that share a label are
+freed and each is sent to the other's goal. Before, it handed swapped targets
+to the single-box reschedule, where the other box still ended on the target,
+so it never produced a route. Both were experimental options; Quality now runs
+them by default, and listing them in `experimentalOperators` adds nothing. A
+candidate is kept only if it is shorter and the other boxes' push events
+replay unchanged. Routes are still replayed and reported as unproven.
+Optimal's improvement and the exact kernels are untouched, so the proof
+revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume
@@ -338,8 +354,9 @@ these changes.
 Quality and optimal modes can refine a complete incumbent with whole-box
 rescheduling. Every physical box is eligible, including repeated-label boxes;
 route-length and remaining-budget checks still govern execution. Each repair
-frees one box while preserving the other boxes' push order and identity. This
-restricted optimization is not a global optimality proof. See the
+frees one box while preserving the other boxes' push order and identity;
+Quality's pair repair frees two (see 1.10.0 above). This restricted
+optimization is not a global optimality proof. See the
 [Grand Hall evidence](benchmarks/grand-hall-rescheduling.md) for isolated repair
 and public-adapter results with their separate inputs and limits.
 

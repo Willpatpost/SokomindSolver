@@ -8287,11 +8287,13 @@ function fixedOrderBoxReschedule(board, initial, events, selected, targetCell, u
 
 // Two-box variant: free two selected boxes while fixing all other push events.
 // State = (phase, box1_pos, box2_pos, robot_pos). Tightly bounded.
+// The TypeScript side mirrors this floor limit (TWO_BOX_RESCHEDULE_MAX_FLOOR).
+const TWO_BOX_MAX_FLOOR = 200;
 function fixedOrderTwoBoxReschedule(board, initial, events, sel1, sel2, target1, target2, upperBound, budget) {
   const cells = [...board.floor], ids = new Map(cells.map((cell, index) => [cell, index]));
   const size = cells.length;
   const fixed = events.filter(event => event.boxIndex !== sel1 && event.boxIndex !== sel2);
-  if (size > 200 || (fixed.length + 1) * size > 4000000 || now() >= budget.deadline) return null;
+  if (size > TWO_BOX_MAX_FLOOR || (fixed.length + 1) * size > 4000000 || now() >= budget.deadline) return null;
   const tableBytes = (fixed.length + 1) * (size * 5 + 192) + size * 256;
   const generatedAtStart = budget.generated;
   const hasMemory = () => {
@@ -8493,6 +8495,8 @@ function boxReschedulingTrace(payload, path, board) {
   return {events, details};
 }
 
+const RESCHEDULE_PAIR_LIMIT = 8, RESCHEDULE_DETOUR_BOXES = 6;
+
 function solutionBoxRescheduleSearch(payload) {
   const startedAt = now();
   const board = prepareSearchBoard(payload), initial = initialReplayState(payload);
@@ -8527,9 +8531,7 @@ function solutionBoxRescheduleSearch(payload) {
   const requested = payload.rescheduleBoxIndices;
   const selected = Array.isArray(requested) ? eligible.filter(index => requested.includes(index)) : eligible;
   const attempts = [];
-  const overrides = payload.rescheduleTargetOverrides;
   const targetCell = boxIndex => {
-    if (overrides && overrides[boxIndex] !== undefined) return overrides[boxIndex];
     const box = trace.details.state.boxes[boxIndex];
     return pkey(box[0], box[1]);
   };
@@ -8559,15 +8561,42 @@ function solutionBoxRescheduleSearch(payload) {
     return trace.events.filter(event => event.boxIndex === index).length - distance;
   };
   const rounds = strategicLimit(payload.rescheduleRounds, 2, 8);
-  if (payload.rescheduleMode === "two-box" && Array.isArray(payload.rescheduleBoxPairs)) {
-    for (const pair of payload.rescheduleBoxPairs) {
+  // Pairs come from the route's structure: the largest summed push detours for
+  // two-box, the nearest goals of same-label boxes for goal-swap.
+  const choosePairs = swap => {
+    if (board.floor.size > TWO_BOX_MAX_FLOOR) return [];
+    const ranked = [];
+    if (swap) {
+      const boxes = trace.details.state.boxes;
+      for (let a = 0; a < boxes.length; a++) for (let b = a + 1; b < boxes.length; b++) {
+        if (boxLabels[a] === boxLabels[b]) ranked.push({pair: [a, b],
+          score: Math.abs(boxes[a][0] - boxes[b][0]) + Math.abs(boxes[a][1] - boxes[b][1])});
+      }
+    } else {
+      const detours = initial.boxes.map((_, index) => detour(index));
+      const boxes = detours.map((_, index) => index)
+        .sort((a, b) => detours[b] - detours[a] || a - b).slice(0, RESCHEDULE_DETOUR_BOXES);
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        ranked.push({pair: [boxes[i], boxes[j]], score: -(detours[boxes[i]] + detours[boxes[j]])});
+      }
+    }
+    return ranked.sort((left, right) => left.score - right.score ||
+      left.pair[0] - right.pair[0] || left.pair[1] - right.pair[1])
+      .slice(0, RESCHEDULE_PAIR_LIMIT).map(({pair}) => pair);
+  };
+  if (payload.rescheduleMode === "two-box" || payload.rescheduleMode === "goal-swap") {
+    // goal-swap sends each box of a same-label pair to the other's goal.
+    const swap = payload.rescheduleMode === "goal-swap";
+    const pairs = Array.isArray(payload.rescheduleBoxPairs) ? payload.rescheduleBoxPairs : choosePairs(swap);
+    for (const pair of pairs) {
       if (!Array.isArray(pair) || pair.length !== 2) continue;
       const [s1, s2] = pair;
       if (s1 < 0 || s1 >= initial.boxes.length || s2 < 0 || s2 >= initial.boxes.length || s1 === s2) continue;
+      if (swap && boxLabels[s1] !== boxLabels[s2]) continue;
       if (budget.expanded >= budget.maxExpanded || budget.generated >= budget.maxGenerated || budget.memoryExhausted || now() >= budget.deadline) break;
       const beforeMoves = path.length, expanded = budget.expanded, generated = budget.generated;
       const candidate = fixedOrderTwoBoxReschedule(board, initial, trace.events, s1, s2,
-        targetCell(s1), targetCell(s2), path.length, budget);
+        targetCell(swap ? s2 : s1), targetCell(swap ? s1 : s2), path.length, budget);
       if (candidate && candidate.length < path.length) {
         const replayed = boxReschedulingTrace(payload, candidate, board);
         const fixed = events => events.filter(event => event.boxIndex !== s1 && event.boxIndex !== s2);

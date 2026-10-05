@@ -49,7 +49,12 @@ import {
   type ProofCheckpointOptions,
 } from "./sokomind-proof.ts";
 import type { ProofWorkerSource } from "./sokomind-proof-pool.ts";
-import { improveIncumbent, type ImprovedIncumbent, type SokomindImprovementOptions } from "./sokomind-improvement.ts";
+import {
+  improveIncumbent,
+  qualityRepairOperators,
+  type ImprovedIncumbent,
+  type SokomindImprovementOptions,
+} from "./sokomind-improvement.ts";
 import {
   CandidateArchive,
   type ArchivedCandidate,
@@ -255,66 +260,6 @@ async function harvestIncumbents(
 // ---------------------------------------------------------------------------
 // Operator context helpers for broader repair neighborhoods
 // ---------------------------------------------------------------------------
-
-function selectBoxPairs(
-  request: SolverRequest,
-  solution: SolverSolution,
-): readonly (readonly [number, number])[] {
-  const trace = semanticDiversityTrace(request, solution);
-  if (!trace) return [];
-  const pushEntries = trace.pushChain.split(";").filter(Boolean);
-  if (pushEntries.length < 2) return [];
-  const boxIndices = pushEntries.map((entry) => {
-    const hash = entry.indexOf("#");
-    const colon = entry.indexOf(":", hash);
-    return hash >= 0 && colon > hash ? Number(entry.slice(hash + 1, colon)) : -1;
-  }).filter((i) => i >= 0);
-  const interactionScore = new Map<string, number>();
-  for (let i = 0; i < boxIndices.length - 1; i++) {
-    const a = boxIndices[i], b = boxIndices[i + 1];
-    if (a === b) continue;
-    const key = a < b ? `${a},${b}` : `${b},${a}`;
-    interactionScore.set(key, (interactionScore.get(key) ?? 0) + 1);
-  }
-  return [...interactionScore]
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 3)
-    .map(([key]) => key.split(",").map(Number) as [number, number]);
-}
-
-function selectGoalReassignmentOverrides(
-  request: SolverRequest,
-  solution: SolverSolution,
-): Readonly<Record<number, string>> | undefined {
-  const trace = semanticDiversityTrace(request, solution);
-  if (!trace) return undefined;
-  const goalEntries = trace.boxGoals.split(";").filter(Boolean);
-  const boxGoalMap = new Map<number, string>();
-  for (const entry of goalEntries) {
-    const hash = entry.indexOf("#");
-    const arrow = entry.indexOf(">", hash);
-    if (hash < 0 || arrow < 0) continue;
-    const boxIndex = Number(entry.slice(hash + 1, arrow));
-    const goalCell = entry.slice(arrow + 1);
-    if (!Number.isFinite(boxIndex) || boxIndex < 0) continue;
-    boxGoalMap.set(boxIndex, goalCell);
-  }
-  const boxes = request.snapshot.boxes;
-  const labelGroups = new Map<string, number[]>();
-  for (let i = 0; i < boxes.length; i++) {
-    const group = labelGroups.get(boxes[i].label) ?? [];
-    group.push(i);
-    labelGroups.set(boxes[i].label, group);
-  }
-  for (const [, group] of labelGroups) {
-    if (group.length < 2) continue;
-    const a = group[0], b = group[1];
-    const goalA = boxGoalMap.get(a), goalB = boxGoalMap.get(b);
-    if (!goalA || !goalB || goalA === goalB) continue;
-    return { [a]: goalB, [b]: goalA };
-  }
-  return undefined;
-}
 
 function analyzePushInteractions(
   request: SolverRequest,
@@ -582,14 +527,7 @@ export async function qualityAnytimeImprove(
     maxWorkers, run.request.limits?.maxMemoryBytes, archive.size,
   ));
   let sliceIndex = 0;
-  const enabledOperators: RepairOperator[] = ["window"];
-  if (rescheduleEligible) enabledOperators.push("box");
-  for (const exp of sokomindOptions.experimentalOperators) {
-    if (exp === "two-box" && rescheduleEligible) enabledOperators.push("two-box");
-    else if (exp === "goal-reassignment" && rescheduleEligible) enabledOperators.push("goal-reassignment");
-    else if (exp === "dependency-window") enabledOperators.push("dependency-window");
-    else if (exp === "perturb-and-repair") enabledOperators.push("perturb-and-repair");
-  }
+  const enabledOperators = qualityRepairOperators(state, sokomindOptions.experimentalOperators);
   let nextOpIndex = rewriteCount > 0 && enabledOperators.length > 1 ? 1 : 0;
   let slotCancelled = false;
 
@@ -719,21 +657,9 @@ export async function qualityAnytimeImprove(
     );
 
     const sliceStart = run.context.now();
-    const repairContext = operator === "two-box"
-      ? { boxPairs: selectBoxPairs(run.request, target.solution) }
-      : operator === "goal-reassignment"
-        ? { targetOverrides: selectGoalReassignmentOverrides(run.request, target.solution) }
-        : operator === "dependency-window"
-          ? { prioritizedWindows: analyzePushInteractions(run.request, target.solution) }
-          : undefined;
-    if (operator === "goal-reassignment" && !repairContext?.targetOverrides) {
-      archive.recordOutcome({
-        taskId, reason: "ineligible", operator, candidateId: target.id,
-        expanded: 0, generated: 0, elapsedMs: 0, improved: false,
-      });
-      archive.clearInFlight(target.id, operator);
-      return true;
-    }
+    const repairContext = operator === "dependency-window"
+      ? { prioritizedWindows: analyzePushInteractions(run.request, target.solution) }
+      : undefined;
     if (operator === "dependency-window" && (!repairContext?.prioritizedWindows || repairContext.prioritizedWindows.length === 0)) {
       archive.recordOutcome({
         taskId, reason: "ineligible", operator, candidateId: target.id,

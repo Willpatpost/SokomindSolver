@@ -533,6 +533,22 @@ export function supportsBoxRescheduling(state: LegacyState): boolean {
   return state.boxes.length >= 1;
 }
 
+/** Mirrors the engine's two-box limit (box-rescheduling.js TWO_BOX_MAX_FLOOR). */
+export const TWO_BOX_RESCHEDULE_MAX_FLOOR = 200;
+
+/** Pair rescheduling needs two boxes on a board within the engine's floor limit. */
+export function supportsTwoBoxRescheduling(state: LegacyState): boolean {
+  let floor = 0;
+  for (const row of state.rows) for (const cell of row) if (cell !== "O") floor += 1;
+  return state.boxes.length >= 2 && floor <= TWO_BOX_RESCHEDULE_MAX_FLOOR;
+}
+
+/** Goal swaps need two boxes that share a label. */
+export function hasRepeatedBoxLabels(state: LegacyState): boolean {
+  const labels = state.boxes.map(([, label]) => label);
+  return new Set(labels).size < labels.length;
+}
+
 export function solutionReschedulingPlan(
   state: LegacyState,
   incumbent: SolverSolution,
@@ -541,7 +557,6 @@ export function solutionReschedulingPlan(
   maxElapsedMs: number,
   candidateIndex: number,
   diagnostics: boolean | undefined = false,
-  targetOverrides?: Readonly<Record<number, string>>,
   rescheduleRounds = 2,
 ): EnginePlan {
   return Object.freeze({
@@ -557,24 +572,27 @@ export function solutionReschedulingPlan(
       rescheduleMaxMs: maxElapsedMs,
       rescheduleRounds,
       ...(diagnostics ? { diagnostics: true } : {}),
-      ...(targetOverrides ? { rescheduleTargetOverrides: targetOverrides } : {}),
     }),
   });
 }
 
-export function solutionTwoBoxReschedulingPlan(
+/**
+ * Frees two boxes at once with every other push event fixed. The engine picks
+ * the pairs: the largest push detours for two-box, and same-label boxes sent to
+ * each other's goals for goal-swap.
+ */
+export function solutionPairReschedulingPlan(
   state: LegacyState,
   incumbent: SolverSolution,
   maxVisited: number,
   maxGenerated: number,
   maxElapsedMs: number,
   candidateIndex: number,
-  boxPairs: readonly (readonly [number, number])[],
-  targetOverrides?: Readonly<Record<number, string>>,
+  mode: "two-box" | "goal-swap",
 ): EnginePlan {
   return Object.freeze({
-    id: `solution-reschedule-2box-c${candidateIndex}`,
-    label: "Two-box transport rescheduling",
+    id: `solution-reschedule-${mode === "two-box" ? "2box" : "swap"}-c${candidateIndex}`,
+    label: mode === "two-box" ? "Two-box transport rescheduling" : "Same-label goal swap",
     mode: "search",
     payload: Object.freeze({
       algorithm: "solution-box-reschedule",
@@ -583,9 +601,7 @@ export function solutionTwoBoxReschedulingPlan(
       maxVisited,
       maxGenerated,
       rescheduleMaxMs: maxElapsedMs,
-      rescheduleMode: "two-box",
-      rescheduleBoxPairs: boxPairs,
-      ...(targetOverrides ? { rescheduleTargetOverrides: targetOverrides } : {}),
+      rescheduleMode: mode,
     }),
   });
 }

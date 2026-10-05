@@ -103,9 +103,10 @@ export interface BoxReschedulePayload extends EnginePayloadBase {
   readonly rescheduleMaxMs?: number;
   readonly rescheduleRounds?: number;
   readonly diagnostics?: boolean;
-  readonly rescheduleMode?: "single" | "two-box";
+  /** "goal-swap" frees a same-label pair and sends each box to the other's goal. */
+  readonly rescheduleMode?: "single" | "two-box" | "goal-swap";
+  /** Pairs to try in a pair mode; when omitted the engine chooses them from the route. */
   readonly rescheduleBoxPairs?: readonly (readonly [number, number])[];
-  readonly rescheduleTargetOverrides?: Readonly<Record<number, string>>;
 }
 
 export interface BidirectionalSidePayload extends EnginePayloadBase {

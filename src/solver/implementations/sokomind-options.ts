@@ -42,6 +42,9 @@ export const DEFAULT_SOKOMIND_REQUEST_OPTIONS: SokomindRequestOptions =
 const VALID_MODES: ReadonlySet<string> = new Set(["fast", "quality", "optimal"]);
 const VALID_PROOF_ALGORITHMS: ReadonlySet<string> = new Set(["auto", "astar", "ida-star"]);
 const VALID_IDA_SNAPSHOTS: ReadonlySet<string> = new Set(["all", "periodic", "none"]);
+// Since Sokomind 1.10.0 Quality runs two-box and goal-reassignment by default
+// wherever the board fits the engine's two-box limit, so listing them adds
+// nothing; they stay valid so older requests still parse.
 const VALID_EXPERIMENTAL_OPERATORS: ReadonlySet<string> = new Set([
   "two-box", "goal-reassignment", "dependency-window", "perturb-and-repair",
 ]);

@@ -771,7 +771,9 @@ explicit validator support and compatibility tests.
 ## 11. Work package G: broader repair neighborhoods
 
 These operators are subsequent experiments, disabled by default until
-qualification. The initial scheduler must already support operator registration,
+qualification. Sokomind 1.10.0 qualified first versions of 11.1 and 11.2 and
+runs them by default on boards within the two-box limit; see
+[Solver status](../solver-status.md). The initial scheduler must already support operator registration,
 grants, complete candidate replay, provenance and explicit cutoff outcomes.
 
 ### 11.1 Joint two-box repair

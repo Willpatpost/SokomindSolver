@@ -13,9 +13,12 @@ import {
   DEFAULT_IMPROVEMENT_MINIMUM_MOVES,
   DEFAULT_REWRITE_BUDGET_ALLOCATION,
   dependencyWindowImprovementPlan,
+  hasRepeatedBoxLabels,
   solutionImprovementPlan,
+  solutionPairReschedulingPlan,
   solutionReschedulingPlan,
-  solutionTwoBoxReschedulingPlan,
+  supportsBoxRescheduling,
+  supportsTwoBoxRescheduling,
   type EnginePlan,
   type RewriteBudgetAllocation,
 } from "./sokomind-plans.ts";
@@ -55,8 +58,6 @@ export interface ImprovedIncumbent {
 
 /** Operator-specific targets chosen by the anytime coordinator. */
 export type RepairContext = Readonly<{
-  boxPairs?: readonly (readonly [number, number])[];
-  targetOverrides?: Readonly<Record<number, string>>;
   prioritizedWindows?: readonly { readonly startPush: number; readonly endPush: number; readonly maxVisited: number }[];
 }>;
 
@@ -77,6 +78,29 @@ export interface RepairPlanInput {
 }
 
 /**
+ * The operators Quality's anytime loop rotates through. Pair repair runs
+ * wherever the engine's two-box limit admits the board, so listing two-box or
+ * goal-reassignment as experimental adds nothing.
+ */
+export function qualityRepairOperators(
+  state: import("./sokomind-legacy.ts").LegacyState,
+  experimentalOperators: SokomindRequestOptions["experimentalOperators"],
+): RepairOperator[] {
+  const operators: RepairOperator[] = ["window"];
+  if (supportsBoxRescheduling(state)) {
+    operators.push("box");
+    if (supportsTwoBoxRescheduling(state)) {
+      operators.push("two-box");
+      if (hasRepeatedBoxLabels(state)) operators.push("goal-reassignment");
+    }
+  }
+  for (const operator of experimentalOperators) {
+    if (operator === "dependency-window" || operator === "perturb-and-repair") operators.push(operator);
+  }
+  return operators;
+}
+
+/**
  * Chooses the engine plan for a repair operator. The switch is exhaustive, so
  * a new operator does not typecheck until it is given a plan here.
  */
@@ -84,15 +108,17 @@ export function repairPlan(operator: RepairOperator, input: RepairPlanInput): En
   const { state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex, context } = input;
   switch (operator) {
     case "box":
-    case "goal-reassignment":
       return solutionReschedulingPlan(
         state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex,
-        input.diagnostics, context?.targetOverrides, input.rescheduleRounds,
+        input.diagnostics, input.rescheduleRounds,
       );
     case "two-box":
-      return solutionTwoBoxReschedulingPlan(
-        state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex,
-        context?.boxPairs ?? [], context?.targetOverrides,
+      return solutionPairReschedulingPlan(
+        state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex, "two-box",
+      );
+    case "goal-reassignment":
+      return solutionPairReschedulingPlan(
+        state, solution, maxVisited, maxGenerated, maxElapsedMs, candidateIndex, "goal-swap",
       );
     case "dependency-window":
       return dependencyWindowImprovementPlan(
@@ -141,7 +167,7 @@ export async function improveIncumbent(
   const memoryLimit = run.request.limits?.maxMemoryBytes ?? Infinity;
   const scaledDefault = defaultImprovementMaxVisited(run.request.limits?.maxMemoryBytes);
   const requestOptions = extractSokomindOptions(run.request);
-  const liveMemoryRescheduling = (repair === "box" || repair === "two-box") &&
+  const liveMemoryRescheduling = (repair === "box" || repair === "two-box" || repair === "goal-reassignment") &&
     requestOptions.mode === "quality";
   const memoryVisitedCap =
     liveMemoryRescheduling

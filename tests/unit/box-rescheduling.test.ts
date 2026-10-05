@@ -131,3 +131,64 @@ test("an incomplete or illegal incumbent cannot become a claimed solution",()=>{
     assert.equal(result.status,"failed");assert.equal(result.path,null);
   }
 });
+
+const cellOf = (snapshot:GameSnapshot,index:number) => `${snapshot.boxes[index].position.row},${snapshot.boxes[index].position.column}`;
+// Primitive-move BFS on the repeated-label board to the nearest snapshot `done` accepts.
+function shortest(done:(snapshot:GameSnapshot)=>boolean) {
+  const queue=[{snapshot:repeatedRequest.snapshot,path:[] as string[]}],seen=new Set<string>();
+  for(let i=0;i<queue.length;i++){
+    const current=queue[i];if(done(current.snapshot))return current.path;
+    for(const direction of ["Up","Down","Left","Right"]){
+      const next=stepSnapshot(repeatedRequest.board,current.snapshot,direction.toLowerCase() as Direction);if(!next.moved)continue;
+      const key=JSON.stringify([next.snapshot.robot,next.snapshot.boxes.map(box=>box.position)]);
+      if(seen.has(key))continue;seen.add(key);queue.push({snapshot:next.snapshot,path:[...current.path,direction]});
+    }
+  }
+  throw new Error("BFS found no route");
+}
+const finalCells=(path:readonly string[])=>{
+  let snapshot=repeatedRequest.snapshot;
+  for(const move of path)snapshot=stepSnapshot(repeatedRequest.board,snapshot,move.toLowerCase() as Direction).snapshot;
+  assert.ok(snapshot.solved);return [cellOf(snapshot,0),cellOf(snapshot,1)];
+};
+const natural=(snapshot:GameSnapshot)=>snapshot.solved&&cellOf(snapshot,0)==="2,4"&&cellOf(snapshot,1)==="3,4";
+const crossed=(snapshot:GameSnapshot)=>snapshot.solved&&cellOf(snapshot,0)==="3,4"&&cellOf(snapshot,1)==="2,4";
+const reschedule=(path:readonly string[],options:Record<string,unknown>)=>search({algorithm:"solution-box-reschedule",
+  state:toLegacyState(repeatedRequest),solutionPath:path,maxVisited:20000,maxGenerated:80000,...options});
+const attemptsOf=(result:ReturnType<typeof search>)=>
+  ((result as Record<string,unknown>).boxRescheduling as {attempts:Array<{boxIndex:unknown}>}).attempts;
+const verified=(path:readonly string[]|null|undefined)=>{
+  assert.ok(path);const solution=solutionFromLegacyPath(repeatedRequest,path);
+  assert.ok(solution&&verifySolverSolution(repeatedRequest,solution).valid);return path;
+};
+test("two-box repair chooses its own pair and reaches that pair's optimum",()=>{
+  const result=reschedule(repeatedIncumbent,{rescheduleMode:"two-box"});
+  assert.deepEqual(attemptsOf(result).map(attempt=>attempt.boxIndex),[[0,1]]);
+  const path=verified(result.path);
+  assert.equal(path.length,shortest(natural).length);
+  assert.ok(path.length<repeatedIncumbent.length);
+});
+test("goal swap sends a same-label pair to each other's goals",()=>{
+  const crossing=shortest(crossed);
+  const result=reschedule(crossing,{rescheduleMode:"goal-swap"});
+  assert.deepEqual(attemptsOf(result).map(attempt=>attempt.boxIndex),[[0,1]]);
+  const path=verified(result.path);
+  assert.deepEqual(finalCells(path),["2,4","3,4"]);
+  // The swap reaches the unrestricted optimum, which no crossing route can.
+  assert.equal(path.length,shortest(natural).length);
+  assert.equal(path.length,shortest(snapshot=>snapshot.solved).length);
+  assert.ok(path.length<crossing.length);
+  // Plain two-box keeps each box's goal, so it cannot undo the crossing.
+  const kept=verified(reschedule(crossing,{rescheduleMode:"two-box"}).path);
+  assert.deepEqual(finalCells(kept),["3,4","2,4"]);
+});
+test("goal swap skips pairs whose labels differ",()=>{
+  for(const pairs of [undefined,[[0,1]]]){
+    const result=search({algorithm:"solution-box-reschedule",state:toLegacyState(request),solutionPath:incumbent,
+      rescheduleMode:"goal-swap",...(pairs?{rescheduleBoxPairs:pairs}:{}),maxVisited:10000,maxGenerated:40000});
+    assert.equal(result.status,"solved");
+    assert.deepEqual(attemptsOf(result),[]);
+    assert.ok(result.path&&result.path.length<=incumbent.length);
+    events(result.path);
+  }
+});

@@ -37,6 +37,11 @@ published a stable release.
 
 ### Changed
 
+- Quality's anytime loop runs pair repair on boards with at most 200 floor
+  cells. Two-box repair picks its pairs in the engine from the boxes with the
+  largest push detours. Goal reassignment becomes a same-label goal swap that
+  sends each box of a pair to the other's goal; before, it never produced a
+  route. Both were experimental and now run by default.
 - Current catalog and solver documentation now links to one generated project
   reference instead of duplicating facts that can drift.
 - Exact-search tunnel macros are now disabled by default. When enabled they
@@ -47,7 +52,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
-  `sokomind-solver` 1.9.0. Sokomind 1.3.0 marked the earlier Quality
+  `sokomind-solver` 1.10.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
