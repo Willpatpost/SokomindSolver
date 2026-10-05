@@ -61,8 +61,8 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.6, `classic-ida-star` 2.2.6 and
-  `sokomind-solver` 1.12.2. Sokomind 1.3.0 marked the earlier Quality
+- Solver versions are now `classic-astar` 2.2.7, `classic-ida-star` 2.2.7 and
+  `sokomind-solver` 1.12.3. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -95,6 +95,9 @@ published a stable release.
   and the deadlock tables reuse their buffers instead of allocating per call.
   State counts, moves and proofs are unchanged; a same-node A/B ran the
   classic profiles at 0.85x geometric-mean time.
+- The pattern-database heuristic finds its minimum over box subsets by branch
+  and bound on the boxes' goal distances, instead of looking up every subset.
+  h, state counts, moves and proofs are unchanged; only `pdbLookups` falls.
 - A pattern-database build that hits the memory limit keeps its partial table,
   or disables that partition, instead of aborting exact search. Both are
   admissible: unreached entries read `frontierDepth + 1`, and a disabled table

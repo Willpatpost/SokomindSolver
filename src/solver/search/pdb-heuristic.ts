@@ -11,37 +11,94 @@ import {
 } from "./pattern-database.ts";
 import { isExactPreprocessingLimitError, type ExactPreprocessingBudget } from "./preprocessing-budget.ts";
 
-function minSubsetLookup(
+/** Reusable buffers for minSubsetLookup. */
+interface SubsetScratch {
+  readonly cells: number[];
+  readonly distances: number[];
+  readonly picks: number[];
+  readonly sums: number[];
+  readonly subset: number[];
+}
+
+function createSubsetScratch(): SubsetScratch {
+  return { cells: [], distances: [], picks: [], sums: [], subset: [] };
+}
+
+/**
+ * The minimum lookup over the k-box subsets of `cells`, by branch and bound.
+ * Boxes are sorted by goal distance and subsets are built in that order. A
+ * partial subset is dropped once min(its distance sum plus the next sorted
+ * distances, undiscovered), a floor under every lookup that completes it
+ * (PdbSubsetBound), cannot beat the best value so far; so are the later
+ * choices at its level, whose floors are no lower. The result equals the
+ * minimum over every subset; only the number of lookups falls.
+ */
+export function minSubsetLookup(
   pdb: PatternDatabase,
   cells: readonly number[],
   k: number,
-  indices: number[],
-  subset: number[],
+  scratch: SubsetScratch = createSubsetScratch(),
 ): number {
   const n = cells.length;
   if (n === k) return pdb.lookup(cells);
-
-  let minValue = PDB_UNSOLVED;
-  indices.length = k;
+  const { subset } = scratch;
   subset.length = k;
-  for (let j = 0; j < k; j++) indices[j] = j;
-
-  while (true) {
-    for (let j = 0; j < k; j++) subset[j] = cells[indices[j]];
-    const value = pdb.lookup(subset);
-    if (value < minValue) {
-      minValue = value;
-      if (value === 0) break;
-    }
-
-    let j = k - 1;
-    while (j >= 0 && indices[j] === n - k + j) j--;
-    if (j < 0) break;
-    indices[j]++;
-    for (let m = j + 1; m < k; m++) indices[m] = indices[m - 1] + 1;
+  const bound = pdb.subsetBound;
+  if (bound === null) {
+    for (let j = 0; j < k; j++) subset[j] = cells[j];
+    return pdb.lookup(subset);
   }
 
-  return minValue;
+  // Insertion sort; a box with no route to a goal counts as unbounded.
+  const { goalDistance, undiscovered } = bound;
+  const { cells: sorted, distances, picks, sums } = scratch;
+  sorted.length = n;
+  distances.length = n;
+  for (let i = 0; i < n; i++) {
+    const cell = cells[i];
+    const distance = goalDistance[cell] < 0 ? Infinity : goalDistance[cell];
+    let j = i - 1;
+    while (j >= 0 && distances[j] > distance) {
+      distances[j + 1] = distances[j];
+      sorted[j + 1] = sorted[j];
+      j--;
+    }
+    distances[j + 1] = distance;
+    sorted[j + 1] = cell;
+  }
+
+  // picks[level] is the sorted index chosen at that level and sums[level]
+  // the distance sum of the picks before it.
+  let best = PDB_UNSOLVED;
+  picks.length = k;
+  sums.length = k;
+  picks[0] = 0;
+  sums[0] = 0;
+  let level = 0;
+  while (level >= 0) {
+    const pick = picks[level];
+    const remaining = k - level;
+    let floor = sums[level];
+    if (pick <= n - remaining) {
+      for (let i = pick; i < pick + remaining; i++) floor += distances[i];
+    }
+    if (pick > n - remaining || Math.min(floor, undiscovered) >= best) {
+      level--;
+      if (level >= 0) picks[level]++;
+      continue;
+    }
+    if (remaining === 1) {
+      for (let j = 0; j < k; j++) subset[j] = sorted[picks[j]];
+      const value = pdb.lookup(subset);
+      if (value < best) best = value;
+      picks[level]++;
+    } else {
+      sums[level + 1] = sums[level] + distances[pick];
+      picks[level + 1] = pick + 1;
+      level++;
+    }
+  }
+  return best;
 }
 
 const SURPLUS_CACHE_CAP = 50_000;
@@ -59,8 +116,7 @@ export class PdbHeuristicEvaluator {
   readonly #slotTotals: Float64Array;
   readonly #slotTouched: Uint8Array;
   readonly #touchedSlots: Int32Array;
-  readonly #subsetIndices: number[] = [];
-  readonly #subsetCells: number[] = [];
+  readonly #subsetScratch = createSubsetScratch();
   // Keyed by box key alone, but the surplus also depends on the assignment
   // label costs, so evaluateWithSurplus() reads and writes it only when the
   // caller vouches that the label costs belong to that box key.
@@ -203,7 +259,7 @@ export class PdbHeuristicEvaluator {
       if (boxCells.length < k) continue;
       const value = boxCells.length === k
         ? pdb.lookup(boxCells)
-        : minSubsetLookup(pdb, boxCells, k, this.#subsetIndices, this.#subsetCells);
+        : minSubsetLookup(pdb, boxCells, k, this.#subsetScratch);
       if (value !== PDB_UNSOLVED) total += value;
     }
     return total;
@@ -255,7 +311,7 @@ export class PdbHeuristicEvaluator {
       if (boxCells.length < k) continue;
       const value = boxCells.length === k
         ? pdb.lookup(boxCells)
-        : minSubsetLookup(pdb, boxCells, k, this.#subsetIndices, this.#subsetCells);
+        : minSubsetLookup(pdb, boxCells, k, this.#subsetScratch);
       if (value === PDB_UNSOLVED) continue;
       if (touched[slot] === 0) {
         touched[slot] = 1;

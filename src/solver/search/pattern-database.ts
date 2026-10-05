@@ -52,9 +52,30 @@ export interface PatternDatabase {
   readonly lookupStats: PdbLookupStats;
   /** The build limit that left this table partial or disabled, if any. */
   readonly truncatedBy?: ExactPreprocessingLimitReason;
+  /**
+   * Null when every lookup returns the same value (k = 0, a disabled table,
+   * or goals outside the region), so any one subset answers a minimum.
+   */
+  readonly subsetBound: PdbSubsetBound | null;
   lookup(boxCells: readonly number[]): number;
   /** Another view of the same table, with its own lookup counters. */
   view(): PatternDatabase;
+}
+
+/**
+ * A floor under every lookup: for boxes B, lookup(B) is at least
+ * min(sum over B of goalDistance, undiscovered), where a negative distance
+ * counts as unbounded. Each box's path in the reverse BFS is a run of
+ * single-box relaxed pushes that the BFS rule (region-only destinations,
+ * free cells, floor support) only narrows, so a stored value is at least the
+ * sum. The exit bound is the sum plus a slack, and a missing entry reads
+ * undiscovered or the exit bound.
+ */
+export interface PdbSubsetBound {
+  /** d(c): full-board relaxed push distance to the nearest partition goal; -1 means none. */
+  readonly goalDistance: Int32Array;
+  /** What the lookup answers for in-region entries the BFS never reached. */
+  readonly undiscovered: number;
 }
 
 /** What one build leaves behind. It never changes, so views may share it. */
@@ -65,6 +86,7 @@ interface PdbCore {
   readonly regionCells: readonly number[];
   readonly estimatedRetainedBytes: number;
   readonly truncatedBy?: ExactPreprocessingLimitReason;
+  readonly subsetBound: PdbSubsetBound | null;
   /** The lookup, counting into `stats`. */
   readonly lookupWith: (stats: PdbLookupStats) => PatternDatabase["lookup"];
 }
@@ -88,8 +110,10 @@ function estimatePdbRetainedBytes(
     tableSize * Uint16Array.BYTES_PER_ELEMENT +
     regionCount * 8 +
     k * 8 +
-    // Exit-bound distance and slack arrays, only when the region is partial.
-    (regionCount < boardCellCount ? 2 * boardCellCount * Int32Array.BYTES_PER_ELEMENT : 0);
+    // Goal distances, kept for the subset bound and the exit bound.
+    boardCellCount * Int32Array.BYTES_PER_ELEMENT +
+    // Exit slack, only when the region is partial.
+    (regionCount < boardCellCount ? boardCellCount * Int32Array.BYTES_PER_ELEMENT : 0);
 }
 
 function createPdbLookupStats(): PdbLookupStats {
@@ -168,6 +192,7 @@ function disabledPatternDatabase(
     regionCells: [...regionCells],
     estimatedRetainedBytes: 0,
     ...(truncatedBy !== undefined ? { truncatedBy } : {}),
+    subsetBound: null,
     lookupWith: () => () => UNSOLVED,
   });
 }
@@ -214,14 +239,12 @@ function relaxReversePushes(
   return tail;
 }
 
-function buildPdbExitCap(
+function buildPdbGoalDistance(
   board: CompiledSearchBoard,
   goalCells: readonly number[],
-  cellToRegionIndex: Int32Array,
-): PdbExitCap {
-  const cellCount = board.cellCount;
-  const queue = new Int32Array(cellCount);
-  const goalDistance = new Int32Array(cellCount).fill(-1);
+): Int32Array {
+  const queue = new Int32Array(board.cellCount);
+  const goalDistance = new Int32Array(board.cellCount).fill(-1);
   let head = 0;
   let tail = 0;
   for (const goal of goalCells) {
@@ -233,6 +256,18 @@ function buildPdbExitCap(
     const cell = queue[head++];
     tail = relaxReversePushes(board, cell, goalDistance[cell] + 1, goalDistance, queue, tail);
   }
+  return goalDistance;
+}
+
+function buildPdbExitCap(
+  board: CompiledSearchBoard,
+  goalDistance: Int32Array,
+  cellToRegionIndex: Int32Array,
+): PdbExitCap {
+  const cellCount = board.cellCount;
+  const queue = new Int32Array(cellCount);
+  let head = 0;
+  let tail = 0;
 
   // out(c) = min over outside cells o of push(c -> o) + d(o). Holds out()
   // until the final pass turns it into slack. An outside cell's out(o) is its
@@ -338,6 +373,7 @@ interface PdbBfsContext {
   readonly binom: Float64Array[];
   readonly table: Uint16Array;
   readonly k: number;
+  readonly goalDistance: Int32Array;
   /** Null when the region covers every floor cell. */
   readonly exitCap: PdbExitCap | null;
 }
@@ -444,7 +480,7 @@ function preparePdbBfs(
   if (k === 0) {
     return viewPdbCore({
       k: 0, tableSize: 0, goalCells, regionCells, estimatedRetainedBytes: 0,
-      lookupWith: () => () => 0,
+      subsetBound: null, lookupWith: () => () => 0,
     });
   }
   if (k > MAX_K) {
@@ -474,18 +510,19 @@ function preparePdbBfs(
   if (solvedPositions.some((p) => p < 0)) {
     return viewPdbCore({
       k, tableSize, goalCells: [...goalCells], regionCells: [...regionCells],
-      estimatedRetainedBytes: retainedBytes, lookupWith: () => () => UNSOLVED,
+      estimatedRetainedBytes: retainedBytes, subsetBound: null, lookupWith: () => () => UNSOLVED,
     });
   }
 
   const solvedRank = combinadicEncode(solvedPositions, binom);
   table[solvedRank] = 0;
+  const goalDistance = buildPdbGoalDistance(board, goalCells);
   const exitCap = regionCount < board.cellCount
-    ? buildPdbExitCap(board, goalCells, cellToRegionIndex)
+    ? buildPdbExitCap(board, goalDistance, cellToRegionIndex)
     : null;
 
   return {
-    ctx: { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k, exitCap },
+    ctx: { board, regionCells, regionSet, regionCount, cellToRegionIndex, binom, table, k, goalDistance, exitCap },
     solvedRank,
     retainedBytes,
   };
@@ -499,7 +536,7 @@ function finishPdb(
   truncatedBy?: ExactPreprocessingLimitReason,
 ): PatternDatabase {
   // The lookup keeps only what it reads, not the build context.
-  const { cellToRegionIndex, binom, table, exitCap } = ctx;
+  const { cellToRegionIndex, binom, table, goalDistance, exitCap } = ctx;
   return viewPdbCore({
     k: ctx.k,
     tableSize: table.length,
@@ -507,6 +544,7 @@ function finishPdb(
     regionCells: [...ctx.regionCells],
     estimatedRetainedBytes: retainedBytes,
     ...(truncatedBy !== undefined ? { truncatedBy } : {}),
+    subsetBound: { goalDistance, undiscovered },
     lookupWith: (stats) => makePdbLookup(cellToRegionIndex, binom, table, undiscovered, exitCap, stats),
   });
 }

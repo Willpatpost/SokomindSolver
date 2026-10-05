@@ -248,6 +248,33 @@ restarts earlier IDA* checkpoints, and proof revision
 `exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10`
 reject earlier records.
 
+A* and IDA* 2.2.7 and Sokomind 1.12.3 find the pattern-database subset
+minimum by branch and bound. When a label has more boxes than its partition
+has goals, h takes the smallest table value over the k-box subsets, and every
+subset used to be looked up. Each table now keeps the goal distances `d(b)`
+behind its exit bound: a box's full-board single-box push distance to the
+nearest partition goal. Every lookup is at least the smaller of the sum of
+`d(b)` over its boxes and the value it reads for unreached entries, where a box
+with no route counts as unbounded:
+
+- A stored value counts the pushes of a plan in which each box reaches its own
+  goal by single-box relaxed pushes. The table's rules (destinations inside
+  the region, free cells, floor behind the box) only narrow those pushes, so
+  the value is at least the sum.
+- The exit bound is the sum plus a slack that is never negative.
+- A missing entry reads the smaller of the unreached value and the exit bound.
+  A box with no route makes the lookup unsolved.
+
+The search sorts the boxes by `d(b)` and builds subsets in that order. It drops
+a partial subset once that floor for its cheapest completion, the sum so far
+plus the next sorted distances, cannot beat the best value found. Later
+choices at the same level have floors no lower, so they are dropped too. The
+minimum is unchanged, so h, state counts, moves and proofs are unchanged, and
+the proof revision stays; only `pdbLookups` falls. A table whose lookups never
+vary (no boxes, a disabled table, or goals outside the region) answers with
+one lookup. Tables that cover the whole board now keep their goal distances
+too, 4 bytes per cell. The version change restarts earlier IDA* checkpoints.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -707,8 +734,8 @@ least that much. A box outside the region is answered by the exit bound alone,
 which is then `sum of d(b)`.
 
 Such lookups used to return no bound. When a label has more boxes than the
-partition has goals, the heuristic takes the minimum over box subsets and skips
-subsets without a bound, so that minimum could land on a larger in-region
+partition has goals, the heuristic takes the minimum over box subsets and
+skipped subsets without a bound, so that minimum could land on a larger in-region
 value. A build cut short by its deadline answers missing entries with one more
 than the last depth it expanded, for the same reason.
 

@@ -45,8 +45,8 @@ describe("PDB resource budgets", () => {
     try {
       await assert.rejects(buildPatternDatabaseAsync(board, config, signal, {
         signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
-        // Metadata fits (3080 bytes), but adding the table does not (3280 bytes).
-        maxMemoryBytes: 3100,
+        // Metadata fits (3480 bytes), but adding the table does not (3680 bytes).
+        maxMemoryBytes: 3500,
       }), (error: unknown) => error instanceof ExactPreprocessingLimitError && error.reason === "memory");
       assert.equal(allocations, 0);
     } finally {
@@ -77,7 +77,7 @@ describe("PDB resource budgets", () => {
       signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
       // Fits metadata, distance table, scratch and one live 4096-rank chunk.
       // Retaining/counting all processed ranks would exceed this allowance.
-      maxMemoryBytes: 296_000,
+      maxMemoryBytes: 332_000,
     });
     assert.equal(pdb.lookup([1]), 8997);
   });
@@ -114,7 +114,7 @@ describe("PDB resource budgets", () => {
     const pdb = await buildPatternDatabaseAsync(board, config, signal, {
       signal, now: () => 0, deadline: Infinity, baseMemoryBytes: 0,
       // Fits metadata, distance table, scratch and one queue chunk, not two.
-      maxMemoryBytes: 300_000,
+      maxMemoryBytes: 336_000,
     });
     assert.equal(complete.truncatedBy, undefined);
     assert.equal(pdb.truncatedBy, "memory");

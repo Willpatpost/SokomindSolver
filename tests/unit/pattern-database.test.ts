@@ -14,10 +14,12 @@ import {
   buildBinomials,
   combinadicEncode,
   combinadicDecode,
+  disabledPatternDatabase,
   MAX_PDB_TABLE_ENTRIES,
   UNSOLVED,
+  type PatternDatabase,
 } from "../../src/solver/search/pattern-database.ts";
-import { PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
+import { minSubsetLookup, PdbHeuristicEvaluator } from "../../src/solver/search/pdb-heuristic.ts";
 
 describe("combinadic encoding", () => {
   it("encodes and decodes a roundtrip for k=1", () => {
@@ -518,9 +520,9 @@ describe("pattern database exit bound", () => {
     assert.equal(view.preprocessingRetainedBytes, evaluator.preprocessingRetainedBytes);
     assert.equal(view.evaluate(boxes), 9);
     assert.deepEqual(view.lookupStats, {
-      lookups: 2, exitCapTrims: 1, exitCapTrimTotal: 4, outsideRegionLookups: 1,
+      lookups: 1, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 1,
     });
-    assert.equal(evaluator.lookupStats.lookups, 2);
+    assert.equal(evaluator.lookupStats.lookups, 1);
   });
 
   for (const goalPositions of [[[1, 6], [1, 7]], [[1, 6], [1, 7], [2, 6]]]) {
@@ -566,9 +568,59 @@ describe("pattern database exit bound", () => {
       { id: "X:0", label: "X", cell: inside },
       { id: "X:1", label: "X", cell: outside },
     ]), 9);
+    // The nearer outside box is looked up first; the inside box's distance
+    // alone, 12, cannot beat 9, so it is never looked up.
     assert.deepEqual(evaluator.lookupStats, {
-      lookups: 2, exitCapTrims: 1, exitCapTrimTotal: 4, outsideRegionLookups: 1,
+      lookups: 1, exitCapTrims: 0, exitCapTrimTotal: 0, outsideRegionLookups: 1,
     });
+  });
+
+  it("finds the same subset minimum as trying every subset", async () => {
+    const board = exitRouteBoard();
+    const at = (positions: readonly (readonly [number, number])[]) =>
+      positions.map(([row, column]) => board.cellAt(row, column));
+    const pair = at([[1, 6], [1, 7]]);
+    const triple = at([[1, 6], [1, 7], [2, 6]]);
+    const allCells = Array.from({ length: board.cellCount }, (_, cell) => cell);
+    const config = (goalCells: number[], regionCells: number[]) =>
+      ({ goalCells, labelIds: goalCells.map(() => "X"), regionCells });
+    let checks = 0;
+    const truncated = await buildPatternDatabaseAsync(board, config(pair, buildGoalRegion(board, pair, 8)),
+      new AbortController().signal, {
+        signal: new AbortController().signal, now: () => ++checks <= 6 ? 0 : 10, deadline: 10, baseMemoryBytes: 0,
+      });
+    assert.equal(truncated.truncatedBy, "elapsed");
+    const tables: [string, PatternDatabase][] = [
+      ["partial region", buildPatternDatabase(board, config(pair, buildGoalRegion(board, pair, 8)))],
+      ["three boxes", buildPatternDatabase(board, config(triple, buildGoalRegion(board, triple, 8)))],
+      ["full region", buildPatternDatabase(board, config(pair, allCells))],
+      ["truncated", truncated],
+      ["disabled", disabledPatternDatabase(2, pair, buildGoalRegion(board, pair, 8), "memory")],
+      ["goals outside", buildPatternDatabase(board, config(pair, at([[5, 9], [5, 10], [5, 11]])))],
+    ];
+    let seed = 11;
+    const nextInt = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
+    for (const [name, table] of tables) {
+      const searched = table.view();
+      const reference = table.view();
+      for (let round = 0; round < 150; round++) {
+        const cells: number[] = [];
+        const n = table.k + 1 + nextInt(5);
+        while (cells.length < n) {
+          const cell = nextInt(board.cellCount);
+          if (!cells.includes(cell)) cells.push(cell);
+        }
+        let expected = UNSOLVED;
+        forEachCombination(n, table.k, (picks) => {
+          expected = Math.min(expected, reference.lookup(picks.map((pick) => cells[pick])));
+        });
+        assert.equal(minSubsetLookup(searched, cells, table.k), expected, `${name}: ${describeCells(board, cells)}`);
+      }
+      assert.ok(searched.lookupStats.lookups < reference.lookupStats.lookups, name);
+    }
   });
 
   for (const [name, run] of [["A*", runExactMoveAStar], ["IDA*", runIdaStarSearch]] as const) {
