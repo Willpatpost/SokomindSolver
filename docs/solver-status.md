@@ -358,6 +358,23 @@ seldom runs a partition whose prefix costs the whole route. Proof revision
 `exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
 cover this change.
 
+A* 2.2.9 and Sokomind 1.13.3 keep A*'s best path to each state in an
+open-addressing table instead of a map of BigInt keys. A slot holds the low 32
+bits of the state's Zobrist hash and the arena node of the best known path. The
+hash only picks the slot: a state matches only when its robot cell and sorted
+box tokens equal the stored node's, so a collision never merges two states. A
+child's hash is the parent's with the moved box token and robot cell swapped by
+XOR, the same value a full hash gives. Entries are never evicted or deleted. A
+shorter path re-points the slot and marks the old node superseded, and a
+dequeued node is skipped exactly when it is superseded. A path is stored only
+when it is strictly shorter, so this is the old test that a node's `g` equals
+its state's best `g`, and states, moves and proofs are unchanged. A table that
+cannot grow stops the search at its memory limit. The memory estimate counts
+the table's bytes instead of 96 bytes per state. A node's stored `h`, kept in
+16 bits, now saturates at 65,535 instead of wrapping, which keeps it a lower
+bound. IDA* is unchanged. Proof revision `exact-moves-ida-contour-exit-v1` and
+storage key `sokomind.optimal.v10` also cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -673,6 +690,10 @@ selecting Quality and still requires the documented promotion evidence.
   bound or the secondary heuristic sum already exceeds the contour, that
   truncated value is cached with a flag. It is reused only while it still
   exceeds the contour bound; a later contour recomputes the full bound.
+- A* keeps one best-path node per exact state in an open-addressing table. The
+  hash only picks a slot; a state matches only on its exact robot cell and
+  sorted box tokens. Entries are never evicted, and a table that cannot grow
+  stops the search at its memory limit.
 - The unproved goal-depth macro prune is disconnected from both exact kernels.
 - A numeric upper bound is an exclusive pruning ceiling. Only a complete,
   replay-valid incumbent can become a public solution.

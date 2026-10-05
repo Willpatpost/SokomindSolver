@@ -89,6 +89,7 @@ import {
 import { toDenseBoxes, type DenseBox } from "./model.ts";
 import { createExactStateCodec } from "./exact-state.ts";
 import { createZobristTable } from "./zobrist-state.ts";
+import { createExactStateTable } from "./exact-state-table.ts";
 import { NumericPriorityQueue } from "./numeric-priority-queue.ts";
 import { KeeperReachability } from "./reachability.ts";
 import {
@@ -141,6 +142,7 @@ function createMetrics(
   counters: SearchCounters,
   frontierSize: number,
   uniqueStates: number,
+  stateTableBytes: number,
   arenaSize: number,
   heuristic: AssignmentHeuristic,
   staticBytes: number,
@@ -153,7 +155,7 @@ function createMetrics(
   const memoryBytes = estimatedArenaMemoryBytes(
     staticBytes,
     arenaRetainedBytes,
-    uniqueStates,
+    stateTableBytes,
     frontierSize,
     heuristicStats.cacheEntries,
     boxCount,
@@ -199,6 +201,7 @@ function createProgress(
   counters: SearchCounters,
   frontierSize: number,
   uniqueStates: number,
+  stateTableBytes: number,
   arenaSize: number,
   heuristic: AssignmentHeuristic,
   staticBytes: number,
@@ -216,6 +219,7 @@ function createProgress(
     counters,
     frontierSize,
     uniqueStates,
+    stateTableBytes,
     arenaSize,
     heuristic,
     staticBytes,
@@ -552,7 +556,6 @@ export async function runExactMoveAStar(
     for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
     const boxCount = initialBoxes.length;
     let heapSize = 0;
-    let uniqueStates = 0;
 
     const linearConflict = (boxes: readonly DenseBox[]): number => {
       if (!features.linearConflict) return 0;
@@ -674,11 +677,12 @@ export async function runExactMoveAStar(
 
     const maxToken = labelCount * cellCount - 1;
     const arena = createCompactNodeArena(boxCount, maxToken);
+    const stateTable = createExactStateTable(arena);
     estimateInteractionSearchBaseMemory = () =>
       estimatedArenaMemoryBytes(
         preprocessingStaticBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0),
         arena.estimatedRetainedBytes(),
-        uniqueStates,
+        stateTable.byteLength,
         heapSize,
         heuristic.stats.cacheEntries,
         boxCount,
@@ -688,7 +692,7 @@ export async function runExactMoveAStar(
       return maximum === undefined || estimatedArenaMemoryBytes(
         currentStaticBytes(),
         arena.estimatedRetainedBytes(),
-        uniqueStates,
+        stateTable.byteLength,
         heapSize,
         heuristic.stats.cacheEntries,
         boxCount,
@@ -712,8 +716,6 @@ export async function runExactMoveAStar(
     }
 
     const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
-    const initialKey = exactCodec.packMoveState(initialRobot, initialTokens);
-    const initialZobristKey = zobristTable.hashFromTokens(initialTokens, initialRobot);
     const initialPushBound = heuristic.evaluate(initialBoxes);
     const initialLabelCosts = heuristic.lastLabelCosts;
     const initialLabelCostsBoxKey = heuristic.lastBoxKey;
@@ -829,7 +831,8 @@ export async function runExactMoveAStar(
         startedAt,
         counters,
         heapSize,
-        uniqueStates,
+        stateTable.size,
+        stateTable.byteLength,
         arena.size,
         heuristic,
         currentStaticBytes(),
@@ -858,7 +861,8 @@ export async function runExactMoveAStar(
           startedAt,
           counters,
           heapSize,
-          uniqueStates,
+          stateTable.size,
+          stateTable.byteLength,
           arena.size,
           heuristic,
           currentStaticBytes(),
@@ -889,7 +893,7 @@ export async function runExactMoveAStar(
         estimatedArenaMemoryBytes(
           currentStaticBytes(),
           arena.estimatedRetainedBytes(),
-          uniqueStates,
+          stateTable.byteLength,
           heapSize,
           stats.cacheEntries,
           boxCount,
@@ -905,7 +909,7 @@ export async function runExactMoveAStar(
       return maximum === undefined || estimatedArenaMemoryBytes(
         currentStaticBytes(),
         arena.estimatedRetainedBytesAfterAllocation(),
-        uniqueStates + (newState ? 1 : 0),
+        stateTable.byteLengthAfterStore(newState, arena.size + 1),
         projectedFrontierSize,
         heuristic.stats.cacheEntries,
         boxCount,
@@ -1063,6 +1067,9 @@ export async function runExactMoveAStar(
     arena.setPushDirection(rootIndex, 0);
     arena.setHeuristic(rootIndex, initialH);
     arena.writeBoxTokens(rootIndex, initialTokens);
+    if (!stateTable.store(zobristTable.hashLo(initialTokens, initialRobot), rootIndex, -1)) {
+      return finishLimitReached("Estimated solver memory limit reached.");
+    }
     counters.retainedBytes = arena.estimatedRetainedBytes();
 
     const heap = new NumericPriorityQueue(
@@ -1077,35 +1084,6 @@ export async function runExactMoveAStar(
     heapSize = 1;
     counters.peakFrontier = 1;
 
-    interface BestGEntry { bigintKey: bigint; g: number }
-    const bestG = new Map<number, BestGEntry[]>();
-    bestG.set(initialZobristKey, [{ bigintKey: initialKey, g: 0 }]);
-
-    function bestGLookup(zobKey: number, bigKey: bigint): number | undefined {
-      const chain = bestG.get(zobKey);
-      if (chain === undefined) return undefined;
-      for (let i = 0; i < chain.length; i++) {
-        if (chain[i].bigintKey === bigKey) return chain[i].g;
-      }
-      return undefined;
-    }
-
-    function bestGStore(zobKey: number, bigKey: bigint, g: number): boolean {
-      const chain = bestG.get(zobKey);
-      if (chain === undefined) {
-        bestG.set(zobKey, [{ bigintKey: bigKey, g }]);
-        return true;
-      }
-      for (let i = 0; i < chain.length; i++) {
-        if (chain[i].bigintKey === bigKey) {
-          chain[i].g = g;
-          return false;
-        }
-      }
-      chain.push({ bigintKey: bigKey, g });
-      return true;
-    }
-    uniqueStates = 1;
     let lastProgressAt = context.now();
     let lastYieldAt = lastProgressAt;
     let workSinceYield = 0;
@@ -1132,13 +1110,13 @@ export async function runExactMoveAStar(
       readonly pushDirection: number;
       readonly h: number;
       readonly tokens: Uint32Array;
-      readonly key: bigint;
-      readonly zobristKey: number;
-      readonly previousBestG: number | undefined;
+      readonly hash: number;
+      /** The state's stored node from `stateTable.find`, or -1 for a new state. */
+      readonly previousNode: number;
     }
 
     const retainSuccessor = (child: RetainedSuccessor): boolean => {
-      if (!nodeAllocationFitsMemory(child.previousBestG === undefined, heap.size + 1)) {
+      if (!nodeAllocationFitsMemory(child.previousNode < 0, heap.size + 1)) {
         limitDetail = "Estimated solver memory limit reached.";
         return false;
       }
@@ -1154,11 +1132,11 @@ export async function runExactMoveAStar(
       counters.retainedBytes = arena.estimatedRetainedBytes();
       counters.maxDepth = Math.max(counters.maxDepth, child.pushes);
 
-      if (bestGStore(child.zobristKey, child.key, child.moves)) {
-        uniqueStates += 1;
-      } else {
-        counters.reopens += 1;
+      if (!stateTable.store(child.hash, index, child.previousNode)) {
+        limitDetail = "Estimated solver memory limit reached.";
+        return false;
       }
+      if (child.previousNode >= 0) counters.reopens += 1;
       // Even a state's only legal push can have a larger f than another
       // frontier node. Every successor must compete in the global queue.
       heap.enqueue(index);
@@ -1207,14 +1185,13 @@ export async function runExactMoveAStar(
       const nodeIndex = heap.dequeue();
       if (nodeIndex === undefined) break;
       syncState();
+      // A shorter path to this state was stored after the node was queued.
+      if (stateTable.isSuperseded(nodeIndex)) continue;
 
       arena.readBoxTokens(nodeIndex, parentTokenBuf);
       const nodeRobotCell = arena.robotCell(nodeIndex);
-      const nodeKey = exactCodec.packMoveState(nodeRobotCell, parentTokenBuf);
-      const nodeZobristKey = zobristTable.hashFromTokens(parentTokenBuf, nodeRobotCell);
+      const nodeHash = zobristTable.hashLo(parentTokenBuf, nodeRobotCell);
       const nodeMoves = arena.gMoves(nodeIndex);
-
-      if (bestGLookup(nodeZobristKey, nodeKey) !== nodeMoves) continue;
 
       const L = nodeMoves + arena.heuristic(nodeIndex);
       lastLowerBound = L;
@@ -1394,9 +1371,9 @@ export async function runExactMoveAStar(
             const newToken = newLabelId * cellCount + fpDest;
             sortedInsertToken(parentTokenBuf, boxCount, fpBoxIdx, newToken, childTokenBuf);
 
-            const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
-            const childZobristKey = zobristTable.hashFromTokens(childTokenBuf, savedCell);
-            const prevBestG = bestGLookup(childZobristKey, childKey);
+            const childHash = zobristTable.updateLo(nodeHash, oldToken, newToken, nodeRobotCell, savedCell);
+            const prevNode = stateTable.find(childHash, savedCell, childTokenBuf);
+            const prevBestG = prevNode < 0 ? undefined : arena.gMoves(prevNode);
 
             if (prevBestG === undefined || childMoves < prevBestG) {
               const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
@@ -1446,9 +1423,8 @@ export async function runExactMoveAStar(
                     pushDirection: fpDir,
                     h,
                     tokens: childTokenBuf,
-                    key: childKey,
-                    zobristKey: childZobristKey,
-                    previousBestG: prevBestG,
+                    hash: childHash,
+                    previousNode: prevNode,
                   })) {
                     (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
                     break searchLoop;
@@ -1574,10 +1550,9 @@ export async function runExactMoveAStar(
               const tNewToken = tNewLabelId * cellCount + stop.finalCell;
               sortedInsertToken(parentTokenBuf, boxCount, boxIndex, tNewToken, childTokenBuf);
 
-              const tChildKey = exactCodec.packMoveState(stop.robotCell, childTokenBuf);
-              const tChildZobristKey = zobristTable.hashFromTokens(childTokenBuf, stop.robotCell);
-              const tPrevBestG = bestGLookup(tChildZobristKey, tChildKey);
-              if (tPrevBestG !== undefined && tChildMoves >= tPrevBestG) {
+              const tChildHash = zobristTable.updateLo(nodeHash, tOldToken, tNewToken, nodeRobotCell, stop.robotCell);
+              const tPrevNode = stateTable.find(tChildHash, stop.robotCell, childTokenBuf);
+              if (tPrevNode >= 0 && tChildMoves >= arena.gMoves(tPrevNode)) {
                 (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
                 counters.duplicates += 1;
                 continue;
@@ -1635,9 +1610,8 @@ export async function runExactMoveAStar(
                 pushDirection: encodeTunnelPushDirection(directionIndex, stop.pushCount),
                 h: tH,
                 tokens: childTokenBuf,
-                key: tChildKey,
-                zobristKey: tChildZobristKey,
-                previousBestG: tPrevBestG,
+                hash: tChildHash,
+                previousNode: tPrevNode,
               })) {
                 break searchLoop;
               }
@@ -1695,10 +1669,9 @@ export async function runExactMoveAStar(
           const newToken = newLabelId * cellCount + destination;
           sortedInsertToken(parentTokenBuf, boxCount, boxIndex, newToken, childTokenBuf);
 
-          const childKey = exactCodec.packMoveState(savedCell, childTokenBuf);
-          const childZobristKey = zobristTable.hashFromTokens(childTokenBuf, savedCell);
-          const prevBestG = bestGLookup(childZobristKey, childKey);
-          if (prevBestG !== undefined && childMoves >= prevBestG) {
+          const childHash = zobristTable.updateLo(nodeHash, oldToken, newToken, nodeRobotCell, savedCell);
+          const prevNode = stateTable.find(childHash, savedCell, childTokenBuf);
+          if (prevNode >= 0 && childMoves >= arena.gMoves(prevNode)) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.duplicates += 1;
             continue;
@@ -1770,9 +1743,8 @@ export async function runExactMoveAStar(
             pushDirection: directionIndex,
             h,
             tokens: childTokenBuf,
-            key: childKey,
-            zobristKey: childZobristKey,
-            previousBestG: prevBestG,
+            hash: childHash,
+            previousNode: prevNode,
           })) {
             break searchLoop;
           }

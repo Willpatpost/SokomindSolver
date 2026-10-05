@@ -37,6 +37,21 @@ export interface ZobristTable {
 
   /** Push-only hash returning hi/lo components. */
   hashComponentsNoRobot(sortedTokens: ArrayLike<number>): { hi: number; lo: number };
+
+  /** Low 32 bits of the full hash, without allocating. */
+  hashLo(sortedTokens: ArrayLike<number>, robotCell: number): number;
+
+  /**
+   * Low 32 bits after one box token and the robot move. XOR makes this equal
+   * to `hashLo` of the new state bit for bit.
+   */
+  updateLo(
+    lo: number,
+    oldToken: number,
+    newToken: number,
+    oldRobotCell: number,
+    newRobotCell: number,
+  ): number;
 }
 
 export function createZobristTable(
@@ -131,6 +146,27 @@ export function createZobristTable(
     };
   }
 
+  function hashLo(sortedTokens: ArrayLike<number>, robotCell: number): number {
+    let lo = robotLo[robotCell];
+    for (let i = 0; i < sortedTokens.length; i++) {
+      lo ^= tokenLo[sortedTokens[i]];
+    }
+    return lo >>> 0;
+  }
+
+  function updateLo(
+    lo: number,
+    oldToken: number,
+    newToken: number,
+    oldRobotCell: number,
+    newRobotCell: number,
+  ): number {
+    return (
+      lo ^ tokenLo[oldToken] ^ tokenLo[newToken] ^
+      robotLo[oldRobotCell] ^ robotLo[newRobotCell]
+    ) >>> 0;
+  }
+
   return {
     cellCount,
     labelCount,
@@ -142,5 +178,7 @@ export function createZobristTable(
     toSafeKey,
     hashComponents,
     hashComponentsNoRobot,
+    hashLo,
+    updateLo,
   };
 }

@@ -3,6 +3,7 @@
 const CHUNK_BITS = 13;
 const CHUNK_SIZE = 1 << CHUNK_BITS;
 const CHUNK_MASK = CHUNK_SIZE - 1;
+const MAX_STORED_HEURISTIC = 0xffff;
 
 export interface CompactNodeArena {
   readonly size: number;
@@ -22,11 +23,14 @@ export interface CompactNodeArena {
   pushDirection(index: number): number;
   setPushDirection(index: number, value: number): void;
   heuristic(index: number): number;
+  /** Values above 65535 are stored as 65535. */
   setHeuristic(index: number, value: number): void;
 
   readBoxTokens(index: number, out: Uint16Array | Uint32Array): void;
   writeBoxTokens(index: number, tokens: Uint16Array | Uint32Array): void;
   boxTokenAt(index: number, boxIndex: number): number;
+  /** True when the node has exactly this robot cell and sorted box tokens. */
+  matchesState(index: number, robotCell: number, tokens: Uint16Array | Uint32Array): boolean;
 
   estimatedRetainedBytes(): number;
   /** Includes a whole new chunk when the next allocation needs one. */
@@ -134,7 +138,8 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
       return chunkGet(heuristicChunks, index);
     },
     setHeuristic(index: number, value: number): void {
-      chunkSet(heuristicChunks, index, value);
+      // h is stored in 16 bits. Saturating keeps it a lower bound, unlike a wrap.
+      chunkSet(heuristicChunks, index, value > MAX_STORED_HEURISTIC ? MAX_STORED_HEURISTIC : value);
     },
 
     readBoxTokens(index: number, out: Uint16Array | Uint32Array): void {
@@ -159,6 +164,16 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
       const ci = index >>> CHUNK_BITS;
       const baseOffset = (index & CHUNK_MASK) * boxCount;
       return boxTokenChunks[ci][baseOffset + boxIndex];
+    },
+
+    matchesState(index: number, robotCell: number, tokens: Uint16Array | Uint32Array): boolean {
+      if (chunkGet(robotCellChunks, index) !== robotCell) return false;
+      const chunk = boxTokenChunks[index >>> CHUNK_BITS];
+      const baseOffset = (index & CHUNK_MASK) * boxCount;
+      for (let b = 0; b < boxCount; b++) {
+        if (chunk[baseOffset + b] !== tokens[b]) return false;
+      }
+      return true;
     },
 
     estimatedRetainedBytes(): number {

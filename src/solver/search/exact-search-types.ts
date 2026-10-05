@@ -227,7 +227,7 @@ export function estimateArenaNodeBytes(boxCount: number, bytesPerToken = 2): num
 export function estimatedArenaMemoryBytes(
   staticBytes: number,
   arenaRetainedBytes: number,
-  uniqueStates: number,
+  stateTableBytes: number,
   frontierSize: number,
   heuristicCacheEntries: number,
   boxCount: number,
@@ -235,7 +235,7 @@ export function estimatedArenaMemoryBytes(
   return Math.ceil(
     staticBytes +
       arenaRetainedBytes +
-      uniqueStates * 96 +
+      stateTableBytes +
       frontierSize * 8 +
       heuristicCacheEntries * (160 + boxCount * 24),
   );
