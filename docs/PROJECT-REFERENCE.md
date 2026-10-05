@@ -241,7 +241,7 @@ fails when the generated facts below differ from source.
 | `classic-dfs` | `1.0.0` | first-found |
 | `classic-greedy` | `1.0.0` | first-found |
 | `classic-astar` | `2.2.5` | move-optimal proof |
-| `classic-ida-star` | `2.2.3` | move-optimal proof |
+| `classic-ida-star` | `2.2.4` | move-optimal proof |
 | `sokomind-solver` | `1.11.0` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
@@ -251,7 +251,6 @@ fails when the generated facts below differ from source.
 - Sokomind mode: `fast`
 - Proof algorithm: `auto`; proof parallelism: **1**
 - Maximum harvested incumbents: **4**; harvest window: **5,000 ms**
-- IDA* reachability snapshots: `periodic` every **4** levels
 
 ### Exact-search controls
 
