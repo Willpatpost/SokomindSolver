@@ -15,6 +15,7 @@ import {
   selectProofAlgorithm,
   selectProofLanes,
   type ProofAlgorithm,
+  type ProofLanePlan,
 } from "../search/proof-algorithm-selection.ts";
 import { runExactMoveAStar, type ExactIncumbent } from "../search/exact-move-astar.ts";
 import { runIdaStarSearch, type ExactMoveIdaStarOptions } from "../search/ida-star.ts";
@@ -334,6 +335,14 @@ export interface ConcurrentProofOptions {
   readonly proofParallelism: number;
   /** Lanes send a heartbeat while busy, so silence this long means a dead lane. */
   readonly silenceTimeoutMs?: number;
+  /**
+   * The memory automatic selection picks the lane plan from, when the lanes
+   * get less than the proof could have: they keep the plan a proof with this
+   * memory runs, within their own share. Defaults to the lanes' memory.
+   */
+  readonly planMemoryBytes?: number;
+  /** Called with the lane plan, before any lane starts. */
+  readonly onLanePlan?: (plan: ProofLanePlan) => void;
 }
 
 export async function runConcurrentProof(
@@ -392,8 +401,10 @@ export async function runConcurrentProof(
     : proofLimits.maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES;
   // Automatic selection must use the memory actually available to one lane,
   // so it may run fewer lanes to keep A*.
-  const lanePlan = options.proofAlgorithm === "auto"
-    ? selectProofLanes(board, boxCount, maxLanes, laneMemoryBytes)
+  const lanePlan: ProofLanePlan = options.proofAlgorithm === "auto"
+    ? selectProofLanes(
+        board, boxCount, maxLanes, concurrentOptions.planMemoryBytes ?? laneMemoryBytes,
+      )
     : { algorithm: options.proofAlgorithm, lanes: maxLanes };
   const algorithm: ProofAlgorithm = lanePlan.algorithm;
   const workerCount = lanePlan.lanes;
@@ -403,6 +414,7 @@ export async function runConcurrentProof(
   if (workerCount < 1 || (perWorkerMemoryLimit !== undefined && perWorkerMemoryLimit <= 0)) {
     return discoveryResult;
   }
+  concurrentOptions.onLanePlan?.(lanePlan);
   let bestSolution: SolverSolution = discoveryResult.solution;
   let bestCost = discoveryResult.solution.moves;
   let bestRoute = routeOf(bestSolution);

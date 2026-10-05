@@ -279,6 +279,36 @@ replay unchanged. Routes are still replayed and reported as unproven.
 Optimal's improvement and the exact kernels are untouched, so the proof
 revision is unchanged.
 
+Sokomind 1.11.0 runs the small-board proof beside the route improvement when
+proof workers run in parallel. This applies on the boards 1.5.0 and 1.6.0
+cover, with at least two proof workers, no checkpoint hooks, and a memory
+limit whose eighth holds at least one engine worker (256 MiB). Optimal's proof
+and Quality's exact lane keep the lane plan chosen from all of the memory, but
+their lanes' memory limit leaves that eighth to the engines (at 4 GiB, five
+A* lanes of 691 MiB instead of 793 MiB). The proof runs alone for 5 s, or for
+its cap when that is shorter. A proof that completes by then ends the run as
+before, and one that stops short leaves the improvement every core. Otherwise
+the improvement starts beside the same proof, which is not restarted, on the
+worker threads and memory its lanes leave: Optimal's
+harvest, rewrite and reschedule, or Quality's harvest, rewrite wave and repair
+loop. While the improvement runs, the proof's progress carries no bounds.
+Optimal's proof runs to the time limit instead of 30% of it, and a completed
+proof ends the run at once. When the improvement ends first, the same proof
+continues, and its bounds reach progress, held below the published route. A
+proof that ends unproven is followed by a fresh proof from the best route when
+at least 500 ms remain. That proof's result stands unless the earlier one has
+a replaying route that is no longer and a strictly smaller gap; the two
+proofs' bounds are never merged. Quality's lane keeps its cap of half the time
+left, and a lane capped at 5 s or less runs before the repair as in 1.10.0.
+Otherwise a completed lane stops the repair and returns its route, unproven and
+without a proof. An unfinished lane's shorter route joins the repair's archive
+once it replays. Quality's progress beside the repair still carries no bounds
+and never speaks of proof. Single-lane proofs, deterministic runs and the other 1.5.0
+and 1.7.1 exclusions keep the proof first and the improvement after it. Proof
+logic is unchanged: only the lanes' memory limits shrink, a lane that reaches
+its limit keeps its kernel's own bound, and no outside route enters a running
+proof, so the proof revision is unchanged.
+
 Exact PDB preprocessing checks estimated memory before table/queue allocation,
 releases consumed packed queue chunks, and propagates cancellation. Optional
 PDB-cache growth is included in both kernels' live estimates and cannot consume

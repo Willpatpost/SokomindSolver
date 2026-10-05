@@ -37,6 +37,11 @@ published a stable release.
 
 ### Changed
 
+- With parallel proof workers, the small-board proof runs beside the route
+  improvement. Optimal's proof and Quality's exact lane run alone for 5 s,
+  then harvest and repair start beside the same proof on the threads and the
+  eighth of memory its lanes leave. Optimal's proof runs to the time limit
+  instead of 30% of it. Quality's lane still only improves the route.
 - Quality's anytime loop runs pair repair on boards with at most 200 floor
   cells. Two-box repair picks its pairs in the engine from the boxes with the
   largest push detours. Goal reassignment becomes a same-label goal swap that
@@ -52,7 +57,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
-  `sokomind-solver` 1.10.0. Sokomind 1.3.0 marked the earlier Quality
+  `sokomind-solver` 1.11.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.

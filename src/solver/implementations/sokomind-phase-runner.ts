@@ -740,6 +740,7 @@ class PhaseRunner {
       const coordinatorMemoryReserve =
         this.run.budget.coordinatorEstimatedMemoryBytes +
         this.run.budget.preparedBoardEstimatedMemoryBytes;
+      const reservedMemory = this.run.budget.reservedMemoryBytes;
       const requestedMemory =
         plan.payload.maxMemoryBytes === undefined &&
         this.options.memoryLimitBytes !== undefined
@@ -750,7 +751,7 @@ class PhaseRunner {
             ? Math.max(
               1,
               Math.floor(
-                Math.max(0, configuredMemory - coordinatorMemoryReserve) /
+                Math.max(0, configuredMemory - coordinatorMemoryReserve - reservedMemory) /
                   this._memoryConcurrency,
               ),
               )
@@ -774,7 +775,9 @@ class PhaseRunner {
           ),
           memory: finiteRemaining(
             configuredMemory,
-            coordinatorMemoryReserve + this.run.budget.persistentEstimatedMemoryBytes,
+            coordinatorMemoryReserve +
+              this.run.budget.persistentEstimatedMemoryBytes +
+              reservedMemory,
           ),
         },
       );

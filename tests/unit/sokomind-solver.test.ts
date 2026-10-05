@@ -11,6 +11,7 @@ import type {
   SolverExecutionContext,
   SolverProgress,
   SolverRequest,
+  SolverSolution,
 } from "../../src/solver/contracts.ts";
 import {
   createSokomindSolverAdapter,
@@ -22,7 +23,10 @@ import {
   type SokomindEngineWorker,
 } from "../../src/solver/implementations/sokomind-solver.ts";
 import type { SokomindProofWorker } from "../../src/solver/implementations/sokomind-proof.ts";
-import { assertValidSolverProgress } from "../../src/solver/validation.ts";
+import type { ProofStartPartition } from "../../src/solver/implementations/sokomind-proof-protocol.ts";
+import { createProofWorkerRuntime } from "../../src/solver/implementations/sokomind-proof-runtime.ts";
+import { COORDINATOR_MEMORY_RESERVATION_BYTES } from "../../src/solver/implementations/sokomind-worker-limits.ts";
+import { assertValidSolverProgress, assertValidSolverResult } from "../../src/solver/validation.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 
 const ONE_TYPED_BOX: PuzzleDefinition = {
@@ -908,6 +912,8 @@ describe("Sokomind Solver adapter", () => {
       hardwareConcurrency: 4,
       createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
       createProofWorker: silentProofWorker,
+      // Checkpoint hooks keep the sequential proof-first path.
+      checkpointOptions: { solverVersion: "test" },
     });
     const request = requestFor(ONE_TYPED_BOX, {
       options: {
@@ -1122,6 +1128,432 @@ describe("Sokomind Solver adapter", () => {
     assertHostAcceptsProgress(events);
     assert.ok(proofWorkers >= 2, "the lane starts its own proof lanes");
     assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
+  });
+
+  /**
+   * A proof worker that runs the real proof runtime inline. `hold` may delay a
+   * partition's start: until it resolves the lane stays silent, and a cancel
+   * meanwhile ends the partition idle.
+   */
+  function inlineProofWorker(
+    hold: (start: ProofStartPartition) => Promise<void> | undefined,
+    starts: ProofStartPartition[] = [],
+  ): () => SokomindProofWorker {
+    return () => {
+      const listeners = new Set<(event: { data: unknown }) => void>();
+      let terminated = false;
+      let held: ProofStartPartition | undefined;
+      const deliver = (data: unknown): void => queueMicrotask(() => {
+        if (terminated) return;
+        for (const listener of [...listeners]) listener({ data });
+      });
+      const runtime = createProofWorkerRuntime(deliver);
+      return {
+        postMessage(message) {
+          if (message.type === "proof/start-partition") {
+            starts.push(message);
+            const gate = hold(message);
+            if (gate === undefined) {
+              runtime(message);
+              return;
+            }
+            held = message;
+            void gate.then(() => {
+              if (terminated || held !== message) return;
+              held = undefined;
+              deliver({
+                type: "proof/progress",
+                runId: message.runId,
+                partitionId: message.partitionId,
+                lowerBound: message.prefixCost,
+                expandedStates: 0,
+              });
+              runtime(message);
+            });
+            return;
+          }
+          if (message.type === "proof/cancel" && held !== undefined) {
+            const { runId, partitionId } = held;
+            held = undefined;
+            deliver({ type: "proof/idle", runId, partitionId });
+            return;
+          }
+          runtime(message);
+        },
+        addEventListener(type: string, listener: unknown) {
+          if (type === "message") listeners.add(listener as (event: { data: unknown }) => void);
+        },
+        removeEventListener(type: string, listener: unknown) {
+          if (type === "message") listeners.delete(listener as (event: { data: unknown }) => void);
+        },
+        terminate() {
+          terminated = true;
+          held = undefined;
+          listeners.clear();
+          runtime({ type: "proof/cancel" });
+        },
+      };
+    };
+  }
+
+  /**
+   * A proof worker whose lane finds `route` at once and never completes its
+   * partition, so the proof ends at its deadline holding that route.
+   */
+  function routeProofWorker(route: SolverSolution): () => SokomindProofWorker {
+    return () => {
+      const listeners = new Set<(event: { data: unknown }) => void>();
+      let active: ProofStartPartition | undefined;
+      const deliver = (data: unknown): void => queueMicrotask(() => {
+        for (const listener of [...listeners]) listener({ data });
+      });
+      return {
+        postMessage(message) {
+          if (message.type === "proof/start-partition") {
+            active = message;
+            const { runId, partitionId } = message;
+            deliver({
+              type: "proof/progress", runId, partitionId, lowerBound: message.prefixCost, expandedStates: 0,
+            });
+            deliver({ type: "proof/solution", runId, partitionId, solution: route, totalCost: route.moves });
+            return;
+          }
+          if (message.type === "proof/cancel" && active !== undefined) {
+            const { runId, partitionId } = active;
+            active = undefined;
+            deliver({ type: "proof/idle", runId, partitionId });
+          }
+        },
+        addEventListener(type: string, listener: unknown) {
+          if (type === "message") listeners.add(listener as (event: { data: unknown }) => void);
+        },
+        removeEventListener(type: string, listener: unknown) {
+          if (type === "message") listeners.delete(listener as (event: { data: unknown }) => void);
+        },
+        terminate() {
+          active = undefined;
+          listeners.clear();
+        },
+      };
+    };
+  }
+
+  /** The move count a partition may still beat, counted from the start. */
+  function globalBound(start: ProofStartPartition): number {
+    return start.prefixCost + start.initialUpperBound;
+  }
+
+  const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const never = (): Promise<void> => new Promise(() => {});
+
+  /**
+   * Discovery and rewrites answer `path`; seeded harvest lanes answer
+   * `seededPath`, or stay silent until the harvest ends without it.
+   */
+  function harvestWorker(
+    path: readonly string[],
+    seededPath?: readonly string[],
+  ): () => SokomindEngineWorker {
+    return () => new ScriptedWorker((self, command) => {
+      const seeded = typeof command.payload.seed === "number";
+      if (seeded && seededPath === undefined) return;
+      queueMicrotask(() => self.emit({
+        type: "done", status: "solved", path: seeded ? seededPath : path, visited: 1, generated: 1,
+      }));
+    });
+  }
+
+  /** A small board with two proof lanes, so its proof runs beside the improvement. */
+  function anytimeRequest(
+    limits: SolverRequest["limits"],
+    harvestElapsedMs?: number,
+    mode: "optimal" | "quality" = "optimal",
+  ): SolverRequest {
+    return requestFor(ONE_TYPED_BOX, {
+      options: {
+        "sokomind-solver": {
+          mode,
+          proofParallelism: 2,
+          maximumIncumbents: 2,
+          ...(harvestElapsedMs === undefined ? {} : { harvestElapsedMs }),
+        },
+      },
+      limits,
+    });
+  }
+
+  /** Progress that would show proof to a Quality user. */
+  const PROOF_WORDING = /\b(proof|proving|proven|optimal(ity)?)\b/iu;
+
+  it("returns a small Optimal board proven within the anytime proof's head start", async () => {
+    const commands: WorkerCommand[] = [];
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], commands),
+      createProofWorker: inlineProofWorker(() => undefined),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 30_000 });
+    const startedAt = performance.now();
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    // The head start is 5 s; the proof ends well inside it.
+    assert.ok(performance.now() - startedAt < 4_500);
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.ok(events.every((progress) => progress.phase !== "harvesting"));
+    assert.ok(commands.every((command) => typeof command.payload.seed !== "number"));
+    assertHostAcceptsProgress(events);
+    assert.equal(typeof result.metrics.counters?.proofFirstElapsedMs, "number");
+  });
+
+  it("proves a small Optimal board while the route improvement runs beside it", async () => {
+    const events: SolverProgress[] = [];
+    const starts: ProofStartPartition[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"]),
+      // The proof finishes after its 5 s head start, during the 3 s harvest.
+      createProofWorker: inlineProofWorker(() => delay(5_500), starts),
+    });
+    const maxMemoryBytes = 4 * 1024 * 1024 * 1024;
+    const request = anytimeRequest({ maxElapsedMs: 30_000, maxMemoryBytes }, 3_000);
+    const startedAt = performance.now();
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.ok(performance.now() - startedAt < 7_500, "the proof's result does not wait for the harvest");
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.ok(events.some((progress) => progress.phase === "harvesting"));
+    // The proof leaves an eighth of the shared memory to the engines. The
+    // board's four first pushes give both proof lanes a share of the rest.
+    const planBytes = maxMemoryBytes - COORDINATOR_MEMORY_RESERVATION_BYTES;
+    const laneBytes = Math.floor((planBytes - Math.floor(planBytes * 0.125)) / 2);
+    assert.ok(starts.length > 0);
+    assert.ok(starts.every((start) => start.request.limits?.maxMemoryBytes === laneBytes),
+      JSON.stringify(starts.map((start) => start.request.limits?.maxMemoryBytes)));
+    assertHostAcceptsProgress(events);
+  });
+
+  it("keeps the anytime proof running when the harvest finds a shorter route", async () => {
+    const events: SolverProgress[] = [];
+    const starts: ProofStartPartition[] = [];
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let harvested = false;
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"], ["Down"]),
+      createProofWorker: inlineProofWorker(() => released, starts),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 5_000 }, 300);
+
+    const result = await adapter.solve(request, context(undefined, (progress) => {
+      events.push(progress);
+      if (progress.phase === "harvesting") harvested = true;
+      if (harvested && progress.detail === "Proving the small board.") release();
+    }));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    // The proof from the 3-move route continued; no second proof started.
+    assert.deepEqual(starts.map(globalBound), [3]);
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    const handoff = events.findIndex((progress, index) =>
+      index > harvesting && progress.detail === "Proving the small board.");
+    assert.ok(harvesting >= 0 && handoff > harvesting, "the hand-off follows the improvement");
+    const proving = events.slice(handoff);
+    assert.ok(proving.every((progress) => (progress.upperBound ?? 1) <= 1),
+      "progress keeps the harvested route as its upper bound");
+    assert.ok(proving.some((progress) => progress.lowerBound !== undefined),
+      "the proof's lower bound reaches progress");
+    assertHostAcceptsProgress(events);
+  });
+
+  it("returns the shorter route with the anytime proof's bounds when it times out", async () => {
+    const events: SolverProgress[] = [];
+    const starts: ProofStartPartition[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"], ["Down"]),
+      createProofWorker: inlineProofWorker(never, starts),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 2_000 }, 300);
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assertValidSolverResult(result);
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "unknown");
+    const proof = result.proof;
+    assert.ok(proof);
+    assert.equal(proof.kind, "bounded");
+    assert.equal(proof.upperBound, 1);
+    // The proof never finished, so its bound stays below the route it did
+    // not find.
+    const lowerBound = proof.lowerBound ?? Infinity;
+    assert.ok(lowerBound < 1, `lower bound ${lowerBound}`);
+    assert.equal(proof.gap, 1 - lowerBound);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.ok(starts.length > 0 && starts.every((start) => globalBound(start) === 3),
+      JSON.stringify(starts.map(globalBound)));
+    assertHostAcceptsProgress(events);
+  });
+
+  it("forwards the anytime proof's bounds once the improvement ends without beating it", async () => {
+    const events: SolverProgress[] = [];
+    const starts: ProofStartPartition[] = [];
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let harvested = false;
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: discoveryOnlyWorker(["Left", "Right", "Down"], []),
+      createProofWorker: inlineProofWorker(() => released, starts),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 5_000 }, 300);
+
+    const result = await adapter.solve(request, context(undefined, (progress) => {
+      events.push(progress);
+      if (progress.phase === "harvesting") harvested = true;
+      if (harvested && progress.detail === "Proving the small board.") release();
+    }));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    const handoff = events.findIndex((progress, index) =>
+      index > harvesting && progress.detail === "Proving the small board.");
+    const firstBound = events.findIndex((progress) => progress.lowerBound !== undefined);
+    assert.ok(harvesting >= 0 && handoff > harvesting, "the hand-off follows the improvement");
+    assert.ok(firstBound > handoff, "the proof's bounds reach progress only after the hand-off");
+    // The same proof continued: one partition, started from the 3-move route.
+    assert.deepEqual(starts.map(globalBound), [3]);
+    assertHostAcceptsProgress(events);
+  });
+
+  it("cancels both the anytime proof and the improvement", async () => {
+    const controller = new AbortController();
+    let cancelling = false;
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"]),
+      createProofWorker: inlineProofWorker(never),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 5_000 }, 3_000);
+    const startedAt = performance.now();
+
+    const result = await adapter.solve(request, context(controller.signal, (progress) => {
+      if (progress.phase !== "harvesting" || cancelling) return;
+      cancelling = true;
+      setTimeout(() => controller.abort(), 100);
+    }));
+
+    assert.equal(result.status, "cancelled");
+    // Uncancelled, the proof would run on to the 5 s deadline.
+    assert.ok(performance.now() - startedAt < 3_500);
+  });
+
+  it("returns the published route unproven when the anytime proof times out", async () => {
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"]),
+      createProofWorker: inlineProofWorker(never),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 2_000 });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3);
+    assert.notEqual(result.solution.optimality, "proven");
+    assert.notEqual(result.proof?.kind, "optimal");
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assertHostAcceptsProgress(events);
+  });
+
+  it("returns a Quality exact lane's route once it completes beside the repair, without proof", async () => {
+    const events: SolverProgress[] = [];
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Down"]),
+      // The lane finishes after its 5 s head start, during the 3 s harvest.
+      createProofWorker: inlineProofWorker(() => delay(5_500)),
+    });
+    const request = anytimeRequest({ maxElapsedMs: 30_000 }, 3_000, "quality");
+    const startedAt = performance.now();
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.ok(performance.now() - startedAt < 7_500, "the lane's route does not wait for the harvest");
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 1);
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof, undefined);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    assert.ok(events.some((progress) => progress.phase === "harvesting"));
+    assert.ok(events.every((progress) =>
+      progress.phase !== "proving" &&
+      progress.lowerBound === undefined && progress.gap === undefined &&
+      !PROOF_WORDING.test(progress.detail ?? "")),
+    JSON.stringify(events.map((progress) => progress.detail)));
+    assertHostAcceptsProgress(events);
+  });
+
+  it("passes an unfinished Quality exact lane's shorter route to the repair", async () => {
+    const events: SolverProgress[] = [];
+    // The lane's 5.5 s cap ends during the harvest, which runs from its 5 s
+    // head start for 1.1 s.
+    const request = anytimeRequest({ maxElapsedMs: 11_000 }, 3_000, "quality");
+    const laneRoute = solutionFromLegacyPath(request, ["Left", "Right", "Down"]);
+    assert.ok(laneRoute);
+    const adapter = createSokomindSolverAdapter({
+      hardwareConcurrency: 4,
+      createWorker: harvestWorker(["Left", "Right", "Left", "Right", "Down"]),
+      createProofWorker: routeProofWorker(laneRoute),
+    });
+
+    const result = await adapter.solve(request, context(undefined, (progress) => events.push(progress)));
+
+    assert.equal(result.status, "solved");
+    if (result.status !== "solved") return;
+    assert.equal(result.solution.moves, 3);
+    assert.equal(result.solution.optimality, "unknown");
+    assert.equal(result.proof, undefined);
+    assert.equal(verifySolverSolution(request, result.solution).valid, true);
+    const harvesting = events.findIndex((progress) => progress.phase === "harvesting");
+    const shorter = events.findIndex((progress) => progress.upperBound === 3);
+    assert.ok(harvesting >= 0 && shorter > harvesting, "the repair publishes the lane's route");
+    assert.ok(events.every((progress) =>
+      progress.phase !== "proving" && progress.lowerBound === undefined && progress.gap === undefined));
+    assertHostAcceptsProgress(events);
   });
 
   it("passes a validated tuning profile only into soft engine ordering", async () => {

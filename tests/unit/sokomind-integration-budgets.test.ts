@@ -268,6 +268,34 @@ describe("Sokomind integration resource contracts", () => {
     assert.equal(aggregate(run).counters.coordinatorRecords, 1);
   });
 
+  it("keeps memory reserved for a proof out of engine leases and estimated memory", async () => {
+    const mib = 1024 * 1024;
+    const run = runState({ ...requestFor(), limits: { maxMemoryBytes: 64 * mib } });
+    run.budget.reservedMemoryBytes = 32 * mib;
+    const leased: unknown[] = [];
+    let estimated: number | undefined;
+    const result = await runPhase(run, [{ id: "empty", label: "Empty", mode: "search", payload: {} }], () => {
+      const listeners = new Set<(event: { data: unknown }) => void>();
+      return {
+        ...silentWorker((command) => {
+          leased.push(command.payload.maxMemoryBytes);
+          estimated = aggregate(run).estimatedMemoryBytes;
+          queueMicrotask(() => {
+            for (const listener of listeners) listener({ data: { type: "done", visited: 0, generated: 0 } });
+          });
+        }),
+        addEventListener(type: string, listener: (event: { data: unknown }) => void) { if (type === "message") listeners.add(listener); },
+        removeEventListener(type: string, listener: (event: { data: unknown }) => void) { if (type === "message") listeners.delete(listener); },
+      } as SokomindEngineWorker;
+    });
+    assert.equal(result.cutoff, false);
+    assert.equal(leased.length, 1);
+    const lease = leased[0];
+    assert.ok(typeof lease === "number" && lease > 0 && lease <= 32 * mib, `leased ${String(lease)} bytes`);
+    // The worker's own estimate is charged; the reservation is not.
+    assert.ok(estimated !== undefined && estimated > 0 && estimated < 32 * mib, `estimated ${String(estimated)} bytes`);
+  });
+
   it("releases the coordinator ledger when a phase completes", async () => {
     const run = runState();
     retainLegacyRecord(run, new Map(), { id: "a", parent: null, robot: [1, 2], segment: "R" });

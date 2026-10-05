@@ -38,8 +38,8 @@ export const WORKER_SILENCE_WATCHDOG_MS = 120_000;
 export type PhaseStopReason = BudgetStopReason;
 
 /**
- * Work a small-board proof (Optimal proof-first or Quality's exact lane) spent
- * outside the worker registry.
+ * Work a small-board proof (Optimal's proof, alone or beside the improvement,
+ * or Quality's exact lane) spent outside the worker registry.
  */
 export interface ProofFirstWork {
   readonly expandedStates: number;
@@ -51,7 +51,8 @@ export interface SearchRunState {
   readonly startedAt: number;
   readonly deadline: number;
   readonly request: SolverRequest;
-  readonly context: import("../contracts.ts").SolverExecutionContext;
+  /** Swapped while the small-board proof runs beside the improvement. */
+  context: import("../contracts.ts").SolverExecutionContext;
   readonly profile: SokomindTuningProfile;
   readonly workerSilenceTimeoutMs: number;
   readonly structuralHeadStartLimitMs: number;
@@ -74,7 +75,10 @@ export interface SearchRunState {
   publishedIncumbent: SolverSolution | undefined;
   /** publishedIncumbent as an action log, encoded once per new incumbent. */
   publishedRoute: string | undefined;
-  /** Charged to the state limits; set once a small-board proof ends. */
+  /**
+   * Charged to the state limits; set once a small-board proof ends, or live
+   * while the small-board proof runs beside the improvement.
+   */
   proofFirstWork: ProofFirstWork | undefined;
   aggregateGeneration: number;
   cachedAggregate: AggregateSnapshot | null;

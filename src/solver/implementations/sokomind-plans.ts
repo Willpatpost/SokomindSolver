@@ -63,6 +63,16 @@ export const PROOF_FIRST_MINIMUM_MS = 500;
  * proves.
  */
 export const QUALITY_EXACT_LANE_TIME_SHARE = 0.5;
+/**
+ * A parallel small-board proof (Optimal's proof, Quality's exact lane) runs
+ * alone for up to this long; the route improvement then starts beside it.
+ */
+export const SMALL_BOARD_PROOF_HEAD_START_MS = 5_000;
+/**
+ * The share of the proof's memory its lanes leave to the engines, so the route
+ * improvement can run beside it.
+ */
+export const SMALL_BOARD_PROOF_ENGINE_MEMORY_SHARE = 0.125;
 
 export interface EnginePlan {
   readonly id: string;

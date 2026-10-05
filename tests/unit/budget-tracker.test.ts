@@ -99,6 +99,21 @@ describe("BudgetTracker", () => {
     assert.equal(result, "memory");
   });
 
+  it("counts reserved memory against the limit", () => {
+    const tracker = new BudgetTracker();
+    tracker.reservedMemoryBytes = 200;
+    const controller = new AbortController();
+    const check = (estimatedMemoryBytes: number) => tracker.checkLimit(
+      snapshot({ estimatedMemoryBytes }),
+      { maxMemoryBytes: 300 },
+      controller.signal,
+      0,
+      Infinity,
+    );
+    assert.equal(check(99), undefined);
+    assert.equal(check(100), "memory");
+  });
+
   it("retainRecord increments counts and peak", () => {
     const tracker = new BudgetTracker();
     tracker.retainRecord(100);

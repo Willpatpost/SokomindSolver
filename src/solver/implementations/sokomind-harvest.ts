@@ -33,6 +33,8 @@ import {
   PROOF_FIRST_MAX_FLOOR_CELLS,
   PROOF_FIRST_MINIMUM_MS,
   QUALITY_EXACT_LANE_TIME_SHARE,
+  SMALL_BOARD_PROOF_ENGINE_MEMORY_SHARE,
+  SMALL_BOARD_PROOF_HEAD_START_MS,
   adaptiveRewriteAllocation,
   configuredBudget,
   defaultImprovementMaxVisited,
@@ -62,6 +64,7 @@ import {
 } from "./sokomind-candidate-archive.ts";
 import {
   aggregate,
+  elapsed,
   incumbentProgress,
   invalidateAggregate,
   metrics,
@@ -72,6 +75,10 @@ import {
   type ProofFirstWork,
   type SearchRunState,
 } from "./sokomind-run-state.ts";
+import {
+  COORDINATOR_MEMORY_RESERVATION_BYTES,
+  WORKER_MEMORY_RESERVATION_BYTES,
+} from "./sokomind-worker-limits.ts";
 
 export function runProof(
   request: SolverRequest,
@@ -148,16 +155,58 @@ export function publishedBoundsContext(
     signal: run.context.signal,
     now: run.context.now,
     reportProgress(progress) {
-      const forwarded: { -readonly [K in keyof SolverProgress]: SolverProgress[K] } = {
-        ...progress,
-      };
-      delete forwarded.lowerBound;
-      delete forwarded.gap;
-      delete forwarded.incumbent;
-      delete forwarded.upperBound;
-      run.context.reportProgress({ ...forwarded, ...relabel, ...incumbentProgress(run) });
+      run.context.reportProgress(publishedBoundsProgress(run, progress, relabel));
     },
   };
+}
+
+/** A proof's progress without its bounds; see publishedBoundsContext. */
+function publishedBoundsProgress(
+  run: SearchRunState,
+  progress: SolverProgress,
+  relabel: Pick<SolverProgress, "phase" | "detail"> | undefined,
+): SolverProgress {
+  const forwarded: { -readonly [K in keyof SolverProgress]: SolverProgress[K] } = {
+    ...progress,
+  };
+  delete forwarded.lowerBound;
+  delete forwarded.gap;
+  delete forwarded.incumbent;
+  delete forwarded.upperBound;
+  return { ...forwarded, ...relabel, ...incumbentProgress(run) };
+}
+
+// ---------------------------------------------------------------------------
+// Engines beside a small-board proof
+// ---------------------------------------------------------------------------
+
+/**
+ * Engine workers the route improvement may run now: the proof running beside
+ * it holds some worker threads and memory (see launchBesideProof), and each
+ * engine needs its reservation from what is left.
+ */
+function engineWorkerCount(run: SearchRunState, maxWorkers: number): number {
+  const workers = Math.max(1, maxWorkers - run.budget.reservedWorkers);
+  const reserved = run.budget.reservedMemoryBytes;
+  const maxMemory = run.request.limits?.maxMemoryBytes;
+  if (reserved === 0 || maxMemory === undefined || !Number.isFinite(maxMemory)) {
+    return workers;
+  }
+  return Math.max(1, Math.min(
+    workers,
+    Math.floor(
+      Math.max(0, maxMemory - COORDINATOR_MEMORY_RESERVATION_BYTES - reserved) /
+        WORKER_MEMORY_RESERVATION_BYTES,
+    ),
+  ));
+}
+
+/** The memory limit the route improvement may plan with now. */
+function engineMemoryLimit(run: SearchRunState): number | undefined {
+  const maxMemory = run.request.limits?.maxMemoryBytes;
+  return maxMemory === undefined
+    ? undefined
+    : Math.max(0, maxMemory - run.budget.reservedMemoryBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +256,7 @@ async function harvestIncumbents(
     if (!harvestRequest) break;
     const harvestWorkers = sokomindOptions.deterministic
       ? 1
-      : Math.max(1, maxWorkers);
+      : engineWorkerCount(run, maxWorkers);
     const plans = diversifiedHarvestPlans(
       state, harvestRequest, harvestWorkers, tuning, harvestRound, analysisPlan,
     );
@@ -328,15 +377,61 @@ export async function qualityAnytimeImprove(
   analysisPlan: SokomindAnalysisPlan | undefined,
   proofWorkers: ProofWorkerSource,
 ): Promise<SolverResult> {
+  const laneCapMs = qualityExactLaneCapMs(run, sokomindOptions);
+  const split = proofSplit(run, sokomindOptions, undefined, laneCapMs);
+  // A lane whose cap ends with its head start has no time beside the repair.
+  if (split !== undefined && split.headStartMs < laneCapMs) {
+    return qualityLaneBesideRepair(
+      run, state, firstIncumbent, engineWorkers, options, sokomindOptions,
+      tuning, maxWorkers, analysisPlan, proofWorkers, split, laneCapMs,
+    );
+  }
   const exactLane = await proveSmallBoardFirst(
     run, firstIncumbent, sokomindOptions, proofWorkers,
-    qualityExactLaneCapMs(run, sokomindOptions), QUALITY_EXACT_LANE_LABEL,
+    laneCapMs, QUALITY_EXACT_LANE_LABEL,
   );
   if (exactLane.result?.status === "solved") {
     return qualityExactLaneResult(run, exactLane.result.solution, exactLane.incumbent);
   }
   if (exactLane.result) return exactLane.result;
-  firstIncumbent = exactLane.incumbent;
+  return qualityRepair(
+    run, state, exactLane.incumbent, engineWorkers, options, sokomindOptions,
+    tuning, maxWorkers, analysisPlan,
+  );
+}
+
+/**
+ * Quality's route repair: harvest, a parallel rewrite wave, then the anytime
+ * slot loop until the deadline. `lane` is the exact lane running beside it:
+ * once it ends, its route (when it hands one back) joins the archive. Engine
+ * slots follow engineWorkerCount, so they grow when the lane releases its
+ * workers and memory.
+ */
+async function qualityRepair(
+  run: SearchRunState,
+  state: LegacyState,
+  firstIncumbent: SolverSolution,
+  engineWorkers: EngineWorkerSource,
+  options: SokomindImprovementOptions,
+  sokomindOptions: SokomindRequestOptions,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+  lane?: Promise<SolverSolution | undefined>,
+): Promise<SolverResult> {
+  let laneEnded = false;
+  let laneRoute: SolverSolution | undefined;
+  let laneWake: Promise<undefined> | undefined = lane?.then(
+    (route) => {
+      laneEnded = true;
+      laneRoute = route;
+      return undefined;
+    },
+    () => {
+      laneEnded = true;
+      return undefined;
+    },
+  );
 
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = computeHarvestMs(sokomindOptions.harvestElapsedMs, requestTimeMs);
@@ -397,14 +492,37 @@ export async function qualityAnytimeImprove(
     return accepted;
   }
 
+  // Once the exact lane ends, its route joins the archive like any other.
+  function takeLaneRoute(): void {
+    if (!laneEnded || laneWake === undefined) return;
+    laneWake = undefined;
+    const route = laneRoute;
+    if (route === undefined) return;
+    const published = run.publishedIncumbent;
+    const improves = published === undefined || isSolutionBetter(route, published);
+    if (improves) run.solutionImprovements += 1;
+    const accepted = offerArchived(route, {
+      sourceOperator: "discovery",
+      parentCandidateId: undefined,
+      taskId: undefined,
+      acceptedAt: run.context.now(),
+    });
+    if (!accepted && improves) {
+      run.bestSolutionMoves = Math.min(run.bestSolutionMoves, route.moves);
+      invalidateAggregate(run);
+      publishIncumbent(run, route, `Found a ${route.moves}-move route.`);
+    }
+  }
+  takeLaneRoute();
+
   // ── Initial parallel rewrite wave on all diverse candidates ──────────
   const rewriteCandidates = selectForRewrite(collector.incumbents);
   const rewriteCount = rewriteCandidates.length;
-  const rewriteConcurrency = sokomindRewriteConcurrency(
-    maxWorkers, run.request.limits?.maxMemoryBytes, rewriteCount,
+  const rewriteConcurrency = (): number => sokomindRewriteConcurrency(
+    engineWorkerCount(run, maxWorkers), engineMemoryLimit(run), rewriteCount,
   );
 
-  if (rewriteCount > 0 && rewriteConcurrency > 0 && !run.context.signal.aborted) {
+  if (rewriteCount > 0 && rewriteConcurrency() > 0 && !run.context.signal.aborted) {
     run.progressPhase = "improving";
     report(run, `Rewriting ${rewriteCount} diverse incumbent(s) in parallel.`, true);
 
@@ -452,8 +570,9 @@ export async function qualityAnytimeImprove(
       const remainingElapsed = Math.max(0, windowDeadline - run.context.now());
       if (remainingVisited < 1 || remainingGenerated < 1 || remainingElapsed < 1) break;
 
-      const waveSize = Math.min(rewriteConcurrency, pending.length);
-      const remainingWaves = Math.ceil(pending.length / rewriteConcurrency);
+      const concurrency = rewriteConcurrency();
+      const waveSize = Math.min(concurrency, pending.length);
+      const remainingWaves = Math.ceil(pending.length / concurrency);
       const visitedShares = dividedIntegerBudget(remainingVisited, pending.length);
       const generatedShares = dividedIntegerBudget(remainingGenerated, pending.length);
       const perWorkerElapsed = Math.max(1, Math.min(
@@ -512,6 +631,7 @@ export async function qualityAnytimeImprove(
       }));
     }
   }
+  takeLaneRoute();
 
   const best0 = archive.globalBest;
   if (best0) {
@@ -523,8 +643,9 @@ export async function qualityAnytimeImprove(
   report(run, `Starting anytime improvement loop (best=${archive.globalBest?.solution.moves ?? "?"} moves, archive=${archive.size} candidates).`, true);
 
   // ── Anytime loop: parallel task-slot coordinator ─────────────────────
-  const maxSlots = Math.max(1, sokomindRewriteConcurrency(
-    maxWorkers, run.request.limits?.maxMemoryBytes, archive.size,
+  const archiveSizeAtStart = archive.size;
+  const slotCap = (): number => Math.max(1, sokomindRewriteConcurrency(
+    engineWorkerCount(run, maxWorkers), engineMemoryLimit(run), archiveSizeAtStart,
   ));
   let sliceIndex = 0;
   const enabledOperators = qualityRepairOperators(state, sokomindOptions.experimentalOperators);
@@ -543,17 +664,19 @@ export async function qualityAnytimeImprove(
   const activeSlots = new Map<string, Promise<SlotResult>>();
   let leasedExpanded = 0;
   let leasedGenerated = 0;
-  const taskMemoryBytes = configuredMemory !== undefined && Number.isFinite(configuredMemory)
-    ? Math.max(1, Math.floor(Math.max(
-        0,
-        configuredMemory -
-          run.budget.coordinatorEstimatedMemoryBytes -
-          run.budget.preparedBoardEstimatedMemoryBytes -
-          archive.estimatedMemoryBytes,
-      ) / maxSlots))
+  const taskMemoryBase = configuredMemory !== undefined && Number.isFinite(configuredMemory)
+    ? configuredMemory -
+      run.budget.coordinatorEstimatedMemoryBytes -
+      run.budget.preparedBoardEstimatedMemoryBytes -
+      archive.estimatedMemoryBytes
     : undefined;
+  const taskMemoryBytes = (): number | undefined => taskMemoryBase === undefined
+    ? undefined
+    : Math.max(1, Math.floor(
+        Math.max(0, taskMemoryBase - run.budget.reservedMemoryBytes) / slotCap(),
+      ));
   const initialBoxPortfolio = rescheduleEligible
-    ? evenlySpacedCandidates(archive.candidates, Math.min(maxSlots, archive.size))
+    ? evenlySpacedCandidates(archive.candidates, Math.min(slotCap(), archive.size))
     : [];
   const initialBoxPortfolioSize = initialBoxPortfolio.length;
   let initialBoxPortfolioDispatched = 0;
@@ -621,7 +744,8 @@ export async function qualityAnytimeImprove(
       ? Math.min(50_000, localVisitedCap)
       : localVisitedCap;
     const remainingExpanded = remainingRequest.limits?.maxExpandedStates;
-    const slotsToFill = Math.max(1, maxSlots - activeSlots.size);
+    const slots = slotCap();
+    const slotsToFill = Math.max(1, slots - activeSlots.size);
     const usedImprovement = Math.max(
       0,
       aggregate(run).expandedStates - improvementStarted.expandedStates,
@@ -677,7 +801,7 @@ export async function qualityAnytimeImprove(
         improvementMaxVisited: perSliceVisited,
         improvementMaxElapsedMs: sliceMs,
         improvementMaxPasses: 1,
-        improvementMaxMemoryBytes: taskMemoryBytes,
+        improvementMaxMemoryBytes: taskMemoryBytes(),
         onCandidatePublished: (solution) => {
           offerArchived(solution, {
             sourceOperator: operator,
@@ -689,7 +813,7 @@ export async function qualityAnytimeImprove(
       },
       currentSliceIndex,
       maxGenerated,
-      maxSlots,
+      slots,
       rewriteAllocation,
       operator,
       repairContext,
@@ -754,10 +878,11 @@ export async function qualityAnytimeImprove(
       : Infinity;
     if (Number.isFinite(remainingMs) && remainingMs < 1) break;
 
+    takeLaneRoute();
     const allExhausted = enabledOperators.every((op) => archive.allNeighborhoodsExhausted(op));
     if (allExhausted && activeSlots.size === 0) break;
 
-    while (activeSlots.size < maxSlots && !run.context.signal.aborted) {
+    while (activeSlots.size < slotCap() && !run.context.signal.aborted) {
       const next = selectNextTask();
       if (!next) break;
       if (!dispatchTask(next.target, next.operator)) break;
@@ -773,7 +898,11 @@ export async function qualityAnytimeImprove(
 
     if (activeSlots.size === 0) break;
 
-    const result = await Promise.race(activeSlots.values());
+    const result = await Promise.race([
+      ...(laneWake === undefined ? [] : [laneWake]),
+      ...activeSlots.values(),
+    ]);
+    if (result === undefined) continue;
     processResult(result);
   }
 
@@ -870,18 +999,22 @@ interface SmallBoardProofLabel {
   readonly detail: string;
   /** Replaces the proof's own phase and detail, which speak of proving. */
   readonly relabelProof: boolean;
+  /** Shown during silence while the proof runs beside the route improvement. */
+  readonly besideDetail: string;
 }
 
 const OPTIMAL_PROOF_FIRST_LABEL: SmallBoardProofLabel = Object.freeze({
   phase: "proving",
   detail: "Proving the small board first",
   relabelProof: false,
+  besideDetail: "The proof runs beside the route improvement.",
 });
 
 const QUALITY_EXACT_LANE_LABEL: SmallBoardProofLabel = Object.freeze({
   phase: "improving",
   detail: "Searching the small board exactly",
   relabelProof: true,
+  besideDetail: "The exact search runs beside the route repair.",
 });
 
 /**
@@ -995,24 +1128,270 @@ async function proveSmallBoardFirst(
   }
   // A timed-out proof can still hand back a better route; it continues as an
   // unproven incumbent once it replays.
-  if (
-    isSolutionBetter(result.solution, firstIncumbent) &&
-    verifySolverSolution(run.request, result.solution).valid
-  ) {
-    const improved: SolverSolution = Object.freeze({
-      ...result.solution,
-      optimality: "unknown" as const,
-    });
-    run.bestSolutionMoves = Math.min(run.bestSolutionMoves, improved.moves);
-    run.solutionImprovements += 1;
-    invalidateAggregate(run);
-    recordIncumbent(run, improved);
-    return { incumbent: improved };
-  }
-  return { incumbent: firstIncumbent };
+  return { incumbent: adoptProofRoute(run, result, firstIncumbent) };
 }
 
-export async function optimalQuickImprove(
+/**
+ * The route an unfinished proof hands back, unproven, when it beats
+ * `incumbent` and replays; otherwise undefined.
+ */
+function verifiedProofRoute(
+  run: SearchRunState,
+  result: SolverResult,
+  incumbent: SolverSolution,
+): SolverSolution | undefined {
+  if (
+    result.status !== "solved" ||
+    !isSolutionBetter(result.solution, incumbent) ||
+    !verifySolverSolution(run.request, result.solution).valid
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ ...result.solution, optimality: "unknown" as const });
+}
+
+/**
+ * Adopts the route an unfinished proof hands back (see verifiedProofRoute) as
+ * the run's incumbent. Returns the route the run continues from.
+ */
+function adoptProofRoute(
+  run: SearchRunState,
+  result: SolverResult,
+  incumbent: SolverSolution,
+): SolverSolution {
+  const improved = verifiedProofRoute(run, result, incumbent);
+  if (improved === undefined) return incumbent;
+  run.bestSolutionMoves = Math.min(run.bestSolutionMoves, improved.moves);
+  run.solutionImprovements += 1;
+  invalidateAggregate(run);
+  recordIncumbent(run, improved);
+  return improved;
+}
+
+function cancelledResult(run: SearchRunState): SolverResult {
+  return Object.freeze({ status: "cancelled", metrics: metrics(run) });
+}
+
+// ---------------------------------------------------------------------------
+// Small boards: the proof beside the route improvement
+// ---------------------------------------------------------------------------
+
+/** While the improvement runs, the proof reports only after this much silence. */
+const ANYTIME_PROOF_QUIET_MS = 1_000;
+
+/**
+ * How a parallel small-board proof shares the run with the route improvement.
+ * The proof keeps the lane plan a proof with all of the memory would pick;
+ * its lanes leave SMALL_BOARD_PROOF_ENGINE_MEMORY_SHARE to the engines.
+ */
+interface ProofSplit {
+  /** How long the proof runs alone before the improvement joins it. */
+  readonly headStartMs: number;
+  /** Memory for the proof's lanes; undefined without a memory limit. */
+  readonly laneBytes: number | undefined;
+  /** Memory the lane plan is chosen from; undefined without a memory limit. */
+  readonly planBytes: number | undefined;
+}
+
+/**
+ * The split for a small-board proof capped at `capMs` (0 skips it), or
+ * undefined to keep the proof alone and the improvement after it. A
+ * single-lane proof runs on the coordinator's thread, where the engines'
+ * messages would slow it. Checkpoint hooks belong to the pipeline's own
+ * proof. A memory limit whose engine share cannot hold one engine worker
+ * keeps the sequence too.
+ */
+function proofSplit(
+  run: SearchRunState,
+  sokomindOptions: SokomindRequestOptions,
+  checkpointOptions: ProofCheckpointOptions | undefined,
+  capMs: number,
+): ProofSplit | undefined {
+  if (
+    capMs === 0 ||
+    sokomindOptions.proofParallelism < 2 ||
+    checkpointOptions !== undefined
+  ) {
+    return undefined;
+  }
+  const headStartMs = Math.min(SMALL_BOARD_PROOF_HEAD_START_MS, capMs);
+  const maxMemory = run.request.limits?.maxMemoryBytes;
+  if (maxMemory === undefined || !Number.isFinite(maxMemory)) {
+    return { headStartMs, laneBytes: undefined, planBytes: undefined };
+  }
+  const planBytes = Math.max(0, maxMemory - COORDINATOR_MEMORY_RESERVATION_BYTES);
+  const engineBytes = Math.floor(planBytes * SMALL_BOARD_PROOF_ENGINE_MEMORY_SHARE);
+  if (engineBytes < WORKER_MEMORY_RESERVATION_BYTES) return undefined;
+  return { headStartMs, laneBytes: planBytes - engineBytes, planBytes };
+}
+
+/**
+ * How the proof's progress reaches the caller: alone, as a capped proof's
+ * (publishedBoundsContext); quietly while the improvement reports; after the
+ * improvement, with Optimal's bounds held to the published route and
+ * Quality's still left out.
+ */
+type BesideProofMode = "alone" | "quiet" | "after";
+
+interface BesideProof {
+  /** The proof's result, once its work is charged to the run. */
+  readonly outcome: Promise<SolverResult>;
+  setMode(mode: BesideProofMode): void;
+  abort(): void;
+}
+
+/**
+ * Launches the unmodified proof from `firstIncumbent`, as the pipeline's own
+ * proof starts, within the split's lane memory and capped at `capMs` past now
+ * (undefined: the run's own time limit). Its lanes' worker threads and memory
+ * are reserved from the engines until it ends, and its work counts against
+ * the run's limits while it runs.
+ */
+function launchBesideProof(
+  run: SearchRunState,
+  outer: SolverExecutionContext,
+  firstIncumbent: SolverSolution,
+  sokomindOptions: SokomindRequestOptions,
+  proofWorkers: ProofWorkerSource,
+  split: ProofSplit,
+  label: SmallBoardProofLabel,
+  capMs: number | undefined,
+): BesideProof {
+  const proofAbort = new AbortController();
+  const launchResult: SolverResult = Object.freeze({
+    status: "solved" as const,
+    solution: firstIncumbent,
+    metrics: metrics(run),
+  });
+  const limits = run.request.limits;
+  const cappedElapsedMs = capMs === undefined
+    ? undefined
+    : Math.floor(launchResult.metrics.elapsedMs + capMs);
+  const request: SolverRequest = Object.freeze({
+    ...run.request,
+    limits: Object.freeze({
+      ...limits,
+      ...(split.laneBytes === undefined ? {} : {
+        maxMemoryBytes: split.laneBytes + COORDINATOR_MEMORY_RESERVATION_BYTES,
+      }),
+      ...(cappedElapsedMs === undefined ? {} : {
+        maxElapsedMs: limits?.maxElapsedMs === undefined
+          ? cappedElapsedMs
+          : Math.min(limits.maxElapsedMs, cappedElapsedMs),
+      }),
+    }),
+  });
+
+  let heldBytes = split.laneBytes ?? 0;
+  let heldWorkers = 0;
+  run.budget.reservedMemoryBytes += heldBytes;
+  const release = (): void => {
+    run.budget.reservedMemoryBytes -= heldBytes;
+    run.budget.reservedWorkers -= heldWorkers;
+    heldBytes = 0;
+    heldWorkers = 0;
+  };
+
+  const baseExpanded = launchResult.metrics.expandedStates ?? 0;
+  const baseGenerated = launchResult.metrics.generatedStates ?? 0;
+  const startedAt = outer.now();
+  const chargeProof = (expandedStates: number, generatedStates: number): void => {
+    const previous = run.proofFirstWork;
+    run.proofFirstWork = Object.freeze({
+      expandedStates: Math.max(previous?.expandedStates ?? 0, expandedStates),
+      generatedStates: Math.max(previous?.generatedStates ?? 0, generatedStates),
+      elapsedMs: Math.max(0, outer.now() - startedAt),
+    });
+    invalidateAggregate(run);
+  };
+
+  const relabel = label.relabelProof
+    ? { phase: label.phase, detail: label.detail }
+    : undefined;
+  let mode: BesideProofMode = "alone";
+  const proofContext: SolverExecutionContext = {
+    signal: proofAbort.signal,
+    now: outer.now,
+    reportProgress(progress) {
+      chargeProof(
+        Math.max(0, (progress.expandedStates ?? baseExpanded) - baseExpanded),
+        Math.max(0, (progress.generatedStates ?? baseGenerated) - baseGenerated),
+      );
+      if (mode === "alone") {
+        outer.reportProgress(publishedBoundsProgress(run, progress, relabel));
+        return;
+      }
+      if (mode === "quiet") {
+        if (outer.now() - run.lastProgressAt >= ANYTIME_PROOF_QUIET_MS) {
+          report(run, label.besideDetail, true);
+        }
+        return;
+      }
+      run.lastProgressAt = outer.now();
+      const snapshot = aggregate(run);
+      const counted: SolverProgress = {
+        ...progress,
+        elapsedMs: elapsed(run),
+        expandedStates: snapshot.expandedStates,
+        generatedStates: snapshot.generatedStates,
+        counters: { ...progress.counters, ...snapshot.counters },
+      };
+      outer.reportProgress(relabel === undefined
+        ? { ...heldToPublished(run, counted), phase: label.phase }
+        : publishedBoundsProgress(run, counted, relabel));
+    },
+  };
+
+  const settle = (result: SolverResult): SolverResult => {
+    release();
+    const counters = result.metrics.counters ?? {};
+    chargeProof(counters.proofExpandedStates ?? 0, counters.proofGeneratedStates ?? 0);
+    run.budget.peakEstimatedMemoryBytes = Math.max(
+      run.budget.peakEstimatedMemoryBytes,
+      counters.peakEstimatedMemoryBytes ?? 0,
+    );
+    invalidateAggregate(run);
+    return result;
+  };
+  const outcome = runConcurrentProof(
+    request,
+    proofContext,
+    sokomindOptions,
+    launchResult,
+    {
+      createProofWorker: proofWorkers,
+      proofParallelism: sokomindOptions.proofParallelism,
+      planMemoryBytes: split.planBytes,
+      onLanePlan(plan) {
+        heldWorkers = plan.lanes;
+        run.budget.reservedWorkers += plan.lanes;
+      },
+    },
+  ).then(settle, (error: unknown) => {
+    release();
+    throw error;
+  });
+  return {
+    outcome,
+    setMode(next) {
+      mode = next;
+    },
+    abort() {
+      proofAbort.abort();
+    },
+  };
+}
+
+/**
+ * Quality on a small board with a parallel exact lane: the lane starts from
+ * the first route at once and searches alone for the split's head start. A
+ * lane done by then ends as the sequence would (a completed lane returns its
+ * route, unproven; otherwise the repair follows on every core). Otherwise the
+ * repair runs beside the same lane on the engines' share; a completed lane
+ * stops it, and an unfinished lane's shorter route joins the repair's
+ * archive. Quality never proves.
+ */
+async function qualityLaneBesideRepair(
   run: SearchRunState,
   state: LegacyState,
   firstIncumbent: SolverSolution,
@@ -1023,15 +1402,158 @@ export async function optimalQuickImprove(
   maxWorkers: number,
   analysisPlan: SokomindAnalysisPlan | undefined,
   proofWorkers: ProofWorkerSource,
-  checkpointOptions?: ProofCheckpointOptions,
+  split: ProofSplit,
+  capMs: number,
 ): Promise<SolverResult> {
-  const proofFirst = await proveSmallBoardFirst(
-    run, firstIncumbent, sokomindOptions, proofWorkers,
-    proofFirstCapMs(run, sokomindOptions, checkpointOptions), OPTIMAL_PROOF_FIRST_LABEL,
-  );
-  if (proofFirst.result) return proofFirst.result;
-  firstIncumbent = proofFirst.incumbent;
+  const outer = run.context;
+  if (outer.signal.aborted) return cancelledResult(run);
 
+  run.initialSolutionMoves ||= firstIncumbent.moves;
+  run.bestSolutionMoves =
+    run.bestSolutionMoves === 0
+      ? firstIncumbent.moves
+      : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
+  invalidateAggregate(run);
+  recordIncumbent(run, firstIncumbent);
+  run.progressPhase = QUALITY_EXACT_LANE_LABEL.phase;
+  report(run, `${QUALITY_EXACT_LANE_LABEL.detail} (${capMs}ms budget).`, true);
+
+  const repairAbort = new AbortController();
+  const lane = launchBesideProof(
+    run, outer, firstIncumbent, sokomindOptions, proofWorkers, split,
+    QUALITY_EXACT_LANE_LABEL, capMs,
+  );
+  const onOuterAbort = (): void => {
+    lane.abort();
+    repairAbort.abort();
+  };
+  outer.signal.addEventListener("abort", onOuterAbort, { once: true });
+
+  let headStartTimer: ReturnType<typeof setTimeout> | undefined;
+  let repair: Promise<SolverResult> | undefined;
+  try {
+    const headStart = new Promise<"head-start">((resolve) => {
+      headStartTimer = setTimeout(() => resolve("head-start"), split.headStartMs);
+    });
+    const early = await Promise.race([lane.outcome, headStart]);
+    if (early !== "head-start") {
+      if (outer.signal.aborted) return cancelledResult(run);
+      if (early.status === "solved" && early.proof?.kind === "optimal") {
+        return qualityExactLaneResult(run, early.solution, firstIncumbent);
+      }
+      return await qualityRepair(
+        run, state, adoptProofRoute(run, early, firstIncumbent), engineWorkers,
+        options, sokomindOptions, tuning, maxWorkers, analysisPlan,
+      );
+    }
+
+    run.context = {
+      signal: repairAbort.signal,
+      now: outer.now,
+      reportProgress: outer.reportProgress,
+    };
+    lane.setMode("quiet");
+    const laneRoute = lane.outcome.then(
+      (result) => result.proof?.kind === "optimal"
+        ? undefined
+        : verifiedProofRoute(run, result, run.publishedIncumbent ?? firstIncumbent),
+      () => undefined,
+    );
+    repair = qualityRepair(
+      run, state, firstIncumbent, engineWorkers, options, sokomindOptions,
+      tuning, maxWorkers, analysisPlan, laneRoute,
+    ).finally(() => {
+      run.context = outer;
+    });
+
+    const first = await Promise.race([
+      lane.outcome.then((result) => ({ kind: "lane" as const, result })),
+      repair.then((result) => ({ kind: "repair" as const, result })),
+    ]);
+
+    if (first.kind === "lane") {
+      const laneResult = first.result;
+      if (
+        outer.signal.aborted ||
+        (laneResult.status === "solved" && laneResult.proof?.kind === "optimal")
+      ) {
+        repairAbort.abort();
+        await repair.catch(() => undefined);
+        if (outer.signal.aborted || laneResult.status !== "solved") {
+          return cancelledResult(run);
+        }
+        return qualityExactLaneResult(
+          run, laneResult.solution, run.publishedIncumbent ?? firstIncumbent,
+        );
+      }
+      // The repair took the lane's route, unless it was already finishing.
+      const repaired = await repair;
+      if (repaired.status !== "solved") return repaired;
+      const route = adoptProofRoute(run, laneResult, repaired.solution);
+      if (route === repaired.solution) return repaired;
+      return Object.freeze({
+        status: "solved" as const,
+        solution: route,
+        metrics: metrics(run),
+      });
+    }
+
+    const repaired = first.result;
+    if (repaired.status !== "solved" || outer.signal.aborted) {
+      lane.abort();
+      await lane.outcome.catch(() => undefined);
+      return cancelledResult(run);
+    }
+    // The repair ran out of work first: the lane continues to its cap.
+    lane.setMode("after");
+    run.progressPhase = QUALITY_EXACT_LANE_LABEL.phase;
+    report(run, `${QUALITY_EXACT_LANE_LABEL.detail}.`, true);
+    const laneResult = await lane.outcome;
+    if (outer.signal.aborted) return cancelledResult(run);
+    const published = run.publishedIncumbent;
+    const best = published !== undefined && isSolutionBetter(published, repaired.solution)
+      ? published
+      : repaired.solution;
+    if (laneResult.status === "solved" && laneResult.proof?.kind === "optimal") {
+      return qualityExactLaneResult(run, laneResult.solution, best);
+    }
+    const route = adoptProofRoute(run, laneResult, best);
+    return Object.freeze({
+      status: "solved" as const,
+      solution: Object.freeze({ ...route, optimality: "unknown" as const }),
+      metrics: metrics(run),
+    });
+  } finally {
+    clearTimeout(headStartTimer);
+    lane.abort();
+    repairAbort.abort();
+    await Promise.allSettled([lane.outcome, repair ?? Promise.resolve()]);
+    run.context = outer;
+    outer.signal.removeEventListener("abort", onOuterAbort);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Optimal: route improvement, then the pipeline's own proof
+// ---------------------------------------------------------------------------
+
+/**
+ * Harvests diverse routes, then runs the quick rewrite and reschedule passes.
+ * Engines follow engineWorkerCount, so a proof running beside them keeps its
+ * workers and memory. Returns the best route found; `cancelled` once the run's
+ * signal stopped it.
+ */
+async function improveOptimalIncumbent(
+  run: SearchRunState,
+  state: LegacyState,
+  firstIncumbent: SolverSolution,
+  engineWorkers: EngineWorkerSource,
+  options: SokomindImprovementOptions,
+  sokomindOptions: SokomindRequestOptions,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+): Promise<{ readonly best: SolverSolution; readonly cancelled: boolean }> {
   const requestTimeMs = run.request.limits?.maxElapsedMs;
   const harvestMs = Math.min(
     DEFAULT_OPTIMAL_HARVEST_MS,
@@ -1042,9 +1564,7 @@ export async function optimalQuickImprove(
     run, state, firstIncumbent, engineWorkers, sokomindOptions,
     tuning, maxWorkers, analysisPlan, harvestMs,
   );
-  if (cancelled) {
-    return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-  }
+  if (cancelled) return { best: firstIncumbent, cancelled: true };
 
   let best = selectBest(
     collector.incumbents.map((inc) => ({
@@ -1081,9 +1601,7 @@ export async function optimalQuickImprove(
           { ...options, improvementMaxVisited: maxVisited, improvementMaxElapsedMs: rewriteMs, improvementMaxPasses: 1 },
           0, maxGenerated, 1, rewriteAllocation, "window",
         );
-        if (improved.cancelled) {
-          return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-        }
+        if (improved.cancelled) return { best, cancelled: true };
         if (improved.improved) {
           best = improved.solution;
           run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
@@ -1114,9 +1632,7 @@ export async function optimalQuickImprove(
           { ...options, improvementMaxVisited: maxVisited, improvementMaxElapsedMs: rescheduleMs, improvementMaxPasses: 1 },
           1, maxGenerated, 1, rewriteAllocation, "box",
         );
-        if (improved.cancelled) {
-          return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-        }
+        if (improved.cancelled) return { best, cancelled: true };
         if (improved.improved) {
           best = improved.solution;
           run.bestSolutionMoves = Math.min(run.bestSolutionMoves, best.moves);
@@ -1126,10 +1642,18 @@ export async function optimalQuickImprove(
     }
   }
 
-  if (run.context.signal.aborted) {
-    return Object.freeze({ status: "cancelled", metrics: metrics(run) });
-  }
+  return { best, cancelled: run.context.signal.aborted };
+}
 
+/** Runs the pipeline's own proof from `best`, or from the published route when it is better. */
+function finalProof(
+  run: SearchRunState,
+  best: SolverSolution,
+  sokomindOptions: SokomindRequestOptions,
+  proofWorkers: ProofWorkerSource,
+  context: SolverExecutionContext,
+  checkpointOptions?: ProofCheckpointOptions,
+): Promise<SolverResult> {
   // Proof progress reports its incumbent as the upper bound, which must not
   // rise above the bound already published.
   const published = run.publishedIncumbent;
@@ -1142,7 +1666,335 @@ export async function optimalQuickImprove(
     metrics: metrics(run),
   });
   return runProof(
-    run.request, run.context, sokomindOptions, discoveryResult,
+    run.request, context, sokomindOptions, discoveryResult,
     proofWorkers, checkpointOptions,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Optimal on small boards: the proof beside the route improvement
+// ---------------------------------------------------------------------------
+
+/** The small-board proof's result with the whole run's metrics. */
+function anytimeResult(run: SearchRunState, result: SolverResult): SolverResult {
+  const runMetrics = metrics(run);
+  const work = run.proofFirstWork;
+  return Object.freeze({
+    ...result,
+    metrics: Object.freeze({
+      ...runMetrics,
+      peakFrontierSize: Math.max(
+        runMetrics.peakFrontierSize ?? 0,
+        result.metrics.peakFrontierSize ?? 0,
+      ),
+      counters: Object.freeze({
+        ...result.metrics.counters,
+        ...runMetrics.counters,
+        ...(work === undefined ? {} : proofFirstCounters(work)),
+      }),
+    }),
+  });
+}
+
+function proofGap(result: SolverResult): number {
+  const proof = result.proof;
+  if (proof === undefined) return Infinity;
+  if (proof.lowerBound !== undefined && proof.upperBound !== undefined) {
+    return proof.upperBound - proof.lowerBound;
+  }
+  return proof.gap ?? Infinity;
+}
+
+/**
+ * Picks between an unproven small-board proof and the final proof that
+ * followed it. The final proof stands unless the earlier one holds a replaying
+ * route no longer than the final route and a strictly smaller gap. Their
+ * bounds are never merged; the final proof's metrics cover the whole run.
+ */
+function chooseResult(
+  run: SearchRunState,
+  anytime: SolverResult,
+  final: SolverResult,
+): SolverResult {
+  if (
+    final.proof?.kind === "optimal" ||
+    final.status !== "solved" ||
+    anytime.status !== "solved" ||
+    anytime.solution.moves > final.solution.moves ||
+    !verifySolverSolution(run.request, anytime.solution).valid
+  ) {
+    return final;
+  }
+  return proofGap(anytime) < proofGap(final)
+    ? Object.freeze({ ...anytime, metrics: final.metrics })
+    : final;
+}
+
+/**
+ * Below the published route's length, the most a small-board proof's lower
+ * bound may show. A bound meeting a route the proof did not find would close
+ * the gap that only the proof's own completion closes.
+ */
+function lowerBoundBelow(upperBound: number, lowerBound: number): number {
+  return Math.min(lowerBound, Math.max(0, upperBound - 1));
+}
+
+/**
+ * The small-board proof's progress with its upper bound held to the published
+ * route when that route is shorter than the proof's incumbent.
+ */
+function heldToPublished(run: SearchRunState, progress: SolverProgress): SolverProgress {
+  const published = run.publishedIncumbent;
+  if (
+    published === undefined ||
+    progress.upperBound === undefined ||
+    progress.upperBound <= published.moves
+  ) {
+    return progress;
+  }
+  const held: { -readonly [K in keyof SolverProgress]: SolverProgress[K] } = {
+    ...progress,
+    ...incumbentProgress(run),
+  };
+  delete held.gap;
+  if (held.lowerBound !== undefined) {
+    held.lowerBound = lowerBoundBelow(published.moves, held.lowerBound);
+    held.gap = published.moves - held.lowerBound;
+  }
+  return held;
+}
+
+/**
+ * An unproven small-board proof's result, moved onto `route` when that route
+ * is shorter than the proof's own and replays. The proof's lower bound still
+ * holds, below the route's length; it stays a bounded result.
+ */
+function boundedAtRoute(
+  run: SearchRunState,
+  result: SolverResult,
+  route: SolverSolution | undefined,
+): SolverResult {
+  if (
+    route === undefined ||
+    result.status !== "solved" ||
+    result.proof?.kind !== "bounded" ||
+    result.proof.lowerBound === undefined ||
+    route.moves >= result.solution.moves ||
+    !verifySolverSolution(run.request, route).valid
+  ) {
+    return result;
+  }
+  const lowerBound = lowerBoundBelow(route.moves, result.proof.lowerBound);
+  return Object.freeze({
+    ...result,
+    solution: Object.freeze({ ...route, optimality: "unknown" as const }),
+    proof: Object.freeze({
+      ...result.proof,
+      lowerBound,
+      upperBound: route.moves,
+      gap: route.moves - lowerBound,
+    }),
+  });
+}
+
+/**
+ * Ends a run whose small-board proof stopped unproven once the improvement is
+ * done. With the time for a PDB build left, the final proof runs from the best
+ * route and chooseResult picks; otherwise the small-board proof's result
+ * stands.
+ */
+async function settleUnprovenAnytime(
+  run: SearchRunState,
+  anytime: SolverResult,
+  best: SolverSolution,
+  sokomindOptions: SokomindRequestOptions,
+  proofWorkers: ProofWorkerSource,
+  context: SolverExecutionContext,
+): Promise<SolverResult> {
+  const atRoute = boundedAtRoute(run, anytime, run.publishedIncumbent);
+  if (run.deadline - run.context.now() < PROOF_FIRST_MINIMUM_MS) {
+    return anytimeResult(run, atRoute);
+  }
+  const final = await finalProof(run, best, sokomindOptions, proofWorkers, context);
+  return chooseResult(run, atRoute, final);
+}
+
+/**
+ * Optimal on a small board with a parallel proof: the proof starts from the
+ * first route at once, with the lane plan proof-first would use, and runs
+ * alone for the split's head start. A proof done by then stands, and one that
+ * stopped short leaves the improvement every core before the final proof, as
+ * proof-first does. Otherwise the route improvement runs beside the same proof
+ * on the engines' share. A completed proof stands at once. When the
+ * improvement ends, the same proof continues, even from a longer route than
+ * the improvement found: a proof's starting bound barely changes its work, so
+ * a fresh proof would redo it. Its bounds then reach progress, held to the
+ * published route. A proof that ends unproven is followed by the final proof
+ * when time allows (see settleUnprovenAnytime).
+ */
+async function optimalAnytimeImprove(
+  run: SearchRunState,
+  state: LegacyState,
+  firstIncumbent: SolverSolution,
+  engineWorkers: EngineWorkerSource,
+  options: SokomindImprovementOptions,
+  sokomindOptions: SokomindRequestOptions,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+  proofWorkers: ProofWorkerSource,
+  split: ProofSplit,
+): Promise<SolverResult> {
+  const outer = run.context;
+  if (outer.signal.aborted) return cancelledResult(run);
+
+  run.initialSolutionMoves ||= firstIncumbent.moves;
+  run.bestSolutionMoves =
+    run.bestSolutionMoves === 0
+      ? firstIncumbent.moves
+      : Math.min(run.bestSolutionMoves, firstIncumbent.moves);
+  invalidateAggregate(run);
+  recordIncumbent(run, firstIncumbent);
+  run.progressPhase = OPTIMAL_PROOF_FIRST_LABEL.phase;
+  report(run, `${OPTIMAL_PROOF_FIRST_LABEL.detail}.`, true);
+
+  const improveAbort = new AbortController();
+  const proof = launchBesideProof(
+    run, outer, firstIncumbent, sokomindOptions, proofWorkers, split,
+    OPTIMAL_PROOF_FIRST_LABEL, undefined,
+  );
+  const onOuterAbort = (): void => {
+    proof.abort();
+    improveAbort.abort();
+  };
+  outer.signal.addEventListener("abort", onOuterAbort, { once: true });
+
+  let headStartTimer: ReturnType<typeof setTimeout> | undefined;
+  let improvement:
+    | Promise<{ readonly best: SolverSolution; readonly cancelled: boolean }>
+    | undefined;
+  try {
+    const headStart = new Promise<"head-start">((resolve) => {
+      headStartTimer = setTimeout(() => resolve("head-start"), split.headStartMs);
+    });
+    const early = await Promise.race([proof.outcome, headStart]);
+    if (early !== "head-start") {
+      if (outer.signal.aborted) return cancelledResult(run);
+      if (early.proof?.kind === "optimal") return anytimeResult(run, early);
+      const route = adoptProofRoute(run, early, firstIncumbent);
+      const outcome = await improveOptimalIncumbent(
+        run, state, route, engineWorkers, options, sokomindOptions,
+        tuning, maxWorkers, analysisPlan,
+      );
+      if (outcome.cancelled) return cancelledResult(run);
+      return await settleUnprovenAnytime(
+        run, early, outcome.best, sokomindOptions, proofWorkers, outer,
+      );
+    }
+
+    run.context = {
+      signal: improveAbort.signal,
+      now: outer.now,
+      reportProgress: outer.reportProgress,
+    };
+    proof.setMode("quiet");
+    improvement = improveOptimalIncumbent(
+      run, state, firstIncumbent, engineWorkers, options, sokomindOptions,
+      tuning, maxWorkers, analysisPlan,
+    ).finally(() => {
+      run.context = outer;
+    });
+
+    const first = await Promise.race([
+      proof.outcome.then((result) => ({ kind: "proof" as const, result })),
+      improvement.then((outcome) => ({ kind: "improvement" as const, outcome })),
+    ]);
+
+    if (first.kind === "proof") {
+      const result = first.result;
+      if (outer.signal.aborted || result.proof?.kind === "optimal") {
+        improveAbort.abort();
+        await improvement.catch(() => undefined);
+        return outer.signal.aborted ? cancelledResult(run) : anytimeResult(run, result);
+      }
+      // Stopped short (memory, a lane failure or the deadline): keep its
+      // route and let the improvement finish on the cores it releases.
+      adoptProofRoute(run, result, run.publishedIncumbent ?? firstIncumbent);
+      const outcome = await improvement;
+      if (outcome.cancelled) return cancelledResult(run);
+      return await settleUnprovenAnytime(
+        run, result, outcome.best, sokomindOptions, proofWorkers, outer,
+      );
+    }
+
+    const outcome = first.outcome;
+    if (outcome.cancelled) {
+      // Only the user's cancel stops the improvement before the proof ends.
+      proof.abort();
+      await proof.outcome.catch(() => undefined);
+      return cancelledResult(run);
+    }
+    let best = outcome.best;
+    const published = run.publishedIncumbent;
+    if (published !== undefined && isSolutionBetter(published, best)) {
+      best = published;
+    }
+
+    // The same proof continues; its bounds now reach progress.
+    proof.setMode("after");
+    run.progressPhase = OPTIMAL_PROOF_FIRST_LABEL.phase;
+    report(run, "Proving the small board.", true);
+    const result = await proof.outcome;
+    if (outer.signal.aborted) return cancelledResult(run);
+    if (result.proof?.kind === "optimal") return anytimeResult(run, result);
+    best = adoptProofRoute(run, result, best);
+    // Its lower bound was published, so the final proof reports none.
+    return await settleUnprovenAnytime(
+      run, result, best, sokomindOptions, proofWorkers, publishedBoundsContext(run),
+    );
+  } finally {
+    clearTimeout(headStartTimer);
+    proof.abort();
+    improveAbort.abort();
+    await Promise.allSettled([proof.outcome, improvement ?? Promise.resolve()]);
+    run.context = outer;
+    outer.signal.removeEventListener("abort", onOuterAbort);
+  }
+}
+
+export async function optimalQuickImprove(
+  run: SearchRunState,
+  state: LegacyState,
+  firstIncumbent: SolverSolution,
+  engineWorkers: EngineWorkerSource,
+  options: SokomindImprovementOptions,
+  sokomindOptions: SokomindRequestOptions,
+  tuning: Readonly<Record<string, number>>,
+  maxWorkers: number,
+  analysisPlan: SokomindAnalysisPlan | undefined,
+  proofWorkers: ProofWorkerSource,
+  checkpointOptions?: ProofCheckpointOptions,
+): Promise<SolverResult> {
+  const capMs = proofFirstCapMs(run, sokomindOptions, checkpointOptions);
+  const split = proofSplit(run, sokomindOptions, checkpointOptions, capMs);
+  if (split !== undefined) {
+    return optimalAnytimeImprove(
+      run, state, firstIncumbent, engineWorkers, options, sokomindOptions,
+      tuning, maxWorkers, analysisPlan, proofWorkers, split,
+    );
+  }
+
+  const proofFirst = await proveSmallBoardFirst(
+    run, firstIncumbent, sokomindOptions, proofWorkers, capMs, OPTIMAL_PROOF_FIRST_LABEL,
+  );
+  if (proofFirst.result) return proofFirst.result;
+
+  const outcome = await improveOptimalIncumbent(
+    run, state, proofFirst.incumbent, engineWorkers, options, sokomindOptions,
+    tuning, maxWorkers, analysisPlan,
+  );
+  if (outcome.cancelled) return cancelledResult(run);
+  return finalProof(
+    run, outcome.best, sokomindOptions, proofWorkers, run.context, checkpointOptions,
   );
 }

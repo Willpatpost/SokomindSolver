@@ -25,6 +25,11 @@ export class BudgetTracker {
   coordinatorEstimatedMemoryBytes = 0;
   preparedBoardEstimatedMemoryBytes = 0;
   persistentEstimatedMemoryBytes = 0;
+  // Memory set aside for a proof running beside the engines. Leases and the
+  // memory stop honor it, but it is not reported as estimated memory.
+  reservedMemoryBytes = 0;
+  // Worker threads that proof holds; the engines run on the rest.
+  reservedWorkers = 0;
   private readonly workerLeases = new Map<string, {
     expanded: number;
     generated: number;
@@ -90,7 +95,7 @@ export class BudgetTracker {
     const maxMemory = finitePositiveLimit(limits?.maxMemoryBytes);
     if (
       maxMemory !== undefined &&
-      snapshot.estimatedMemoryBytes >= maxMemory
+      snapshot.estimatedMemoryBytes + this.reservedMemoryBytes >= maxMemory
     ) {
       return "memory";
     }

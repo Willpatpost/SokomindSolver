@@ -2004,6 +2004,40 @@ describe("concurrent proof coordinator", () => {
     assert.equal(result.status === "solved" && result.proof?.algorithm, "parallel-move-ida-star");
   });
 
+  it("picks the lane plan from planMemoryBytes and keeps each lane within its own share", async () => {
+    const request: SolverRequest = {
+      ...makeRequest(["OOOOOO", "OR X O", "O   SO", "OOOOOO"]),
+      limits: { maxMemoryBytes: 640 * 1024 * 1024 },
+    };
+    const starts: ProofStartPartition[] = [];
+    const plans: { algorithm: string; lanes: number; startsBefore: number }[] = [];
+    let workersCreated = 0;
+    const result = await runConcurrentProof(request, makeContext(), DEFAULT_SOKOMIND_REQUEST_OPTIONS,
+      makeDiscoveryResult(10, 5), {
+        proofParallelism: 2,
+        planMemoryBytes: 1792 * 1024 * 1024,
+        onLanePlan(plan) {
+          plans.push({ ...plan, startsBefore: starts.length });
+        },
+        createProofWorker() {
+          workersCreated += 1;
+          const worker = new MockProofWorker((command) => {
+            starts.push(command);
+            worker.emit({ type: "proof/partition-complete", partitionId: command.partitionId,
+              lowerBound: 10, exhausted: true });
+          });
+          return worker;
+        },
+      });
+    // Two 896 MiB lanes of the plan memory select A*; each lane still gets
+    // half of its own 512 MiB.
+    assert.deepEqual(plans, [{ algorithm: "astar", lanes: 2, startsBefore: 0 }]);
+    assert.equal(workersCreated, 2);
+    assert.ok(starts.length > 0 && starts.every((command) => command.algorithm === "astar" &&
+      command.request.limits?.maxMemoryBytes === 256 * 1024 * 1024));
+    assert.equal(result.status === "solved" && result.proof?.algorithm, "parallel-move-astar");
+  });
+
   it("does not certify active bounds while a cheaper-prefix partition is still queued", async () => {
     const request = makeRequest(["OOOOOO", "OR   O", "O XX O", "O SS O", "OOOOOO"]);
     assert.ok(enumerateFirstPushPartitions(request).length > 2);

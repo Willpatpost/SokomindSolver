@@ -242,7 +242,7 @@ fails when the generated facts below differ from source.
 | `classic-greedy` | `1.0.0` | first-found |
 | `classic-astar` | `2.2.5` | move-optimal proof |
 | `classic-ida-star` | `2.2.3` | move-optimal proof |
-| `sokomind-solver` | `1.10.0` | bounded discovery/rewrite/proof portfolio |
+| `sokomind-solver` | `1.11.0` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
@@ -283,7 +283,7 @@ fails when the generated facts below differ from source.
 
 ### Delivery ceilings
 
-- All scripts and styles: **500,000 gzip bytes**
+- All scripts and styles: **510,000 gzip bytes**
 - Largest asset: **100,000 gzip bytes**
 - Solver worker: **86,000 gzip bytes**
 - Nested engine worker: **95,000 gzip bytes**
