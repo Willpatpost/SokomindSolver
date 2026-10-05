@@ -318,6 +318,55 @@ describe("DeadlockTableLookup.check", () => {
     assert.equal(falsePositives, 0, "Label classes must not prune solvable states");
   });
 
+  it("gives the same answer for every box order", () => {
+    // Patterns are keyed by their (cell, class) pairs, so listing the same
+    // boxes in another order, descending cells included, must not change
+    // any lookup.
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOO",
+      "ORa bO",
+      "O O  O",
+      "OC  AO",
+      "Oc B O",
+      "OOOOOO",
+    ]));
+    const lookup = buildDeadlockTables(board);
+    const labels = ["A", "B", "C"];
+    let flagged = 0;
+    const assertOrderFree = (cells: readonly number[], boxLabels: readonly string[]) => {
+      const boxes: readonly DenseBox[] = cells.map((cell, i) => ({
+        id: `${boxLabels[i]}:${i}`,
+        label: boxLabels[i],
+        cell,
+      }));
+      const expected = cells.map((cell) => lookup.check(boxes, cell));
+      if (expected.includes(true)) flagged++;
+      for (const order of permutations(boxes.length)) {
+        const reordered = order.map((i) => boxes[i]);
+        for (let i = 0; i < cells.length; i++) {
+          assert.equal(lookup.check(reordered, cells[i]), expected[i]);
+        }
+      }
+    };
+
+    for (let a = 0; a < board.cellCount; a++) {
+      for (let b = a + 1; b < board.cellCount; b++) {
+        for (const labelA of labels) {
+          for (const labelB of labels) {
+            assertOrderFree([a, b], [labelA, labelB]);
+            for (let c = b + 1; c < board.cellCount; c++) {
+              for (const labelC of labels) {
+                assertOrderFree([a, b, c], [labelA, labelB, labelC]);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    assert.ok(flagged > 0);
+  });
+
   it("does not produce false positives on exhaustive small board", () => {
     const parsed = parsePuzzleRows([
       "OOOOOO",
@@ -491,4 +540,20 @@ function exactRemainingPushes(
   }
 
   return null;
+}
+
+// Every order of 0..n-1 except the identity.
+function permutations(n: number): number[][] {
+  const orders: number[][] = [];
+  const extend = (prefix: number[]) => {
+    if (prefix.length === n) {
+      if (prefix.some((value, index) => value !== index)) orders.push(prefix);
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!prefix.includes(i)) extend([...prefix, i]);
+    }
+  };
+  extend([]);
+  return orders;
 }

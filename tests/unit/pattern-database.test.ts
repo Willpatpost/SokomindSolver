@@ -6,7 +6,7 @@ import type { SolverRequest } from "../../src/solver/contracts.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
-import { toDenseBoxes } from "../../src/solver/search/model.ts";
+import { toDenseBoxes, type DenseBox } from "../../src/solver/search/model.ts";
 import {
   buildPatternDatabase,
   buildPatternDatabaseAsync,
@@ -594,4 +594,77 @@ describe("pattern database exit bound", () => {
       assert.ok(counters.pdbExitCapTrims > 0);
     });
   }
+});
+
+describe("PdbHeuristicEvaluator label totals", () => {
+  const SHARED_LABEL_ROWS = [
+    "OOOOOOOO",
+    "OR     O",
+    "O XX A O",
+    "O XX   O",
+    "O      O",
+    "OSS  a O",
+    "OSS    O",
+    "OOOOOOOO",
+  ];
+
+  it("sums the tables of a shared label before subtracting its assignment cost", () => {
+    const board = compileSearchBoard(parsePuzzleRows(SHARED_LABEL_ROWS));
+    const partitionOf = (positions: readonly (readonly [number, number])[], label: string) => {
+      const goalCells = positions.map(([row, column]) => board.cellAt(row, column));
+      return { goalCells, labels: goalCells.map(() => label), regionCells: buildGoalRegion(board, goalCells, 8) };
+    };
+    // The two X tables sit on either side of the A table, so the X total
+    // spans another label's lookup.
+    const partitions = [
+      partitionOf([[5, 1], [6, 1]], "X"),
+      partitionOf([[5, 5]], "A"),
+      partitionOf([[5, 2], [6, 2]], "X"),
+    ];
+    const pdbs = partitions.map(({ goalCells, labels, regionCells }) =>
+      buildPatternDatabase(board, { goalCells, labelIds: labels, regionCells }));
+    const evaluator = new PdbHeuristicEvaluator(partitions, pdbs);
+    const single = partitions.map((partition, i) => new PdbHeuristicEvaluator([partition], [pdbs[i]]));
+    const costMaps: ReadonlyMap<string, number>[] = [
+      new Map(),
+      new Map([["X", 3], ["A", 1]]),
+      new Map([["X", 40]]),
+      new Map([["A", 0], ["X", 0], ["B", 7]]),
+    ];
+
+    let seed = 7;
+    const nextInt = (n: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 8) % n;
+    };
+    let sharedTotals = 0;
+    let labelLevelDifferences = 0;
+    for (let sample = 0; sample < 400; sample++) {
+      // No keys, so every call recomputes: per-label state left over from
+      // the previous call would show up as a wrong total.
+      const free = Array.from({ length: board.cellCount }, (_, cell) => cell);
+      const take = () => free.splice(nextInt(free.length), 1)[0];
+      const boxes: DenseBox[] = [];
+      const xCount = nextInt(5);
+      for (let i = 0; i < xCount; i++) boxes.push({ id: `X:${i}`, label: "X", cell: take() });
+      if (nextInt(2) === 1) boxes.splice(nextInt(boxes.length + 1), 0, { id: "A:0", label: "A", cell: take() });
+
+      const parts = single.map((partEvaluator) => partEvaluator.evaluate(boxes));
+      assert.equal(evaluator.evaluate(boxes), parts.reduce((sum, value) => sum + value, 0));
+      if (parts[0] > 0 && parts[2] > 0) sharedTotals++;
+      for (const costs of costMaps) {
+        const totals = new Map<string, number>();
+        partitions.forEach(({ labels }, i) => totals.set(labels[0], (totals.get(labels[0]) ?? 0) + parts[i]));
+        let expected = 0;
+        for (const [label, total] of totals) expected += Math.max(0, total - (costs.get(label) ?? 0));
+        assert.equal(evaluator.evaluateWithSurplus(boxes, costs), expected);
+        const xCost = costs.get("X") ?? 0;
+        if (Math.max(0, parts[0] + parts[2] - xCost) !==
+          Math.max(0, parts[0] - xCost) + Math.max(0, parts[2] - xCost)) labelLevelDifferences++;
+      }
+    }
+    assert.ok(sharedTotals > 0);
+    assert.ok(labelLevelDifferences > 0);
+    assert.equal(evaluator.surplusCacheStats.size, 0);
+  });
 });

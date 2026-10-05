@@ -52,6 +52,13 @@ export class PdbHeuristicEvaluator {
   readonly #partitions: readonly GoalPartition[];
   readonly #labelSlots = new Map<string, number>();
   readonly #cellsByLabel: number[][] = [];
+  // Per label slot: its label, and the PDB total and first-touch order
+  // evaluateWithSurplus() fills; partition i reads slot #partitionSlots[i].
+  readonly #slotLabels: string[] = [];
+  readonly #partitionSlots: Int32Array;
+  readonly #slotTotals: Float64Array;
+  readonly #slotTouched: Uint8Array;
+  readonly #touchedSlots: Int32Array;
   readonly #subsetIndices: number[] = [];
   readonly #subsetCells: number[] = [];
   // Keyed by box key alone, but the surplus also depends on the assignment
@@ -80,13 +87,21 @@ export class PdbHeuristicEvaluator {
         regionCells: partition.regionCells,
       }));
     }
-    for (const partition of this.#partitions) {
-      const label = partition.labels[0];
-      if (!this.#labelSlots.has(label)) {
-        this.#labelSlots.set(label, this.#cellsByLabel.length);
+    this.#partitionSlots = new Int32Array(this.#partitions.length);
+    for (let i = 0; i < this.#partitions.length; i++) {
+      const label = this.#partitions[i].labels[0];
+      let slot = this.#labelSlots.get(label);
+      if (slot === undefined) {
+        slot = this.#cellsByLabel.length;
+        this.#labelSlots.set(label, slot);
         this.#cellsByLabel.push([]);
+        this.#slotLabels.push(label);
       }
+      this.#partitionSlots[i] = slot;
     }
+    this.#slotTotals = new Float64Array(this.#slotLabels.length);
+    this.#slotTouched = new Uint8Array(this.#slotLabels.length);
+    this.#touchedSlots = new Int32Array(this.#slotLabels.length);
   }
 
   static async createAsync(board: CompiledSearchBoard, signal: AbortSignal, budget?: ExactPreprocessingBudget): Promise<PdbHeuristicEvaluator> {
@@ -184,9 +199,8 @@ export class PdbHeuristicEvaluator {
       const pdb = this.#pdbs[i];
       const k = pdb.k;
       if (k === 0) continue;
-      const slot = this.#labelSlots.get(this.#partitions[i].labels[0]);
-      const boxCells = slot === undefined ? undefined : this.#cellsByLabel[slot];
-      if (!boxCells || boxCells.length < k) continue;
+      const boxCells = this.#cellsByLabel[this.#partitionSlots[i]];
+      if (boxCells.length < k) continue;
       const value = boxCells.length === k
         ? pdb.lookup(boxCells)
         : minSubsetLookup(pdb, boxCells, k, this.#subsetIndices, this.#subsetCells);
@@ -228,27 +242,37 @@ export class PdbHeuristicEvaluator {
       if (slot !== undefined) this.#cellsByLabel[slot].push(box.cell);
     }
 
-    const labelPdbTotals = new Map<string, number>();
+    const totals = this.#slotTotals;
+    const touched = this.#slotTouched;
+    const order = this.#touchedSlots;
+    let touchedCount = 0;
     for (let i = 0; i < this.#partitions.length; i++) {
       const pdb = this.#pdbs[i];
       const k = pdb.k;
       if (k === 0) continue;
-      const label = this.#partitions[i].labels[0];
-      const slot = this.#labelSlots.get(label);
-      const boxCells = slot === undefined ? undefined : this.#cellsByLabel[slot];
-      if (!boxCells || boxCells.length < k) continue;
+      const slot = this.#partitionSlots[i];
+      const boxCells = this.#cellsByLabel[slot];
+      if (boxCells.length < k) continue;
       const value = boxCells.length === k
         ? pdb.lookup(boxCells)
         : minSubsetLookup(pdb, boxCells, k, this.#subsetIndices, this.#subsetCells);
-      if (value !== PDB_UNSOLVED) {
-        labelPdbTotals.set(label, (labelPdbTotals.get(label) ?? 0) + value);
+      if (value === PDB_UNSOLVED) continue;
+      if (touched[slot] === 0) {
+        touched[slot] = 1;
+        order[touchedCount++] = slot;
+        totals[slot] = value;
+      } else {
+        totals[slot] += value;
       }
     }
 
+    // Labels in the order their first table answered.
     let surplus = 0;
-    for (const [label, pdbValue] of labelPdbTotals) {
-      const assignmentCost = assignmentLabelCosts.get(label) ?? 0;
-      const diff = pdbValue - assignmentCost;
+    for (let t = 0; t < touchedCount; t++) {
+      const slot = order[t];
+      touched[slot] = 0;
+      const assignmentCost = assignmentLabelCosts.get(this.#slotLabels[slot]) ?? 0;
+      const diff = totals[slot] - assignmentCost;
       if (diff > 0) surplus += diff;
     }
 

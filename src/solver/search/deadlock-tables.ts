@@ -1,6 +1,7 @@
 import type { CompiledSearchBoard } from "./compiled-board.ts";
 import type { DenseBox } from "./model.ts";
 import { throwIfSolverCancelled } from "../cancellation.ts";
+import { OPPOSITE_DIRECTION } from "./exact-search-types.ts";
 import { delayForEventLoop } from "./scheduling.ts";
 import {
   checkExactPreprocessingBudget,
@@ -77,16 +78,33 @@ interface TableBuild {
 
 type RegionBfsOutcome = "deadlocked" | "free" | "cut";
 
+// Scratch for configKey and check, which are synchronous and never re-enter.
+const keyOrder: number[] = [];
+const checkCells: number[] = [];
+const checkClasses: string[] = [];
+
+// The same key for every order of the same (cell, class) pairs: pairs go in
+// cell order, and no two boxes share a cell.
 function configKey(
   boxCells: readonly number[],
   labels: readonly string[],
 ): string {
-  const parts: string[] = [];
-  for (let i = 0; i < boxCells.length; i++) {
-    parts.push(`${boxCells[i]}:${labels[i]}`);
+  const n = boxCells.length;
+  keyOrder.length = n;
+  for (let i = 0; i < n; i++) {
+    let j = i;
+    while (j > 0 && boxCells[keyOrder[j - 1]] > boxCells[i]) {
+      keyOrder[j] = keyOrder[j - 1];
+      j--;
+    }
+    keyOrder[j] = i;
   }
-  parts.sort();
-  return parts.join(";");
+  let key = "";
+  for (let i = 0; i < n; i++) {
+    const at = keyOrder[i];
+    key += `${boxCells[at]}:${labels[at]};`;
+  }
+  return key;
 }
 
 function regionRetainedBytes(region: Region): number {
@@ -228,7 +246,8 @@ function* regionBfs(
     }
 
     const current = queue[head++];
-    const occupiedSet = new Set(current.cells);
+    // At most MAX_BOX_COUNT cells, so a scan beats building a set.
+    const occupied = current.cells;
 
     for (let bi = 0; bi < current.cells.length; bi++) {
       const boxCell = current.cells[bi];
@@ -237,12 +256,11 @@ function* regionBfs(
       for (let d = 0; d < 4; d++) {
         const dest = neighbors[d];
         if (dest < 0) continue;
-        if (occupiedSet.has(dest)) continue;
+        if (occupied.includes(dest)) continue;
 
-        const opposite = [1, 0, 3, 2][d];
-        const support = neighbors[opposite];
+        const support = neighbors[OPPOSITE_DIRECTION[d]];
         if (support < 0) continue;
-        if (occupiedSet.has(support)) continue;
+        if (occupied.includes(support)) continue;
 
         const newCells = [...current.cells];
         const newLabels = [...current.labels];
@@ -430,9 +448,11 @@ export class DeadlockTableLookup {
     const regions = this.#cellToRegions.get(movedCell);
     if (!regions) return false;
 
+    const regionBoxCells = checkCells;
+    const regionBoxClasses = checkClasses;
     for (const region of regions) {
-      const regionBoxCells: number[] = [];
-      const regionBoxClasses: string[] = [];
+      regionBoxCells.length = 0;
+      regionBoxClasses.length = 0;
       let knownLabels = true;
       for (const box of boxes) {
         if (!region.cellSet.has(box.cell)) continue;
