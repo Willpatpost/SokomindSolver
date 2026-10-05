@@ -32,6 +32,7 @@ and may take hours on proof-heavy fixtures.
 | `classic-ida-star` | Exact move IDA* adapter | Yes | Classic-eligible |
 | `production-fast` | Fast, 30-second target | No | All fixtures |
 | `production-quality` | Quality, 60-second/10% target | No | All fixtures |
+| `production-quality-parallel` | `production-quality` with the app's proof workers | No | All fixtures |
 | `production-optimal` | Optimal, 120-second certificate target | No | All fixtures, including Grand Hall |
 | `production-optimal-parallel` | `production-optimal` with the app's proof workers | No | All fixtures, including Grand Hall |
 
@@ -53,12 +54,13 @@ generated states, and 512 MiB. General Sokomind profiles use 180 seconds,
 production target profiles carry only what the app sends: their 30/60/120-second
 deadlines and 4 GiB, with no state caps, so a large board runs until its
 deadline as it would in the browser. `production-fast`, `production-quality`
-and `production-optimal` keep proof parallelism one, so Optimal's proof runs
-on the coordinator thread. `production-optimal-parallel` passes the proof
-worker count the app derives from the same 4 GiB and the machine's CPU count
-(`effectiveProofWorkerCount`; seven on any machine with at least eight CPUs),
-so its proof runs in parallel proof workers as it does in the browser. Each
-sample records the count in `configuration.sokomindOptions`.
+and `production-optimal` keep proof parallelism one, so Quality's exact lane
+and Optimal's proof run on the coordinator thread. `production-quality-parallel`
+and `production-optimal-parallel` pass the proof worker count the app derives
+from the same 4 GiB and the machine's CPU count (`effectiveProofWorkerCount`;
+seven on any machine with at least eight CPUs), so their proofs run in parallel
+proof workers as they do in the browser. Each sample records the count in
+`configuration.sokomindOptions`.
 
 Every solved sample must replay and return within its harness deadline. Quality
 requires at most `floor(1.1 * C*)` moves when an independent frozen optimum is

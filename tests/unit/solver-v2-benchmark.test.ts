@@ -86,7 +86,7 @@ describe("Solver V2 benchmark harness", () => {
   it("runs the three production targets at their deadlines including Grand Hall proof", () => {
     for (const [profileId, deadline] of [
       ["production-fast", 30_000], ["production-quality", 60_000], ["production-optimal", 120_000],
-      ["production-optimal-parallel", 120_000],
+      ["production-quality-parallel", 60_000], ["production-optimal-parallel", 120_000],
     ] as const) {
       const profile = BENCHMARK_PROFILES[profileId];
       assert.equal(profile.limits.maxElapsedMs, deadline);
@@ -105,7 +105,12 @@ describe("Solver V2 benchmark harness", () => {
     assert.equal(parallel.sokomindOptions?.mode, "optimal");
     assert.equal(parallel.sokomindOptions?.proofParallelism, APP_PROOF_PARALLELISM);
     assert.ok(APP_PROOF_PARALLELISM >= 1);
-    for (const profileId of ["production-fast", "production-quality"] as const) {
+    const qualityParallel = BENCHMARK_PROFILES["production-quality-parallel"];
+    assert.equal(qualityParallel.sokomindOptions?.mode, "quality");
+    assert.equal(qualityParallel.sokomindOptions?.proofParallelism, APP_PROOF_PARALLELISM);
+    assert.equal(qualityParallel.qualityMoveThreshold, 1.1);
+    assert.equal(BENCHMARK_PROFILES["production-quality"].sokomindOptions?.proofParallelism, 1);
+    for (const profileId of ["production-fast", "production-quality", "production-quality-parallel"] as const) {
       const tuning = parseBenchmarkTuning('{"firstPushWalkWeight":0.05}', [profileId], "treatment");
       assert.equal(tuning?.profile.firstPushWalkWeight, 0.05);
     }

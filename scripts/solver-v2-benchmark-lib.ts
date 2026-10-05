@@ -96,7 +96,8 @@ export const PRODUCTION_OPTIMAL_LIMITS: Readonly<SolverLimits> = Object.freeze({
 /**
  * The proof workers the app starts on this machine for the production memory
  * limit (useSolverController.ts). The other production targets run the
- * single-lane proof; `production-optimal-parallel` runs the app's concurrent one.
+ * single-lane proof; `production-quality-parallel` and
+ * `production-optimal-parallel` run the app's concurrent one.
  */
 export const APP_PROOF_PARALLELISM = effectiveProofWorkerCount(
   PRODUCTION_OPTIMAL_LIMITS.maxMemoryBytes!, cpus().length,
@@ -116,6 +117,7 @@ export const BENCHMARK_PROFILE_IDS = Object.freeze([
   "classic-ida-star",
   "production-fast",
   "production-quality",
+  "production-quality-parallel",
   "production-optimal",
   "production-optimal-parallel",
 ] as const);
@@ -239,6 +241,18 @@ export const BENCHMARK_PROFILES: Readonly<
     classicEligibleOnly: false,
     limits: PRODUCTION_QUALITY_LIMITS,
     sokomindOptions: productionSokomindOptions("quality", "auto"),
+    qualityMoveThreshold: 1.1,
+  }),
+  "production-quality-parallel": Object.freeze({
+    id: "production-quality-parallel",
+    solverId: sokomindSolverMetadata.id,
+    solverVersion: sokomindSolverMetadata.version,
+    deterministic: false,
+    workerCount: DEFAULT_MAX_ENGINE_WORKERS,
+    requiresKnownOptimum: false,
+    classicEligibleOnly: false,
+    limits: PRODUCTION_QUALITY_LIMITS,
+    sokomindOptions: productionSokomindOptions("quality", "auto", APP_PROOF_PARALLELISM),
     qualityMoveThreshold: 1.1,
   }),
   "production-optimal": Object.freeze({
@@ -494,7 +508,8 @@ export interface BenchmarkTuningRun {
 
 function isDiscoveryTuningProfile(profileId: BenchmarkProfileId): boolean {
   return profileId === "sokomind-fast" || profileId === "sokomind-quality" ||
-    profileId === "production-fast" || profileId === "production-quality";
+    profileId === "production-fast" || profileId === "production-quality" ||
+    profileId === "production-quality-parallel";
 }
 
 /** Resolve once before spawning; children receive the complete validated profile. */
@@ -639,6 +654,7 @@ function profileAdapter(profileId: BenchmarkProfileId, tuningRun?: BenchmarkTuni
     case "sokomind-optimal-ida":
     case "production-fast":
     case "production-quality":
+    case "production-quality-parallel":
     case "production-optimal":
     case "production-optimal-parallel":
       return createNodeSolverAdapter({tuning: tuningRun?.profile});
