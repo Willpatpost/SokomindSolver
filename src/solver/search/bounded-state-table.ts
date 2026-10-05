@@ -15,7 +15,8 @@
 // that slot is free; a lost entry only costs repeated work. A failed
 // allocation reports failure so the search can stop at its memory limit.
 
-const INITIAL_SLOTS = 256;
+// Small, so a tiny board stays within a tiny memory budget; doubling is cheap.
+const INITIAL_SLOTS = 8;
 const MAX_SLOTS = 1 << 30;
 const MAX_LOAD = 0.7;
 const META_STRIDE = 4; // stamp, hash low, hash high, value

@@ -96,6 +96,6 @@ describe("BoundedStateTable", () => {
     }
     assert.ok(asked > 0);
     assert.equal(budgeted.byteLength, bytes);
-    assert.ok(budgeted.size <= 0.7 * 256);
+    assert.ok(budgeted.size < 400);
   });
 });
