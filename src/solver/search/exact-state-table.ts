@@ -34,9 +34,9 @@ export interface ExactStateTable {
 
 export function createExactStateTable(arena: CompactNodeArena): ExactStateTable {
   // slots[2i] = hash, slots[2i + 1] = node + 1 (0 marks an empty slot).
-  let slots = new Uint32Array(INITIAL_SLOTS * 2);
+  let slots: Uint32Array = new Uint32Array(INITIAL_SLOTS * 2);
   let mask = INITIAL_SLOTS - 1;
-  let superseded = new Uint32Array(INITIAL_SUPERSEDED_WORDS);
+  let superseded: Uint32Array = new Uint32Array(INITIAL_SUPERSEDED_WORDS);
   let size = 0;
 
   const growthThreshold = (slotCount: number) => Math.floor(slotCount * 0.7);
