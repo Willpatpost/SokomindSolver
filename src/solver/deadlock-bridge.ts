@@ -127,7 +127,7 @@ export function detectDeadlock(
     });
   }
 
-  if (hasFreezeDeadlock(compiled, denseBoxes, occupancy)) {
+  if (hasFreezeDeadlock(compiled, denseBoxes, occupancy, pushedDense.cell)) {
     return Object.freeze({
       isDeadlocked: true,
       severity: "deadlock" as const,

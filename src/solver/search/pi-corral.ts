@@ -80,7 +80,9 @@ export class PiCorralDetector {
     corralBoxSet: ReadonlySet<number>,
   ): boolean {
     const corralBoxes: DenseBox[] = [];
+    let corralBoxIndex = -1;
     for (const i of corralBoxSet) {
+      if (i === push.boxIndex) corralBoxIndex = corralBoxes.length;
       corralBoxes.push(
         i === push.boxIndex
           ? { ...boxes[i], cell: push.destination }
@@ -98,7 +100,10 @@ export class PiCorralDetector {
       return true;
     }
 
-    if (hasFreezeDeadlock(board, corralBoxes, occ)) {
+    // Corral boxes alone decide what is frozen; the matching needs every box.
+    const residualBoxes = boxes.map((box, i) =>
+      i === push.boxIndex ? corralBoxes[corralBoxIndex] : box);
+    if (hasFreezeDeadlock(board, corralBoxes, occ, push.destination, residualBoxes)) {
       return true;
     }
 

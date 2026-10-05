@@ -9,7 +9,12 @@ import {
   type CompiledSearchBoard,
 } from "../../src/solver/search/compiled-board.ts";
 import { parsePuzzleRows } from "../../src/core/puzzle.ts";
-import type { DenseBox } from "../../src/solver/search/model.ts";
+import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
+import { toDenseBoxes, type DenseBox } from "../../src/solver/search/model.ts";
+import {
+  allReachableStateCosts,
+  exactRemainingMoves,
+} from "../support/exact-solver-oracle.ts";
 
 function makeOccupancy(
   board: CompiledSearchBoard,
@@ -114,23 +119,53 @@ describe("hasFreezeDeadlock", () => {
     );
   });
 
-  it("returns false for box against one wall with a free axis", () => {
-    // Box against the top wall — only stuck in one direction on vertical axis.
-    // Horizontal axis fully free. Not frozen.
-    const board = compile([
+  it("freezes a box on a wall row only when both of its neighbors there are dead", async () => {
+    // The wall above blocks the vertical axis. With no goal on row 1, both
+    // horizontal neighbors are dead cells, so every push of the box is useless.
+    const goalless = compile([
       "OOOOOOO",
       "O X   O",
       "O    SO",
       "OR    O",
       "OOOOOOO",
     ]);
-    const boxes: DenseBox[] = [boxAt(board, 1, 2, "X")];
-    const occ = makeOccupancy(board, boxes);
-    assert.equal(
-      hasFreezeDeadlock(board, boxes, occ),
-      false,
-      "box against one wall with free horizontal axis should not be frozen",
-    );
+    const stuck = [boxAt(goalless, 1, 2, "X")];
+    assert.equal(hasFreezeDeadlock(goalless, stuck, makeOccupancy(goalless, stuck)), true);
+
+    // With a goal on row 1 the right neighbor is live: one dead side is not
+    // enough, and the exact solver still finds the 4-move solution.
+    const rows = [
+      "OOOOOO",
+      "O X SO",
+      "O    O",
+      "OR   O",
+      "OOOOOO",
+    ];
+    const board = compile(rows);
+    const free = [boxAt(board, 1, 2, "X")];
+    const occ = makeOccupancy(board, free);
+    assert.equal(hasFreezeDeadlock(board, free, occ), false);
+    assert.equal(hasFreezeDeadlock(board, free, occ, free[0].cell), false);
+    const parsed = parsePuzzleRows(rows);
+    const result = await runExactMoveAStar({
+      board: parsed,
+      snapshot: {
+        puzzleId: "freeze-one-dead-side",
+        robot: parsed.initialRobot,
+        boxes: parsed.initialBoxes,
+        moves: 0,
+        pushes: 0,
+        solved: false,
+      },
+      objective: { kind: "moves" },
+    }, {
+      signal: new AbortController().signal,
+      reportProgress: () => undefined,
+      now: () => performance.now(),
+    });
+    assert.equal(result.status, "solved");
+    assert.equal(result.solution?.moves, 4);
+    assert.equal(result.solution?.optimality, "proven");
   });
 
   it("returns false with no boxes", () => {
@@ -173,10 +208,9 @@ describe("hasFreezeDeadlock", () => {
     );
   });
 
-  it("returns false when box is in corridor with one open end", () => {
-    // Box in a 1-wide corridor: walls left, right, and above, but floor below.
-    // Stuck horizontally but not vertically — not frozen.
-    // Layout: X at (5,2), S at (4,2) to satisfy validation.
+  it("treats a wall on one side as blocking the axis", () => {
+    // Walls left, right and above; floor below. The robot cannot stand on the
+    // wall above to push the box down, so the box can never move.
     const board = compile([
       "OOOOO",
       "OOOOO",
@@ -187,15 +221,8 @@ describe("hasFreezeDeadlock", () => {
       "OOROO",
       "OOOOO",
     ]);
-    // Place box at (2,2): up=wall(1,2), down=(3,2)=floor, left=wall, right=wall
-    // horizontal stuck, vertical NOT stuck → not frozen
     const boxes: DenseBox[] = [boxAt(board, 2, 2, "X")];
-    const occ = makeOccupancy(board, boxes);
-    assert.equal(
-      hasFreezeDeadlock(board, boxes, occ),
-      false,
-      "box in corridor with one open direction should not be frozen",
-    );
+    assert.equal(hasFreezeDeadlock(board, boxes, makeOccupancy(board, boxes)), true);
   });
 
   it("detects freeze with dedicated labels — frozen box has wrong label for goal", () => {
@@ -222,34 +249,117 @@ describe("hasFreezeDeadlock", () => {
     );
   });
 
-  it("starts each call unfrozen after an earlier call froze a box on its goal", () => {
-    // Box 0 is frozen in a pocket on its goal: no deadlock, but it is marked.
-    const pocket = compile([
+  it("releases a box once the neighbor that blocked it is released", () => {
+    // Box 0 has a wall above, and box 1 blocks its horizontal axis until box 1
+    // leaves the set: box 1's vertical axis has a live goal cell below it.
+    const board = compile([
       "OOOOOOO",
       "OOOO  O",
-      "OOSO  O",
-      "OOOO  O",
-      "O RXXSO",
+      "O  XX O",
+      "O  SS O",
+      "O  R  O",
       "OOOOOOO",
     ]);
-    const pocketBoxes = [boxAt(pocket, 2, 2, "X", "X:0"), boxAt(pocket, 1, 5, "X", "X:1")];
-    assert.equal(hasFreezeDeadlock(pocket, pocketBoxes, makeOccupancy(pocket, pocketBoxes)), false);
+    const boxes = [boxAt(board, 2, 3, "X", "X:0"), boxAt(board, 2, 4, "X", "X:1")];
+    const occ = makeOccupancy(board, boxes);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ), false);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ, boxes[0].cell), false);
+  });
 
-    // Box 1 sits between a wall and box 0, which is free; a stale mark on
-    // box 0 would freeze box 1 off its goal.
-    const corridor = compile([
+  it("freezes a box held only by a box frozen on its goal", () => {
+    // The X box on S sits in a corner. The box below it has a wall on its
+    // right and that box above it, so neither can ever move. No 2x2 square is
+    // fully blocked, and the box's own cell is not a dead cell.
+    const board = compile([
+      "OOOOOO",
+      "OOS  O",
+      "O XO O",
+      "O  X O",
+      "OR  SO",
+      "OOOOOO",
+    ]);
+    const boxes = [boxAt(board, 1, 2, "X", "X:0"), boxAt(board, 2, 2, "X", "X:1")];
+    const occ = makeOccupancy(board, boxes);
+    assert.equal(createsFullyBlockedTwoByTwoDeadlock(board, boxes), false);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ), true);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ, boxes[1].cell), true);
+    assert.equal(exactRemainingMoves(board, board.cellAt(4, 1), boxes).exactMoves, null);
+  });
+
+  it("allows a frozen pair only when both boxes are on their own goals", () => {
+    const xBoard = compile([
+      "OOOOOOOO",
+      "O XX SSO",
+      "O      O",
+      "O R    O",
+      "OOOOOOOO",
+    ]);
+    const typedBoard = compile([
+      "OOOOOO",
+      "Oab  O",
+      "O    O",
+      "O AB O",
+      "OR   O",
+      "OOOOOO",
+    ]);
+    const cases = [
+      [xBoard, [boxAt(xBoard, 1, 2, "X", "X:0"), boxAt(xBoard, 1, 3, "X", "X:1")], true],
+      [xBoard, [boxAt(xBoard, 1, 5, "X", "X:0"), boxAt(xBoard, 1, 6, "X", "X:1")], false],
+      // A on b's goal and B on a's goal, then each on its own.
+      [typedBoard, [boxAt(typedBoard, 1, 2, "A"), boxAt(typedBoard, 1, 1, "B")], true],
+      [typedBoard, [boxAt(typedBoard, 1, 1, "A"), boxAt(typedBoard, 1, 2, "B")], false],
+    ] as const;
+    for (const [board, boxes, dead] of cases) {
+      const occ = makeOccupancy(board, boxes);
+      assert.equal(hasFreezeDeadlock(board, boxes, occ), dead);
+      assert.equal(hasFreezeDeadlock(board, boxes, occ, boxes[0].cell), dead);
+    }
+  });
+
+  it("checks that the boxes left over can still reach the goals left over", () => {
+    // B in the corner holds the first A on goal a, frozen there. The second A
+    // is on row 1 and can only ever reach that goal, not the one on row 3.
+    const board = compile([
       "OOOOOOO",
-      "OO    O",
-      "O     O",
-      "OO SS O",
-      "O RXX O",
+      "Oba   O",
+      "O AAB O",
+      "O  a  O",
+      "OR    O",
       "OOOOOOO",
     ]);
-    const corridorBoxes = [boxAt(corridor, 2, 2, "X", "X:0"), boxAt(corridor, 2, 1, "X", "X:1")];
-    assert.equal(
-      hasFreezeDeadlock(corridor, corridorBoxes, makeOccupancy(corridor, corridorBoxes)),
-      false,
-    );
+    const boxes = [
+      boxAt(board, 1, 1, "B", "B:0"),
+      boxAt(board, 1, 2, "A", "A:0"),
+      boxAt(board, 1, 4, "A", "A:1"),
+    ];
+    const occ = makeOccupancy(board, boxes);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ), true);
+    assert.equal(hasFreezeDeadlock(board, boxes, occ, boxes[1].cell), true);
+    assert.equal(exactRemainingMoves(board, board.cellAt(4, 1), boxes).exactMoves, null);
+  });
+
+  it("only flags unsolvable states on exhaustive small boards", () => {
+    const boards = [
+      ["OOOOOOO", "OS   SO", "O XX  O", "O  O  O", "OR    O", "OOOOOOO"],
+      ["OOOOOOO", "Oa   bO", "O AB  O", "O  O  O", "OR    O", "OOOOOOO"],
+      ["OOOOOOO", "OS   aO", "O XA  O", "O  O  O", "OR    O", "OOOOOOO"],
+      ["OOOOOO", "Oa  bO", "O AABO", "O  a O", "OR   O", "OOOOOO"],
+    ];
+    for (const rows of boards) {
+      const parsed = parsePuzzleRows(rows);
+      const board = compileSearchBoard(parsed);
+      const robot = board.cellAt(parsed.initialRobot.row, parsed.initialRobot.column);
+      let flagged = 0;
+      for (const state of allReachableStateCosts(board, robot, toDenseBoxes(board, parsed.initialBoxes)).values()) {
+        const occ = makeOccupancy(board, state.boxes);
+        const dead = hasFreezeDeadlock(board, state.boxes, occ) ||
+          state.boxes.some((box) => hasFreezeDeadlock(board, state.boxes, occ, box.cell));
+        if (!dead) continue;
+        flagged += 1;
+        assert.equal(state.exactMoves, null, `${rows.join("/")}: ${JSON.stringify(state.boxes)}`);
+      }
+      assert.ok(flagged > 0, rows.join("/"));
+    }
   });
 });
 

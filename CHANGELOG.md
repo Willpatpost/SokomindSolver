@@ -61,8 +61,8 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.7, `classic-ida-star` 2.2.7 and
-  `sokomind-solver` 1.12.3. Sokomind 1.3.0 marked the earlier Quality
+- Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
+  `classic-astar` 2.2.8, `classic-ida-star` 2.2.8 and `sokomind-solver` 1.12.4. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -98,6 +98,10 @@ published a stable release.
 - The pattern-database heuristic finds its minimum over box subsets by branch
   and bound on the boxes' goal distances, instead of looking up every subset.
   h, state counts, moves and proofs are unchanged; only `pdbLookups` falls.
+- Freeze deadlocks now also catch a box held by a wall or a frozen box on one
+  side of each axis, or by dead cells on both sides, as long as it is off its
+  own goal or leaves the other boxes no way to the free goals. Exact searches
+  prune these states, and the UI deadlock warning flags them sooner.
 - A pattern-database build that hits the memory limit keeps its partial table,
   or disables that partition, instead of aborting exact search. Both are
   admissible: unreached entries read `frontierDepth + 1`, and a disabled table

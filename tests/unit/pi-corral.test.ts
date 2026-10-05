@@ -129,37 +129,38 @@ describe("PI-corral detection", () => {
     assert.ok(detector.stats.sealedDeadlocks > 0 || detector.stats.piDeadlocks > 0);
   });
 
-  it("does not produce false positives on exhaustive small board", () => {
-    const parsed = parsePuzzleRows([
-      "OOOOOO",
-      "ORXX O",
-      "O    O",
-      "O SS O",
-      "OOOOOO",
-    ]);
-    const board = compileSearchBoard(parsed);
-    let falsePositives = 0;
+  it("does not produce false positives on exhaustive small boards", () => {
+    // On the second board, pushing a box into the one-cell pocket freezes it
+    // on its goal while the other box stays outside the corral, so the freeze
+    // check must match that box against the free goal.
+    for (const rows of [
+      ["OOOOOO", "ORXX O", "O    O", "O SS O", "OOOOOO"],
+      ["OOOOOOO", "OS    O", "OO    O", "O XX SO", "OR    O", "OOOOOOO"],
+    ]) {
+      const board = compileSearchBoard(parsePuzzleRows(rows));
+      let falsePositives = 0;
 
-    for (let left = 0; left < board.cellCount; left++) {
-      for (let right = left + 1; right < board.cellCount; right++) {
-        for (let robot = 0; robot < board.cellCount; robot++) {
-          if (robot === left || robot === right) continue;
-          const boxes: readonly DenseBox[] = [
-            { id: "X:0", label: "X", cell: left },
-            { id: "X:1", label: "X", cell: right },
-          ];
-          const piDead = checkPiCorral(board, boxes, robot);
-          if (!piDead) continue;
-          // If PI-corral says dead, verify with oracle BFS
-          const exact = exactRemainingPushes(board, robot, boxes);
-          if (exact !== null) {
-            falsePositives++;
+      for (let left = 0; left < board.cellCount; left++) {
+        for (let right = left + 1; right < board.cellCount; right++) {
+          for (let robot = 0; robot < board.cellCount; robot++) {
+            if (robot === left || robot === right) continue;
+            const boxes: readonly DenseBox[] = [
+              { id: "X:0", label: "X", cell: left },
+              { id: "X:1", label: "X", cell: right },
+            ];
+            const piDead = checkPiCorral(board, boxes, robot);
+            if (!piDead) continue;
+            // If PI-corral says dead, verify with oracle BFS
+            const exact = exactRemainingPushes(board, robot, boxes);
+            if (exact !== null) {
+              falsePositives++;
+            }
           }
         }
       }
-    }
 
-    assert.equal(falsePositives, 0, "PI-corral must not prune solvable states");
+      assert.equal(falsePositives, 0, `PI-corral must not prune solvable states on ${rows.join("/")}`);
+    }
   });
 });
 

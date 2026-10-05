@@ -676,7 +676,7 @@ export async function runClassicSearch(
           const fpBoxes = movedBoxes(node.boxes, fpBoxIdx, fpDest);
           for (let bi = 0; bi < fpBoxes.length; bi++) deadlockOccupancyBuffer[fpBoxes[bi].cell] = bi;
           const fpHas2x2 = createsFullyBlockedTwoByTwoDeadlock(board, fpBoxes, fpDest, deadlockOccupancyBuffer);
-          const fpHasFreeze = !fpHas2x2 && hasFreezeDeadlock(board, fpBoxes, deadlockOccupancyBuffer);
+          const fpHasFreeze = !fpHas2x2 && hasFreezeDeadlock(board, fpBoxes, deadlockOccupancyBuffer, fpDest);
           for (let bi = 0; bi < fpBoxes.length; bi++) deadlockOccupancyBuffer[fpBoxes[bi].cell] = -1;
 
           if (!fpHas2x2 && !fpHasFreeze) {
@@ -841,7 +841,7 @@ export async function runClassicSearch(
           const boxes = movedBoxes(node.boxes, boxIndex, destination);
           for (let bi = 0; bi < boxes.length; bi++) deadlockOccupancyBuffer[boxes[bi].cell] = bi;
           const has2x2Deadlock = createsFullyBlockedTwoByTwoDeadlock(board, boxes, destination, deadlockOccupancyBuffer);
-          const hasFreezeDeadlockResult = !has2x2Deadlock && hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer);
+          const hasFreezeDeadlockResult = !has2x2Deadlock && hasFreezeDeadlock(board, boxes, deadlockOccupancyBuffer, destination);
           for (let bi = 0; bi < boxes.length; bi++) deadlockOccupancyBuffer[boxes[bi].cell] = -1;
           if (has2x2Deadlock || hasFreezeDeadlockResult) {
             counters.deadlockPrunes += 1;
@@ -1004,7 +1004,7 @@ export async function runClassicSearch(
               const tBoxes = movedBoxes(node.boxes, boxIndex, stop.finalCell);
               for (let bi = 0; bi < tBoxes.length; bi++) deadlockOccupancyBuffer[tBoxes[bi].cell] = bi;
               const tHas2x2 = createsFullyBlockedTwoByTwoDeadlock(board, tBoxes, stop.finalCell, deadlockOccupancyBuffer);
-              const tHasFreeze = !tHas2x2 && hasFreezeDeadlock(board, tBoxes, deadlockOccupancyBuffer);
+              const tHasFreeze = !tHas2x2 && hasFreezeDeadlock(board, tBoxes, deadlockOccupancyBuffer, stop.finalCell);
               for (let bi = 0; bi < tBoxes.length; bi++) deadlockOccupancyBuffer[tBoxes[bi].cell] = -1;
               if (tHas2x2 || tHasFreeze) {
                 counters.deadlockPrunes += 1;

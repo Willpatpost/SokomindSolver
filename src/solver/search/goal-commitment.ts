@@ -180,7 +180,12 @@ function residualAssignmentFeasible(
   return Number.isFinite(minimumAssignmentCost(costs));
 }
 
-function residualGroupAssignmentFeasible(
+/**
+ * True when the boxes outside `alreadyCommitted` and `newlyFrozen` can still
+ * be matched to the goals those boxes leave free, using walls-only push
+ * distances. Every excluded box must sit on a goal of its own label.
+ */
+export function residualGroupAssignmentFeasible(
   board: CompiledSearchBoard,
   boxes: readonly DenseBox[],
   alreadyCommitted: ReadonlySet<number>,

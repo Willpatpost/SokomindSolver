@@ -1857,7 +1857,7 @@ export async function runIdaStarSearch(
               fillDeadlockOccupancy(deadlockOccupancyBuffer, fpNewBoxes);
               fpDeadlock =
                 createsFullyBlockedTwoByTwoDeadlock(board, fpNewBoxes, fpDest, deadlockOccupancyBuffer) ||
-                hasFreezeDeadlock(board, fpNewBoxes, deadlockOccupancyBuffer) ||
+                hasFreezeDeadlock(board, fpNewBoxes, deadlockOccupancyBuffer, fpDest) ||
                 (patternCache !== null &&
                   createsPatternDeadlock(board, fpNewBoxes, fpDest, patternCache)) ||
                 deadlockTableCheck(fpNewBoxes, fpDest);
@@ -1968,7 +1968,7 @@ export async function runIdaStarSearch(
                 counters.deadlockPrunes += 1;
                 continue;
               }
-              if (hasFreezeDeadlock(board, tmNewBoxes, deadlockOccupancyBuffer)) {
+              if (hasFreezeDeadlock(board, tmNewBoxes, deadlockOccupancyBuffer, stop.finalCell)) {
                 counters.deadlockPrunes += 1;
                 continue;
               }
@@ -2093,7 +2093,7 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          if (hasFreezeDeadlock(board, newBoxes, deadlockOccupancyBuffer)) {
+          if (hasFreezeDeadlock(board, newBoxes, deadlockOccupancyBuffer, destination)) {
             counters.deadlockPrunes += 1;
             continue;
           }

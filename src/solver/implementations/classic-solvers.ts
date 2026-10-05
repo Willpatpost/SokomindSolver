@@ -50,7 +50,7 @@ export const classicDfsSolver = classicSolver("dfs", {
   displayName: "Depth-First Search",
   description:
     "Deterministic push-macro DFS. Finds a legal first solution without an optimality claim.",
-  version: "1.0.0",
+  version: "1.0.1",
   capabilities: capabilities(["moves"], "first-found"),
 });
 
@@ -59,7 +59,7 @@ export const classicGreedySolver = classicSolver("greedy", {
   displayName: "Greedy Best-First",
   description:
     "Assignment-guided deterministic best-first push search for fast first solutions.",
-  version: "1.0.0",
+  version: "1.0.1",
   capabilities: capabilities(["moves"], "first-found"),
 });
 
@@ -69,7 +69,7 @@ export const classicAStarSolver: SolverAdapter = Object.freeze({
     displayName: "A* Search",
     description:
       "Move-optimal A* with label-aware reverse-push assignment bounds.",
-    version: "2.2.7",
+    version: "2.2.8",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {
@@ -83,7 +83,7 @@ export const classicIdaStarSolver: SolverAdapter = Object.freeze({
     displayName: "IDA* (iterative deepening)",
     description:
       "Memory-efficient move-optimal solver using iterative deepening A*.",
-    version: "2.2.7",
+    version: "2.2.8",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {

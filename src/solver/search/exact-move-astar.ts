@@ -1360,7 +1360,7 @@ export async function runExactMoveAStar(
           fillDeadlockOccupancy(deadlockOccupancyBuffer, expansionBoxes);
           fpDeadlock =
             createsFullyBlockedTwoByTwoDeadlock(board, expansionBoxes, fpDest, deadlockOccupancyBuffer) ||
-            hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer) ||
+            hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer, fpDest) ||
             (patternCache !== null &&
               createsPatternDeadlock(board, expansionBoxes, fpDest, patternCache)) ||
             deadlockTableCheck(expansionBoxes, fpDest);
@@ -1548,7 +1548,7 @@ export async function runExactMoveAStar(
                 counters.deadlockPrunes += 1;
                 continue;
               }
-              if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer)) {
+              if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer, stop.finalCell)) {
                 (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
                 counters.deadlockPrunes += 1;
                 continue;
@@ -1661,7 +1661,7 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer)) {
+          if (hasFreezeDeadlock(board, expansionBoxes, deadlockOccupancyBuffer, destination)) {
             (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
             counters.deadlockPrunes += 1;
             continue;

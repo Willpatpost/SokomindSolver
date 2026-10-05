@@ -275,6 +275,38 @@ vary (no boxes, a disabled table, or goals outside the region) answers with
 one lookup. Tables that cover the whole board now keep their goal distances
 too, 4 bytes per cell. The version change restarts earlier IDA* checkpoints.
 
+A* and IDA* 2.2.8, Sokomind 1.12.4, and the DFS and greedy searches 1.0.1
+find more freeze deadlocks. A box used to count as frozen only when walls or
+frozen boxes sat on both sides of both axes, so only a box closed in on all four
+sides froze. After a push, the check now takes the pushed box's 4-connected
+group of boxes, assumes every box in it is frozen, and drops a box while one of
+its axes is free, until nothing more drops. An axis is blocked when:
+
+- either side is a wall;
+- either side holds a box still in the set; or
+- both sides are static dead cells for the box's label, cells from which no
+  goal of that label can be reached by pushes on a board with no other boxes.
+
+No box left in the set can ever move. Take the first push of a set box in any
+solution. It needs the robot on one side of the box and a free cell on the
+other:
+
+- A wall can be neither.
+- A set box on either side has not moved yet, so it fills that cell.
+- With both sides dead, the push lands the box on a dead cell, and other boxes
+  only make goals harder to reach, so no goal of its label is reachable.
+
+So a set box off a goal of its own label makes the state dead. If every set box
+is on its own goal, the other boxes must still reach the goals the set leaves
+free. The walls-only matching that goal commitment already uses decides this,
+and a failed matching makes the state dead. One dead side is not enough: a box
+under a wall with a dead corner to its left can still be pushed right.
+PI-corral finds the set from the corral's boxes only, which can only shrink
+it, and runs the matching on every box. The UI deadlock warning uses the same
+check, so it now flags these states sooner. The version change restarts
+earlier IDA* checkpoints. Proof revision `exact-moves-ida-contour-exit-v1` and
+storage key `sokomind.optimal.v10` also cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

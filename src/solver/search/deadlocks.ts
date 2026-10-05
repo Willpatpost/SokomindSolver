@@ -4,6 +4,7 @@ import type {
 import type {
   DenseBox,
 } from "./model.ts";
+import { residualGroupAssignmentFeasible } from "./goal-commitment.ts";
 
 /**
  * True when a box on `cell` cannot reach any goal carrying the same label,
@@ -137,85 +138,162 @@ function holdsUnsolvedBox(
 
 // Scratch for hasFreezeDeadlock, grown on demand. The check is synchronous and
 // never re-enters itself, so one set of buffers serves every caller.
-let freezeFrozen = new Uint8Array(0);
+let freezeInSet = new Uint8Array(0);
 let freezeInQueue = new Uint8Array(0);
+let freezeMembers = new Int32Array(0);
 let freezeQueue = new Int32Array(0);
 
+const NO_COMMITMENTS: ReadonlySet<number> = new Set();
+const deadCellsByBoard = new WeakMap<CompiledSearchBoard, Map<string, Uint8Array>>();
+
+/** Static dead cells for `label`, computed once per board and label. */
+function deadCellsFor(board: CompiledSearchBoard, label: string): Uint8Array {
+  let byLabel = deadCellsByBoard.get(board);
+  if (!byLabel) {
+    byLabel = new Map();
+    deadCellsByBoard.set(board, byLabel);
+  }
+  let dead = byLabel.get(label);
+  if (!dead) {
+    dead = new Uint8Array(board.cellCount);
+    for (let cell = 0; cell < board.cellCount; cell++) {
+      if (isStaticDeadCell(board, cell, label)) dead[cell] = 1;
+    }
+    byLabel.set(label, dead);
+  }
+  return dead;
+}
+
 /**
- * Detect freeze deadlocks via fixpoint analysis.
+ * Detect freeze deadlocks as a greatest fixpoint.
  *
- * A box is "frozen" when both its horizontal and vertical axes are blocked.
- * An axis is blocked when both directions on that axis lead to a wall (neighbor
- * cell < 0) or to another frozen box. The algorithm iterates until no new boxes
- * become frozen (fixpoint). If any frozen box is NOT on its matching goal, the
- * state is a deadlock.
+ * Start with the boxes in the moved box's 4-connected box component (every box
+ * when movedCell is omitted) and assume they are all frozen. An axis of a box
+ * is blocked when either side is a wall or a box still in the set, or when both
+ * sides are static dead cells for the box's label. Drop any box with a free
+ * axis and recheck its neighbors until the set is stable.
  *
- * This generalises the 2x2 check to catch longer chains of mutually stuck boxes
- * along walls or in L-shapes.
+ * No box left in the set can move in any solution: its first push would need
+ * a wall cell or an unmoved set box as destination or support, or would land
+ * on a cell from which its label's goals are unreachable. So the state is dead
+ * when a set box is off its own label's goal, or when the remaining boxes of
+ * `residualBoxes` cannot be matched to the goals the set leaves free.
+ *
+ * `occupancy` indexes `boxes`. Pi-corral passes only the corral boxes as
+ * `boxes`, which can only shrink the set, and the full box list with the push
+ * applied as `residualBoxes`, so the matching sees every box.
  */
 export function hasFreezeDeadlock(
   board: CompiledSearchBoard,
   boxes: readonly DenseBox[],
   occupancy: Int32Array,
+  movedCell?: number,
+  residualBoxes: readonly DenseBox[] = boxes,
 ): boolean {
   const n = boxes.length;
-  if (freezeFrozen.length < n) {
-    freezeFrozen = new Uint8Array(n);
+  if (freezeInSet.length < n) {
+    freezeInSet = new Uint8Array(n);
     freezeInQueue = new Uint8Array(n);
-    // Each box enters once at the start and again at most once per frozen
+    freezeMembers = new Int32Array(n);
+    // Each box enters once at the start and again at most once per dropped
     // neighbor, which bounds the queue by 5n.
     freezeQueue = new Int32Array(5 * n + 1);
   }
-  const frozen = freezeFrozen; // 0 = not frozen, 1 = frozen
+  const inSet = freezeInSet;
   const inQueue = freezeInQueue;
+  const members = freezeMembers;
   const queue = freezeQueue;
-  frozen.fill(0, 0, n);
-  let qHead = 0;
-  let qTail = 0;
+  inSet.fill(0, 0, n);
 
-  for (let i = 0; i < n; i++) {
-    queue[qTail++] = i;
-    inQueue[i] = 1;
-  }
-
-  while (qHead < qTail) {
-    const i = queue[qHead++];
-    inQueue[i] = 0;
-    if (frozen[i]) continue;
-
-    const cell = boxes[i].cell;
-    const neighbors = board.neighbors[cell];
-    if (!neighbors) continue;
-
-    const up = neighbors[0];
-    const down = neighbors[1];
-    const upBlocked = up < 0 || (occupancy[up] >= 0 && frozen[occupancy[up]] === 1);
-    const downBlocked = down < 0 || (occupancy[down] >= 0 && frozen[occupancy[down]] === 1);
-    const verticalStuck = upBlocked && downBlocked;
-
-    const left = neighbors[2];
-    const right = neighbors[3];
-    const leftBlocked = left < 0 || (occupancy[left] >= 0 && frozen[occupancy[left]] === 1);
-    const rightBlocked = right < 0 || (occupancy[right] >= 0 && frozen[occupancy[right]] === 1);
-    const horizontalStuck = leftBlocked && rightBlocked;
-
-    if (verticalStuck && horizontalStuck) {
-      frozen[i] = 1;
-      if (board.goalLabelByCell[cell] !== boxes[i].label) {
-        return true;
-      }
+  let memberCount = 0;
+  if (movedCell === undefined) {
+    for (let i = 0; i < n; i++) {
+      inSet[i] = 1;
+      members[memberCount++] = i;
+    }
+  } else {
+    const start = occupancy[movedCell];
+    if (start < 0) return false;
+    inSet[start] = 1;
+    members[memberCount++] = start;
+    for (let k = 0; k < memberCount; k++) {
+      const neighbors = board.neighbors[boxes[members[k]].cell];
       for (let d = 0; d < 4; d++) {
         const adj = neighbors[d];
-        if (adj >= 0) {
-          const adjIdx = occupancy[adj];
-          if (adjIdx >= 0 && !frozen[adjIdx] && !inQueue[adjIdx]) {
-            queue[qTail++] = adjIdx;
-            inQueue[adjIdx] = 1;
-          }
+        if (adj < 0) continue;
+        const j = occupancy[adj];
+        if (j >= 0 && !inSet[j]) {
+          inSet[j] = 1;
+          members[memberCount++] = j;
         }
       }
     }
   }
 
-  return false;
+  let qHead = 0;
+  let qTail = 0;
+  for (let k = 0; k < memberCount; k++) {
+    queue[qTail++] = members[k];
+    inQueue[members[k]] = 1;
+  }
+
+  while (qHead < qTail) {
+    const i = queue[qHead++];
+    inQueue[i] = 0;
+    if (!inSet[i]) continue;
+
+    const box = boxes[i];
+    const neighbors = board.neighbors[box.cell];
+    if (
+      freezeAxisBlocked(board, box.label, neighbors[0], neighbors[1], occupancy, inSet) &&
+      freezeAxisBlocked(board, box.label, neighbors[2], neighbors[3], occupancy, inSet)
+    ) {
+      continue;
+    }
+
+    inSet[i] = 0;
+    for (let d = 0; d < 4; d++) {
+      const adj = neighbors[d];
+      if (adj < 0) continue;
+      const j = occupancy[adj];
+      if (j >= 0 && inSet[j] && !inQueue[j]) {
+        queue[qTail++] = j;
+        inQueue[j] = 1;
+      }
+    }
+  }
+
+  let frozenCount = 0;
+  for (let k = 0; k < memberCount; k++) {
+    const i = members[k];
+    if (!inSet[i]) continue;
+    if (board.goalLabelByCell[boxes[i].cell] !== boxes[i].label) return true;
+    frozenCount += 1;
+  }
+  if (frozenCount === 0) return false;
+
+  const frozen: number[] = [];
+  for (let j = 0; j < residualBoxes.length; j++) {
+    const i = occupancy[residualBoxes[j].cell];
+    if (i >= 0 && inSet[i]) frozen.push(j);
+  }
+  return !residualGroupAssignmentFeasible(board, residualBoxes, NO_COMMITMENTS, frozen);
+}
+
+/** Neither push along the axis through `a` and `b` can ever help. */
+function freezeAxisBlocked(
+  board: CompiledSearchBoard,
+  label: string,
+  a: number,
+  b: number,
+  occupancy: Int32Array,
+  inSet: Uint8Array,
+): boolean {
+  if (a < 0 || b < 0) return true;
+  const atA = occupancy[a];
+  if (atA >= 0 && inSet[atA]) return true;
+  const atB = occupancy[b];
+  if (atB >= 0 && inSet[atB]) return true;
+  const dead = deadCellsFor(board, label);
+  return dead[a] === 1 && dead[b] === 1;
 }
