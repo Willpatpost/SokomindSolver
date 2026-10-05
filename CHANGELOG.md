@@ -61,13 +61,13 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.4 and
-  `sokomind-solver` 1.12.0. Sokomind 1.3.0 marked the earlier Quality
+- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.5 and
+  `sokomind-solver` 1.12.1. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
-- The optimal-record proof revision is now `exact-moves-pdb-exit-cap-v1` and
-  the storage key is `sokomind.optimal.v9`, so certificates stored under
+- The optimal-record proof revision is now `exact-moves-ida-contour-exit-v1`
+  and the storage key is `sokomind.optimal.v10`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
 - The IDA* checkpoint schema is now 4, so checkpoints written by the earlier
@@ -163,6 +163,11 @@ published a stable release.
 
 ### Fixed
 
+- An exact IDA* lane that held a move bound but no route, such as a parallel
+  proof lane whose partition contains the discovery route, no longer repeats
+  its last contour until a limit stops it. A finished contour that leaves
+  nothing below the bound now ends the lane, and a route found at the
+  contour's threshold is proven optimal even when a limit stops that contour.
 - A key pressed as soon as the play page appears now moves the keeper. The
   keyboard listener was attached in a passive effect that could run after the
   board was painted; it now attaches before paint.

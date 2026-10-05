@@ -27,6 +27,11 @@ import {
   runIdaStarSearch,
 } from "../../src/solver/search/ida-star.ts";
 import {
+  IDA_STAR_CHECKPOINT_SCHEMA_VERSION,
+  createBoardContentKey,
+  type IdaStarCheckpoint,
+} from "../../src/solver/search/ida-star-checkpoint.ts";
+import {
   toDenseBoxes,
   type DenseBox,
 } from "../../src/solver/search/model.ts";
@@ -121,6 +126,17 @@ const BOARD_ROWS = [
   "O XX O",
   "O SS O",
   "OOOOOO",
+];
+
+// Push right, walk two cells around the box, push down twice: 5 moves against
+// a root bound of 3 pushes and no walk.
+const WALK_AROUND_ROWS = [
+  "OOOOOOO",
+  "O     O",
+  "O RX  O",
+  "O     O",
+  "O   S O",
+  "OOOOOOO",
 ];
 
 // ---------------------------------------------------------------------------
@@ -622,16 +638,7 @@ describe("IDA* numeric caps and preprocessing budgets", () => {
   });
 
   it("exhausts a numeric cap equal to the optimum when the root bound is below it", async () => {
-    // Push right, walk two cells around the box, push down twice: 5 moves
-    // against a root bound of 3 pushes and no walk.
-    const request = requestFromRows([
-      "OOOOOOO",
-      "O     O",
-      "O RX  O",
-      "O     O",
-      "O   S O",
-      "OOOOOOO",
-    ]);
+    const request = requestFromRows(WALK_AROUND_ROWS);
     const optimum = assertSolved(await runIdaStarSearch(request, oracleContext()));
     assert.equal(optimum.solution.moves, 5);
     const root = await runIdaStarSearch(
@@ -656,6 +663,85 @@ describe("IDA* numeric caps and preprocessing budgets", () => {
     assert.equal(result.reason, "exhausted", result.detail);
     assert.equal(result.proof, undefined);
     assert.equal(result.metrics.counters?.lowerBound, optimum.solution.moves);
+
+    // One more move of room proves the optimum instead.
+    const proven = assertSolved(await runIdaStarSearch(request, oracleContext(), {
+      upperBound: optimum.solution.moves + 1,
+    }));
+    assert.equal(proven.solution.moves, optimum.solution.moves);
+    assert.equal(proven.proof?.kind, "optimal");
+  });
+
+  it("exits when the upper-bound channel lowers the cap below the optimum", async () => {
+    // The clock advances a second per read, so the lane polls the channel at
+    // its first step, before it can reach the 5-move goal.
+    let clock = 0;
+    let polls = 0;
+    const result = await runIdaStarSearch(
+      { ...requestFromRows(WALK_AROUND_ROWS), limits: { maxExpandedStates: 50_000 } },
+      {
+        signal: new AbortController().signal,
+        reportProgress: () => undefined,
+        now: () => (clock += 1_000),
+      },
+      { upperBoundChannel: { poll: () => (polls++ === 0 ? 4 : undefined) } },
+    );
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "exhausted", result.detail);
+    assert.equal(result.proof, undefined);
+    assert.equal(result.metrics.counters?.lowerBound, 4);
+  });
+
+  it("finishes a resumed lane whose threshold already reaches the cap", async () => {
+    const request = requestFromRows(WALK_AROUND_ROWS);
+    const checkpoint: IdaStarCheckpoint = {
+      schemaVersion: IDA_STAR_CHECKPOINT_SCHEMA_VERSION,
+      boardContentKey: createBoardContentKey(request.board, request.snapshot),
+      solverVersion: "test",
+      objective: request.objective,
+      exactStateCodecVersion: 0,
+      currentThreshold: 6,
+      lastExhaustedThreshold: 5,
+      incumbent: null,
+      partitionId: null,
+      transpositionMetadata: { policy: "best-g-per-iteration" },
+      counters: { expanded: 0, generated: 0, iterations: 0 },
+    };
+    const result = await runIdaStarSearch(
+      { ...request, limits: { maxExpandedStates: 50_000 } },
+      oracleContext(),
+      { checkpoint, upperBound: 5 },
+    );
+    assert.equal(result.status, "unsolved");
+    if (result.status !== "unsolved") return;
+    assert.equal(result.reason, "exhausted", result.detail);
+    assert.equal(result.metrics.counters?.lowerBound, 5);
+  });
+
+  it("certifies a route found at the contour threshold even when a limit stops the contour", async () => {
+    // Each finished contour proves every route costs at least the next
+    // threshold, so a goal found in that contour is optimal on the spot. The
+    // clock jumps when the goal is reported, so the elapsed limit stops the
+    // contour at its next step. The root bound is below 5, so the goal is not
+    // in the first contour.
+    let clock = 0;
+    let goalReported = false;
+    const result = assertSolved(await runIdaStarSearch(
+      { ...requestFromRows(WALK_AROUND_ROWS), limits: { maxElapsedMs: 1e8 } },
+      {
+        signal: new AbortController().signal,
+        reportProgress: (progress) => {
+          if (progress.phase === "improving") goalReported = true;
+        },
+        now: () => (goalReported ? 1e9 : ++clock),
+      },
+    ));
+    assert.ok(result.metrics.elapsedMs >= 1e8, "the limit never fired");
+    assert.equal(result.solution.moves, 5);
+    assert.equal(result.solution.optimality, "proven");
+    assert.equal(result.proof?.kind, "optimal");
+    assert.deepEqual(collectProofIssues(result.proof, result.solution), []);
   });
 
   it("enforces elapsed and memory limits while building exact features", async () => {

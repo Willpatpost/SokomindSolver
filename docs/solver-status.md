@@ -193,6 +193,36 @@ expanded and generated counts, moves and proofs match 2.2.3 while no memory
 limit binds. `memoryReachabilitySnapshotBytes` now reports the kept walks. The
 proof revision is unchanged.
 
+IDA* 2.2.5 and Sokomind 1.12.1 end a contour loop that could not progress. A
+lane with a move bound U but no route cut every child at f >= U, and the
+backed-up f of those cuts became the next threshold, so the lane repeated its
+last contour until a limit stopped it. Lanes start that way under a numeric or
+channel bound, and in the parallel proof the partition that holds the
+discovery route gets that route's cost as its exclusive bound, so its IDA*
+lane never closed and the proof never finished. A finished contour now ends the
+lane once its threshold or the next threshold reaches U. The argument:
+
+- h is admissible, and a value cut short by a table limit is still a lower
+  bound.
+- A route the contour did not complete was either cut at f > threshold, which
+  lowers the next threshold to at most the route's cost, or pruned by the
+  contour's best-g table, which searches the same state at no greater cost.
+- No route cheaper than U meets an f >= U cut.
+
+So the next threshold bounds every route cheaper than U that the contour did
+not complete, and a route it did complete is the incumbent. Once either
+threshold reaches U, nothing cheaper than U remains: the lane proves its
+incumbent optimal or, without one, reports that no route exists below U. The
+same bound makes the next threshold the lane's lower bound before that contour
+starts. A goal found in the contour has h = 0, so it costs exactly the
+threshold, and it is now proven optimal even when a limit stops the contour
+right after; before, it was a bounded result one contour behind. A lane that
+reports a limit reports at most U as its lower bound. Checkpoints store the
+next threshold as the last exhausted one, and the version change restarts
+earlier checkpoints. No false certificate is known; proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10`
+reject earlier records as a precaution.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -354,12 +384,12 @@ disabled pending broader performance qualification. Quality strategic defaults
 preserve explicit zero-analysis and false-plan-execution controls.
 
 Persisted optimality records use schema 7, proof revision
-`exact-moves-pdb-exit-cap-v1`, and storage key `sokomind.optimal.v9`.
+`exact-moves-ida-contour-exit-v1`, and storage key `sokomind.optimal.v10`.
 Earlier revisions are rejected in both storage tiers, including schema-7 records
 that can predate the A* frontier correction, the tunnel-macro soundness fix or
 the pattern-deadlock key fix, that were proven with the goal-cut heuristic on
-by default, or that used the earlier linear conflict or region-bound pattern
-database.
+by default, that used the earlier linear conflict or region-bound pattern
+database, or that predate the IDA* contour exit.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.

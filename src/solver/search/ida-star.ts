@@ -2171,17 +2171,18 @@ export async function runIdaStarSearch(
       transpositionSize = transposition.size;
       lastExhaustedThreshold = fLimit;
 
-      if (incumbentSolution && (fLimit >= U || nextLimit >= U)) {
-        return finishSolvedOptimal();
+      // A finished contour bounds every route it did not complete from below
+      // by nextLimit, and routes it did complete set the incumbent. Once
+      // either reaches U, nothing cheaper than U remains, with or without an
+      // incumbent. Without this exit, a lane holding a numeric or channel U
+      // but no incumbent repeats its last contour: the f >= U cuts back up
+      // into nextLimit through minChildF.
+      if (U < Infinity && (fLimit >= U || nextLimit >= U)) {
+        return incumbentSolution ? finishSolvedOptimal() : finishCapExhausted(U);
       }
 
+      // Reached only with U infinite, which also means no incumbent.
       if (nextLimit === Number.POSITIVE_INFINITY) {
-        if (incumbentSolution) {
-          return finishSolvedOptimal();
-        }
-        if (U < Infinity) {
-          return finishCapExhausted(U);
-        }
         return {
           status: "unsolved",
           reason: "exhausted",
@@ -2190,6 +2191,10 @@ export async function runIdaStarSearch(
         };
       }
 
+      // Every route cheaper than U costs at least nextLimit, so a goal the
+      // next contour finds at that cost is certified even if a limit stops
+      // the contour early.
+      lastExhaustedThreshold = nextLimit;
       fLimit = nextLimit;
     }
 
@@ -2204,7 +2209,7 @@ export async function runIdaStarSearch(
         detail: limitDetail,
         metrics: {
           ...m,
-          counters: { ...m.counters, lowerBound: lastExhaustedThreshold },
+          counters: { ...m.counters, lowerBound: Math.min(lastExhaustedThreshold, U) },
         },
       };
     }
