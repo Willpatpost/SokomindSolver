@@ -330,8 +330,12 @@ function compatiblePatternReplacementCost(
       }
     }
 
+    // A ready table lacks only relaxed-unreachable selections, which no
+    // solution uses. A cut table may lack reachable ones; they need at least
+    // the table's depth, so they still compete instead of being skipped.
     const sig = patternSignature(patternBoxes, n);
-    const distance = table.result.states.get(sig);
+    const distance = table.result.states.get(sig) ??
+      (table.result.status === "cutoff" ? table.result.depth : undefined);
     if (distance !== undefined) {
       best = Math.min(best, distance + outsideCost);
     }

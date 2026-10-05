@@ -973,7 +973,9 @@ function canonicalLocalState(domain, boxes, robot) {
 function relaxedReversePushTable(board, targetBoxes, maxStates) {
   const states = new Map([[localBoxSignature(targetBoxes), 0]]);
   const queue = [targetBoxes], floor = board.floor;
-  let head = 0, cutoff = false;
+  // Inserts arrive in nondecreasing depth and stop for good at the first size
+  // refusal, so a cut table holds every state shallower than `depth`.
+  let head = 0, cutoff = false, depth = 0;
   for (; head < queue.length && head < maxStates; head++) {
     const current = queue[head], pushes = states.get(localBoxSignature(current));
     const occupied = new Set(current.map(([position]) => position));
@@ -993,12 +995,13 @@ function relaxedReversePushTable(board, targetBoxes, maxStates) {
           continue;
         }
         states.set(signature, pushes + 1);
+        depth = pushes + 1;
         queue.push(predecessor);
       }
     });
   }
   const complete = !cutoff && head >= queue.length;
-  return {status: complete ? "ready" : "cutoff", complete, states, visited: head};
+  return {status: complete ? "ready" : "cutoff", complete, states, depth, visited: head};
 }
 
 function combinationCount(size, selected) {
@@ -1152,7 +1155,9 @@ function compatiblePatternReplacementCost(boxes, board, table) {
       if (!Number.isFinite(assignment)) return;
       outsideCost += assignment;
     }
-    const distance = table.states.get(localBoxSignature(patternBoxes));
+    // A cut table may lack reachable selections; they need at least its depth.
+    const distance = table.states.get(localBoxSignature(patternBoxes)) ??
+      (table.status === "cutoff" ? table.depth : undefined);
     if (distance !== undefined) best = Math.min(best, distance + outsideCost);
   };
   visit(0, new Map());

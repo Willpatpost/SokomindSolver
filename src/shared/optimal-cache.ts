@@ -98,8 +98,10 @@ function isValidOptimalRecordKey(value: string): boolean {
  * goal region, so they too could exceed the remaining pushes. Revision
  * exact-moves-pdb-exit-cap-v1 predates the IDA* contour exit, which now
  * certifies a goal found at the contour threshold even when a limit stops the
- * contour. No false certificate is known; its records are rejected as a
- * precaution.
+ * contour. It also used room-pattern tables that, when cut at their state cap,
+ * skipped the box selections they lacked, so the interaction boost could
+ * exceed the remaining pushes by up to 2 on measured boards. No false
+ * certificate is known; its records are rejected as a precaution.
  * The record format has no algorithm identity, so all earlier proof revisions
  * are rejected rather than attempting to retain only unaffected certificates.
  */

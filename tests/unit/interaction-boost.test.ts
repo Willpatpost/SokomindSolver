@@ -9,7 +9,14 @@ import {
   InteractionBoostEvaluator,
 } from "../../src/solver/search/interaction-boost.ts";
 import { maximumDisjointSelection } from "../../src/solver/search/disjoint-selection.ts";
-import type { HeuristicCandidate } from "../../src/solver/search/room-pattern-heuristic.ts";
+import {
+  type HeuristicCandidate,
+  RoomPatternHeuristic,
+} from "../../src/solver/search/room-pattern-heuristic.ts";
+import {
+  relaxedReversePushTable,
+  type ReversePushTableResult,
+} from "../../src/solver/search/relaxed-reverse-push.ts";
 import { minimumAssignmentCost } from "../../src/solver/search/assignment.ts";
 import { type DenseBox, toDenseBoxes } from "../../src/solver/search/model.ts";
 import { isExactPreprocessingLimitError } from "../../src/solver/search/preprocessing-budget.ts";
@@ -514,6 +521,111 @@ describe("interaction boost heuristic", () => {
     const labelCosts = fullAssignmentLabelCosts(board, boxes);
     const boost = evaluator.evaluate(boxes, labelCosts);
     assert.equal(boost, 0, "Open board with no rooms/pairs should yield 0 boost");
+  });
+
+  it("never lets a cut room table claim more than the complete table", () => {
+    // The pocket goals (1,5) and (2,5) form the room table; (5,7) is outside.
+    // With boxes on (1,5), (5,3) and (5,6), the cheapest selection sends (5,3)
+    // into the pocket (5 pushes) and (5,6) to (5,7) (1 push). A table cut after
+    // depth 4 lacks that pattern but holds the one that sends (5,6) in (4) and
+    // (5,3) out (4), so skipping missing selections claims 8 against 6.
+    const board = compileSearchBoard(parsePuzzleRows([
+      "OOOOOOOOOOO",
+      "OOOOOSOOOOO",
+      "OOOOOSOOOOO",
+      "OOOOO OOOOO",
+      "O         O",
+      "O  X  XS  O",
+      "O R  X    O",
+      "OOOOOOOOOOO",
+    ]));
+    assert.equal(board.topology.rooms.length, 1);
+    const [room] = board.topology.rooms;
+    assert.deepEqual(
+      new Set(room.goals),
+      new Set([board.cellAt(1, 5), board.cellAt(2, 5)]),
+    );
+    const targetBoxes = room.goals.map((cell) => ({ cell, label: "X" }));
+    const heuristic = (result: ReversePushTableResult): RoomPatternHeuristic =>
+      new RoomPatternHeuristic(board, {
+        tables: [{ labels: new Set(["X"]), targetBoxes, result, room }],
+        builds: 1,
+        states: result.visited,
+        estimatedRetainedBytes: result.estimatedRetainedBytes,
+      });
+    const boostOf = (
+      roomHeuristic: RoomPatternHeuristic,
+      boxes: readonly DenseBox[],
+      labelCosts: ReadonlyMap<string, number>,
+    ): number =>
+      roomHeuristic.candidates(boxes, labelCosts).reduce((total, c) => total + c.boost, 0);
+
+    const complete = relaxedReversePushTable(board, targetBoxes, 1_000_000);
+    assert.equal(complete.status, "ready");
+    const completeHeuristic = heuristic(complete);
+
+    const goals = board.goalCellsByLabel.get("X") ?? [];
+    const live: number[] = [];
+    for (let cell = 0; cell < board.cellCount; cell++) {
+      if (goals.some((goal) => (board.reversePushDistancesByGoal.get(goal)?.[cell] ?? -1) >= 0)) {
+        live.push(cell);
+      }
+    }
+    const placements: {
+      boxes: readonly DenseBox[];
+      labelCosts: ReadonlyMap<string, number>;
+      boost: number;
+    }[] = [];
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        for (let k = j + 1; k < live.length; k++) {
+          const boxes = [live[i], live[j], live[k]].map((cell, index) => ({
+            id: `X:${index}`,
+            label: "X",
+            cell,
+          }));
+          const labelCosts = fullAssignmentLabelCosts(board, boxes);
+          const hits = completeHeuristic.stats.hits;
+          const boost = boostOf(completeHeuristic, boxes, labelCosts);
+          // Skip placements whose every selection is relaxed-unreachable.
+          if (completeHeuristic.stats.hits > hits) placements.push({ boxes, labelCosts, boost });
+        }
+      }
+    }
+
+    // Caps that end on a depth layer and halfway into the next one.
+    const depths = [...complete.states.values()];
+    const caps = new Set<number>();
+    for (let depth = 0; depth < complete.depth; depth++) {
+      const atMost = depths.filter((pushes) => pushes <= depth).length;
+      const next = depths.filter((pushes) => pushes === depth + 1).length;
+      caps.add(atMost);
+      caps.add(atMost + Math.floor(next / 2));
+    }
+
+    let missingShallow = 0;
+    let overClaims = 0;
+    let skippingOverClaims = 0;
+    for (const cap of caps) {
+      const cut = relaxedReversePushTable(board, targetBoxes, cap);
+      assert.equal(cut.status, "cutoff");
+      for (const [signature, pushes] of complete.states) {
+        if (pushes < cut.depth && cut.states.get(signature) !== pushes) missingShallow++;
+      }
+      for (const [signature, pushes] of cut.states) {
+        assert.equal(complete.states.get(signature), pushes);
+      }
+      const cutHeuristic = heuristic(cut);
+      const skippingHeuristic = heuristic({ ...cut, status: "ready" });
+      for (const { boxes, labelCosts, boost } of placements) {
+        if (boostOf(cutHeuristic, boxes, labelCosts) > boost) overClaims++;
+        if (boostOf(skippingHeuristic, boxes, labelCosts) > boost) skippingOverClaims++;
+      }
+    }
+
+    assert.equal(missingShallow, 0, "A cut table lacks a state shallower than its depth");
+    assert.equal(overClaims, 0, `A cut table over-claimed in ${overClaims} placement-cap pairs`);
+    assert.ok(skippingOverClaims > 0, "Expected skipping missing selections to over-claim");
   });
 
   it("selects only non-conflicting candidates when labels overlap", () => {

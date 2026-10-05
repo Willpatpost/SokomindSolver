@@ -61,8 +61,8 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.5 and
-  `sokomind-solver` 1.12.1. Sokomind 1.3.0 marked the earlier Quality
+- Solver versions are now `classic-astar` 2.2.6, `classic-ida-star` 2.2.6 and
+  `sokomind-solver` 1.12.2. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -168,6 +168,11 @@ published a stable release.
   its last contour until a limit stops it. A finished contour that leaves
   nothing below the bound now ends the lane, and a route found at the
   contour's threshold is proven optimal even when a limit stops that contour.
+- A room-pattern table cut at its 12,000-state cap no longer lets the
+  interaction boost exceed the remaining pushes. A cut table skipped the box
+  selections it lacked; such a selection now costs at least the table's depth,
+  because the table holds every state with fewer pushes. Three boosts on
+  measured boards were over by up to 2.
 - A key pressed as soon as the play page appears now moves the keeper. The
   keyboard listener was attached in a passive effect that could run after the
   board was painted; it now attaches before paint.

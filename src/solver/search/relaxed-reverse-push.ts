@@ -12,6 +12,15 @@ export interface PatternBox {
 export interface ReversePushTableResult {
   readonly status: "ready" | "cutoff";
   readonly states: ReadonlyMap<string, number>;
+  /**
+   * Deepest push count stored. A "cutoff" table holds every state shallower
+   * than this, so a state it lacks needs at least `depth` relaxed pushes: the
+   * BFS inserts in nondecreasing depth and, once one insert is refused for
+   * size, refuses every later one. The node expanded at the first refusal has
+   * some depth D, so all depth-D states were already stored and `depth` is D
+   * or D+1. Budget stops throw instead of returning a partial table.
+   */
+  readonly depth: number;
   readonly visited: number;
   readonly estimatedRetainedBytes: number;
 }
@@ -61,6 +70,7 @@ export function relaxedReversePushTable(
   const queue: PatternBox[][] = [targetBoxes.map((b) => ({ ...b }))];
   let head = 0;
   let cutoff = false;
+  let depth = 0;
 
   checkExactPreprocessingBudget(
     budget,
@@ -117,6 +127,7 @@ export function relaxedReversePushTable(
           estimateReversePushTableBytes(states.size + 1, targetBoxes.length),
         );
         states.set(sig, pushes + 1);
+        depth = pushes + 1;
         queue.push(predecessor);
       }
     }
@@ -126,6 +137,7 @@ export function relaxedReversePushTable(
   return {
     status: complete ? "ready" : "cutoff",
     states,
+    depth,
     visited: head,
     estimatedRetainedBytes: estimateReversePushTableBytes(
       states.size,

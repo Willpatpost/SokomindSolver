@@ -223,6 +223,31 @@ earlier checkpoints. No false certificate is known; proof revision
 `exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10`
 reject earlier records as a precaution.
 
+A* and IDA* 2.2.6 and Sokomind 1.12.2 bound the box selections a cut room
+table lacks. A room-pattern table behind the interaction boost stops at 12,000
+states. A cut table used to skip a selection it did not hold, so the boost
+could take a cheaper replacement than any route needs: on 27 boards, 60 of 87
+tables were cut and three boosts exceeded the remaining pushes, by up to 2.
+A selection a cut table lacks now costs the table's depth, the deepest push
+count it stored, plus the cost outside the room. The argument:
+
+- The table is a breadth-first search, so it inserts states in nondecreasing
+  push count.
+- Once one insert is refused for size, every later insert is refused too.
+- The state expanded at the first refusal has some push count D, so every
+  state with D or fewer pushes was already stored, and the depth is D or D+1.
+- So a state the table lacks needs at least the depth in relaxed pushes.
+- A memory or time stop throws instead of returning a partial table.
+
+A complete table still skips a missing selection: that selection is
+unreachable even in the relaxed game, so no route uses it. The bundled engine
+uses the same rule in discovery, where it also covers the capacity tables that
+share the replacement cost. Pair-conflict tables skip a missing pattern only
+when it has no replacement, which was already sound. The version change
+restarts earlier IDA* checkpoints, and proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10`
+reject earlier records.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -389,7 +414,7 @@ Earlier revisions are rejected in both storage tiers, including schema-7 records
 that can predate the A* frontier correction, the tunnel-macro soundness fix or
 the pattern-deadlock key fix, that were proven with the goal-cut heuristic on
 by default, that used the earlier linear conflict or region-bound pattern
-database, or that predate the IDA* contour exit.
+database, or that predate the IDA* contour exit and the cut room-table bound.
 The separate storage key prevents older tabs from overwriting current
 certificates; progress and personal-best routes are preserved. Bump the proof
 revision and storage key after any proof-safety correction.
