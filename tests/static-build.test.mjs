@@ -79,7 +79,8 @@ const DELIVERY_BUDGETS = Object.freeze({
   // Request-lifetime engine and proof worker pools (measured 83,075 bytes).
   // Small-board proof beside the route improvement (measured 501,452 bytes).
   // Fast discovery raced beside the structural head start (measured 86,376 bytes).
-  allScriptsAndStylesGzipBytes: 510_000,
+  // Label-disjoint extras shared by both exact engines (measured 511,704 bytes).
+  allScriptsAndStylesGzipBytes: 515_000,
   largestAssetGzipBytes: 100_000,
   homeRouteGzipBytes: 195_000,
   playRouteGzipBytes: 220_000,
