@@ -19,6 +19,7 @@ import {
   FUZZ_FAILURE_KINDS,
   FUZZ_LABEL_MODES,
   FUZZ_LAYOUTS,
+  FUZZ_OPT_IN_VARIANTS,
   FUZZ_PLACEMENTS,
   FUZZ_VARIANTS,
   MAX_FUZZ_FLOOR,
@@ -189,6 +190,19 @@ describe("exact fuzz engine runs", () => {
           assert.equal(run.replayError, undefined, label);
         }
       }
+    }
+  });
+
+  it("reads partition bounds in the shared-heuristic variants and stays optimal", async () => {
+    const { rows, moves } = TUNNEL_SOUNDNESS_BY_ID.es01;
+    const shared = FUZZ_OPT_IN_VARIANTS.filter((variant) => variant.sharedHeuristic);
+    assert.equal(shared.length, 2);
+    for (const variant of shared) {
+      const run = await runFuzzEngine("astar", rows, variant, { maxExpandedStates: 200_000 });
+      assert.equal(classifyFuzzRun(run, moves), null, variant.name);
+      assert.equal(run.moves, moves, variant.name);
+      assert.equal(run.optimality, "proven", variant.name);
+      assert.ok((run.counters.sharedHeuristicHits ?? 0) > 0, variant.name);
     }
   });
 

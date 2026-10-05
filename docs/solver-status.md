@@ -344,6 +344,23 @@ from the root bound, so a partition whose lane fails still closes at its prefix
 cost as before. Proof revision `exact-moves-ida-contour-exit-v1` and storage
 key `sokomind.optimal.v10` also cover this change.
 
+The parallel proof's A* lanes can share the full exact-state bounds they
+compute (`shareLaneHeuristics`, off by default). Each lane keeps a bounded
+table keyed by the whole exact state, the robot cell plus the sorted box
+tokens, and compares keys in full, so a lookup never returns another state's
+bound. A lane offers a bound only when the evaluator finished it: a value cut
+short at the incumbent is never offered. Lanes batch their offers, and the
+coordinator relays each batch to the run's other lanes; a lane drops entries
+from another run. A hit stands in for the push bound and the extras; the
+deadlock checks still run first. Every partition of a run has the same board,
+labels and features, so a state's cost to the goal is the same in every lane,
+and a bound admissible in one lane is admissible in all. A stored value only
+ever rises to the larger of two admissible bounds, or falls to the u16 cap of
+65,535. A* with reopening stays optimal under an admissible but inconsistent
+h, so the shared bounds change which nodes are expanded but not moves or
+proofs. IDA* lanes and deterministic runs never share. Turning it on by default
+bumps the proof revision.
+
 Sokomind 1.13.2 stops a lane whose partition's prefix cost alone reaches a new
 best cost, and the lane takes the next partition. Every route in the partition
 starts with that prefix, so none is shorter than the incumbent. The partition

@@ -113,6 +113,7 @@ import {
   exactPreprocessingCacheKey,
   type ExactPreprocessingCache,
 } from "./preprocessing-cache.ts";
+import type { ExactHeuristicShare } from "./shared-heuristic-table.ts";
 
 export interface ExactIncumbent {
   readonly solution: SolverSolution;
@@ -131,6 +132,11 @@ export interface ExactMoveAStarOptions {
   readonly features?: Partial<ExactSearchFeatures>;
   /** Reuses the board-only tables of an earlier run with the same key. */
   readonly preprocessingCache?: ExactPreprocessingCache;
+  /**
+   * Full exact-state bounds shared with the other A* lanes of one proof run.
+   * A hit stands in for the push bound and the extras of that state.
+   */
+  readonly heuristicShare?: ExactHeuristicShare;
 }
 
 const PROGRESS_INTERVAL_MS = 100;
@@ -548,10 +554,12 @@ export async function runExactMoveAStar(
       (perimeterTable?.stats.retainedBytes ?? 0) +
       (componentPdbCollection?.retainedBytes ?? 0) +
       (moveCostPdbCollection?.estimatedRetainedBytes ?? 0);
+    const heuristicShare = options?.heuristicShare;
     const currentStaticBytes = () =>
       preprocessingStaticBytes +
       (boostEvaluator?.searchCacheRetainedBytes ?? 0) +
-      (pdbEvaluator?.searchCacheRetainedBytes ?? 0);
+      (pdbEvaluator?.searchCacheRetainedBytes ?? 0) +
+      (heuristicShare?.retainedBytes ?? 0);
     const labelCount = labels.length;
     const labelToId = new Map<string, number>();
     for (let i = 0; i < labels.length; i++) labelToId.set(labels[i], i);
@@ -591,7 +599,8 @@ export async function runExactMoveAStar(
     const stateTable = createExactStateTable(arena);
     estimateInteractionSearchBaseMemory = () =>
       estimatedArenaMemoryBytes(
-        preprocessingStaticBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0),
+        preprocessingStaticBytes + (pdbEvaluator?.searchCacheRetainedBytes ?? 0) +
+          (heuristicShare?.retainedBytes ?? 0),
         arena.estimatedRetainedBytes(),
         stateTable.byteLength,
         heapSize,
@@ -612,6 +621,22 @@ export async function runExactMoveAStar(
 
     const parentTokenBuf = new Uint32Array(boxCount);
     const childTokenBuf = new Uint32Array(boxCount);
+
+    const shareStats = { lookups: 0, hits: 0, offers: 0, cutoffs: 0 };
+    /** The shared full bound for the state, or -1 without a share or a hit. */
+    const lookupSharedH = (robotCell: number, tokens: Uint32Array): number => {
+      if (!heuristicShare) return -1;
+      shareStats.lookups += 1;
+      const h = heuristicShare.lookup(robotCell, tokens);
+      if (h >= 0) shareStats.hits += 1;
+      return h;
+    };
+    /** Offers the bound hEvaluator just returned, unless it stopped early. */
+    const offerFullH = (robotCell: number, tokens: Uint32Array, h: number): void => {
+      if (!heuristicShare || hEvaluator.lastTruncated || !Number.isFinite(h)) return;
+      shareStats.offers += 1;
+      heuristicShare.offer(robotCell, tokens, h);
+    };
 
     const expansionBoxes: DenseBox[] = new Array(boxCount);
     for (let i = 0; i < boxCount; i++) {
@@ -650,6 +675,11 @@ export async function runExactMoveAStar(
       lazyExtrasEvaluations: featureTelemetry.lazyExtrasEvaluations,
       lazyExtrasReinserts: featureTelemetry.lazyExtrasReinserts,
       lazyExtrasPrunes: featureTelemetry.lazyExtrasPrunes,
+      sharedHeuristicLookups: shareStats.lookups,
+      sharedHeuristicHits: shareStats.hits,
+      sharedHeuristicOffers: shareStats.offers,
+      sharedHeuristicCutoffs: shareStats.cutoffs,
+      sharedHeuristicRetainedBytes: heuristicShare?.retainedBytes ?? 0,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
       interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
       interactionBoostRetainedBytes:
@@ -1024,6 +1054,8 @@ export async function runExactMoveAStar(
       readonly hash: number;
       /** The state's stored node from `stateTable.find`, or -1 for a new state. */
       readonly previousNode: number;
+      /** h is already a full bound (a shared one), so lazy mode defers nothing. */
+      readonly complete?: boolean;
     }
 
     const retainSuccessor = (child: RetainedSuccessor): boolean => {
@@ -1039,8 +1071,9 @@ export async function runExactMoveAStar(
       arena.setPushedFromCell(index, child.pushedFromCell);
       arena.setPushDirection(index, child.pushDirection);
       arena.setHeuristic(index, child.h);
-      // In lazy mode every child is retained with push + walk only.
-      if (lazyExtras) arena.setExtrasPending(index, true);
+      // In lazy mode a child is retained with push + walk only, unless its
+      // h came from the share.
+      if (lazyExtras && !child.complete) arena.setExtrasPending(index, true);
       arena.writeBoxTokens(index, child.tokens);
       counters.retainedBytes = arena.estimatedRetainedBytes();
       counters.maxDepth = Math.max(counters.maxDepth, child.pushes);
@@ -1123,15 +1156,19 @@ export async function runExactMoveAStar(
         nodeMoves + arena.heuristic(nodeIndex) < U
       ) {
         arena.setExtrasPending(nodeIndex, false);
-        featureTelemetry.lazyExtrasEvaluations += 1;
-        const pushBound = heuristic.evaluate(expansionBoxes);
-        const walkBound = minimumManhattanWalkToPotentialPush(
-          board, nodeRobotCell, expansionBoxes,
-        );
-        const fullH = hEvaluator.evaluate(
-          pushBound, walkBound, expansionBoxes, parentTokenBuf,
-          nodeRobotCell, exactCodec.packBoxTokens(parentTokenBuf), nodeMoves, U,
-        );
+        let fullH = lookupSharedH(nodeRobotCell, parentTokenBuf);
+        if (fullH < 0) {
+          featureTelemetry.lazyExtrasEvaluations += 1;
+          const pushBound = heuristic.evaluate(expansionBoxes);
+          const walkBound = minimumManhattanWalkToPotentialPush(
+            board, nodeRobotCell, expansionBoxes,
+          );
+          fullH = hEvaluator.evaluate(
+            pushBound, walkBound, expansionBoxes, parentTokenBuf,
+            nodeRobotCell, exactCodec.packBoxTokens(parentTokenBuf), nodeMoves, U,
+          );
+          offerFullH(nodeRobotCell, parentTokenBuf, fullH);
+        }
         if (nodeMoves + fullH >= U) {
           featureTelemetry.lazyExtrasPrunes += 1;
           continue;
@@ -1321,57 +1358,65 @@ export async function runExactMoveAStar(
             const prevBestG = prevNode < 0 ? undefined : arena.gMoves(prevNode);
 
             if (prevBestG === undefined || childMoves < prevBestG) {
-              const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
-              const movedLabel = labels[newLabelId];
-              const pushLowerBound = features.incrementalAssignment
-                ? heuristic.evaluateIncremental(
-                    expansionBoxes,
-                    childBoxKey,
-                    parentBoxKey,
-                    movedLabel,
-                  )
-                : heuristic.evaluate(expansionBoxes);
-
-              if (memoryLimitReached()) {
-                (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
-                limitDetail = "Estimated solver memory limit reached.";
-                break searchLoop;
-              }
-              if (Number.isFinite(pushLowerBound)) {
-                const walkBound = minimumManhattanWalkToPotentialPush(
-                  board, savedCell, expansionBoxes,
-                );
-                if (childMoves + pushLowerBound + walkBound >= U) {
-                  counters.cheapCutoffs += 1;
-                } else {
-                const h = lazyExtras
-                  ? pushLowerBound + walkBound
-                  : hEvaluator.evaluate(
-                    pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
-                    savedCell, childBoxKey, childMoves, U,
-                  );
-                const f = childMoves + h;
-
-                if (f < U) {
-                  if (!retainSuccessor({
-                    robotCell: savedCell,
-                    moves: childMoves,
-                    pushes: childPushes,
-                    parentIndex: nodeIndex,
-                    pushedFromCell: savedCell,
-                    pushDirection: fpDir,
-                    h,
-                    tokens: childTokenBuf,
-                    hash: childHash,
-                    previousNode: prevNode,
-                  })) {
-                    (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
-                    break searchLoop;
-                  }
-                }
-                }
+              // h stays -1 when the child is cut before it gets one.
+              let h = lookupSharedH(savedCell, childTokenBuf);
+              const sharedH = h >= 0;
+              if (sharedH) {
+                if (childMoves + h >= U) shareStats.cutoffs += 1;
               } else {
-                counters.infeasiblePrunes += 1;
+                const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+                const movedLabel = labels[newLabelId];
+                const pushLowerBound = features.incrementalAssignment
+                  ? heuristic.evaluateIncremental(
+                      expansionBoxes,
+                      childBoxKey,
+                      parentBoxKey,
+                      movedLabel,
+                    )
+                  : heuristic.evaluate(expansionBoxes);
+
+                if (memoryLimitReached()) {
+                  (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+                  limitDetail = "Estimated solver memory limit reached.";
+                  break searchLoop;
+                }
+                if (Number.isFinite(pushLowerBound)) {
+                  const walkBound = minimumManhattanWalkToPotentialPush(
+                    board, savedCell, expansionBoxes,
+                  );
+                  if (childMoves + pushLowerBound + walkBound >= U) {
+                    counters.cheapCutoffs += 1;
+                  } else if (lazyExtras) {
+                    h = pushLowerBound + walkBound;
+                  } else {
+                    h = hEvaluator.evaluate(
+                      pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+                      savedCell, childBoxKey, childMoves, U,
+                    );
+                    offerFullH(savedCell, childTokenBuf, h);
+                  }
+                } else {
+                  counters.infeasiblePrunes += 1;
+                }
+              }
+
+              if (h >= 0 && childMoves + h < U) {
+                if (!retainSuccessor({
+                  robotCell: savedCell,
+                  moves: childMoves,
+                  pushes: childPushes,
+                  parentIndex: nodeIndex,
+                  pushedFromCell: savedCell,
+                  pushDirection: fpDir,
+                  h,
+                  tokens: childTokenBuf,
+                  hash: childHash,
+                  previousNode: prevNode,
+                  complete: sharedH,
+                })) {
+                  (expansionBoxes[fpBoxIdx] as { cell: number }).cell = savedCell;
+                  break searchLoop;
+                }
               }
             } else {
               counters.duplicates += 1;
@@ -1497,44 +1542,54 @@ export async function runExactMoveAStar(
                 continue;
               }
 
-              const tChildBoxKey = exactCodec.packBoxTokens(childTokenBuf);
-              const tMovedLabel = labels[tNewLabelId];
-              const tPushLowerBound = features.incrementalAssignment
-                ? heuristic.evaluateIncremental(
-                    expansionBoxes, tChildBoxKey, parentBoxKey, tMovedLabel,
-                  )
-                : heuristic.evaluate(expansionBoxes);
-              if (memoryLimitReached()) {
-                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
-                limitDetail = "Estimated solver memory limit reached.";
-                break searchLoop;
-              }
-              if (!Number.isFinite(tPushLowerBound)) {
-                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
-                counters.infeasiblePrunes += 1;
-                continue;
-              }
+              let tH = lookupSharedH(stop.robotCell, childTokenBuf);
+              const tSharedH = tH >= 0;
+              if (!tSharedH) {
+                const tChildBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+                const tMovedLabel = labels[tNewLabelId];
+                const tPushLowerBound = features.incrementalAssignment
+                  ? heuristic.evaluateIncremental(
+                      expansionBoxes, tChildBoxKey, parentBoxKey, tMovedLabel,
+                    )
+                  : heuristic.evaluate(expansionBoxes);
+                if (memoryLimitReached()) {
+                  (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                  limitDetail = "Estimated solver memory limit reached.";
+                  break searchLoop;
+                }
+                if (!Number.isFinite(tPushLowerBound)) {
+                  (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                  counters.infeasiblePrunes += 1;
+                  continue;
+                }
 
-              const tWalkBound = minimumManhattanWalkToPotentialPush(
-                board, stop.robotCell, expansionBoxes,
-              );
-              if (tChildMoves + tPushLowerBound + tWalkBound >= U) {
-                (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
-                counters.cheapCutoffs += 1;
-                continue;
-              }
-
-              const tH = lazyExtras
-                ? tPushLowerBound + tWalkBound
-                : hEvaluator.evaluate(
-                  tPushLowerBound, tWalkBound, expansionBoxes, childTokenBuf,
-                  stop.robotCell, tChildBoxKey, tChildMoves, U,
+                const tWalkBound = minimumManhattanWalkToPotentialPush(
+                  board, stop.robotCell, expansionBoxes,
                 );
+                if (tChildMoves + tPushLowerBound + tWalkBound >= U) {
+                  (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
+                  counters.cheapCutoffs += 1;
+                  continue;
+                }
+
+                if (lazyExtras) {
+                  tH = tPushLowerBound + tWalkBound;
+                } else {
+                  tH = hEvaluator.evaluate(
+                    tPushLowerBound, tWalkBound, expansionBoxes, childTokenBuf,
+                    stop.robotCell, tChildBoxKey, tChildMoves, U,
+                  );
+                  offerFullH(stop.robotCell, childTokenBuf, tH);
+                }
+              }
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
 
-              if (tF >= U) continue;
+              if (tF >= U) {
+                if (tSharedH) shareStats.cutoffs += 1;
+                continue;
+              }
 
               if (!retainSuccessor({
                 robotCell: stop.robotCell,
@@ -1547,6 +1602,7 @@ export async function runExactMoveAStar(
                 tokens: childTokenBuf,
                 hash: tChildHash,
                 previousNode: tPrevNode,
+                complete: tSharedH,
               })) {
                 break searchLoop;
               }
@@ -1612,54 +1668,62 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
-          const movedLabel = labels[newLabelId];
-          const pushLowerBound = features.incrementalAssignment
-            ? heuristic.evaluateIncremental(
-                expansionBoxes,
-                childBoxKey,
-                parentBoxKey,
-                movedLabel,
-              )
-            : heuristic.evaluate(expansionBoxes);
-          if (memoryLimitReached()) {
-            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
-            limitDetail = "Estimated solver memory limit reached.";
-            syncState();
-            break searchLoop;
-          }
-          if (!Number.isFinite(pushLowerBound)) {
-            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
-            counters.infeasiblePrunes += 1;
-            continue;
-          }
+          let h = lookupSharedH(savedCell, childTokenBuf);
+          const sharedH = h >= 0;
+          if (!sharedH) {
+            const childBoxKey = exactCodec.packBoxTokens(childTokenBuf);
+            const movedLabel = labels[newLabelId];
+            const pushLowerBound = features.incrementalAssignment
+              ? heuristic.evaluateIncremental(
+                  expansionBoxes,
+                  childBoxKey,
+                  parentBoxKey,
+                  movedLabel,
+                )
+              : heuristic.evaluate(expansionBoxes);
+            if (memoryLimitReached()) {
+              (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+              limitDetail = "Estimated solver memory limit reached.";
+              syncState();
+              break searchLoop;
+            }
+            if (!Number.isFinite(pushLowerBound)) {
+              (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+              counters.infeasiblePrunes += 1;
+              continue;
+            }
 
-          counters.avoidedReachabilityFloods += 1;
+            counters.avoidedReachabilityFloods += 1;
 
-          // Every extra below is >= 0, so h never falls below
-          // push + walk: a child this test cuts would fail f >= U anyway.
-          const walkBound = minimumManhattanWalkToPotentialPush(
-            board,
-            savedCell,
-            expansionBoxes,
-          );
-          if (childMoves + pushLowerBound + walkBound >= U) {
-            (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
-            counters.cheapCutoffs += 1;
-            continue;
-          }
-
-          const h = lazyExtras
-            ? pushLowerBound + walkBound
-            : hEvaluator.evaluate(
-              pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
-              savedCell, childBoxKey, childMoves, U,
+            // Every extra below is >= 0, so h never falls below
+            // push + walk: a child this test cuts would fail f >= U anyway.
+            const walkBound = minimumManhattanWalkToPotentialPush(
+              board,
+              savedCell,
+              expansionBoxes,
             );
+            if (childMoves + pushLowerBound + walkBound >= U) {
+              (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
+              counters.cheapCutoffs += 1;
+              continue;
+            }
+
+            if (lazyExtras) {
+              h = pushLowerBound + walkBound;
+            } else {
+              h = hEvaluator.evaluate(
+                pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+                savedCell, childBoxKey, childMoves, U,
+              );
+              offerFullH(savedCell, childTokenBuf, h);
+            }
+          }
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
 
           if (f >= U) {
+            if (sharedH) shareStats.cutoffs += 1;
             continue;
           }
 
@@ -1674,6 +1738,7 @@ export async function runExactMoveAStar(
             tokens: childTokenBuf,
             hash: childHash,
             previousNode: prevNode,
+            complete: sharedH,
           })) {
             break searchLoop;
           }

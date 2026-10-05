@@ -349,6 +349,9 @@ interface PartitionTracker {
 // Each coordinator run gets its own id, which every lane result echoes.
 let nextProofRunId = 0;
 
+/** Off until an A/B shows the shared bounds pay for their memory and messages. */
+const SHARE_LANE_HEURISTICS_BY_DEFAULT = false;
+
 export interface ConcurrentProofOptions {
   /** A factory gives each run fresh lanes; a source may lend lanes kept from an earlier run. */
   readonly createProofWorker: (() => SokomindProofWorker) | ProofWorkerSource;
@@ -369,6 +372,12 @@ export interface ConcurrentProofOptions {
    * incumbent before it lowers the bound. Deterministic runs take none.
    */
   readonly outsideIncumbents?: OutsideIncumbentSource;
+  /**
+   * A* lanes share the full exact-state bounds they compute, relayed through
+   * the coordinator. Deterministic runs never share, since what a lane reads
+   * would depend on timing.
+   */
+  readonly shareLaneHeuristics?: boolean;
 }
 
 export interface OutsideIncumbentSource {
@@ -518,6 +527,8 @@ export async function runConcurrentProof(
 
   const proofStartedAt = proofPlanningStartedAt;
   const runId = ++nextProofRunId;
+  const shareHeuristic = workerCount > 1 && !options.deterministic &&
+    (concurrentOptions.shareLaneHeuristics ?? SHARE_LANE_HEURISTICS_BY_DEFAULT);
 
   return new Promise<SolverResult>((resolve) => {
     let settled = false;
@@ -850,6 +861,7 @@ export async function runConcurrentProof(
         prefixSteps: partition.prefixSteps,
         algorithm,
         deterministic: options.deterministic,
+        ...(shareHeuristic ? { shareHeuristic: true } : {}),
       };
       try {
         worker.postMessage(command);
@@ -928,6 +940,21 @@ export async function runConcurrentProof(
       const result: ProofResult = data;
       // A lane's results from an earlier run can say nothing about this one.
       if (result.runId !== runId) return;
+      if (result.type === "proof/heuristic-entries") {
+        // Bounds are about states, not partitions, so they pass to every
+        // other lane of the run whichever partition the sender is on. The
+        // heartbeat, not these, keeps the sender's watchdog quiet.
+        if (!shareHeuristic) return;
+        for (const w of workers) {
+          if (w === worker || unavailableWorkers.has(w)) continue;
+          try {
+            w.postMessage({ type: "proof/heuristic-entries", runId, entries: result.entries });
+          } catch {
+            handleWorkerError(w);
+          }
+        }
+        return;
+      }
       const tracker = trackerById.get(result.partitionId);
       const active = activeByWorker.get(worker);
       if (tracker?.completed) return;

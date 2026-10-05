@@ -12,6 +12,11 @@ import {
 import { runIdaStarSearch } from "../search/ida-star.ts";
 import { ExactPreprocessingCache } from "../search/preprocessing-cache.ts";
 import {
+  SHARED_HEURISTIC_MAX_H,
+  SharedHeuristicTable,
+  type ExactHeuristicShare,
+} from "../search/shared-heuristic-table.ts";
+import {
   selectProofAlgorithm,
   type ProofAlgorithm,
 } from "../search/proof-algorithm-selection.ts";
@@ -23,12 +28,25 @@ import {
   type ProofSolutionFound,
   type ProofPartitionComplete,
   type ProofError,
+  type ProofHeuristicEntries,
   type ProofIdle,
   type ProofResult,
   type ProofStartPartition,
 } from "./sokomind-proof-protocol.ts";
 
 const PROGRESS_THROTTLE_MS = 200;
+/** A lane's shared-bound table takes at most this, and at most 1/8 of its memory limit. */
+const SHARED_HEURISTIC_MAX_BYTES = 64 * 1024 * 1024;
+/** Offered bounds are batched into messages of up to this many entries. */
+const SHARED_HEURISTIC_OUTBOX_ENTRIES = 4096;
+
+/** The bounds this worker holds for one coordinator run. */
+interface RunHeuristicShare {
+  readonly runId: number;
+  readonly boxCount: number;
+  readonly table: SharedHeuristicTable;
+  readonly scratchTokens: Uint32Array;
+}
 
 function prependSolution(
   partition: ProofStartPartition,
@@ -70,6 +88,49 @@ export function createProofWorkerRuntime(
   // Outlives partitions and runs: the partitions of a proof share a board, so
   // only the first one on this worker builds the tables.
   const preprocessingCache = new ExactPreprocessingCache();
+  // Outlives partitions but not runs: every partition of a run has the same
+  // board and labels, so box tokens name the same state in each of them.
+  let runShare: RunHeuristicShare | null = null;
+
+  /**
+   * The kernel's view of the run's shared bounds. Offers go into the local
+   * table and an outbox that `flush` posts for the coordinator to relay.
+   */
+  function createKernelShare(
+    share: RunHeuristicShare,
+    partitionId: string,
+  ): { readonly kernelShare: ExactHeuristicShare; readonly flush: () => void } {
+    const { runId, boxCount, table } = share;
+    const stride = boxCount + 2;
+    const outbox = new Uint32Array(SHARED_HEURISTIC_OUTBOX_ENTRIES * stride);
+    let pending = 0;
+    const flush = (): void => {
+      if (pending === 0) return;
+      postResult({
+        type: "proof/heuristic-entries",
+        runId,
+        partitionId,
+        entries: outbox.slice(0, pending * stride),
+      } satisfies ProofHeuristicEntries);
+      pending = 0;
+    };
+    const kernelShare: ExactHeuristicShare = {
+      lookup: (robotCell, tokens) => table.lookup(robotCell, tokens),
+      offer(robotCell, tokens, h) {
+        table.insert(robotCell, tokens, h);
+        const base = pending * stride;
+        outbox[base] = robotCell;
+        for (let i = 0; i < boxCount; i++) outbox[base + 1 + i] = tokens[i];
+        outbox[base + 1 + boxCount] = Math.min(h, SHARED_HEURISTIC_MAX_H);
+        pending += 1;
+        if (pending === SHARED_HEURISTIC_OUTBOX_ENTRIES) flush();
+      },
+      get retainedBytes() {
+        return table.retainedBytes + outbox.byteLength;
+      },
+    };
+    return { kernelShare, flush };
+  }
 
   function createUpperBoundChannel(run: PartitionRun): UpperBoundChannel {
     return {
@@ -90,6 +151,8 @@ export function createProofWorkerRuntime(
       command;
 
     const channel = createUpperBoundChannel(run);
+    if (runShare !== null && runShare.runId !== runId) runShare = null;
+    let shareFlush: (() => void) | undefined;
 
     let lastProgressMs = 0;
     let lastProgress: ProofProgress = {
@@ -108,6 +171,7 @@ export function createProofWorkerRuntime(
     const context: SolverExecutionContext = {
       signal: run.abortController.signal,
       reportProgress(progress: SolverProgress): void {
+        shareFlush?.();
         const now = performance.now();
         if (now - lastProgressMs < PROGRESS_THROTTLE_MS) return;
         run.lastReportedLowerBound = Math.max(
@@ -141,6 +205,25 @@ export function createProofWorkerRuntime(
       );
     }
 
+    let heuristicShare: ExactHeuristicShare | undefined;
+    if (command.shareHeuristic && selectedAlgorithm === "astar") {
+      if (runShare === null) {
+        const maxMemoryBytes = request.limits?.maxMemoryBytes ?? Infinity;
+        runShare = {
+          runId,
+          boxCount,
+          table: new SharedHeuristicTable(
+            boxCount,
+            Math.min(SHARED_HEURISTIC_MAX_BYTES, Math.floor(maxMemoryBytes / 8)),
+          ),
+          scratchTokens: new Uint32Array(boxCount),
+        };
+      }
+      const created = createKernelShare(runShare, partitionId);
+      heuristicShare = created.kernelShare;
+      shareFlush = created.flush;
+    }
+
     // The table builds before the search report no progress, so the last
     // progress is resent from their yields. A lane that stops yielding still
     // falls silent and trips the coordinator's watchdog.
@@ -154,6 +237,7 @@ export function createProofWorkerRuntime(
           upperBound: initialUpperBound,
           upperBoundChannel: channel,
           preprocessingCache,
+          heuristicShare,
         });
       } else {
         result = await runIdaStarSearch(request, context, {
@@ -172,6 +256,7 @@ export function createProofWorkerRuntime(
       return;
     } finally {
       clearInterval(heartbeat);
+      shareFlush?.();
     }
 
     if (result.status === "solved") {
@@ -276,6 +361,22 @@ export function createProofWorkerRuntime(
       case "proof/cancel":
         activeRun?.abortController.abort();
         break;
+
+      case "proof/heuristic-entries": {
+        // Entries from another lane of this worker's current run; an older
+        // run's entries, or a malformed batch, are ignored.
+        const share = runShare;
+        if (share === null || share.runId !== command.runId) break;
+        const { entries } = command;
+        const { boxCount, table, scratchTokens } = share;
+        const stride = boxCount + 2;
+        if (entries.length % stride !== 0) break;
+        for (let base = 0; base < entries.length; base += stride) {
+          for (let i = 0; i < boxCount; i++) scratchTokens[i] = entries[base + 1 + i];
+          table.insert(entries[base], scratchTokens, entries[base + 1 + boxCount]);
+        }
+        break;
+      }
     }
   };
 }

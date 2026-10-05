@@ -38,6 +38,9 @@ published a stable release.
   queues children with push + walk and computes the rest of h when a child is
   popped, dropping it at f >= the incumbent or queueing it again if h rose.
   Nothing changes while it is off.
+- An opt-in `shareLaneHeuristics` proof option (off by default): A* lanes of
+  one parallel proof share the full exact-state bounds they compute, relayed
+  by the coordinator. Nothing changes while it is off.
 
 ### Changed
 

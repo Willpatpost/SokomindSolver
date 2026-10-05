@@ -30,6 +30,10 @@ import type {
   SolverResult,
   SolverSolution,
 } from "../../src/solver/contracts.ts";
+import {
+  buildPartitionRequest,
+  enumerateFirstPushPartitions,
+} from "../../src/solver/implementations/sokomind-proof-protocol.ts";
 import { compileSearchBoard } from "../../src/solver/search/compiled-board.ts";
 import { runExactMoveAStar } from "../../src/solver/search/exact-move-astar.ts";
 import {
@@ -39,6 +43,10 @@ import {
 } from "../../src/solver/search/exact-search-features.ts";
 import { runIdaStarSearch } from "../../src/solver/search/ida-star.ts";
 import { toDenseBoxes } from "../../src/solver/search/model.ts";
+import {
+  SharedHeuristicTable,
+  type ExactHeuristicShare,
+} from "../../src/solver/search/shared-heuristic-table.ts";
 import { verifySolverSolution } from "../../src/solver/verification.ts";
 import { exactRemainingMoves } from "./exact-solver-oracle.ts";
 
@@ -728,10 +736,23 @@ export const FUZZ_ENGINES: readonly FuzzEngine[] = Object.freeze(["astar", "ida"
 export interface FuzzVariant {
   readonly name: string;
   readonly features: Partial<ExactSearchFeatures>;
+  /**
+   * A* only: the run reads bounds that A* runs on each first-push partition
+   * offered to a shared table first, as the other lanes of a proof would.
+   */
+  readonly sharedHeuristic?: boolean;
 }
 
-function variant(name: string, features: Partial<ExactSearchFeatures>): FuzzVariant {
-  return Object.freeze({ name, features: Object.freeze({ ...features }) });
+function variant(
+  name: string,
+  features: Partial<ExactSearchFeatures>,
+  sharedHeuristic = false,
+): FuzzVariant {
+  return Object.freeze({
+    name,
+    features: Object.freeze({ ...features }),
+    ...(sharedHeuristic ? { sharedHeuristic } : {}),
+  });
 }
 
 /**
@@ -747,15 +768,22 @@ export const FUZZ_VARIANTS: readonly FuzzVariant[] = Object.freeze([
 
 /**
  * Opt-in features that claim an admissible bound, plus lazyExtras, which only
- * delays the extras to pop time (A* only). goalCutHeuristic is left out on
- * purpose: it is known not to be admissible (see exact-search-features.ts).
+ * delays the extras to pop time (A* only), and the bounds shared between A*
+ * lanes, once eager and once lazy with tunnel macros so every site that reads
+ * them runs. goalCutHeuristic is left out on purpose: it is known not to be
+ * admissible (see exact-search-features.ts).
  */
 export const FUZZ_OPT_IN_VARIANTS: readonly FuzzVariant[] = Object.freeze([
   variant("backwardPerimeter", { backwardPerimeter: true }),
   variant("componentPdb", { componentPdb: true }),
   variant("moveCostPatternPdb", { moveCostPatternPdb: true }),
   variant("lazyExtras", { lazyExtras: true }),
+  variant("sharedHeuristic", {}, true),
+  variant("sharedHeuristicLazyTunnels", { lazyExtras: true, tunnelMacros: true }, true),
 ]);
+
+/** Small enough that fuzz boards also reach the table's full-window overwrite. */
+const FUZZ_SHARED_HEURISTIC_BYTES = 256 * 1024;
 
 export interface FuzzRun {
   readonly engine: FuzzEngine;
@@ -840,6 +868,28 @@ function replayFailure(
   return undefined;
 }
 
+/** A table filled by A* runs on each first-push partition of the request. */
+async function partitionFilledShare(
+  request: SolverRequest,
+  features: Partial<ExactSearchFeatures>,
+): Promise<ExactHeuristicShare> {
+  const table = new SharedHeuristicTable(request.snapshot.boxes.length, FUZZ_SHARED_HEURISTIC_BYTES);
+  const share: ExactHeuristicShare = {
+    lookup: (robotCell, tokens) => table.lookup(robotCell, tokens),
+    offer: (robotCell, tokens, h) => table.insert(robotCell, tokens, h),
+    get retainedBytes() {
+      return table.retainedBytes;
+    },
+  };
+  for (const partition of enumerateFirstPushPartitions(request)) {
+    await runExactMoveAStar(buildPartitionRequest(request, partition), fuzzContext(), {
+      features,
+      heuristicShare: share,
+    });
+  }
+  return share;
+}
+
 export async function runFuzzEngine(
   engine: FuzzEngine,
   rows: readonly string[],
@@ -853,9 +903,14 @@ export async function runFuzzEngine(
   try {
     request = fuzzRequest(rows, limits, start);
     const options = { features: fuzzVariant.features };
-    result = engine === "astar"
-      ? await runExactMoveAStar(request, fuzzContext(), options)
-      : await runIdaStarSearch(request, fuzzContext(), options);
+    if (engine === "astar") {
+      const heuristicShare = fuzzVariant.sharedHeuristic
+        ? await partitionFilledShare(request, fuzzVariant.features)
+        : undefined;
+      result = await runExactMoveAStar(request, fuzzContext(), { ...options, heuristicShare });
+    } else {
+      result = await runIdaStarSearch(request, fuzzContext(), options);
+    }
   } catch (error) {
     return { ...base, status: "error", error: errorText(error), expandedStates: 0, counters: {} };
   }

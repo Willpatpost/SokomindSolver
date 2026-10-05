@@ -36,6 +36,8 @@ export interface ProofStartPartition {
   readonly prefixSteps: readonly SolutionStep[];
   readonly algorithm: "astar" | "ida-star";
   readonly deterministic?: boolean;
+  /** A* only: share full exact-state bounds with the run's other lanes. */
+  readonly shareHeuristic?: boolean;
 }
 
 export interface ProofUpdateUpperBound {
@@ -47,10 +49,22 @@ export interface ProofCancel {
   readonly type: "proof/cancel";
 }
 
+/**
+ * Exact-state bounds another lane of the run computed in full, relayed by
+ * the coordinator. Each entry is the robot cell, the sorted box tokens, then
+ * the bound.
+ */
+export interface ProofHeuristicEntriesCommand {
+  readonly type: "proof/heuristic-entries";
+  readonly runId: number;
+  readonly entries: Uint32Array;
+}
+
 export type ProofCommand =
   | ProofStartPartition
   | ProofUpdateUpperBound
-  | ProofCancel;
+  | ProofCancel
+  | ProofHeuristicEntriesCommand;
 
 export interface ProofProgress {
   readonly type: "proof/progress";
@@ -86,6 +100,14 @@ export interface ProofError {
   readonly message: string;
 }
 
+/** Bounds a lane computed in full, in the layout of the relayed command. */
+export interface ProofHeuristicEntries {
+  readonly type: "proof/heuristic-entries";
+  readonly runId: number;
+  readonly partitionId: string;
+  readonly entries: Uint32Array;
+}
+
 /** Posted after a partition's last result, once the lane can take another. */
 export interface ProofIdle {
   readonly type: "proof/idle";
@@ -98,12 +120,14 @@ export type ProofResult =
   | ProofSolutionFound
   | ProofPartitionComplete
   | ProofError
+  | ProofHeuristicEntries
   | ProofIdle;
 
 const PROOF_COMMAND_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/start-partition",
   "solver/update-upper-bound",
   "proof/cancel",
+  "proof/heuristic-entries",
 ]);
 
 const PROOF_RESULT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
@@ -111,6 +135,7 @@ const PROOF_RESULT_TYPES: ReadonlySet<unknown> = new Set<unknown>([
   "proof/solution",
   "proof/partition-complete",
   "proof/error",
+  "proof/heuristic-entries",
   "proof/idle",
 ]);
 
@@ -143,6 +168,11 @@ export function isProofCommand(value: unknown): value is ProofCommand {
       );
     case "proof/cancel":
       return true;
+    case "proof/heuristic-entries":
+      return (
+        isNonNegativeSafeCost(value.runId) &&
+        value.entries instanceof Uint32Array
+      );
     default:
       return false;
   }
@@ -187,6 +217,11 @@ export function isProofResult(value: unknown): value is ProofResult {
       return (
         typeof value.partitionId === "string" &&
         typeof value.message === "string"
+      );
+    case "proof/heuristic-entries":
+      return (
+        typeof value.partitionId === "string" &&
+        value.entries instanceof Uint32Array
       );
     case "proof/idle":
       return typeof value.partitionId === "string";
