@@ -202,7 +202,7 @@ fails when the generated facts below differ from source.
 | progress | `sokomind.progress.v1` |
 | experience | `sokomind.experience.v2` |
 | session | `sokomind.session.v1` |
-| optimal | `sokomind.optimal.v9` |
+| optimal | `sokomind.optimal.v10` |
 | personalBestRoutes | `sokomind.personal-best-routes.v1` |
 | personalBestRoutesReset | `sokomind.personal-best-routes-reset.v1` |
 | reset | `sokomind.reset.v1` |
@@ -241,8 +241,8 @@ fails when the generated facts below differ from source.
 | `classic-dfs` | `1.0.0` | first-found |
 | `classic-greedy` | `1.0.0` | first-found |
 | `classic-astar` | `2.2.5` | move-optimal proof |
-| `classic-ida-star` | `2.2.4` | move-optimal proof |
-| `sokomind-solver` | `1.12.0` | bounded discovery/rewrite/proof portfolio |
+| `classic-ida-star` | `2.2.5` | move-optimal proof |
+| `sokomind-solver` | `1.12.1` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
