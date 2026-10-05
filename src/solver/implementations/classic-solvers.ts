@@ -83,12 +83,11 @@ export const classicIdaStarSolver: SolverAdapter = Object.freeze({
     displayName: "IDA* (iterative deepening)",
     description:
       "Memory-efficient move-optimal solver using iterative deepening A*.",
-    version: "2.2.3",
+    version: "2.2.4",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {
     return runIdaStarSearch(request, context, {
-      reachabilityPolicy: "all",
       persistTransposition: false,
     });
   },

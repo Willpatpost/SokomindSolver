@@ -75,7 +75,7 @@ import {
 import { compileSingleBoxPushGraph } from "./single-box-push-graph.ts";
 import { AssignmentHeuristic, PdbHeuristicEvaluator, minimumManhattanWalkToPotentialPush, minimumReachableWalkToLegalPush } from "./heuristic.ts";
 import { toDenseBoxes, type DenseBox } from "./model.ts";
-import { KeeperReachability, type KeeperReachabilityResult, type ReachabilitySnapshot } from "./reachability.ts";
+import { KeeperReachability, type KeeperReachabilityResult } from "./reachability.ts";
 import { createExactStateCodec, type ExactStateCodec } from "./exact-state.ts";
 import { createZobristTable, type ZobristTable } from "./zobrist-state.ts";
 import {
@@ -110,14 +110,10 @@ import {
 // Public options
 // ---------------------------------------------------------------------------
 
-export type IdaReachabilityPolicy = "all" | "periodic" | "none";
-
 export interface ExactMoveIdaStarOptions {
   readonly incumbent?: ExactIncumbent;
   /** Exclusive move-cost ceiling. Unlike an incumbent, this carries no route. */
   readonly upperBound?: number;
-  readonly reachabilityPolicy?: IdaReachabilityPolicy;
-  readonly snapshotPeriod?: number;
   readonly upperBoundChannel?: import("./exact-move-astar.ts").UpperBoundChannel;
   readonly checkpoint?: import("./ida-star-checkpoint.ts").IdaStarCheckpoint;
   readonly onCheckpoint?: (checkpoint: import("./ida-star-checkpoint.ts").IdaStarCheckpoint) => void;
@@ -156,8 +152,8 @@ interface PushRecord {
  * generate next, allowing the frame to be resumed after a child subtree
  * completes.
  *
- * The BFS reachability state is saved after the first flood and restored
- * when child generation resumes, avoiding redundant re-floods.
+ * The frame floods once, on its first visit, and keeps the keeper walk to
+ * each push's support cell, so child generation resumes without re-flooding.
  */
 interface StackFrame {
   readonly robot: number;
@@ -189,13 +185,15 @@ interface StackFrame {
   h: number;
   /** Minimum f-value among explored/pruned children (for TT-IDA* backing up). */
   minChildF: number;
-  /** Saved BFS state after the initial flood, restored on child-return resumes. */
-  reachabilitySnapshot: ReachabilitySnapshot | null;
-  /** Cached flood result paired with the snapshot. */
-  cachedReachable: KeeperReachabilityResult | null;
-  /** Conservative retained bytes excluding the reachability snapshot. */
+  /**
+   * Keeper walk to each push's support cell, indexed like `childCursor`, from
+   * the frame's one flood; -1 marks a push that is illegal or skipped. Child
+   * returns read it instead of flooding again.
+   */
+  supportDistances: Int32Array | null;
+  /** Conservative retained bytes excluding the support distances. */
   estimatedStackBytes: number;
-  /** Conservative retained bytes for the saved reachability state/result. */
+  /** Conservative retained bytes for the support distances. */
   estimatedReachabilityBytes: number;
 }
 
@@ -352,10 +350,40 @@ function estimateFrozenBoxesBytes(boxCount: number): number {
   return 64 + boxCount * 8;
 }
 
-function estimateReachabilitySnapshotBytes(cellCount: number): number {
-  // Four copied typed arrays (13 payload bytes/cell), their headers, and the
-  // cached reachability result with its bound query closures.
-  return 640 + cellCount * 13;
+function estimateSupportDistanceBytes(boxCount: number): number {
+  // One Int32Array entry per push and the typed-array header.
+  return 64 + boxCount * SEARCH_DIRECTIONS.length * 4;
+}
+
+/**
+ * Keeper walk to each push's support cell, indexed boxIndex * 4 +
+ * directionIndex. -1 marks a push blocked by a wall or box, one whose support
+ * the keeper cannot reach, and every push of a frozen or committed box (the
+ * child loop skips those before reading this).
+ */
+function supportDistancesFor(
+  board: CompiledSearchBoard,
+  boxes: readonly DenseBox[],
+  occupancy: Uint8Array,
+  reachable: KeeperReachabilityResult,
+  frozenBoxes: readonly boolean[],
+  committedBoxes: ReadonlySet<number>,
+): Int32Array {
+  const directions = SEARCH_DIRECTIONS.length;
+  const distances = new Int32Array(boxes.length * directions).fill(-1);
+  for (let boxIndex = 0; boxIndex < boxes.length; boxIndex++) {
+    if (frozenBoxes[boxIndex] || committedBoxes.has(boxIndex)) continue;
+    const neighbors = board.neighbors[boxes[boxIndex].cell];
+    if (!neighbors) continue;
+    for (let directionIndex = 0; directionIndex < directions; directionIndex++) {
+      const destination = neighbors[directionIndex] ?? -1;
+      const opposite = OPPOSITE_DIRECTION[directionIndex];
+      const support = opposite === undefined ? -1 : (neighbors[opposite] ?? -1);
+      if (destination < 0 || support < 0 || occupancy[destination] !== 0) continue;
+      distances[boxIndex * directions + directionIndex] = reachable.distanceTo(support);
+    }
+  }
+  return distances;
 }
 
 function estimateIdaCurrentBytes(
@@ -1148,10 +1176,6 @@ export async function runIdaStarSearch(
       );
     collectCurrentMetrics = metrics;
 
-    const snapshotPolicy: IdaReachabilityPolicy =
-      options?.reachabilityPolicy ?? "periodic";
-    const snapshotPeriod = options?.snapshotPeriod ?? 4;
-
     const incumbentInfo = () =>
       incumbentSolution
         ? {
@@ -1445,8 +1469,7 @@ export async function runIdaStarSearch(
         expanded: false,
         h: 0,
         minChildF: Number.POSITIVE_INFINITY,
-        reachabilitySnapshot: null,
-        cachedReachable: null,
+        supportDistances: null,
         estimatedStackBytes: estimateStackFrameBytes(
           initialBoxes,
           false,
@@ -1744,51 +1767,32 @@ export async function runIdaStarSearch(
 
         // ----- Generate the next valid child -----
         fillOccupancy(occupancyBuffer, frame.boxes);
-        let reachable: KeeperReachabilityResult;
-        if (frame.reachabilitySnapshot !== null) {
-          reachability.restoreState(frame.reachabilitySnapshot);
-          reachable = frame.cachedReachable!;
-        } else {
-          reachable = reachability.flood(frame.robot, occupancyBuffer);
-          counters.reachabilityFloods += 1;
-          const shouldSnapshot =
-            snapshotPolicy === "all" ||
-            (snapshotPolicy === "periodic" &&
-              (pathStack.length - 1) % snapshotPeriod === 0);
-          if (shouldSnapshot) {
-            frame.reachabilitySnapshot = reachability.saveState();
-            frame.cachedReachable = reachable;
-            const snapshotBytes = estimateReachabilitySnapshotBytes(
-              board.cellCount,
-            );
-            frame.estimatedReachabilityBytes += snapshotBytes;
-            reachabilitySnapshotMemoryBytes += snapshotBytes;
-            if (memoryLimitReached()) {
-              limitDetail = "Estimated solver memory limit reached.";
-              break idaLoop;
-            }
-          }
-        }
+        const boxCount = frame.boxes.length;
+        const totalChildren = boxCount * SEARCH_DIRECTIONS.length;
 
-        if (
-          frame.childCursor === 0 &&
-          corralDetector &&
-          hasPiCorralDeadlock(
-            board,
-            frame.boxes,
-            occupancyBuffer,
-            reachable,
-            corralDetector,
-          )
-        ) {
-          counters.piCorralPrunes += 1;
-          popFrame();
-          continue;
-        }
-
-        // Expansion-time tighter pruning: recompute h with exact BFS walk
-        // bound (reuses the flood already done, no second BFS).
+        // A frame floods once, on its first visit. Child returns resume from
+        // the support distances saved below.
         if (frame.childCursor === 0) {
+          const reachable = reachability.flood(frame.robot, occupancyBuffer);
+          counters.reachabilityFloods += 1;
+
+          if (
+            corralDetector &&
+            hasPiCorralDeadlock(
+              board,
+              frame.boxes,
+              occupancyBuffer,
+              reachable,
+              corralDetector,
+            )
+          ) {
+            counters.piCorralPrunes += 1;
+            popFrame();
+            continue;
+          }
+
+          // Expansion-time tighter pruning: recompute h with exact BFS walk
+          // bound (reuses the flood already done, no second BFS).
           const expandedWalk = minimumReachableWalkToLegalPush(
             board,
             frame.boxes,
@@ -1814,32 +1818,26 @@ export async function runIdaStarSearch(
             popFrame();
             continue;
           }
-        }
 
-        const frozenBoxes = frame.frozenBoxes!;
-        if (frame.committedBoxes === null) {
-          fillDeadlockOccupancy(deadlockOccupancyBuffer, frame.boxes);
-          frame.committedBoxes = commitmentDetector
-            ? findProvenCommitments(board, frame.boxes, commitmentDetector, deadlockOccupancyBuffer)
-            : new Set<number>();
-        }
-        const committedBoxes = frame.committedBoxes;
-        const boxCount = frame.boxes.length;
-        const totalChildren = boxCount * SEARCH_DIRECTIONS.length;
-
-        if (frame.childCursor === 0 && frame.childOrder === null && corralOrderer) {
-          const corralResult = corralOrderer.analyze(
-            board, frame.boxes, occupancyBuffer, reachable,
-          );
-          if (corralResult.hasCorral) {
-            frame.childOrder = buildCorralChildOrder(
-              boxCount, SEARCH_DIRECTIONS.length, corralResult,
-            );
+          if (frame.committedBoxes === null) {
+            fillDeadlockOccupancy(deadlockOccupancyBuffer, frame.boxes);
+            frame.committedBoxes = commitmentDetector
+              ? findProvenCommitments(board, frame.boxes, commitmentDetector, deadlockOccupancyBuffer)
+              : new Set<number>();
           }
-        }
 
-        // Forced push macro: if exactly one legal push, skip child generation
-        if (frame.childCursor === 0) {
+          if (frame.childOrder === null && corralOrderer) {
+            const corralResult = corralOrderer.analyze(
+              board, frame.boxes, occupancyBuffer, reachable,
+            );
+            if (corralResult.hasCorral) {
+              frame.childOrder = buildCorralChildOrder(
+                boxCount, SEARCH_DIRECTIONS.length, corralResult,
+              );
+            }
+          }
+
+          // Forced push macro: if exactly one legal push, skip child generation
           const fpResult = macroDetector?.detect(
             frame.boxes,
             occupancyBuffer,
@@ -1910,8 +1908,7 @@ export async function runIdaStarSearch(
               expanded: false,
               h: 0,
               minChildF: Number.POSITIVE_INFINITY,
-              reachabilitySnapshot: null,
-              cachedReachable: null,
+              supportDistances: null,
               estimatedStackBytes: estimateStackFrameBytes(fpNewBoxes!, true),
               estimatedReachabilityBytes: 0,
               tunnelMacro: null,
@@ -1922,8 +1919,28 @@ export async function runIdaStarSearch(
             }
             continue;
           }
+
+          frame.supportDistances = supportDistancesFor(
+            board,
+            frame.boxes,
+            occupancyBuffer,
+            reachable,
+            frame.frozenBoxes!,
+            frame.committedBoxes,
+          );
+          const supportDistanceBytes = estimateSupportDistanceBytes(boxCount);
+          frame.estimatedReachabilityBytes += supportDistanceBytes;
+          reachabilitySnapshotMemoryBytes += supportDistanceBytes;
+          if (memoryLimitReached()) {
+            limitDetail = "Estimated solver memory limit reached.";
+            break idaLoop;
+          }
         }
 
+        const frozenBoxes = frame.frozenBoxes!;
+        const committedBoxes = frame.committedBoxes!;
+        // Null only on a forced-macro frame, whose cursor is already spent.
+        const supportDistances = frame.supportDistances;
         let foundChild = false;
 
         // Stops queued by the frame's last child must still drain after its
@@ -1989,8 +2006,7 @@ export async function runIdaStarSearch(
                 expanded: false,
                 h: 0,
                 minChildF: Number.POSITIVE_INFINITY,
-                reachabilitySnapshot: null,
-                cachedReachable: null,
+                supportDistances: null,
                 estimatedStackBytes: estimateStackFrameBytes(tmNewBoxes, true),
                 estimatedReachabilityBytes: 0,
               });
@@ -2021,26 +2037,11 @@ export async function runIdaStarSearch(
             continue;
           }
 
+          // -1 covers walls, occupied destinations, and unreachable supports.
+          const distance = supportDistances![mappedCursor];
+          if (distance < 0) continue;
           const box = frame.boxes[boxIndex];
-          if (!box) continue;
-          const neighbors = board.neighbors[box.cell];
-          if (!neighbors) continue;
-
-          const destination = neighbors[directionIndex] ?? -1;
-          const opposite = OPPOSITE_DIRECTION[directionIndex];
-          const support =
-            opposite === undefined
-              ? -1
-              : (neighbors[opposite] ?? -1);
-
-          if (
-            destination < 0 ||
-            support < 0 ||
-            occupancyBuffer[destination] !== 0 ||
-            !reachable.isReachable(support)
-          ) {
-            continue;
-          }
+          const destination = board.neighbors[box.cell]![directionIndex]!;
 
           // Generation limit
           const maxGenerated = request.limits?.maxGeneratedStates;
@@ -2066,17 +2067,13 @@ export async function runIdaStarSearch(
             destination, directionIndex, occupancyBuffer, board.goalLabelByCell, box.label,
           );
           if (tResult) {
-            const tDistance = reachable.distanceTo(support);
-            if (tDistance < 0) {
-              throw new Error("Reachable support cell has no keeper distance.");
-            }
             counters.generated += tResult.stops.length;
             workSinceYield += tResult.stops.length;
             frame.tunnelMacro = {
               stops: tResult.stops,
               boxIndex,
               directionIndex,
-              walkDistance: tDistance,
+              walkDistance: distance,
               cursor: 0,
             };
           }
@@ -2114,13 +2111,6 @@ export async function runIdaStarSearch(
             continue;
           }
 
-          const distance = reachable.distanceTo(support);
-          if (distance < 0) {
-            throw new Error(
-              "Reachable support cell has no keeper distance.",
-            );
-          }
-
           const newMoves = frame.moves + distance + 1;
           const newPushes = frame.pushes + 1;
           const newG = newMoves;
@@ -2143,8 +2133,7 @@ export async function runIdaStarSearch(
             expanded: false,
             h: 0,
             minChildF: Number.POSITIVE_INFINITY,
-            reachabilitySnapshot: null,
-            cachedReachable: null,
+            supportDistances: null,
             estimatedStackBytes: estimateStackFrameBytes(
               newBoxes,
               true,

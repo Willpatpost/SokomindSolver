@@ -16,6 +16,10 @@ export interface SokomindRequestOptions {
   /** Search-worker ceiling; zero chooses hardware/memory-bounded Auto. */
   readonly workerParallelism: number;
   readonly proofParallelism: number;
+  /**
+   * Ignored since IDA* 2.2.4, whose frames keep their support distances
+   * instead of saved floods. Both stay valid so older requests still parse.
+   */
   readonly idaReachabilitySnapshots: "all" | "periodic" | "none";
   readonly idaSnapshotPeriod: number;
   readonly diagnostics: boolean;

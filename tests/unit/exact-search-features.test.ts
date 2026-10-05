@@ -133,7 +133,6 @@ describe("exact-search feature configuration", () => {
       }),
       runIdaStarSearch(request(), context(), {
         features: ALL_OFF_EXACT_SEARCH_FEATURES,
-        reachabilityPolicy: "none",
       }),
     ]);
 
@@ -166,7 +165,6 @@ describe("exact-search feature configuration", () => {
           }),
           runIdaStarSearch(request(board.rows, `feature-${board.id}`), context(), {
             features,
-            reachabilityPolicy: "none",
           }),
         ]);
         for (const [engine, result] of [["A*", astar], ["IDA*", ida]] as const) {

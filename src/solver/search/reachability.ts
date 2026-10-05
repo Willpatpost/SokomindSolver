@@ -23,15 +23,6 @@ export interface KeeperReachabilityResult {
   pathTo(cell: number): readonly Direction[] | undefined;
 }
 
-export interface ReachabilitySnapshot {
-  readonly epoch: number;
-  readonly canonicalCell: number;
-  readonly seenEpoch: Uint32Array;
-  readonly distance: Int32Array;
-  readonly predecessor: Int32Array;
-  readonly predecessorDirection: Int8Array;
-}
-
 /**
  * Reusable dense BFS workspace. Each `flood` result remains valid only until
  * the next call to `flood` on the same workspace.
@@ -220,26 +211,6 @@ export class KeeperReachability {
     for (let i = 0; i < tail; i++) scratch[queue[i]] = 0;
 
     return Math.min(parentCanonical, candidate);
-  }
-
-  saveState(): ReachabilitySnapshot {
-    return {
-      epoch: this.#epoch,
-      canonicalCell: this.#lastCanonicalCell,
-      seenEpoch: new Uint32Array(this.#seenEpoch),
-      distance: new Int32Array(this.#distance),
-      predecessor: new Int32Array(this.#predecessor),
-      predecessorDirection: new Int8Array(this.#predecessorDirection),
-    };
-  }
-
-  restoreState(snapshot: ReachabilitySnapshot): void {
-    this.#epoch = snapshot.epoch;
-    this.#lastCanonicalCell = snapshot.canonicalCell;
-    this.#seenEpoch.set(snapshot.seenEpoch);
-    this.#distance.set(snapshot.distance);
-    this.#predecessor.set(snapshot.predecessor);
-    this.#predecessorDirection.set(snapshot.predecessorDirection);
   }
 
   #advanceEpoch(): void {

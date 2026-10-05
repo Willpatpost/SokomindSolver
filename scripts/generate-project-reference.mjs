@@ -154,7 +154,6 @@ const lines = [
   `- Sokomind mode: \`${DEFAULT_SOKOMIND_REQUEST_OPTIONS.mode}\``,
   `- Proof algorithm: \`${DEFAULT_SOKOMIND_REQUEST_OPTIONS.proofAlgorithm}\`; proof parallelism: **${DEFAULT_SOKOMIND_REQUEST_OPTIONS.proofParallelism}**`,
   `- Maximum harvested incumbents: **${DEFAULT_SOKOMIND_REQUEST_OPTIONS.maximumIncumbents}**; harvest window: **${DEFAULT_SOKOMIND_REQUEST_OPTIONS.harvestElapsedMs.toLocaleString("en-US")} ms**`,
-  `- IDA* reachability snapshots: \`${DEFAULT_SOKOMIND_REQUEST_OPTIONS.idaReachabilitySnapshots}\` every **${DEFAULT_SOKOMIND_REQUEST_OPTIONS.idaSnapshotPeriod}** levels`,
   "",
   "### Exact-search controls",
   "",

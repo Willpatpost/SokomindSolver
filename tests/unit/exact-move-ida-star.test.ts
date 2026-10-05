@@ -25,7 +25,6 @@ import {
 } from "../../src/solver/search/engine.ts";
 import {
   runIdaStarSearch,
-  type ExactMoveIdaStarOptions,
 } from "../../src/solver/search/ida-star.ts";
 import {
   toDenseBoxes,
@@ -383,66 +382,36 @@ describe("AC7: classic IDA* adapter produces proof metadata", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Snapshot policy equivalence
+// Frame support distances
 // ---------------------------------------------------------------------------
 
-describe("snapshot policy equivalence", () => {
-  it("all three policies produce identical solution cost and proof kind", async () => {
+describe("frame support distances", () => {
+  it("floods each frame once and keeps the optimal route", async () => {
     const req = requestFromRows(BOARD_ROWS);
-    const policies: Array<ExactMoveIdaStarOptions["reachabilityPolicy"]> = [
-      "all",
-      "periodic",
-      "none",
-    ];
-    const results: Array<Extract<SolverResult, { readonly status: "solved" }>> = [];
-
-    for (const policy of policies) {
-      const result = assertSolved(
-        await runIdaStarSearch(req, oracleContext(), {
-          reachabilityPolicy: policy,
-        }),
-      );
-      results.push(result);
-    }
-
-    const [allResult, periodicResult, noneResult] = results;
-    assert.equal(allResult.solution.moves, periodicResult.solution.moves);
-    assert.equal(allResult.solution.moves, noneResult.solution.moves);
-    assert.equal(allResult.solution.pushes, periodicResult.solution.pushes);
-    assert.equal(allResult.solution.pushes, noneResult.solution.pushes);
-    assert.equal(allResult.proof!.kind, periodicResult.proof!.kind);
-    assert.equal(allResult.proof!.kind, noneResult.proof!.kind);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Snapshot memory comparison
-// ---------------------------------------------------------------------------
-
-describe("snapshot memory comparison", () => {
-  it('"none" policy uses <= reachability snapshot bytes than "all"', async () => {
-    const req = requestFromRows(BOARD_ROWS);
-
-    const allResult = assertSolved(
-      await runIdaStarSearch(req, oracleContext(), {
-        reachabilityPolicy: "all",
-      }),
+    const result = assertSolved(
+      await runIdaStarSearch(req, oracleContext()),
     );
-    const noneResult = assertSolved(
-      await runIdaStarSearch(req, oracleContext(), {
-        reachabilityPolicy: "none",
-      }),
+    const expected = assertSolved(
+      await classicIdaStarSolver.solve(req, oracleContext()),
     );
 
-    const allBytes =
-      allResult.metrics.counters?.memoryReachabilitySnapshotBytes ?? 0;
-    const noneBytes =
-      noneResult.metrics.counters?.memoryReachabilitySnapshotBytes ?? 0;
-
+    const floods = result.metrics.counters?.reachabilityFloods ?? 0;
+    const expanded = result.metrics.expandedStates ?? 0;
+    // Child returns read the saved distances, so floods never exceed the
+    // frames expanded.
+    assert.ok(floods > 0);
     assert.ok(
-      noneBytes <= allBytes,
-      `"none" policy snapshot bytes (${noneBytes}) should be <= "all" policy (${allBytes})`,
+      floods <= expanded,
+      `Floods ${floods} should be <= expanded states (${expanded})`,
     );
+    // The counter now reports the retained support distances.
+    assert.equal(
+      typeof result.metrics.counters?.memoryReachabilitySnapshotBytes,
+      "number",
+    );
+    assert.equal(result.proof!.kind, "optimal");
+    assert.equal(result.solution.moves, expected.solution.moves);
+    assert.equal(result.solution.pushes, expected.solution.pushes);
   });
 });
 

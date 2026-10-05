@@ -180,6 +180,19 @@ start at the same cell. `deadlockTableWorkUnits` and `deadlockTableTruncated`
 report the build. The deadlock rules are unchanged, so the proof revision is
 unchanged.
 
+IDA* 2.2.4 floods the keeper's reachable area once per frame and keeps the
+keeper walk to each of the frame's pushes, one 32-bit entry per push, so a
+frame resumed after a child returns reads the walk instead of flooding again.
+Classic IDA* used to copy the whole flood workspace on every frame, and the
+Sokomind proof's IDA* lanes on every fourth level, flooding again on each child
+return elsewhere. The `idaReachabilitySnapshots` and `idaSnapshotPeriod`
+options chose that policy; both are still accepted and now ignored. The walks
+come from the flood the frame's pi-corral, expansion-recheck and forced-push
+checks already use, so children, their order and their costs are unchanged:
+expanded and generated counts, moves and proofs match 2.2.3 while no memory
+limit binds. `memoryReachabilitySnapshotBytes` now reports the kept walks. The
+proof revision is unchanged.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

@@ -243,8 +243,6 @@ export async function runSequentialProof(
   } else {
     const idaOptions: ExactMoveIdaStarOptions = {
       incumbent,
-      reachabilityPolicy: options.idaReachabilitySnapshots,
-      snapshotPeriod: options.idaSnapshotPeriod,
       persistTransposition: false,
       ...(checkpointOptions?.checkpoint
         ? { checkpoint: checkpointOptions.checkpoint }

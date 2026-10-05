@@ -680,10 +680,7 @@ async function solveBenchmarkProfile(
     return runExactMoveAStar(request, context, { features: featureOverrides });
   }
   if (profile.id === "classic-ida-star") {
-    return runIdaStarSearch(request, context, {
-      features: featureOverrides,
-      reachabilityPolicy: "none",
-    });
+    return runIdaStarSearch(request, context, { features: featureOverrides });
   }
   throw new Error(
     `Feature comparisons require classic-astar or classic-ida-star, got ${profile.id}`,
