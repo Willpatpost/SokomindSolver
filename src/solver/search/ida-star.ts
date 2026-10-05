@@ -215,6 +215,7 @@ interface SearchCounters {
   infeasiblePrunes: number;
   cheapCutoffs: number;
   secondaryCutoffs: number;
+  recheckCutoffs: number;
   reachabilityFloods: number;
   peakStackDepth: number;
   maxDepth: number;
@@ -480,6 +481,7 @@ function createMetrics(
       infeasiblePrunes: counters.infeasiblePrunes,
       cheapCutoffs: counters.cheapCutoffs,
       secondaryCutoffs: counters.secondaryCutoffs,
+      recheckCutoffs: counters.recheckCutoffs,
       reopens: 0,
       reachabilityFloods: counters.reachabilityFloods,
       identityFloods: 0,
@@ -594,6 +596,7 @@ export async function runIdaStarSearch(
     infeasiblePrunes: 0,
     cheapCutoffs: 0,
     secondaryCutoffs: 0,
+    recheckCutoffs: 0,
     reachabilityFloods: 0,
     peakStackDepth: 0,
     maxDepth: 0,
@@ -1732,6 +1735,29 @@ export async function runIdaStarSearch(
           if (fExpanded >= U) {
             popFrame();
             continue;
+          }
+          // The exact walk can raise h above the stored value. Both are lower
+          // bounds, so keep the larger for this state and cut the node from
+          // this contour once it passes the limit, as on first visit. The
+          // cache clamps a finite h above 65,535, which only lowers it.
+          if (hExpanded > frame.h) {
+            frame.h = hExpanded;
+            const raisedSlot = hCache.find(
+              frame.hashLo, frame.hashHi, frame.robot, frame.tokens,
+            );
+            const raisedH = encodeCachedH(hExpanded, false);
+            if (raisedSlot >= 0 && raisedH >= 0) hCache.setValue(raisedSlot, raisedH);
+            if (fExpanded > fLimit) {
+              counters.recheckCutoffs += 1;
+              nextLimit = Math.min(nextLimit, fExpanded);
+              popFrame();
+              if (pathStack.length > 0) {
+                pathStack[pathStack.length - 1].minChildF = Math.min(
+                  pathStack[pathStack.length - 1].minChildF, fExpanded,
+                );
+              }
+              continue;
+            }
           }
 
           if (frame.committedBoxes === null) {

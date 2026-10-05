@@ -419,6 +419,23 @@ checkpoints written with the weaker h. Proof revision
 `exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
 cover this change.
 
+IDA* 2.2.11 and Sokomind 1.13.6 let the expansion recheck cut contours. When
+IDA* expands a node, it already computes `h' = push bound + exact walk`, with
+the push bound raised by the perimeter and component bounds and the walk taken
+from the node's own reachability flood, and it drops the node when
+`g + h' >= U`. It now keeps `max(stored h, h')` for the node. Both are
+admissible move bounds for the same exact state, so their maximum is too. When
+`g + max(stored h, h') > fLimit`, the node is cut from the contour the same way
+as on first visit: its f goes into `nextLimit` and the parent's `minChildF`,
+so every route the contour did not complete still costs at least `nextLimit`.
+The larger h is written back to the state's h-cache entry, which keys the
+exact state including the robot. A finite h above 65,535 is stored as a
+truncated 65,535, which only lowers it. A* gains nothing from the same
+maximum, because a popped node has already passed `g + stored h < U`.
+Telemetry adds `recheckCutoffs`. IDA* checkpoint schema 7 retires checkpoints
+from the earlier pruning. Proof revision `exact-moves-ida-contour-exit-v1` and
+storage key `sokomind.optimal.v10` also cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose

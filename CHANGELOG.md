@@ -37,6 +37,10 @@ published a stable release.
 
 ### Changed
 
+- When IDA* expands a node, it now keeps the larger of the stored h and the
+  push bound plus the exact walk to a legal push, and cuts the node from the
+  current contour when that passes the limit. The larger h is written back to
+  the h cache (capped at 65,535). IDA* checkpoint schema 7.
 - Exact A* and IDA* now share one heuristic evaluator. Besides the largest of
   linear conflict, interaction boost, pattern-database surplus and goal cut, h
   can now use one label-disjoint sum of their per-label parts: each label's
@@ -85,7 +89,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.10, `classic-ida-star` 2.2.10 and `sokomind-solver` 1.13.5. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.10, `classic-ida-star` 2.2.11 and `sokomind-solver` 1.13.6. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -93,7 +97,7 @@ published a stable release.
   and the storage key is `sokomind.optimal.v10`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
-- The IDA* checkpoint schema is now 6, so checkpoints written by the earlier
+- The IDA* checkpoint schema is now 7, so checkpoints written by the earlier
   kernels restart instead of resuming.
 - The frozen known-optimum gate now also replays small oracle-backed entries
   through exact IDA*, covers a proven-unsolvable board, and records which
