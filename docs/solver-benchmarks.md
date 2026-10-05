@@ -214,6 +214,81 @@ Optimal's final lower bound fell by 1 or 2 on `large` (119 to 117),
 The capture predates Sokomind 1.7.0 (worker reuse) and 1.7.1. Each was
 compared with its base in same-node A/B runs instead.
 
+## Phase 2 comparison
+
+Commit `861ca5d` (Sokomind 1.11.0, classic A* 2.2.5, classic IDA* 2.2.4) ends
+the second phase of the 2026-10-03 plan. It was captured with the same ten
+shards, settings and node type as the Phase 1 capture (SLURM jobs 47985-47992,
+47994 and 48002), and compared with `ba44091` group by group. Seven more shards
+(jobs 47995-47998, 48000, 48001 and 48003) ran the two parallel profiles, which
+have no earlier capture.
+
+| Profile | Groups | Solved | Proven | At frozen optimum | Median time | Median first route | Peak RSS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `classic-astar` | 33 | 33 | 33 | 33 | 82 ms | 82 ms | 587 MiB |
+| `classic-ida-star` | 33 | 32 | 32 | 32 | 164 ms | 159 ms | 465 MiB |
+| `sokomind-optimal-astar` | 33 | 33 | 33 | 33 | 707 ms | 234 ms | 636 MiB |
+| `sokomind-optimal-ida` | 33 | 33 | 32 | 32 | 975 ms | 242 ms | 625 MiB |
+| `production-fast` | 44 | 43 | 0 | 8 of 33 | 182 ms | 181 ms | 1,145 MiB |
+| `production-quality` | 44 | 43 | 0 | 33 of 33 | 316 ms | 184 ms | 4,154 MiB |
+| `production-optimal` | 44 | 43 | 33 | 33 of 33 | 315 ms | 182 ms | 3,200 MiB |
+| `production-quality-parallel` | 44 | 43 | 0 | 33 of 33 | 465 ms | 176 ms | 4,679 MiB |
+| `production-optimal-parallel` | 44 | 43 | 33 | 33 of 33 | 470 ms | 180 ms | 7,142 MiB |
+
+46 of the 264 compared groups got faster, and the geometric mean of the
+per-group median time ratios is 1.087. Without the two state-capped
+`sokomind-optimal` profiles, whose proof-first speedup Sokomind 1.7.1 removed
+on purpose, it is 0.955.
+
+- `sokomind-optimal-astar` proves `expert-tetris` again: 38 moves in five of
+  five runs. Under `sokomind-optimal-ida` the same board's route fell from 62
+  to 39 moves, still unproven.
+- The classic kernels expand the same states in less time: the geometric mean
+  is 0.895 for classic A* and 0.876 for classic IDA*.
+- Quality's median route improved on five boards without a frozen optimum:
+  `large` 150 to 148, `master-exchange` 137 to 132, `theme-museum` 77 to 71,
+  `v2-17box-mirrored` 499 to 493 and `v2-27box-open` 912 to 908.
+- Fast's median time and first route are about 10 ms later (174 to 182 ms
+  and 171 to 181 ms, geometric mean 1.024), with no Fast group flagged.
+- The parallel profiles prove and reach the same boards as their single-lane
+  counterparts and return the same median routes, except Quality on
+  `v2-27box-open` (904 moves instead of 908).
+
+The comparison flagged 75 groups:
+
+- 65 are in the `sokomind-optimal` profiles. Their time and state flags come
+  from Sokomind 1.7.1, described in the Phase 1 comparison; against that
+  change's own A/B (jobs 47086 and 47087), `861ca5d` expands the same states
+  and is as fast or faster. Their 39 peak RSS flags come from Sokomind 1.7.0's
+  worker reuse. A same-node A/B with 1.7.1 on both sides (job 48005, nine
+  boards, three rounds) measured 74-152 MiB more per run (+23% to +52%) and
+  a time geometric mean of 0.843. The rest of Phase 2 changed neither (job
+  48006: no flags).
+- `v2-27box-memory` used about 45 MiB more in all three production modes
+  (218 to about 265 MiB) while finishing sooner (629 to 550 ms). Same-node
+  reruns reproduced it (jobs 48007 and 48008), and worker reuse alone accounts
+  for it (job 48010, `ba44091` against the 1.7.0 merge: +41 to +58 MiB, time
+  geometric mean 0.853).
+- Seven flags did not reproduce in same-node reruns: Optimal peak RSS on
+  `master-exchange`, `open-field` and the mirrored and rotated 17-box boards,
+  Quality peak RSS on `large` and the rotated 17-box board (jobs 48007 and
+  48008, +0.3% to +5%), and classic IDA* RSS on `expert-tetris` (job 48009,
+  +1.5%).
+
+On the boards without a frozen optimum, Fast and Optimal return the same median
+routes as at `ba44091`. Optimal's final lower bound rose by 1 on `large` (117
+to 118), `theme-museum` (53 to 54) and `v2-17box-mirrored` (221 to 222).
+
+With the app's proof workers, the final lower bound on most heavy boards stays
+far below the single-lane bound: 1 to 9 on `master-exchange`,
+`master-typed-grid`, `open-field`, `theme-museum`, `theme-parking`, the 17-box
+boards and `v2-27box-open`, against 54 to 397 with one lane. `large` is the
+exception at 123. The parallel proof reports the minimum over its partitions,
+and a partition that no lane has started counts only the moves that lead to
+it.
+The bound is sound but weak. On `theme-parking` it fell from 74 to 7 when the
+proof started keeping fewer A* lanes (job 47199).
+
 ## Controlled feature A/B runs
 
 Use `--compare-feature` with exact profiles:
