@@ -57,6 +57,24 @@ function boxesByLabel(
   return grouped;
 }
 
+/**
+ * Labels a per-label assignment visits, in `localeCompare` order. The compiled
+ * board already keeps its goal labels in that order, so only a box label with
+ * no goal, which makes the state unsolvable, needs the merged sort.
+ */
+function assignmentLabels(
+  board: CompiledSearchBoard,
+  groupedBoxes: ReadonlyMap<string, readonly number[]>,
+): Iterable<string> {
+  for (const label of groupedBoxes.keys()) {
+    if (!board.goalCellsByLabel.has(label)) {
+      return [...new Set([...groupedBoxes.keys(), ...board.goalCellsByLabel.keys()])]
+        .sort((left, right) => left.localeCompare(right));
+    }
+  }
+  return board.goalCellsByLabel.keys();
+}
+
 function buildCostMatrix(
   board: CompiledSearchBoard,
   boxCells: readonly number[],
@@ -80,14 +98,10 @@ function fullAssignmentWithState(
   boxes: readonly DenseBox[],
 ): FullAssignmentResult {
   const groupedBoxes = boxesByLabel(boxes);
-  const labels = new Set([
-    ...groupedBoxes.keys(),
-    ...board.goalCellsByLabel.keys(),
-  ]);
   let total = 0;
   const labelStates = new Map<string, LabelAssignmentState>();
 
-  for (const label of [...labels].sort((left, right) => left.localeCompare(right))) {
+  for (const label of assignmentLabels(board, groupedBoxes)) {
     const boxCells = groupedBoxes.get(label) ?? [];
     const goalCells = board.goalCellsByLabel.get(label) ?? [];
     if (boxCells.length !== goalCells.length) {
@@ -256,6 +270,9 @@ export class AssignmentHeuristic {
   #incrementalRepairs = 0;
   #lastLabelStates: ReadonlyMap<string, LabelAssignmentState> | null = null;
   #lastBoxKey: bigint | undefined;
+  /** Costs of `#labelCostsStates`, built once per distinct label-state map. */
+  #labelCosts: ReadonlyMap<string, number> | null = null;
+  #labelCostsStates: ReadonlyMap<string, LabelAssignmentState> | null = null;
 
   constructor(
     board: CompiledSearchBoard,
@@ -294,12 +311,17 @@ export class AssignmentHeuristic {
   }
 
   get lastLabelCosts(): ReadonlyMap<string, number> | null {
-    if (!this.#lastLabelStates) return null;
-    const costs = new Map<string, number>();
-    for (const [label, state] of this.#lastLabelStates) {
-      costs.set(label, state.cost);
+    const states = this.#lastLabelStates;
+    if (!states) return null;
+    if (this.#labelCostsStates !== states) {
+      const costs = new Map<string, number>();
+      for (const [label, state] of states) {
+        costs.set(label, state.cost);
+      }
+      this.#labelCosts = costs;
+      this.#labelCostsStates = states;
     }
-    return costs;
+    return this.#labelCosts;
   }
 
   lastLinearConflict(boxes: readonly DenseBox[]): number {
@@ -396,14 +418,10 @@ export class AssignmentHeuristic {
     }
 
     const groupedBoxes = boxesByLabel(boxes);
-    const labels = new Set([
-      ...groupedBoxes.keys(),
-      ...this.#board.goalCellsByLabel.keys(),
-    ]);
     let total = 0;
     const labelStates = new Map<string, LabelAssignmentState>();
 
-    for (const label of [...labels].sort((a, b) => a.localeCompare(b))) {
+    for (const label of assignmentLabels(this.#board, groupedBoxes)) {
       const boxCells = groupedBoxes.get(label) ?? [];
       const goalCells = this.#board.goalCellsByLabel.get(label) ?? [];
       if (boxCells.length !== goalCells.length) {
@@ -458,18 +476,19 @@ export class AssignmentHeuristic {
           }
 
           if (removedCell >= 0 && addedCell >= 0) {
-            const parentCellToIdx = new Map<number, number>();
-            for (let i = 0; i < n; i++) parentCellToIdx.set(parentCells[i], i);
-
             const remappedColumns = new Array<number>(n);
             const remappedRowPotentials = new Float64Array(n);
             let childChangedRow = -1;
 
+            // Both cell lists are sorted, so one pass pairs each kept cell
+            // with its parent row.
+            let pIdx = 0;
             for (let i = 0; i < n; i++) {
-              const pIdx = parentCellToIdx.get(boxCells[i]);
-              if (pIdx !== undefined) {
+              while (pIdx < n && parentCells[pIdx] < boxCells[i]) pIdx++;
+              if (pIdx < n && parentCells[pIdx] === boxCells[i]) {
                 remappedColumns[i] = parentLabelState.columns[pIdx];
                 remappedRowPotentials[i] = parentLabelState.rowPotentials[pIdx];
+                pIdx++;
               } else {
                 childChangedRow = i;
                 remappedColumns[i] = -1;

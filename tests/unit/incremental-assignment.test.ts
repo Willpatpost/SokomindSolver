@@ -631,6 +631,56 @@ describe("BigInt cache key correctness", () => {
   });
 });
 
+describe("label order and label-cost reuse", () => {
+  it("visits labels in sorted order and reuses one cost map per state", () => {
+    const parsed = parsePuzzleRows(TWO_LABEL_ROWS);
+    const board = compileSearchBoard(parsed);
+    const labels = [...board.goalCellsByLabel.keys()].sort();
+    const codec = createExactStateCodec(board.cellCount, labels);
+    const packBoxKey = (boxes: readonly DenseBox[]) =>
+      codec.packBoxTokens(codec.tokensFromBoxes(boxes));
+    const heuristic = new AssignmentHeuristic(board, { packBoxKey });
+    const parent = sortedBoxes(toDenseBoxes(board, parsed.initialBoxes));
+    const child = sortedBoxes(parent.map((b) =>
+      b.label === "A" ? { ...b, cell: b.cell + 1 } : b,
+    ));
+
+    heuristic.evaluate(parent);
+    assert.deepEqual([...heuristic.lastAssignmentStates!.keys()], labels);
+    const parentCosts = heuristic.lastLabelCosts!;
+    assert.equal(heuristic.lastLabelCosts, parentCosts, "same state, same map");
+    assert.deepEqual(
+      [...parentCosts],
+      [...heuristic.lastAssignmentStates!].map(([label, state]) => [label, state.cost]),
+    );
+
+    heuristic.evaluateIncremental(child, packBoxKey(child), packBoxKey(parent), "A");
+    const childCosts = heuristic.lastLabelCosts!;
+    assert.notEqual(childCosts, parentCosts);
+    assert.deepEqual([...childCosts.keys()], labels);
+    assert.equal(childCosts.get("B"), parentCosts.get("B"));
+    assert.equal(
+      [...childCosts.values()].reduce((total, cost) => total + cost, 0),
+      assignmentLowerBound(board, child),
+    );
+  });
+
+  it("finds no assignment for a box label without a goal", () => {
+    const board = compileSearchBoard(parsePuzzleRows(TWO_LABEL_ROWS));
+    const [aGoal] = board.goalCellsByLabel.get("A")!;
+    const [bGoal] = board.goalCellsByLabel.get("B")!;
+    // "0" sorts before the goal labels and "Z" after them.
+    for (const stray of ["0", "Z"]) {
+      const boxes = sortedBoxes([
+        { id: "A:0", label: "A", cell: aGoal },
+        { id: "B:0", label: "B", cell: bGoal },
+        { id: `${stray}:0`, label: stray, cell: aGoal - 1 },
+      ]);
+      assert.equal(assignmentLowerBound(board, boxes), Number.POSITIVE_INFINITY);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Suite 6: Integration with exact A*
 // ---------------------------------------------------------------------------
