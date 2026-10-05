@@ -56,7 +56,7 @@ published a stable release.
   cross a shared tunnel one after another at no extra cost, and no move-level
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
-- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.3 and
+- Solver versions are now `classic-astar` 2.2.5, `classic-ida-star` 2.2.4 and
   `sokomind-solver` 1.11.0. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
@@ -82,6 +82,14 @@ published a stable release.
   mean.
 - Exact A* cuts a child on its push and walk bounds before computing the
   extras. Retained successors, state counts, moves and proofs are unchanged.
+- Exact IDA* floods the keeper's area once per frame and keeps the walk to
+  each push, instead of flooding again whenever a child returns.
+  `idaReachabilitySnapshots` and `idaSnapshotPeriod` are still accepted but
+  ignored, and IDA* checkpoints from earlier versions restart. The assignment
+  heuristic, pattern-database lookups and builds, the freeze and 2x2 checks
+  and the deadlock tables reuse their buffers instead of allocating per call.
+  State counts, moves and proofs are unchanged; a same-node A/B ran the
+  classic profiles at 0.85x geometric-mean time.
 - A pattern-database build that hits the memory limit keeps its partial table,
   or disables that partition, instead of aborting exact search. Both are
   admissible: unreached entries read `frontierDepth + 1`, and a disabled table
