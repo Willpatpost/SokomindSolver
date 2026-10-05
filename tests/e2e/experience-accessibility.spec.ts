@@ -63,6 +63,16 @@ function expectMotionSuppressed(styles: Awaited<ReturnType<typeof readMotionStyl
 }
 
 async function expectAxeClean(page: Page, view: string) {
+  // Axe reads computed colors, so a dialog still fading in reports a contrast
+  // between its start and end colors. Wait for every finite animation first.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
