@@ -97,6 +97,7 @@ import {
   estimateStaticSearchBytes,
 } from "./engine.ts";
 import { delayForEventLoop } from "./scheduling.ts";
+import { createExactHeuristicEvaluator } from "./additive-extras.ts";
 import {
   createExactSearchFeatureTelemetry,
   exactSearchFeatureMask,
@@ -557,110 +558,19 @@ export async function runExactMoveAStar(
     const boxCount = initialBoxes.length;
     let heapSize = 0;
 
-    const linearConflict = (boxes: readonly DenseBox[]): number => {
-      if (!features.linearConflict) return 0;
-      featureTelemetry.linearConflictEvaluations += 1;
-      const value = heuristic.lastLinearConflict(boxes);
-      featureTelemetry.linearConflictTotal += value;
-      return value;
-    };
-    const pdbSurplus = (
-      boxes: readonly DenseBox[],
-      labelCosts: ReadonlyMap<string, number> | null,
-      boxKey?: bigint,
-      labelCostsBoxKey?: bigint,
-    ): number => {
-      if (!pdbEvaluator || !labelCosts) return 0;
-      featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey, labelCostsBoxKey);
-    };
-    const goalCut = (): number => {
-      if (!goalCutEvaluator) return 0;
-      const states = heuristic.lastAssignmentStates;
-      if (!states) return 0;
-      const value = goalCutEvaluator.evaluate(states);
-      featureTelemetry.goalCutEvaluations += 1;
-      featureTelemetry.goalCutTotal += value;
-      return value;
-    };
-    const perimeterLookup = (
-      tokens: ArrayLike<number>,
-      boxKey: bigint,
-    ): number => {
-      if (!perimeterTable) return 0;
-      const boxZob = zobristTable.hashFromTokensNoRobot(tokens);
-      const dist = perimeterTable.lookup(boxZob, boxKey);
-      if (dist === undefined) return 0;
-      return dist;
-    };
-    const componentPdbBoxesByLabel = new Map<string, number[]>();
-    const componentPdbLookup = (boxes: readonly DenseBox[]): number => {
-      if (!componentPdbCollection) return 0;
-      componentPdbBoxesByLabel.clear();
-      for (const box of boxes) {
-        let cells = componentPdbBoxesByLabel.get(box.label);
-        if (!cells) {
-          cells = [];
-          componentPdbBoxesByLabel.set(box.label, cells);
-        }
-        cells.push(box.cell);
-      }
-      return componentPdbCollection.evaluate(componentPdbBoxesByLabel);
-    };
-    const computeH = (
-      pushBound: number,
-      lc: number,
-      boost: number,
-      pdb: number,
-      gc: number,
-      walkBound: number,
-      tokens: ArrayLike<number>,
-      boxes: readonly DenseBox[],
-      robotCell: number,
-      boxKey: bigint,
-      g: number,
-      pruneThreshold: number,
-    ): number => {
-      let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
-      if (g + totalPushBound + walkBound >= pruneThreshold) {
-        counters.secondaryCutoffs++;
-        return totalPushBound + walkBound;
-      }
-      const perimeterDist = perimeterLookup(tokens, boxKey);
-      if (perimeterDist > totalPushBound) {
-        const improvement = perimeterDist - totalPushBound;
-        featureTelemetry.backwardPerimeterImprovements++;
-        featureTelemetry.backwardPerimeterTotalImprovement += improvement;
-        if (improvement > featureTelemetry.backwardPerimeterMaxImprovement) {
-          featureTelemetry.backwardPerimeterMaxImprovement = improvement;
-        }
-        totalPushBound = perimeterDist;
-      }
-      const componentBound = componentPdbLookup(boxes);
-      if (componentBound > totalPushBound) {
-        const improvement = componentBound - totalPushBound;
-        featureTelemetry.componentPdbImprovements++;
-        featureTelemetry.componentPdbTotalImprovement += improvement;
-        if (improvement > featureTelemetry.componentPdbMaxImprovement) {
-          featureTelemetry.componentPdbMaxImprovement = improvement;
-        }
-        totalPushBound = componentBound;
-      }
-      let h = totalPushBound + walkBound;
-      if (moveCostPdbCollection) {
-        const mcBound = moveCostPdbCollection.evaluate(boxes, robotCell);
-        if (mcBound > h) {
-          const improvement = mcBound - h;
-          featureTelemetry.moveCostPdbImprovements++;
-          featureTelemetry.moveCostPdbTotalImprovement += improvement;
-          if (improvement > featureTelemetry.moveCostPdbMaxImprovement) {
-            featureTelemetry.moveCostPdbMaxImprovement = improvement;
-          }
-          h = mcBound;
-        }
-      }
-      return h;
-    };
+    const hEvaluator = createExactHeuristicEvaluator({
+      features,
+      heuristic,
+      zobristTable,
+      boostEvaluator,
+      pdbEvaluator,
+      goalCutEvaluator,
+      perimeterTable,
+      componentPdbCollection,
+      moveCostPdbCollection,
+      telemetry: featureTelemetry,
+      counters,
+    });
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
       movedCell: number,
@@ -717,21 +627,16 @@ export async function runExactMoveAStar(
 
     const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
     const initialPushBound = heuristic.evaluate(initialBoxes);
-    const initialLabelCosts = heuristic.lastLabelCosts;
-    const initialLabelCostsBoxKey = heuristic.lastBoxKey;
-    const initialBoost = initialLabelCosts && boostEvaluator
-      ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
-      : 0;
-    const initialLC = linearConflict(initialBoxes);
     const initialWalkBound = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
     const initialBoxKey = packBoxKey(initialBoxes);
-    const initialPdbSurplus = pdbSurplus(initialBoxes, initialLabelCosts, initialBoxKey, initialLabelCostsBoxKey);
-    const initialGoalCut = goalCut();
-    const initialH = computeH(initialPushBound, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialWalkBound, initialTokens, initialBoxes, initialRobot, initialBoxKey, 0, Infinity);
+    const initialH = hEvaluator.evaluate(
+      initialPushBound, initialWalkBound, initialBoxes, initialTokens,
+      initialRobot, initialBoxKey, 0, Infinity,
+    );
     lastLowerBound = initialH;
 
     const featureCounters = (): Readonly<Record<string, number>> => ({
@@ -739,6 +644,8 @@ export async function runExactMoveAStar(
       incrementalAssignmentRepairs: heuristic.stats.incrementalRepairs,
       linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
       linearConflictTotal: featureTelemetry.linearConflictTotal,
+      additiveExtraRaises: featureTelemetry.additiveExtraRaises,
+      additiveExtraTotal: featureTelemetry.additiveExtraTotal,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
       interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
       interactionBoostRetainedBytes:
@@ -1300,9 +1207,9 @@ export async function runExactMoveAStar(
         // Push bound is a cache hit (was evaluated at generation time).
         let expandedPushBound = heuristic.evaluate(expansionBoxes);
         const expandedBoxKey = exactCodec.packBoxTokens(parentTokenBuf);
-        const expandedPerimeter = perimeterLookup(parentTokenBuf, expandedBoxKey);
+        const expandedPerimeter = hEvaluator.perimeterLookup(parentTokenBuf, expandedBoxKey);
         if (expandedPerimeter > expandedPushBound) expandedPushBound = expandedPerimeter;
-        const expandedComponentBound = componentPdbLookup(expansionBoxes);
+        const expandedComponentBound = hEvaluator.componentPdbLookup(expansionBoxes);
         if (expandedComponentBound > expandedPushBound) expandedPushBound = expandedComponentBound;
         const hExpanded = expandedPushBound + expandedWalk;
         if (nodeMoves + hExpanded >= U) {
@@ -1399,18 +1306,10 @@ export async function runExactMoveAStar(
                 if (childMoves + pushLowerBound + walkBound >= U) {
                   counters.cheapCutoffs += 1;
                 } else {
-                const labelCosts = heuristic.lastLabelCosts;
-                const labelCostsBoxKey = heuristic.lastBoxKey;
-                const interactionBoost = labelCosts && boostEvaluator
-                  ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey, labelCostsBoxKey)
-                  : 0;
-                if (interactionBoost > 0) {
-                  counters.interactionBoostTotal += interactionBoost;
-                }
-                const fpLinearConflict = linearConflict(expansionBoxes);
-                const fpPdbBoost = pdbSurplus(expansionBoxes, labelCosts, childBoxKey, labelCostsBoxKey);
-                const fpGoalCut = goalCut();
-                const h = computeH(pushLowerBound, fpLinearConflict, interactionBoost, fpPdbBoost, fpGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell, childBoxKey, childMoves, U);
+                const h = hEvaluator.evaluate(
+                  pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+                  savedCell, childBoxKey, childMoves, U,
+                );
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1585,16 +1484,10 @@ export async function runExactMoveAStar(
                 continue;
               }
 
-              const tLabelCosts = heuristic.lastLabelCosts;
-              const tLabelCostsBoxKey = heuristic.lastBoxKey;
-              const tInteractionBoost = tLabelCosts && boostEvaluator
-                ? boostEvaluator.evaluate(expansionBoxes, tLabelCosts, tChildBoxKey, tLabelCostsBoxKey)
-                : 0;
-              if (tInteractionBoost > 0) counters.interactionBoostTotal += tInteractionBoost;
-              const tLC = linearConflict(expansionBoxes);
-              const tPdbBoost = pdbSurplus(expansionBoxes, tLabelCosts, tChildBoxKey, tLabelCostsBoxKey);
-              const tGoalCut = goalCut();
-              const tH = computeH(tPushLowerBound, tLC, tInteractionBoost, tPdbBoost, tGoalCut, tWalkBound, childTokenBuf, expansionBoxes, stop.robotCell, tChildBoxKey, tChildMoves, U);
+              const tH = hEvaluator.evaluate(
+                tPushLowerBound, tWalkBound, expansionBoxes, childTokenBuf,
+                stop.robotCell, tChildBoxKey, tChildMoves, U,
+              );
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1701,7 +1594,7 @@ export async function runExactMoveAStar(
 
           counters.avoidedReachabilityFloods += 1;
 
-          // Every extra below is >= 0, so computeH never returns less than
+          // Every extra below is >= 0, so h never falls below
           // push + walk: a child this test cuts would fail f >= U anyway.
           const walkBound = minimumManhattanWalkToPotentialPush(
             board,
@@ -1714,18 +1607,10 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const labelCosts = heuristic.lastLabelCosts;
-          const labelCostsBoxKey = heuristic.lastBoxKey;
-          const interactionBoost = labelCosts && boostEvaluator
-            ? boostEvaluator.evaluate(expansionBoxes, labelCosts, childBoxKey, labelCostsBoxKey)
-            : 0;
-          if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
-
-          const childLinearConflict = linearConflict(expansionBoxes);
-          const childPdbBoost = pdbSurplus(expansionBoxes, labelCosts, childBoxKey, labelCostsBoxKey);
-          const childGoalCut = goalCut();
-
-          const h = computeH(pushLowerBound, childLinearConflict, interactionBoost, childPdbBoost, childGoalCut, walkBound, childTokenBuf, expansionBoxes, savedCell, childBoxKey, childMoves, U);
+          const h = hEvaluator.evaluate(
+            pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+            savedCell, childBoxKey, childMoves, U,
+          );
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;

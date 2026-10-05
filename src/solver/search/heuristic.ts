@@ -324,9 +324,10 @@ export class AssignmentHeuristic {
     return this.#labelCosts;
   }
 
-  lastLinearConflict(boxes: readonly DenseBox[]): number {
+  /** See computeLinearConflict; `pairsOut` receives the matched pairs' labels. */
+  lastLinearConflict(boxes: readonly DenseBox[], pairsOut?: string[]): number {
     if (!this.#lastLabelStates) return 0;
-    return computeLinearConflict(this.#board, boxes, this.#lastLabelStates);
+    return computeLinearConflict(this.#board, boxes, this.#lastLabelStates, pairsOut);
   }
 
   #evictIfNeeded(): void {

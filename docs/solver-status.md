@@ -404,6 +404,21 @@ longer. IDA* checkpoint schema 5 retires checkpoints written with the old
 tables. Proof revision `exact-moves-ida-contour-exit-v1` and storage key
 `sokomind.optimal.v10` also cover this change.
 
+A* 2.2.10, IDA* 2.2.10 and Sokomind 1.13.5 add the label-disjoint sum of
+extras to h in both kernels (see "Exact feature controls"). The evaluators
+behind it now report their parts: the PDB evaluator its positive per-label
+surplus terms, the interaction boost its room and pair candidates (its cache
+keeps them with the total), and linear conflict the labels of each counted
+pair. Both kernels share one evaluator, so they compute the same h, and the
+stored h is capped at 65,535 in both. IDA* passes its secondary cutoff as
+`fLimit + 1` and A* as the incumbent, so their cutoffs are unchanged. The
+initial state's boost now uses the boost cache. Telemetry adds
+`additiveExtraRaises` and `additiveExtraTotal`, the states where the sum beat
+the largest single extra and by how much. IDA* checkpoint schema 6 retires
+checkpoints written with the weaker h. Proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
+cover this change.
+
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
 loading the engine or kernels again. The next plan now takes an engine whose
@@ -849,11 +864,40 @@ other box at no extra cost, so the old term could exceed the push optimum. The
 oracle tests in `tests/unit/linear-conflict.test.ts` check the push and move
 bounds over every reachable state of boards for both cases.
 
-Pattern-database partitions contribute to the heuristic via per-label surplus:
-for each label, any excess of the PDB value over the assignment cost is added to
-the heuristic as `h = assignment + max(LC, boost, pdb_surplus) + walk`, with
-the goal-cut surplus joining that maximum when enabled. The PDB surplus is
-admissible because each label's boxes and goals are disjoint.
+Pattern-database partitions contribute a per-label surplus: for each label,
+any excess of its PDB total over its assignment cost. The terms add because
+each label's boxes and goals are disjoint. Both exact kernels compute h in one
+evaluator, `src/solver/search/additive-extras.ts`:
+
+`h = assignment + max(LC, boost, pdb_surplus, goal_cut, disjoint) + walk`
+
+`goal_cut` is 0 unless enabled, and a finite h above 65,535 is lowered to
+65,535. `disjoint` is the best sum of parts whose labels are pairwise
+disjoint. A part is one label's PDB surplus, one room or pair boost candidate,
+one linear-conflict pair (worth 2), or one connected group of linear-conflict
+pairs (worth 2 per pair).
+
+Let `e_L` be the pushes made by label L's boxes beyond L's assignment cost in
+an optimal plan. Each label has as many boxes as goals, so every `e_L` is at
+least 0 and together they are the pushes beyond the assignment bound. Each part
+is at most the sum of `e_L` over its labels:
+
+- a PDB surplus, because the label's PDB total bounds its boxes' pushes;
+- a boost candidate, by its construction;
+- a linear-conflict pair, because one of its two single-goal boxes must leave
+  the line and come back;
+- a group of pairs, for the reason the row and column terms add: counted pairs
+  on one axis share no box, and row and column pairs force pushes along
+  different axes.
+
+Parts with disjoint labels therefore add up to at most the pushes beyond the
+assignment bound. The selection is exact over up to 20 labels and greedy
+beyond. Either way it is a disjoint sum, and the maximum keeps h at least the
+largest single extra. Goal cut has no label attribution, so it enters only the
+maximum. The selection runs only when at least two of LC, boost and PDB
+surplus are positive; with one, the parts cannot sum past it. The backward
+perimeter, component PDB and move-cost PDB still apply afterward, by maximum
+only.
 
 Each partition's table is a reverse push search over the goal region: the cells
 within walking distance 8 of the partition's goals. It is a relaxation. The

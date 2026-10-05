@@ -6,6 +6,7 @@ import { PairConflictHeuristic } from "./pair-conflict-heuristic.ts";
 import {
   hasPotentialRoomPattern,
   RoomPatternHeuristic,
+  type HeuristicCandidate,
   type RoomPatternTableSet,
 } from "./room-pattern-heuristic.ts";
 import type { BoardTopology } from "./topology.ts";
@@ -15,6 +16,18 @@ import {
 } from "./preprocessing-budget.ts";
 
 const BOOST_CACHE_LIMIT = 50_000;
+
+interface BoostCacheEntry {
+  readonly total: number;
+  readonly candidates: readonly HeuristicCandidate[];
+}
+
+const EMPTY_BOOST_ENTRY: BoostCacheEntry = { total: 0, candidates: [] };
+
+/** Map entry and record, plus the candidate array and records it keeps alive (conservative). */
+function boostCacheEntryBytes(candidateCount: number): number {
+  return 96 + (candidateCount > 0 ? 64 + 56 * candidateCount : 0);
+}
 
 export type ExactInteractionSearchLimitReason = "elapsed" | "memory";
 
@@ -70,7 +83,9 @@ export class InteractionBoostEvaluator {
   // Keyed by box key alone, but the boost also depends on the label costs,
   // so evaluate() reads and writes it only when the caller vouches that the
   // label costs belong to that box key.
-  readonly #cache = new Map<bigint, number>();
+  readonly #cache = new Map<bigint, BoostCacheEntry>();
+  #cacheBytes = 0;
+  #lastCandidates: readonly HeuristicCandidate[] = EMPTY_BOOST_ENTRY.candidates;
   readonly #roomCoveredLabels: ReadonlySet<string>;
   readonly #searchBudget?: InteractionSearchBudget;
 
@@ -88,7 +103,7 @@ export class InteractionBoostEvaluator {
     this.#pairHeuristic = new PairConflictHeuristic(
       board,
       topology,
-      (pairBytes) => this.#checkSearchBudget(pairBytes + this.#cache.size * 96),
+      (pairBytes) => this.#checkSearchBudget(pairBytes + this.#cacheBytes),
     );
     this.#roomCoveredLabels = this.#roomHeuristic.coveredLabels();
     checkExactPreprocessingBudget(
@@ -102,8 +117,7 @@ export class InteractionBoostEvaluator {
   }
 
   get searchCacheRetainedBytes(): number {
-    return this.#pairHeuristic.estimatedRetainedBytes +
-      this.#cache.size * 96;
+    return this.#pairHeuristic.estimatedRetainedBytes + this.#cacheBytes;
   }
 
   get estimatedRetainedBytes(): number {
@@ -146,6 +160,15 @@ export class InteractionBoostEvaluator {
   }
 
   /**
+   * Every room and pair candidate behind the last evaluate() result. Each is
+   * worth at most the extra pushes of its labels, so callers may combine any
+   * label-disjoint subset of them with other such parts.
+   */
+  get lastCandidates(): readonly HeuristicCandidate[] {
+    return this.#lastCandidates;
+  }
+
+  /**
    * Boost over the assignment cost for `boxes`. `boxKey` identifies the box
    * layout and `labelCostsBoxKey` the layout `labelCosts` were computed for
    * (the assignment heuristic's `lastBoxKey`). The cache is used only when
@@ -168,7 +191,8 @@ export class InteractionBoostEvaluator {
         this.stats.cacheHits++;
         this.#cache.delete(cacheKey);
         this.#cache.set(cacheKey, cached);
-        return cached;
+        this.#lastCandidates = cached.candidates;
+        return cached.total;
       }
     }
 
@@ -179,10 +203,8 @@ export class InteractionBoostEvaluator {
       this.#roomCoveredLabels,
     );
 
-    const selected = maximumDisjointSelection([
-      ...roomCandidates,
-      ...pairCandidates,
-    ]);
+    const candidates = [...roomCandidates, ...pairCandidates];
+    const selected = maximumDisjointSelection(candidates);
 
     let total = 0;
     for (const candidate of selected) {
@@ -194,15 +216,23 @@ export class InteractionBoostEvaluator {
       }
     }
 
+    this.#lastCandidates = candidates;
     if (cacheKey !== undefined) {
+      const entryBytes = boostCacheEntryBytes(candidates.length);
       this.#checkSearchBudget(
-        this.#pairHeuristic.estimatedRetainedBytes +
-          (this.#cache.size + 1) * 96,
+        this.#pairHeuristic.estimatedRetainedBytes + this.#cacheBytes + entryBytes,
       );
-      this.#cache.set(cacheKey, total);
+      this.#cache.set(
+        cacheKey,
+        candidates.length === 0 ? EMPTY_BOOST_ENTRY : { total, candidates },
+      );
+      this.#cacheBytes += entryBytes;
       if (this.#cache.size > BOOST_CACHE_LIMIT) {
-        const first = this.#cache.keys().next().value;
-        if (first !== undefined) this.#cache.delete(first);
+        const first = this.#cache.entries().next().value;
+        if (first !== undefined) {
+          this.#cache.delete(first[0]);
+          this.#cacheBytes -= boostCacheEntryBytes(first[1].candidates.length);
+        }
       }
     }
 

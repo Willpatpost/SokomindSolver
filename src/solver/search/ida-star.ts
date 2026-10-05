@@ -89,6 +89,7 @@ import {
   YIELD_WORK_INTERVAL,
 } from "./engine.ts";
 import { delayForEventLoop } from "./scheduling.ts";
+import { createExactHeuristicEvaluator } from "./additive-extras.ts";
 import { fillOccupancy, fillDeadlockOccupancy, isSolved, objectiveScore } from "./exact-search-types.ts";
 import {
   createExactSearchFeatureTelemetry,
@@ -882,110 +883,19 @@ export async function runIdaStarSearch(
     }
     throwIfSolverCancelled(context.signal);
 
-    const linearConflict = (boxes: readonly DenseBox[]): number => {
-      if (!features.linearConflict) return 0;
-      featureTelemetry.linearConflictEvaluations += 1;
-      const value = heuristic.lastLinearConflict(boxes);
-      featureTelemetry.linearConflictTotal += value;
-      return value;
-    };
-    const pdbSurplus = (
-      boxes: readonly DenseBox[],
-      labelCosts: ReadonlyMap<string, number> | null,
-      boxKey?: bigint,
-      labelCostsBoxKey?: bigint,
-    ): number => {
-      if (!pdbEvaluator || !labelCosts) return 0;
-      featureTelemetry.pdbEvaluations += 1;
-      return pdbEvaluator.evaluateWithSurplus(boxes, labelCosts, boxKey, labelCostsBoxKey);
-    };
-    const goalCut = (): number => {
-      if (!goalCutEvaluator) return 0;
-      const states = heuristic.lastAssignmentStates;
-      if (!states) return 0;
-      const value = goalCutEvaluator.evaluate(states);
-      featureTelemetry.goalCutEvaluations += 1;
-      featureTelemetry.goalCutTotal += value;
-      return value;
-    };
-    const perimeterLookup = (boxes: readonly DenseBox[]): number => {
-      if (!perimeterTable) return 0;
-      const tokens = exactCodec.tokensFromBoxes(boxes);
-      const boxZob = zobristTable.hashFromTokensNoRobot(tokens);
-      const boxKey = exactCodec.packBoxTokens(tokens);
-      const dist = perimeterTable.lookup(boxZob, boxKey);
-      if (dist === undefined) return 0;
-      return dist;
-    };
-    const componentPdbBoxesByLabel = new Map<string, number[]>();
-    const componentPdbLookup = (boxes: readonly DenseBox[]): number => {
-      if (!componentPdbCollection) return 0;
-      componentPdbBoxesByLabel.clear();
-      for (const box of boxes) {
-        let cells = componentPdbBoxesByLabel.get(box.label);
-        if (!cells) {
-          cells = [];
-          componentPdbBoxesByLabel.set(box.label, cells);
-        }
-        cells.push(box.cell);
-      }
-      return componentPdbCollection.evaluate(componentPdbBoxesByLabel);
-    };
-    let lastHTruncated = false;
-    const computeH = (
-      pushBound: number,
-      lc: number,
-      boost: number,
-      pdb: number,
-      gc: number,
-      walkBound: number,
-      boxes: readonly DenseBox[],
-      robotCell: number,
-      g: number,
-      fLimit: number,
-    ): number => {
-      lastHTruncated = false;
-      let totalPushBound = pushBound + Math.max(lc, boost, pdb, gc);
-      if (g + totalPushBound + walkBound > fLimit) {
-        counters.secondaryCutoffs++;
-        lastHTruncated = true;
-        return totalPushBound + walkBound;
-      }
-      const perimeterDist = perimeterLookup(boxes);
-      if (perimeterDist > totalPushBound) {
-        const improvement = perimeterDist - totalPushBound;
-        featureTelemetry.backwardPerimeterImprovements++;
-        featureTelemetry.backwardPerimeterTotalImprovement += improvement;
-        if (improvement > featureTelemetry.backwardPerimeterMaxImprovement) {
-          featureTelemetry.backwardPerimeterMaxImprovement = improvement;
-        }
-        totalPushBound = perimeterDist;
-      }
-      const componentBound = componentPdbLookup(boxes);
-      if (componentBound > totalPushBound) {
-        const improvement = componentBound - totalPushBound;
-        featureTelemetry.componentPdbImprovements++;
-        featureTelemetry.componentPdbTotalImprovement += improvement;
-        if (improvement > featureTelemetry.componentPdbMaxImprovement) {
-          featureTelemetry.componentPdbMaxImprovement = improvement;
-        }
-        totalPushBound = componentBound;
-      }
-      let h = totalPushBound + walkBound;
-      if (moveCostPdbCollection) {
-        const mcBound = moveCostPdbCollection.evaluate(boxes, robotCell);
-        if (mcBound > h) {
-          const improvement = mcBound - h;
-          featureTelemetry.moveCostPdbImprovements++;
-          featureTelemetry.moveCostPdbTotalImprovement += improvement;
-          if (improvement > featureTelemetry.moveCostPdbMaxImprovement) {
-            featureTelemetry.moveCostPdbMaxImprovement = improvement;
-          }
-          h = mcBound;
-        }
-      }
-      return h;
-    };
+    const hEvaluator = createExactHeuristicEvaluator({
+      features,
+      heuristic,
+      zobristTable,
+      boostEvaluator,
+      pdbEvaluator,
+      goalCutEvaluator,
+      perimeterTable,
+      componentPdbCollection,
+      moveCostPdbCollection,
+      telemetry: featureTelemetry,
+      counters,
+    });
     const deadlockTableCheck = (
       boxes: readonly DenseBox[],
       movedCell: number,
@@ -1029,7 +939,7 @@ export async function runIdaStarSearch(
         maxMem === undefined || recordCurrentMemory() + additionalBytes <= maxMem,
     };
     // Holds h with a truncated bit (see encodeCachedH). A truncated h was cut
-    // short by the cheap push+walk cutoff or computeH's secondary cutoff. It
+    // short by the cheap push+walk cutoff or the evaluator's cutoff. It
     // is reused only while it still exceeds the contour bound; otherwise the
     // full h is recomputed so later contours are not stuck with the weaker
     // value.
@@ -1061,6 +971,8 @@ export async function runIdaStarSearch(
       incrementalAssignmentRepairs: heuristic.stats.incrementalRepairs,
       linearConflictEvaluations: featureTelemetry.linearConflictEvaluations,
       linearConflictTotal: featureTelemetry.linearConflictTotal,
+      additiveExtraRaises: featureTelemetry.additiveExtraRaises,
+      additiveExtraTotal: featureTelemetry.additiveExtraTotal,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
       interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
       interactionBoostRetainedBytes:
@@ -1361,25 +1273,16 @@ export async function runIdaStarSearch(
         proof: makeUnsolvableProof(),
       };
     }
-    const initialLabelCosts = heuristic.lastLabelCosts;
-    const initialLabelCostsBoxKey = heuristic.lastBoxKey;
-    const initialBoost = initialLabelCosts && boostEvaluator
-      ? boostEvaluator.evaluate(initialBoxes, initialLabelCosts)
-      : 0;
-    const initialLC = linearConflict(initialBoxes);
     const initialHWalk = minimumManhattanWalkToPotentialPush(
       board,
       initialRobot,
       initialBoxes,
     );
-    const initialPdbSurplus = pdbSurplus(
-      initialBoxes,
-      initialLabelCosts,
-      packBoxKeyFromBoxes(initialBoxes),
-      initialLabelCostsBoxKey,
+    const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
+    const initialH = hEvaluator.evaluate(
+      initialHPush, initialHWalk, initialBoxes, initialTokens, initialRobot,
+      exactCodec.packBoxTokens(initialTokens), 0, Infinity,
     );
-    const initialGoalCut = goalCut();
-    const initialH = computeH(initialHPush, initialLC, initialBoost, initialPdbSurplus, initialGoalCut, initialHWalk, initialBoxes, initialRobot, 0, Infinity);
     if (!resumeCheckpoint) lastExhaustedThreshold = initialH;
     if (initialH >= U) {
       return incumbentSolution
@@ -1387,7 +1290,6 @@ export async function runIdaStarSearch(
         : finishCapExhausted(U);
     }
 
-    const initialTokens = exactCodec.tokensFromBoxes(initialBoxes);
     const initialHashLo = zobristTable.hashLo(initialTokens, initialRobot);
     const initialHashHi = zobristTable.hashHi(initialTokens, initialRobot);
     const initialG = 0;
@@ -1617,25 +1519,11 @@ export async function runIdaStarSearch(
               h = hPush + hWalk;
               hTruncated = true;
             } else {
-            const labelCosts = heuristic.lastLabelCosts;
-            const labelCostsBoxKey = heuristic.lastBoxKey;
-            const boxKey = packBoxKeyFromBoxes(frame.boxes);
-            const interactionBoost = labelCosts && boostEvaluator
-              ? boostEvaluator.evaluate(
-                  frame.boxes,
-                  labelCosts,
-                  boxKey,
-                  labelCostsBoxKey,
-                )
-              : 0;
-            if (interactionBoost > 0) counters.interactionBoostTotal += interactionBoost;
-
-            const linearConflictBoost = linearConflict(frame.boxes);
-
-            const pdbBoost = pdbSurplus(frame.boxes, labelCosts, boxKey, labelCostsBoxKey);
-            const goalCutBoost = goalCut();
-            h = computeH(hPush, linearConflictBoost, interactionBoost, pdbBoost, goalCutBoost, hWalk, frame.boxes, frame.robot, frame.g, fLimit);
-            hTruncated = lastHTruncated;
+            h = hEvaluator.evaluate(
+              hPush, hWalk, frame.boxes, frame.tokens, frame.robot,
+              exactCodec.packBoxTokens(frame.tokens), frame.g, fLimit + 1,
+            );
+            hTruncated = hEvaluator.lastTruncated;
             }
 
             const encodedH = encodeCachedH(h, hTruncated);
@@ -1833,9 +1721,11 @@ export async function runIdaStarSearch(
           // Push bound is a cache hit (was evaluated in the !expanded block).
           let expandedPushBound = heuristic.evaluate(frame.boxes);
           heuristicCacheEntries = heuristic.stats.cacheEntries;
-          const expandedPerimeter = perimeterLookup(frame.boxes);
+          const expandedPerimeter = hEvaluator.perimeterLookup(
+            frame.tokens, exactCodec.packBoxTokens(frame.tokens),
+          );
           if (expandedPerimeter > expandedPushBound) expandedPushBound = expandedPerimeter;
-          const expandedComponentBound = componentPdbLookup(frame.boxes);
+          const expandedComponentBound = hEvaluator.componentPdbLookup(frame.boxes);
           if (expandedComponentBound > expandedPushBound) expandedPushBound = expandedComponentBound;
           const hExpanded = expandedPushBound + expandedWalk;
           const fExpanded = frame.g + hExpanded;

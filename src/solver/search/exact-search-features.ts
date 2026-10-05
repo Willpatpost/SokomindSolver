@@ -108,9 +108,12 @@ export function isDefaultExactSearchFeatures(
   );
 }
 
-interface ExactSearchFeatureTelemetry {
+export interface ExactSearchFeatureTelemetry {
   linearConflictEvaluations: number;
   linearConflictTotal: number;
+  /** States whose label-disjoint sum of extras beat the largest single extra. */
+  additiveExtraRaises: number;
+  additiveExtraTotal: number;
   /** Elapsed time from kernel start until the search loop takes its first state. */
   firstExpansionMs: number;
   pdbBuildTimeMs: number;
@@ -160,6 +163,8 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
   return {
     linearConflictEvaluations: 0,
     linearConflictTotal: 0,
+    additiveExtraRaises: 0,
+    additiveExtraTotal: 0,
     firstExpansionMs: 0,
     pdbBuildTimeMs: 0,
     pdbTableEntries: 0,

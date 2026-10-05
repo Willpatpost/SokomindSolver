@@ -102,6 +102,7 @@ export function minSubsetLookup(
 }
 
 const SURPLUS_CACHE_CAP = 50_000;
+const NO_SURPLUS_PARTS: readonly number[] = [];
 
 /** Pattern-database evaluator with reusable hot-path buffers. */
 export class PdbHeuristicEvaluator {
@@ -119,8 +120,10 @@ export class PdbHeuristicEvaluator {
   readonly #subsetScratch = createSubsetScratch();
   // Keyed by box key alone, but the surplus also depends on the assignment
   // label costs, so evaluateWithSurplus() reads and writes it only when the
-  // caller vouches that the label costs belong to that box key.
-  readonly #surplusCache = new Map<bigint, number>();
+  // caller vouches that the label costs belong to that box key. Values are
+  // surplus parts, as lastSurplusParts describes.
+  readonly #surplusCache = new Map<bigint, readonly number[]>();
+  #lastSurplusParts: readonly number[] = NO_SURPLUS_PARTS;
   #cacheHits = 0;
   #cacheMisses = 0;
   #surplusCacheBytes = 0;
@@ -227,6 +230,14 @@ export class PdbHeuristicEvaluator {
   setSearchCacheMemoryBudget(budget: (additionalBytes: number) => boolean): void {
     this.#cacheMemoryBudget = budget;
   }
+  /**
+   * The positive per-label terms of the last evaluateWithSurplus() result,
+   * flat as [slot, surplus, ...]; slotLabel() names each slot's label. A
+   * label's term is its PDB total less its assignment cost, and is at most
+   * that label's pushes beyond its assignment cost.
+   */
+  get lastSurplusParts(): readonly number[] { return this.#lastSurplusParts; }
+  slotLabel(slot: number): string { return this.#slotLabels[slot]; }
   get surplusCacheStats(): { hits: number; misses: number; size: number } {
     return { hits: this.#cacheHits, misses: this.#cacheMisses, size: this.#surplusCache.size };
   }
@@ -278,7 +289,10 @@ export class PdbHeuristicEvaluator {
     boxKey?: bigint,
     labelCostsBoxKey?: bigint,
   ): number {
-    if (this.#pdbs.length === 0) return 0;
+    if (this.#pdbs.length === 0) {
+      this.#lastSurplusParts = NO_SURPLUS_PARTS;
+      return 0;
+    }
 
     const cacheKey = boxKey !== undefined && boxKey === labelCostsBoxKey
       ? boxKey
@@ -287,7 +301,10 @@ export class PdbHeuristicEvaluator {
       const cached = this.#surplusCache.get(cacheKey);
       if (cached !== undefined) {
         this.#cacheHits++;
-        return cached;
+        this.#lastSurplusParts = cached;
+        let total = 0;
+        for (let i = 1; i < cached.length; i += 2) total += cached[i];
+        return total;
       }
     }
     this.#cacheMisses++;
@@ -324,25 +341,31 @@ export class PdbHeuristicEvaluator {
 
     // Labels in the order their first table answered.
     let surplus = 0;
+    let parts: number[] | null = null;
     for (let t = 0; t < touchedCount; t++) {
       const slot = order[t];
       touched[slot] = 0;
       const assignmentCost = assignmentLabelCosts.get(this.#slotLabels[slot]) ?? 0;
       const diff = totals[slot] - assignmentCost;
-      if (diff > 0) surplus += diff;
+      if (diff > 0) {
+        surplus += diff;
+        (parts ??= []).push(slot, diff);
+      }
     }
+    const surplusParts = parts ?? NO_SURPLUS_PARTS;
+    this.#lastSurplusParts = surplusParts;
 
     if (cacheKey !== undefined) {
       if (this.#surplusCache.size >= SURPLUS_CACHE_CAP) {
         const firstKey = this.#surplusCache.keys().next().value;
         if (firstKey !== undefined) {
+          this.#surplusCacheBytes -= this.#cacheEntryBytes(firstKey, this.#surplusCache.get(firstKey)!);
           this.#surplusCache.delete(firstKey);
-          this.#surplusCacheBytes -= this.#cacheEntryBytes(firstKey);
         }
       }
-      const additionalBytes = this.#cacheEntryBytes(cacheKey);
+      const additionalBytes = this.#cacheEntryBytes(cacheKey, surplusParts);
       if (this.#cacheMemoryBudget?.(additionalBytes) !== false) {
-        this.#surplusCache.set(cacheKey, surplus);
+        this.#surplusCache.set(cacheKey, surplusParts);
         this.#surplusCacheBytes += additionalBytes;
       }
     }
@@ -350,8 +373,9 @@ export class PdbHeuristicEvaluator {
     return surplus;
   }
 
-  #cacheEntryBytes(key: bigint): number {
-    // Map entry, boxed value and exact BigInt key payload (conservative estimate).
-    return 96 + Math.ceil(key.toString(16).length / 2);
+  #cacheEntryBytes(key: bigint, parts: readonly number[]): number {
+    // Map entry, exact BigInt key payload and any parts array (conservative estimate).
+    return 96 + Math.ceil(key.toString(16).length / 2) +
+      (parts.length > 0 ? 32 + 8 * parts.length : 0);
   }
 }

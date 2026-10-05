@@ -37,6 +37,13 @@ published a stable release.
 
 ### Changed
 
+- Exact A* and IDA* now share one heuristic evaluator. Besides the largest of
+  linear conflict, interaction boost, pattern-database surplus and goal cut, h
+  can now use one label-disjoint sum of their per-label parts: each label's
+  pattern-database surplus, room and pair boost candidates, and linear-conflict
+  pairs and connected groups of pairs. Each part is at most its labels' extra
+  pushes, so the sum stays admissible. h is capped at 65,535. IDA* checkpoint
+  schema 6.
 - IDA* keeps its contour-local best g and its h cache in open-addressing
   tables that store each state's exact robot cell and sorted box tokens,
   instead of maps of BigInt keys. A hash collision never merges two states,
@@ -78,7 +85,7 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.9, `classic-ida-star` 2.2.9 and `sokomind-solver` 1.13.4. Sokomind 1.3.0 marked the earlier Quality
+  `classic-astar` 2.2.10, `classic-ida-star` 2.2.10 and `sokomind-solver` 1.13.5. Sokomind 1.3.0 marked the earlier Quality
   changes: Quality never dispatches proof and reports unknown optimality,
   requests accept a replay-validated initial solution, and Quality repair runs
   on a parallel task-slot coordinator.
@@ -86,7 +93,7 @@ published a stable release.
   and the storage key is `sokomind.optimal.v10`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs
   cannot overwrite current ones.
-- The IDA* checkpoint schema is now 4, so checkpoints written by the earlier
+- The IDA* checkpoint schema is now 6, so checkpoints written by the earlier
   kernels restart instead of resuming.
 - The frozen known-optimum gate now also replays small oracle-backed entries
   through exact IDA*, covers a proven-unsolvable board, and records which

@@ -422,7 +422,7 @@ describe("validateCheckpointCompatibility", () => {
     );
     assert.deepEqual(result, {
       compatible: false,
-      reason: "Schema version mismatch: checkpoint=3, expected=5",
+      reason: "Schema version mismatch: checkpoint=3, expected=6",
     });
   });
 });

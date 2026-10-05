@@ -2,6 +2,7 @@ import type { CompiledSearchBoard } from "./compiled-board.ts";
 import type { DenseBox } from "./model.ts";
 
 interface BoxGoalPair {
+  readonly label: string;
   readonly boxCell: number;
   readonly goalCell: number;
   readonly boxPos: number;
@@ -14,10 +15,11 @@ function collectAxisPairs(
   assignment: ReadonlyMap<string, { boxCells: readonly number[]; goalCells: readonly number[]; columns: readonly number[] }>,
   getAxisCoord: (cell: number) => number,
   getLineCoord: (cell: number) => number,
+  pairsOut?: string[],
 ): number {
   const lineMap = new Map<number, BoxGoalPair[]>();
 
-  for (const [, state] of assignment) {
+  for (const [label, state] of assignment) {
     const { boxCells, goalCells, columns } = state;
     // A label with several goals can be matched differently by another
     // assignment of the same cost, which may cross no pairs at all.
@@ -36,7 +38,7 @@ function collectAxisPairs(
       // at no extra cost.
       if (pushDist !== Math.abs(boxPos - goalPos)) continue;
 
-      const pair: BoxGoalPair = { boxCell, goalCell, boxPos, goalPos, pushDist };
+      const pair: BoxGoalPair = { label, boxCell, goalCell, boxPos, goalPos, pushDist };
       const list = lineMap.get(boxLine) ?? [];
       list.push(pair);
       lineMap.set(boxLine, list);
@@ -70,6 +72,7 @@ function collectAxisPairs(
         totalConflicts += 1;
         used.add(conflict.i);
         used.add(conflict.j);
+        pairsOut?.push(pairs[conflict.i].label, pairs[conflict.j].label);
       }
     }
   }
@@ -89,18 +92,24 @@ function collectAxisPairs(
  * each box pays for one pair per axis, and pushes across the line and along
  * it are counted separately, so the row and column terms add. The result is
  * therefore a lower bound on the pushes beyond the assignment cost.
+ *
+ * Each such label has one goal and so one box. When `pairsOut` is given, the
+ * labels of every matched pair are appended to it, two per pair. A pair is
+ * worth 2, and those pushes belong to its two labels' boxes, so any set of
+ * matched pairs is worth at most the extra pushes of the labels it names.
  */
 export function computeLinearConflict(
   board: CompiledSearchBoard,
   // The assignment contains box cells; retain this public argument for callers.
   _boxes: readonly DenseBox[],
   assignment: ReadonlyMap<string, { boxCells: readonly number[]; goalCells: readonly number[]; columns: readonly number[] }>,
+  pairsOut?: string[],
 ): number {
   const getRow = (cell: number) => board.positions[cell].row;
   const getCol = (cell: number) => board.positions[cell].column;
 
-  const rowConflicts = collectAxisPairs(board, assignment, getCol, getRow);
-  const colConflicts = collectAxisPairs(board, assignment, getRow, getCol);
+  const rowConflicts = collectAxisPairs(board, assignment, getCol, getRow, pairsOut);
+  const colConflicts = collectAxisPairs(board, assignment, getRow, getCol, pairsOut);
 
   return (rowConflicts + colConflicts) * 2;
 }
