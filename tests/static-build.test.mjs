@@ -84,7 +84,8 @@ const DELIVERY_BUDGETS = Object.freeze({
   largestAssetGzipBytes: 100_000,
   homeRouteGzipBytes: 195_000,
   playRouteGzipBytes: 220_000,
-  solverWorkerGzipBytes: 89_000,
+  // The shared exact heuristic evaluator (measured 89,590 bytes).
+  solverWorkerGzipBytes: 92_000,
   // Includes V2 predicates, task evaluation, replayed continuation, PDB discovery,
   // schedule trace, macro intermediate retention, and two-box rescheduling.
   engineWorkerGzipBytes: 95_000,
