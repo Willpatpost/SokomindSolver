@@ -25,6 +25,9 @@ export interface CompactNodeArena {
   heuristic(index: number): number;
   /** Values above 65535 are stored as 65535. */
   setHeuristic(index: number, value: number): void;
+  /** False unless the arena was created with `pendingExtras`. */
+  extrasPending(index: number): boolean;
+  setExtrasPending(index: number, value: boolean): void;
 
   readBoxTokens(index: number, out: Uint16Array | Uint32Array): void;
   writeBoxTokens(index: number, tokens: Uint16Array | Uint32Array): void;
@@ -46,9 +49,21 @@ function chunkSet(chunks: { [i: number]: number }[], index: number, value: numbe
   chunks[index >>> CHUNK_BITS]![index & CHUNK_MASK] = value;
 }
 
-export function createCompactNodeArena(boxCount: number, maxToken?: number): CompactNodeArena {
+export interface CompactNodeArenaOptions {
+  /** Keeps one byte per node marking an h that still lacks the extras. */
+  readonly pendingExtras?: boolean;
+}
+
+export function createCompactNodeArena(
+  boxCount: number,
+  maxToken?: number,
+  options: CompactNodeArenaOptions = {},
+): CompactNodeArena {
   const useWideTokens = maxToken !== undefined && maxToken > 65535;
   const bytesPerToken = useWideTokens ? 4 : 2;
+  const pendingExtras = options.pendingExtras === true;
+  // robot 2 + g 4 + pushes 2 + parent 4 + pushed-from 2 + direction 1 + h 2.
+  const scalarBytesPerNode = 17 + (pendingExtras ? 1 : 0);
 
   const robotCellChunks: Uint16Array[] = [];
   const gMovesChunks: Uint32Array[] = [];
@@ -57,6 +72,7 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
   const pushedFromCellChunks: Uint16Array[] = [];
   const pushDirectionChunks: Uint8Array[] = [];
   const heuristicChunks: Uint16Array[] = [];
+  const pendingChunks: Uint8Array[] = [];
   const boxTokenChunks: (Uint16Array | Uint32Array)[] = [];
 
   let _size = 0;
@@ -70,6 +86,7 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
     pushedFromCellChunks.push(new Uint16Array(CHUNK_SIZE));
     pushDirectionChunks.push(new Uint8Array(CHUNK_SIZE));
     heuristicChunks.push(new Uint16Array(CHUNK_SIZE));
+    if (pendingExtras) pendingChunks.push(new Uint8Array(CHUNK_SIZE));
     const tokenChunkLen = CHUNK_SIZE * boxCount;
     boxTokenChunks.push(
       useWideTokens ? new Uint32Array(tokenChunkLen) : new Uint16Array(tokenChunkLen),
@@ -142,6 +159,13 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
       chunkSet(heuristicChunks, index, value > MAX_STORED_HEURISTIC ? MAX_STORED_HEURISTIC : value);
     },
 
+    extrasPending(index: number): boolean {
+      return pendingExtras && chunkGet(pendingChunks, index) !== 0;
+    },
+    setExtrasPending(index: number, value: boolean): void {
+      if (pendingExtras) chunkSet(pendingChunks, index, value ? 1 : 0);
+    },
+
     readBoxTokens(index: number, out: Uint16Array | Uint32Array): void {
       const ci = index >>> CHUNK_BITS;
       const baseOffset = (index & CHUNK_MASK) * boxCount;
@@ -178,21 +202,18 @@ export function createCompactNodeArena(boxCount: number, maxToken?: number): Com
 
     estimatedRetainedBytes(): number {
       const numChunks = robotCellChunks.length;
-      const scalarBytes =
-        numChunks *
-        CHUNK_SIZE *
-        (2 + 4 + 2 + 4 + 2 + 1 + 2);
+      const scalarBytes = numChunks * CHUNK_SIZE * scalarBytesPerNode;
       const tokenBytes = numChunks * CHUNK_SIZE * boxCount * bytesPerToken;
       return scalarBytes + tokenBytes;
     },
 
     estimatedRetainedBytesAfterAllocation(): number {
       const nextCapacity = _size < capacity ? capacity : capacity + CHUNK_SIZE;
-      return nextCapacity * (17 + boxCount * bytesPerToken);
+      return nextCapacity * (scalarBytesPerNode + boxCount * bytesPerToken);
     },
 
     estimatedBytesPerNode(): number {
-      return 17 + boxCount * bytesPerToken;
+      return scalarBytesPerNode + boxCount * bytesPerToken;
     },
   };
 

@@ -34,6 +34,10 @@ published a stable release.
   the worker host and the client both replay. The solver dialog shows the best
   route so far, and **Stop and keep best** ends the search with that route as
   an unproven solved result.
+- An opt-in `lazyExtras` exact-search feature (off by default, A* only): A*
+  queues children with push + walk and computes the rest of h when a child is
+  popped, dropping it at f >= the incumbent or queueing it again if h rose.
+  Nothing changes while it is off.
 
 ### Changed
 

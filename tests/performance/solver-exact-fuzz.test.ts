@@ -40,7 +40,7 @@ const ALL_PLANS = crossFuzzRunPlans(FUZZ_ENGINES, [...FUZZ_VARIANTS, ...FUZZ_OPT
 
 /**
  * Default features and two rotating extra variants, each on both engines: six
- * runs per board, and every extra variant once every seven boards.
+ * runs per board, with the extra variants taken in turn.
  */
 function plansForBoard(boardIndex: number): readonly FuzzRunPlan[] {
   if (ALL_VARIANTS) return ALL_PLANS;

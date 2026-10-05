@@ -955,6 +955,7 @@ const FEATURE_EXERCISE_COUNTER: Readonly<
   backwardPerimeter: "backwardPerimeterHits",
   componentPdb: "componentPdbImprovements",
   moveCostPatternPdb: "moveCostPdbImprovements",
+  lazyExtras: "lazyExtrasEvaluations",
 });
 
 function median(values: readonly number[]): number {

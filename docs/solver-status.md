@@ -829,8 +829,9 @@ internally for controlled comparisons. All default on except where noted:
 - deadlock-table pruning;
 - goal-commitment pruning;
 - tunnel macros (default off);
-- goal-cut heuristic (default off); and
-- backward perimeter (default off).
+- goal-cut heuristic (default off);
+- backward perimeter (default off); and
+- lazy extras (default off, A* only).
 
 Telemetry reports the feature vector and mechanism-specific construction,
 evaluation, application, or prune counters. A feature is beneficial only when
@@ -852,6 +853,17 @@ IDA* keys each macro child by its post-macro robot cell, as A* already did.
 Once sound, the macro adds no pruning and measured slower, so `tunnelMacros`
 defaults off; re-enable it only after the tunnel regressions pass with it on
 and a benchmark shows a gain.
+
+Lazy extras (`lazyExtras`) queue each A* child with push + walk and compute
+the rest of h only when the child is popped. Push + walk is admissible and
+never above the full h, so the popped key is still a lower bound on every
+frontier node. At pop, a child whose full f reaches the incumbent is dropped,
+as eager generation would have dropped it, and a child whose h rose is queued
+again before the `L >= U` test. A pending child whose cheap key already
+reaches the incumbent ends the search, as a full key would. Moves and proofs
+are unchanged; the order of equal-f nodes and the unique-state and reopen
+counts can change. It stays off until an A/B shows a gain, and turning it on
+by default bumps the proof revision.
 
 Goal-commitment pruning skips successor generation for boxes proven to be on
 their final goals. Static commitments detect boxes on matching goals in corner

@@ -14,6 +14,7 @@ export const EXACT_SEARCH_FEATURE_KEYS = Object.freeze([
   "backwardPerimeter",
   "componentPdb",
   "moveCostPatternPdb",
+  "lazyExtras",
 ] as const);
 
 export type ExactSearchFeatureKey = (typeof EXACT_SEARCH_FEATURE_KEYS)[number];
@@ -34,6 +35,7 @@ export interface ExactSearchFeatures {
   readonly backwardPerimeter: boolean;
   readonly componentPdb: boolean;
   readonly moveCostPatternPdb: boolean;
+  readonly lazyExtras: boolean;
 }
 
 export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze({
@@ -57,6 +59,10 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   backwardPerimeter: false,
   componentPdb: false,
   moveCostPatternPdb: false,
+  // Off by default (A* only): children enter the frontier with push + walk,
+  // and the extras are computed when a child is popped. It changes the order
+  // of equal-f ties and the unique-state and reopen counts.
+  lazyExtras: false,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
@@ -114,6 +120,12 @@ export interface ExactSearchFeatureTelemetry {
   /** States whose label-disjoint sum of extras beat the largest single extra. */
   additiveExtraRaises: number;
   additiveExtraTotal: number;
+  /** Popped A* nodes whose deferred extras were computed (lazyExtras). */
+  lazyExtrasEvaluations: number;
+  /** Popped nodes whose h rose and went back into the frontier. */
+  lazyExtrasReinserts: number;
+  /** Popped nodes whose raised f reached the upper bound and were dropped. */
+  lazyExtrasPrunes: number;
   /** Elapsed time from kernel start until the search loop takes its first state. */
   firstExpansionMs: number;
   pdbBuildTimeMs: number;
@@ -165,6 +177,9 @@ export function createExactSearchFeatureTelemetry(): ExactSearchFeatureTelemetry
     linearConflictTotal: 0,
     additiveExtraRaises: 0,
     additiveExtraTotal: 0,
+    lazyExtrasEvaluations: 0,
+    lazyExtrasReinserts: 0,
+    lazyExtrasPrunes: 0,
     firstExpansionMs: 0,
     pdbBuildTimeMs: 0,
     pdbTableEntries: 0,

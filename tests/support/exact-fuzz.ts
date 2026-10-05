@@ -746,13 +746,15 @@ export const FUZZ_VARIANTS: readonly FuzzVariant[] = Object.freeze([
 ]);
 
 /**
- * Opt-in features that claim an admissible bound. goalCutHeuristic is left out
- * on purpose: it is known not to be admissible (see exact-search-features.ts).
+ * Opt-in features that claim an admissible bound, plus lazyExtras, which only
+ * delays the extras to pop time (A* only). goalCutHeuristic is left out on
+ * purpose: it is known not to be admissible (see exact-search-features.ts).
  */
 export const FUZZ_OPT_IN_VARIANTS: readonly FuzzVariant[] = Object.freeze([
   variant("backwardPerimeter", { backwardPerimeter: true }),
   variant("componentPdb", { componentPdb: true }),
   variant("moveCostPatternPdb", { moveCostPatternPdb: true }),
+  variant("lazyExtras", { lazyExtras: true }),
 ]);
 
 export interface FuzzRun {

@@ -88,6 +88,7 @@ const SWEEP_CONFIGS: readonly {
   })),
   { label: "tunnelMacros on", features: { tunnelMacros: true } },
   { label: "goalCutHeuristic on", features: { goalCutHeuristic: true } },
+  { label: "lazyExtras on", features: { lazyExtras: true } },
   {
     label: "forcedPushMacros off, tunnelMacros on",
     features: { forcedPushMacros: false, tunnelMacros: true },

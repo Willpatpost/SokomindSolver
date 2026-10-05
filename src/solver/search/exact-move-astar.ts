@@ -586,7 +586,8 @@ export async function runExactMoveAStar(
     counters.reachabilityFloods += 1;
 
     const maxToken = labelCount * cellCount - 1;
-    const arena = createCompactNodeArena(boxCount, maxToken);
+    const lazyExtras = features.lazyExtras;
+    const arena = createCompactNodeArena(boxCount, maxToken, { pendingExtras: lazyExtras });
     const stateTable = createExactStateTable(arena);
     estimateInteractionSearchBaseMemory = () =>
       estimatedArenaMemoryBytes(
@@ -646,6 +647,9 @@ export async function runExactMoveAStar(
       linearConflictTotal: featureTelemetry.linearConflictTotal,
       additiveExtraRaises: featureTelemetry.additiveExtraRaises,
       additiveExtraTotal: featureTelemetry.additiveExtraTotal,
+      lazyExtrasEvaluations: featureTelemetry.lazyExtrasEvaluations,
+      lazyExtrasReinserts: featureTelemetry.lazyExtrasReinserts,
+      lazyExtrasPrunes: featureTelemetry.lazyExtrasPrunes,
       interactionBoostEvaluations: boostEvaluator?.stats.evaluations ?? 0,
       interactionBoostApplicable: boostEvaluator === null ? 0 : 1,
       interactionBoostRetainedBytes:
@@ -1035,6 +1039,8 @@ export async function runExactMoveAStar(
       arena.setPushedFromCell(index, child.pushedFromCell);
       arena.setPushDirection(index, child.pushDirection);
       arena.setHeuristic(index, child.h);
+      // In lazy mode every child is retained with push + walk only.
+      if (lazyExtras) arena.setExtrasPending(index, true);
       arena.writeBoxTokens(index, child.tokens);
       counters.retainedBytes = arena.estimatedRetainedBytes();
       counters.maxDepth = Math.max(counters.maxDepth, child.pushes);
@@ -1100,6 +1106,45 @@ export async function runExactMoveAStar(
       const nodeHash = zobristTable.hashLo(parentTokenBuf, nodeRobotCell);
       const nodeMoves = arena.gMoves(nodeIndex);
 
+      for (let b = 0; b < boxCount; b++) {
+        const token = parentTokenBuf[b];
+        const mbox = expansionBoxes[b] as { label: string; cell: number };
+        mbox.label = labels[tokenToLabelId(token)];
+        mbox.cell = tokenToCell(token);
+      }
+
+      // Lazy extras: the node was queued with push + walk. Compute the full
+      // h now. Drop it at f >= U as eager generation would have, or queue
+      // it again if h rose. A pending node whose cheap key already reaches
+      // U falls through: that key is an admissible heap minimum.
+      if (
+        lazyExtras &&
+        arena.extrasPending(nodeIndex) &&
+        nodeMoves + arena.heuristic(nodeIndex) < U
+      ) {
+        arena.setExtrasPending(nodeIndex, false);
+        featureTelemetry.lazyExtrasEvaluations += 1;
+        const pushBound = heuristic.evaluate(expansionBoxes);
+        const walkBound = minimumManhattanWalkToPotentialPush(
+          board, nodeRobotCell, expansionBoxes,
+        );
+        const fullH = hEvaluator.evaluate(
+          pushBound, walkBound, expansionBoxes, parentTokenBuf,
+          nodeRobotCell, exactCodec.packBoxTokens(parentTokenBuf), nodeMoves, U,
+        );
+        if (nodeMoves + fullH >= U) {
+          featureTelemetry.lazyExtrasPrunes += 1;
+          continue;
+        }
+        if (fullH > arena.heuristic(nodeIndex)) {
+          arena.setHeuristic(nodeIndex, fullH);
+          heap.enqueue(nodeIndex);
+          syncState();
+          featureTelemetry.lazyExtrasReinserts += 1;
+          continue;
+        }
+      }
+
       const L = nodeMoves + arena.heuristic(nodeIndex);
       lastLowerBound = L;
 
@@ -1107,13 +1152,6 @@ export async function runExactMoveAStar(
         return incumbentSolution
           ? finishSolvedOptimal()
           : finishCapExhausted(U);
-      }
-
-      for (let b = 0; b < boxCount; b++) {
-        const token = parentTokenBuf[b];
-        const mbox = expansionBoxes[b] as { label: string; cell: number };
-        mbox.label = labels[tokenToLabelId(token)];
-        mbox.cell = tokenToCell(token);
       }
 
       if (isSolved(board, expansionBoxes)) {
@@ -1306,10 +1344,12 @@ export async function runExactMoveAStar(
                 if (childMoves + pushLowerBound + walkBound >= U) {
                   counters.cheapCutoffs += 1;
                 } else {
-                const h = hEvaluator.evaluate(
-                  pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
-                  savedCell, childBoxKey, childMoves, U,
-                );
+                const h = lazyExtras
+                  ? pushLowerBound + walkBound
+                  : hEvaluator.evaluate(
+                    pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+                    savedCell, childBoxKey, childMoves, U,
+                  );
                 const f = childMoves + h;
 
                 if (f < U) {
@@ -1484,10 +1524,12 @@ export async function runExactMoveAStar(
                 continue;
               }
 
-              const tH = hEvaluator.evaluate(
-                tPushLowerBound, tWalkBound, expansionBoxes, childTokenBuf,
-                stop.robotCell, tChildBoxKey, tChildMoves, U,
-              );
+              const tH = lazyExtras
+                ? tPushLowerBound + tWalkBound
+                : hEvaluator.evaluate(
+                  tPushLowerBound, tWalkBound, expansionBoxes, childTokenBuf,
+                  stop.robotCell, tChildBoxKey, tChildMoves, U,
+                );
               const tF = tChildMoves + tH;
 
               (expansionBoxes[boxIndex] as { cell: number }).cell = tSavedCell;
@@ -1607,10 +1649,12 @@ export async function runExactMoveAStar(
             continue;
           }
 
-          const h = hEvaluator.evaluate(
-            pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
-            savedCell, childBoxKey, childMoves, U,
-          );
+          const h = lazyExtras
+            ? pushLowerBound + walkBound
+            : hEvaluator.evaluate(
+              pushLowerBound, walkBound, expansionBoxes, childTokenBuf,
+              savedCell, childBoxKey, childMoves, U,
+            );
           const f = childMoves + h;
 
           (expansionBoxes[boxIndex] as { cell: number }).cell = savedCell;
