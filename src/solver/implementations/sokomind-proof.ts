@@ -574,6 +574,7 @@ export async function runConcurrentProof(
         "deadlockTableRetainedBytes",
         "preprocessingRetainedBytes",
         "preprocessingCacheRetainedBytes",
+        "sharedHeuristicRetainedBytes",
       ]);
       const globalMaximumCounters = new Set(["maxDepth"]);
       let featureMask: number | undefined;
