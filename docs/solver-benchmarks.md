@@ -318,6 +318,95 @@ memory (job 47954): `v2-27box-open` fell from 1,300 to 989 MiB, and the 17-box
 boards from 1,441-1,634 to 1,079-1,219 MiB. Sokomind 1.12.0 runs the frontiers
 first and starts the portfolio only if they end without a route.
 
+## Phase 3 comparison
+
+Commit `edbeed6` (Sokomind 1.13.7, classic A* 2.2.11, classic IDA* 2.2.11)
+ends the third phase of the 2026-10-03 plan. It was captured with the same
+seventeen shards, settings and node type as the Phase 2 capture: ten
+single-lane shards (SLURM jobs 48370-48379) and seven parallel shards (jobs
+48380-48386). Each group was compared with the `861ca5d` capture.
+
+| Profile | Groups | Solved | Proven | At frozen optimum | Median time | Median first route | Peak RSS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `classic-astar` | 33 | 33 | 33 | 33 | 78 ms | 78 ms | 448 MiB |
+| `classic-ida-star` | 33 | 32 | 32 | 32 | 158 ms | 156 ms | 358 MiB |
+| `sokomind-optimal-astar` | 33 | 33 | 33 | 33 | 665 ms | 219 ms | 620 MiB |
+| `sokomind-optimal-ida` | 33 | 33 | 32 | 32 | 909 ms | 218 ms | 623 MiB |
+| `production-fast` | 44 | 43 | 0 | 8 of 33 | 168 ms | 165 ms | 1,233 MiB |
+| `production-quality` | 44 | 43 | 0 | 33 of 33 | 298 ms | 165 ms | 3,726 MiB |
+| `production-optimal` | 44 | 43 | 33 | 33 of 33 | 297 ms | 165 ms | 3,281 MiB |
+| `production-quality-parallel` | 44 | 43 | 0 | 33 of 33 | 449 ms | 164 ms | 4,269 MiB |
+| `production-optimal-parallel` | 44 | 43 | 33 | 33 of 33 | 445 ms | 165 ms | 6,966 MiB |
+
+25 of the 264 single-lane groups got faster, and the geometric mean of the
+per-group median time ratios is 0.917. Every profile's geometric mean is below
+1, from 0.875 for Fast to 0.949 for classic IDA*. Of the 88 parallel groups,
+21 got faster, with a geometric mean of 0.919.
+
+- Every proven group is still proven at the same move count. Every median
+  route matches `861ca5d` except two. Fast on `open-field` fell from 180 to
+  176 moves, from the structural race described above. Quality's median on
+  `v2-27box-open` rose from 908 to 914 moves, but its runs overlap (904-914
+  against 912-914), and a same-node A/B (job 48392) returned 912 moves on both
+  sides.
+- Lazy extras make classic A* much faster where the extras dominate, on the
+  same expanded states: `adv-four-color` went from 10.7 to 4.1 s and
+  `expert-tetris` from 17.5 to 9.6 s. Quality and Optimal prove these boards
+  with classic A*, so they gain about the same: 10.5 to 4.1 s and 17.3 to
+  9.0 s. The parallel profiles finish them in 2.4 s (from 3.4 s) and 7.6 s
+  (from 12.8 s).
+- Classic IDA* expands fewer states on 21 of 33 boards, and
+  `sokomind-optimal-ida` on 18.
+- In the same 120 s, Optimal expands up to twice as many states on the
+  heavy boards: `master-exchange` 254k to 456k, `theme-museum` 356k to 726k
+  and `master-typed-grid` 191k to 352k. Its final lower bound rose on all ten
+  boards without a frozen optimum: `large` 118 to 121, `master-exchange` 90 to
+  92, `master-typed-grid` 70 to 72, `open-field` 85 to 86, `theme-museum` 54
+  to 55, `theme-parking` 87 to 90, the 17-box boards from 221-222 to 222-223,
+  and `v2-27box-open` 397 to 399.
+- Fast's geometric mean is 0.875, but Phase 3 changed little that Fast runs.
+  A same-node A/B on four heavy boards (job 48393, `a11ac44` against
+  `edbeed6`) measured 1.005 with no flags, so most of that difference is node
+  to node.
+
+The comparison flagged 15 single-lane groups and 4 parallel groups:
+
+- Eight state flags in the exact profiles, on `adv-four-color`,
+  `adv-rotary`, `corridor-2`, `expert-maze` and `expert-tetris`. Every one of
+  these runs was as fast or faster. Phase 3's bound and ordering changes shift
+  which equal-cost nodes are expanded first, so a few boards expand slightly
+  more states, at most 4% (`corridor-2` under `sokomind-optimal-astar`, 20,504
+  to 21,359).
+- Peak RSS under `sokomind-optimal-astar` on `theme-library` (376 to 431 MiB)
+  and `corridor-2` (470 to 537 MiB). The `corridor-2` runs overlap. A
+  same-node A/B on `theme-library` (job 48387) measured +4.5%, in line with
+  the 5% that lazy extras added in its own equal-work A/B (job 48286).
+- Fast time on `large`, `theme-parking` and the hand-designed and mirrored
+  17-box boards, and Fast peak RSS on all three 17-box boards. The RSS is the
+  structural race described above, which this capture includes and `861ca5d`
+  does not. The same-node A/B above (job 48393) found no Fast slowdown from
+  the rest of Phase 3.
+- Optimal peak RSS on `master-typed-grid` (+10%), with 85% more states
+  expanded in the same 120 s, and parallel Optimal peak RSS on `open-field`
+  (+10%, with 16% more states).
+- Parallel Optimal peak RSS on `v2-27box-open` (5,366 to 6,134 MiB). A
+  same-node A/B (job 48394) reproduced it at +16%. The pattern databases were
+  the same size on both sides. In the same 120 s, the IDA* lanes reached 67%
+  more unique states and kept 77% more cached heuristic values.
+- Parallel Quality peak RSS on the hand-designed and rotated 17-box boards
+  (+13% and +12%). Neither reproduced in same-node A/B runs (jobs 48395 and
+  48396): the runs overlapped, and on the hand-designed board `861ca5d` itself
+  peaked at 3,283 to 3,320 MiB.
+
+With the app's proof workers, the final lower bound rose on most heavy boards:
+`large` 123 to 138, `open-field` 9 to 13, the 17-box boards from 2-7 to 8,
+`master-exchange` 5 to 7, `theme-museum` 4 to 6 and `v2-27box-open` 2 to 4.
+`master-typed-grid` stayed at 1, and `theme-parking` fell from 7 to 3 while
+its proof expanded twice as many states (3.9M to 7.9M). The bound is still far
+below the single-lane bound, for the reason given in the Phase 2 comparison:
+it is the minimum over the partitions, and a partition no lane has started
+counts only the moves that lead to it.
+
 ## Controlled feature A/B runs
 
 Use `--compare-feature` with exact profiles:
