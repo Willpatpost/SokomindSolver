@@ -41,15 +41,18 @@ const ROTATED_VARIANTS = FUZZ_VARIANTS.slice(1);
 /**
  * Two runs per board keep the campaign under a minute (the deadlock-table
  * build dominates each run): default features on one engine and one rotated
- * variant on the other. There are 11 rotated variants, an odd number, so each
- * variant switches engines from one turn to the next.
+ * variant on the other. A turn is one pass over the rotated variants. Each
+ * turn the engines swap and the variants shift by one board, so every variant
+ * runs on both engines and does not meet the same boards every turn, whatever
+ * the number of variants.
  */
 function unitPlans(boardIndex: number): FuzzRunPlan[] {
+  const turn = Math.floor(boardIndex / ROTATED_VARIANTS.length);
   return [
-    { engine: FUZZ_ENGINES[boardIndex % 2], variant: FUZZ_VARIANTS[0] },
+    { engine: FUZZ_ENGINES[turn % 2], variant: FUZZ_VARIANTS[0] },
     {
-      engine: FUZZ_ENGINES[(boardIndex + 1) % 2],
-      variant: ROTATED_VARIANTS[boardIndex % ROTATED_VARIANTS.length],
+      engine: FUZZ_ENGINES[(turn + 1) % 2],
+      variant: ROTATED_VARIANTS[(boardIndex - turn) % ROTATED_VARIANTS.length],
     },
   ];
 }
