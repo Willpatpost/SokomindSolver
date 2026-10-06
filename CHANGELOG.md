@@ -97,10 +97,11 @@ published a stable release.
   bound has been proven. Oracle tests found no move-level overestimate, so
   discarding earlier certificates is a precaution.
 - Solver versions are now `classic-dfs` 1.0.1, `classic-greedy` 1.0.1,
-  `classic-astar` 2.2.10, `classic-ida-star` 2.2.11 and `sokomind-solver` 1.13.6. Sokomind 1.3.0 marked the earlier Quality
-  changes: Quality never dispatches proof and reports unknown optimality,
-  requests accept a replay-validated initial solution, and Quality repair runs
-  on a parallel task-slot coordinator.
+  `classic-astar` 2.2.11, `classic-ida-star` 2.2.11 and `sokomind-solver`
+  1.13.7. Sokomind 1.3.0 marked the earlier Quality changes: Quality never
+  dispatches proof and reports unknown optimality, requests accept a
+  replay-validated initial solution, and Quality repair runs on a parallel
+  task-slot coordinator.
 - The optimal-record proof revision is now `exact-moves-ida-contour-exit-v1`
   and the storage key is `sokomind.optimal.v10`, so certificates stored under
   earlier revisions are discarded in both storage tiers and older open tabs

@@ -15,23 +15,23 @@ precedence over historical benchmark reports.
 
 ## Status — October 5, 2026
 
-This status follows the second phase of the 2026-10-03 solver plan, merged
-through Sokomind 1.12.0, classic A* 2.2.5 and classic IDA* 2.2.4. Its
+This status follows the third phase of the 2026-10-03 solver plan, merged
+through Sokomind 1.13.7, classic A* 2.2.11 and classic IDA* 2.2.11. Its
 measurements are in [the solver benchmarks](solver-benchmarks.md), under
-"Phase 2 comparison".
+"Phase 3 comparison".
 
 | Item | Status | Remaining work |
 | --- | --- | --- |
 | 1. Benchmark contracts | Partial: production profiles carry only the app's deadline and memory limit; `production-quality-parallel` and `production-optimal-parallel` run the app's proof workers; samples record the best route at 1-120 s, phase timings and lower-bound history; a solvable 27-box board; a recorded baseline and phase comparisons | Supported/holdout suites, browser repetitions, worker scaling |
 | 2. MC-PDB correctness | Ranks above 2^31 decode exactly; the feature remains off | Performance qualification before enabling |
 | 3. Desktop resources | Unchanged | Isolated worker-scaling and memory evidence |
-| 4. Mode schedulers | Partial: the first route is published at once; with the app's proof workers, the small-board proof runs alone for 5 s and then beside harvest and repair, and Optimal's proof runs to the time limit; Quality runs the same proof only to improve its route | Larger boards still prove after the improvement; feeding harvested routes into a running proof needs soundness sign-off |
+| 4. Mode schedulers | Partial: the first route is published at once; with the app's proof workers, the small-board proof runs alone for 5 s and then beside harvest and repair, and takes each replayed route they publish as its upper bound; Optimal's proof runs to the time limit; Quality runs the same proof only to improve its route | Larger boards still prove after the improvement, so their improved routes never reach a running proof |
 | 5. Exact preprocessing | Partial: A* push-and-walk cutoffs; proof workers reuse board-only tables; the deadlock-table build is bounded by work; a PDB build that runs out of memory keeps a partial table | Useful-pattern selection; the single-lane path does not reuse tables |
-| 6. Proof balancing | Partial: busy lanes send heartbeats; the single-lane proof keeps the coordinator reserve; the parallel proof runs fewer lanes when that keeps exact A* | Deeper partition splitting and shared tables need sign-off |
-| 7. Stronger lower bounds | Open; candidate bounds await soundness sign-off | Walking bounds or a corrected MC-PDB |
+| 6. Proof balancing | Partial: busy lanes send heartbeats; the single-lane proof keeps the coordinator reserve; the parallel proof runs fewer lanes when that keeps exact A*, starts the partitions with the lowest prefix cost plus push bound, stops a lane once its prefix alone costs the best route, and lets its A* lanes share the exact-state bounds they compute | The parallel lower bound is the minimum over partitions, so it stays weak on heavy boards; deeper splitting was dropped because lanes measured almost no idle time |
+| 7. Stronger lower bounds | Partial: freeze deadlocks also catch boxes held on one side of an axis; h can use one label-disjoint sum of the per-label extras; IDA* raises h at expansion to the push bound plus the exact walk to a push | A walking bound can only join h as a maximum, and at the Grand Hall root the keeper-tour bounds (43 to 66 moves) fall far below the current h of 201, so none was built; MC-PDB stays off |
 | 8. Earlier Fast portfolio | Done: on structural boards, Fast's discovery runs beside the structural head start, with the forward and reverse frontiers first when at least four workers run | Boards that structural solves hold the discovery lanes' memory until it finishes (580 to 740 MiB more on the 17-box boards) |
 | 9. Broader Quality repair | Partial: repair runs on routes of any length; harvest beams receive their move weights; pair repair picks two-box pairs by push detour and swaps the goals of same-label pairs | Broader neighbourhoods; wider move windows and more rewrite slots found no shorter routes within 60 s |
-| 10. Hot paths and worker reuse | Partial: kernels yield through `setImmediate` or `MessageChannel`; engine and proof workers last the whole request; the kernels reuse their scratch buffers and IDA* floods once per frame | A BigInt-free state table needs sign-off |
+| 10. Hot paths and worker reuse | Done: kernels yield through `setImmediate` or `MessageChannel`; engine and proof workers last the whole request; the kernels reuse their scratch buffers and IDA* floods once per frame; both kernels keep states in open-addressing tables of exact keys instead of BigInt maps; A* computes the extras only for the children it pops | Further constant factors only where a profile shows them |
 | 11. Public anytime results | Done: progress carries the replay-verified route, the dialog shows the best route so far, and **Stop and keep best** returns it | Sequential IDA* improvements carry no route until the result |
 | 12. WASM/native | Deferred | Unchanged |
 
