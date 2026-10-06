@@ -240,9 +240,9 @@ fails when the generated facts below differ from source.
 |---|---:|---|
 | `classic-dfs` | `1.0.1` | first-found |
 | `classic-greedy` | `1.0.1` | first-found |
-| `classic-astar` | `2.2.10` | move-optimal proof |
+| `classic-astar` | `2.2.11` | move-optimal proof |
 | `classic-ida-star` | `2.2.11` | move-optimal proof |
-| `sokomind-solver` | `1.13.6` | bounded discovery/rewrite/proof portfolio |
+| `sokomind-solver` | `1.13.7` | bounded discovery/rewrite/proof portfolio |
 
 ### Solver protocol and default portfolio
 
@@ -269,7 +269,7 @@ fails when the generated facts below differ from source.
 - `backwardPerimeter`: disabled by default
 - `componentPdb`: disabled by default
 - `moveCostPatternPdb`: disabled by default
-- `lazyExtras`: disabled by default
+- `lazyExtras`: enabled by default
 - Maximum PDB table: **268,435,456 entries** (**512 MiB**)
 
 ### Frozen solver evidence
