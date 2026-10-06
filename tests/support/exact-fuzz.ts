@@ -767,19 +767,18 @@ export const FUZZ_VARIANTS: readonly FuzzVariant[] = Object.freeze([
 ]);
 
 /**
- * Opt-in features that claim an admissible bound, plus lazyExtras, which only
- * delays the extras to pop time (A* only), and the bounds shared between A*
- * lanes, once eager and once lazy with tunnel macros so every site that reads
- * them runs. goalCutHeuristic is left out on purpose: it is known not to be
- * admissible (see exact-search-features.ts).
+ * Opt-in features that claim an admissible bound, plus the bounds shared
+ * between A* lanes, once with the default lazy extras and once eager with
+ * tunnel macros so every site that reads them runs. goalCutHeuristic is left
+ * out on purpose: it is known not to be admissible (see
+ * exact-search-features.ts).
  */
 export const FUZZ_OPT_IN_VARIANTS: readonly FuzzVariant[] = Object.freeze([
   variant("backwardPerimeter", { backwardPerimeter: true }),
   variant("componentPdb", { componentPdb: true }),
   variant("moveCostPatternPdb", { moveCostPatternPdb: true }),
-  variant("lazyExtras", { lazyExtras: true }),
   variant("sharedHeuristic", {}, true),
-  variant("sharedHeuristicLazyTunnels", { lazyExtras: true, tunnelMacros: true }, true),
+  variant("sharedHeuristicEagerTunnels", { lazyExtras: false, tunnelMacros: true }, true),
 ]);
 
 /** Small enough that fuzz boards also reach the table's full-window overwrite. */

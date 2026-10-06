@@ -345,7 +345,7 @@ cost as before. Proof revision `exact-moves-ida-contour-exit-v1` and storage
 key `sokomind.optimal.v10` also cover this change.
 
 The parallel proof's A* lanes can share the full exact-state bounds they
-compute (`shareLaneHeuristics`, off by default). Each lane keeps a bounded
+compute (`shareLaneHeuristics`, on by default). Each lane keeps a bounded
 table keyed by the whole exact state, the robot cell plus the sorted box
 tokens, and compares keys in full, so a lookup never returns another state's
 bound. A lane offers a bound only when the evaluator finished it: a value cut
@@ -358,8 +358,7 @@ and a bound admissible in one lane is admissible in all. A stored value only
 ever rises to the larger of two admissible bounds, or falls to the u16 cap of
 65,535. A* with reopening stays optimal under an admissible but inconsistent
 h, so the shared bounds change which nodes are expanded but not moves or
-proofs. IDA* lanes and deterministic runs never share. Turning it on by default
-bumps the proof revision.
+proofs. IDA* lanes, single-lane proofs and deterministic runs never share.
 
 Sokomind 1.13.2 stops a lane whose partition's prefix cost alone reaches a new
 best cost, and the lane takes the next partition. Every route in the partition
@@ -452,6 +451,18 @@ maximum, because a popped node has already passed `g + stored h < U`.
 Telemetry adds `recheckCutoffs`. IDA* checkpoint schema 7 retires checkpoints
 from the earlier pruning. Proof revision `exact-moves-ida-contour-exit-v1` and
 storage key `sokomind.optimal.v10` also cover this change.
+
+A* 2.2.11 and Sokomind 1.13.7 turn on lazy extras and the shared lane bounds by
+default (both described under "Exact feature controls" and above). Both only
+change when A* computes or reuses an admissible bound, never the bound itself,
+so moves and proofs are unchanged; expanded, unique and reopened counts and
+the order of equal-f nodes can change. Each lane's shared table takes at most
+64 MiB and 1/8 of the lane's memory limit, and counts against that limit. In
+fixed-time runs the search goes further in the same time and peak memory rises
+with it. Pass `lazyExtras: false` or `shareLaneHeuristics: false` to restore
+the old behavior. IDA* is unchanged. Proof revision
+`exact-moves-ida-contour-exit-v1` and storage key `sokomind.optimal.v10` also
+cover this change.
 
 Sokomind 1.7.0 keeps its workers for the whole request. A discovery engine
 used to start for every plan and a proof lane for every proof run, each
@@ -848,7 +859,7 @@ internally for controlled comparisons. All default on except where noted:
 - tunnel macros (default off);
 - goal-cut heuristic (default off);
 - backward perimeter (default off); and
-- lazy extras (default off, A* only).
+- lazy extras (A* only).
 
 Telemetry reports the feature vector and mechanism-specific construction,
 evaluation, application, or prune counters. A feature is beneficial only when
@@ -879,8 +890,7 @@ as eager generation would have dropped it, and a child whose h rose is queued
 again before the `L >= U` test. A pending child whose cheap key already
 reaches the incumbent ends the search, as a full key would. Moves and proofs
 are unchanged; the order of equal-f nodes and the unique-state and reopen
-counts can change. It stays off until an A/B shows a gain, and turning it on
-by default bumps the proof revision.
+counts can change. It is on by default since A* 2.2.11.
 
 Goal-commitment pruning skips successor generation for boxes proven to be on
 their final goals. Static commitments detect boxes on matching goals in corner

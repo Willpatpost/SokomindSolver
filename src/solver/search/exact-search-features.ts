@@ -59,10 +59,10 @@ export const DEFAULT_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(
   backwardPerimeter: false,
   componentPdb: false,
   moveCostPatternPdb: false,
-  // Off by default (A* only): children enter the frontier with push + walk,
-  // and the extras are computed when a child is popped. It changes the order
-  // of equal-f ties and the unique-state and reopen counts.
-  lazyExtras: false,
+  // A* only: children enter the frontier with push + walk, and the extras are
+  // computed when a child is popped. It changes the order of equal-f ties and
+  // the unique-state and reopen counts.
+  lazyExtras: true,
 });
 
 export const ALL_OFF_EXACT_SEARCH_FEATURES: ExactSearchFeatures = Object.freeze(

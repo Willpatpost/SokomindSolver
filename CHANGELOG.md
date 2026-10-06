@@ -34,16 +34,17 @@ published a stable release.
   the worker host and the client both replay. The solver dialog shows the best
   route so far, and **Stop and keep best** ends the search with that route as
   an unproven solved result.
-- An opt-in `lazyExtras` exact-search feature (off by default, A* only): A*
-  queues children with push + walk and computes the rest of h when a child is
-  popped, dropping it at f >= the incumbent or queueing it again if h rose.
-  Nothing changes while it is off.
-- An opt-in `shareLaneHeuristics` proof option (off by default): A* lanes of
-  one parallel proof share the full exact-state bounds they compute, relayed
-  by the coordinator. Nothing changes while it is off.
+- A `lazyExtras` exact-search feature (A* only): A* queues children with
+  push + walk and computes the rest of h when a child is popped, dropping it at
+  f >= the incumbent or queueing it again if h rose.
+- A `shareLaneHeuristics` proof option: A* lanes of one parallel proof share
+  the full exact-state bounds they compute, relayed by the coordinator.
 
 ### Changed
 
+- A* 2.2.11 and Sokomind 1.13.7 turn on `lazyExtras` and `shareLaneHeuristics`
+  by default. Moves and proofs are unchanged; in fixed-time runs the search
+  goes further and uses more memory.
 - When IDA* expands a node, it now keeps the larger of the stored h and the
   push bound plus the exact walk to a legal push, and cuts the node from the
   current contour when that passes the limit. The larger h is written back to

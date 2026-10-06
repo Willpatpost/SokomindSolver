@@ -69,7 +69,7 @@ export const classicAStarSolver: SolverAdapter = Object.freeze({
     displayName: "A* Search",
     description:
       "Move-optimal A* with label-aware reverse-push assignment bounds.",
-    version: "2.2.10",
+    version: "2.2.11",
     capabilities: capabilities(["moves"], "optimal"),
   } satisfies SolverMetadata),
   solve(request: SolverRequest, context: SolverExecutionContext) {

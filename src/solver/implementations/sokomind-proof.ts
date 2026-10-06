@@ -349,8 +349,8 @@ interface PartitionTracker {
 // Each coordinator run gets its own id, which every lane result echoes.
 let nextProofRunId = 0;
 
-/** Off until an A/B shows the shared bounds pay for their memory and messages. */
-const SHARE_LANE_HEURISTICS_BY_DEFAULT = false;
+/** Parallel non-deterministic proofs share A* lane bounds unless told not to. */
+const SHARE_LANE_HEURISTICS_BY_DEFAULT = true;
 
 export interface ConcurrentProofOptions {
   /** A factory gives each run fresh lanes; a source may lend lanes kept from an earlier run. */

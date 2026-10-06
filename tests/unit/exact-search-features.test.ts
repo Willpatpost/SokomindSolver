@@ -88,7 +88,6 @@ const SWEEP_CONFIGS: readonly {
   })),
   { label: "tunnelMacros on", features: { tunnelMacros: true } },
   { label: "goalCutHeuristic on", features: { goalCutHeuristic: true } },
-  { label: "lazyExtras on", features: { lazyExtras: true } },
   {
     label: "forcedPushMacros off, tunnelMacros on",
     features: { forcedPushMacros: false, tunnelMacros: true },
@@ -107,7 +106,7 @@ describe("exact-search feature configuration", () => {
     );
     assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.tunnelMacros, false);
     assert.equal(DEFAULT_EXACT_SEARCH_FEATURES.goalCutHeuristic, false);
-    assert.equal(exactSearchFeatureMask(resolved), 0b0011_1111_1111);
+    assert.equal(exactSearchFeatureMask(resolved), 0b1000_0011_1111_1111);
     assert.equal(resolveExactSearchFeatures({piCorralPruning: false}).piCorralPruning, false);
   });
 
